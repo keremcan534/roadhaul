@@ -29,6 +29,40 @@ export type ServicePoint =
   | { readonly kind: 'depot'; readonly depot: DepotDefinition }
   | { readonly kind: 'restArea'; readonly restArea: RestAreaDefinition };
 
+/**
+ * A paved circle at a dead end, where trucks and traffic turn round (spec
+ * §19: traffic turns; §20: the world). Every open road end that joins no
+ * other road gets one.
+ */
+export interface TurningCircle {
+  readonly x: number;
+  readonly z: number;
+  readonly radiusMeters: number;
+  /** The road that ends here, and the sample it ends at (its first or last). */
+  readonly roadIndex: number;
+  readonly sampleIndex: number;
+}
+
+/**
+ * Things that move and can be hit: the traffic (roadmap step 22). Like the
+ * truck's footprint they are circles; each moves with its vehicle's velocity.
+ * Arrays are read up to circleCount.
+ */
+export interface MovingObstacles {
+  readonly circleCount: number;
+  readonly circleX: Float64Array;
+  readonly circleZ: Float64Array;
+  readonly circleRadius: Float64Array;
+  /** Velocity of the circle's vehicle, m/s. */
+  readonly circleVelocityX: Float64Array;
+  readonly circleVelocityZ: Float64Array;
+  /**
+   * The truck touched circle `index` this step. `impactSpeed` is how hard
+   * the truck drove into it (m/s), 0 when it was not driving into it.
+   */
+  hit(index: number, impactSpeed: number): void;
+}
+
 export interface BuildingObstacle {
   readonly minX: number;
   readonly maxX: number;
@@ -58,6 +92,14 @@ const GRID_OFFSET = 4096;
 const FULL_DEFLECTION_ANGLE = degreesToRadians(20);
 /** …from this one on it is stopped like in a head-on crash. In between, the two blend. */
 const NO_DEFLECTION_ANGLE = degreesToRadians(45);
+/** Turning circles are this big, their centre this far past the road's end. */
+export const TURNING_CIRCLE_RADIUS_METERS = 11;
+export const TURNING_CIRCLE_OFFSET_METERS = 2;
+/**
+ * A truck moving into a moving obstacle slower than this is not to blame for
+ * the contact: the obstacle drove into it, and it takes no damage.
+ */
+const AT_FAULT_SPEED = 0.5;
 
 /**
  * Everything the truck can drive on or into, built from a MapDefinition:
@@ -80,6 +122,8 @@ export class DrivingWorld {
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
   /** Every depot yard and rest area lot, where trucks are serviced. */
   readonly servicePoints: readonly ServicePoint[];
+  /** One at each dead end. */
+  readonly turningCircles: readonly TurningCircle[];
   private readonly treeGrid = new Map<number, number[]>();
   /**
    * Hardest contact of the current resolveCollisions() call: impact speed,
@@ -90,6 +134,8 @@ export class DrivingWorld {
   private worstNormalX = 0;
   private worstNormalZ = 0;
   private worstOffset = 0;
+  /** Speed along the truck's heading that the hardest contact carries the truck at (a vehicle it follows into). */
+  private worstCarriedSpeed = 0;
 
   constructor(map: MapDefinition) {
     this.id = map.id;
@@ -110,6 +156,20 @@ export class DrivingWorld {
       ...map.restAreas.map((restArea): ServicePoint => ({ kind: 'restArea', restArea })),
     ];
     this.spawn = { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
+    this.turningCircles = this.network.deadEnds.map(({ roadIndex, sampleIndex }) => {
+      const road = this.roads[roadIndex]!;
+      const inward = sampleIndex === 0 ? 1 : sampleIndex - 1;
+      const dx = road.x(sampleIndex) - road.x(inward);
+      const dz = road.z(sampleIndex) - road.z(inward);
+      const length = Math.hypot(dx, dz) || 1;
+      return {
+        x: road.x(sampleIndex) + (dx / length) * TURNING_CIRCLE_OFFSET_METERS,
+        z: road.z(sampleIndex) + (dz / length) * TURNING_CIRCLE_OFFSET_METERS,
+        radiusMeters: TURNING_CIRCLE_RADIUS_METERS,
+        roadIndex,
+        sampleIndex,
+      };
+    });
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.trees.forEach((tree, index) => {
       const key = cellKey(cellOf(tree.x), cellOf(tree.z));
@@ -122,10 +182,16 @@ export class DrivingWorld {
     });
   }
 
-  /** The ground under a point: asphalt on any road, depot yard or rest area lot, grass everywhere else. */
+  /** The ground under a point: asphalt on any road, turning circle, depot yard or rest area lot, grass everywhere else. */
   surfaceAt(x: number, z: number): Surface {
     for (let i = 0; i < this.roads.length; i++) {
       if (this.roads[i]!.contains(x, z)) {
+        return ASPHALT;
+      }
+    }
+    for (let i = 0; i < this.turningCircles.length; i++) {
+      const circle = this.turningCircles[i]!;
+      if (Math.hypot(x - circle.x, z - circle.z) <= circle.radiusMeters) {
         return ASPHALT;
       }
     }
@@ -160,23 +226,75 @@ export class DrivingWorld {
   }
 
   /**
-   * Pushes the truck out of trees, buildings and the map boundary, then
-   * responds to the hardest contact: a head-on hit stops the truck, a
-   * glancing one turns it along the obstacle and it carries on with the speed
-   * it had along the surface. Returns the hardest impact speed (m/s into the
-   * obstacle), or 0. Allocation-free: it runs every fixed step.
+   * Pushes the truck out of trees, buildings, the map boundary and moving
+   * `obstacles` (traffic), then responds to the hardest contact: a head-on
+   * hit stops the truck, a glancing one turns it along the obstacle and it
+   * carries on with the speed it had along the surface. Driving into a
+   * vehicle that is moving away, the truck keeps that vehicle's speed.
+   * Returns the hardest impact speed (m/s into the obstacle), or 0.
+   * Allocation-free: it runs every fixed step.
    */
-  resolveCollisions(state: VehicleRuntimeState, footprint: VehicleFootprint): number {
+  resolveCollisions(
+    state: VehicleRuntimeState,
+    footprint: VehicleFootprint,
+    obstacles: MovingObstacles | null = null,
+  ): number {
     this.worstImpact = 0;
+    this.worstCarriedSpeed = 0;
     for (let i = 0; i < footprint.offsets.length; i++) {
       this.collideCircle(state, footprint.offsets[i]!, footprint.radius);
+      if (obstacles !== null) {
+        this.collideMoving(state, footprint.offsets[i]!, footprint.radius, obstacles);
+      }
     }
     // One response per step, from the hardest contact. Several circles touching
     // the same wall must not brake the truck several times over.
     if (this.worstImpact > 0) {
-      this.deflect(state, this.worstNormalX, this.worstNormalZ, this.worstOffset);
+      this.deflect(state, this.worstNormalX, this.worstNormalZ, this.worstOffset, this.worstCarriedSpeed);
     }
     return this.worstImpact;
+  }
+
+  /**
+   * Pushes one footprint circle out of the moving obstacles. The truck only
+   * takes an impact when it drives into the obstacle; one driving into a
+   * standing truck just shoves it. Every touched obstacle is told.
+   */
+  private collideMoving(state: VehicleRuntimeState, offset: number, radius: number, obstacles: MovingObstacles): void {
+    let cx = state.x + Math.sin(state.heading) * offset;
+    let cz = state.z + Math.cos(state.heading) * offset;
+    for (let k = 0; k < obstacles.circleCount; k++) {
+      const dx = cx - obstacles.circleX[k]!;
+      const dz = cz - obstacles.circleZ[k]!;
+      const minDistance = radius + obstacles.circleRadius[k]!;
+      const distanceSquared = dx * dx + dz * dz;
+      if (distanceSquared >= minDistance * minDistance || distanceSquared < 1e-12) {
+        continue;
+      }
+      const distance = Math.sqrt(distanceSquared);
+      const nx = dx / distance;
+      const nz = dz / distance;
+      state.x += nx * (minDistance - distance);
+      state.z += nz * (minDistance - distance);
+      cx = state.x + Math.sin(state.heading) * offset;
+      cz = state.z + Math.cos(state.heading) * offset;
+      // The normal points from the obstacle to the truck: negative truck speed along it is driving in.
+      const truckInto = -state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
+      const obstacleInto = obstacles.circleVelocityX[k]! * nx + obstacles.circleVelocityZ[k]! * nz;
+      const impact = truckInto > AT_FAULT_SPEED ? Math.max(0, truckInto + obstacleInto) : 0;
+      obstacles.hit(k, impact);
+      if (impact > 0 && impact >= this.worstImpact) {
+        this.worstImpact = impact;
+        this.worstNormalX = nx;
+        this.worstNormalZ = nz;
+        this.worstOffset = offset;
+        // A vehicle moving away carries the truck along; one coming at it stops dead in the crash.
+        this.worstCarriedSpeed =
+          obstacleInto < 0
+            ? obstacles.circleVelocityX[k]! * Math.sin(state.heading) + obstacles.circleVelocityZ[k]! * Math.cos(state.heading)
+            : 0;
+      }
+    }
   }
 
   private collideCircle(state: VehicleRuntimeState, offset: number, radius: number): void {
@@ -262,6 +380,7 @@ export class DrivingWorld {
       this.worstNormalX = nx;
       this.worstNormalZ = nz;
       this.worstOffset = offset;
+      this.worstCarriedSpeed = 0;
     }
   }
 
@@ -272,9 +391,11 @@ export class DrivingWorld {
    * obstacle again and a light scrape would pin it to the wall. It turns
    * about the touching circle (`pivotOffset` ahead of the rear axle), so it
    * stays against the obstacle and slides along it. Steep hits turn less and
-   * lose the rest of their speed.
+   * lose the rest of their speed. Against a vehicle moving away, all of this
+   * applies to the speed relative to `carriedSpeed`, the vehicle's speed
+   * along the truck's heading.
    */
-  private deflect(state: VehicleRuntimeState, nx: number, nz: number, pivotOffset: number): void {
+  private deflect(state: VehicleRuntimeState, nx: number, nz: number, pivotOffset: number, carriedSpeed: number): void {
     const sin = Math.sin(state.heading);
     const cos = Math.cos(state.heading);
     // Heading · normal: the sine of the angle between the truck and the surface
@@ -283,7 +404,7 @@ export class DrivingWorld {
     const angle = Math.asin(Math.min(1, Math.abs(alignment)));
     const turn = clamp01((NO_DEFLECTION_ANGLE - angle) / (NO_DEFLECTION_ANGLE - FULL_DEFLECTION_ANGLE));
     // Speed along the surface, projected onto the new heading (a head-on hit keeps nothing).
-    state.speed *= Math.cos(angle) * Math.cos(angle * (1 - turn));
+    state.speed = carriedSpeed + (state.speed - carriedSpeed) * Math.cos(angle) * Math.cos(angle * (1 - turn));
     if (turn === 0) {
       return;
     }
@@ -342,6 +463,13 @@ export class DrivingWorld {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, TREE_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (
+      this.turningCircles.some(
+        (circle) => Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + TREE_ROAD_CLEARANCE,
+      )
+    ) {
       return false;
     }
     return this.buildings.every(

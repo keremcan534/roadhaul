@@ -47,6 +47,29 @@ describe('TrackView', () => {
     expect(triangles).toBeLessThan(150_000);
   });
 
+  it('paves the turning circle at each dead end with the road, in the same draw calls', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    const flatMeshes: Mesh[] = [];
+    scene.traverse((object) => {
+      if (object instanceof Mesh && !(object instanceof InstancedMesh)) flatMeshes.push(object);
+    });
+
+    for (const circle of world.turningCircles) {
+      // Some mesh has vertices all round the circle's rim, clear of the road that ends inside it.
+      const rimCovered = flatMeshes.some((mesh) => {
+        const positions = mesh.geometry.getAttribute('position');
+        let onRim = 0;
+        for (let i = 0; i < positions.count; i++) {
+          const distance = Math.hypot(positions.getX(i) - circle.x, positions.getZ(i) - circle.z);
+          if (Math.abs(distance - circle.radiusMeters) < 0.01) onRim++;
+        }
+        return onRim >= 32;
+      });
+      expect(rimCovered).toBe(true);
+    }
+  });
+
   it('instances every tree, with its trunk and its shadow', () => {
     const scene = new Scene();
     new TrackView(scene, world);

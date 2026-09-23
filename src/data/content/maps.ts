@@ -194,8 +194,8 @@ export const MAPS: readonly MapDefinition[] = [
         lot: { x: 100, z: -638, headingDegrees: 90, lengthMeters: 90, widthMeters: 34 },
       },
     ],
-    // On A's high street, heading north past the home depot.
-    spawn: { x: -1700, z: -600, headingDegrees: 0 },
+    // On A's high street, in the lane heading north past the home depot (traffic keeps right).
+    spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     scenery: { seed: 20260923, treesPerKilometer: 70 },
   },
 ];

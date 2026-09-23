@@ -239,7 +239,7 @@ describe('DrivingService', () => {
     expect(driving.previousPose).toEqual({ x: -100, z: -20, heading: Math.PI });
   });
 
-  it('recovers a stuck truck onto the nearest road, facing along it the way it was heading', () => {
+  it('recovers a stuck truck onto the nearest road, facing along it the way it was heading, in the right-hand lane', () => {
     const { driving } = setup();
     driving.start('test_truck', 'test_map');
     // On the grass north of the road, nose to the building, heading a little west of north.
@@ -247,7 +247,8 @@ describe('DrivingService', () => {
 
     driving.recover();
 
-    expect(driving.vehicle.z).toBeCloseTo(0, 6);
+    // Heading along -X, the driver's right is -Z: the middle of that lane of the 10 m street.
+    expect(driving.vehicle.z).toBeCloseTo(-2.5, 6);
     expect(Math.abs(driving.vehicle.x - 20)).toBeLessThanOrEqual(3); // The nearest centreline sample.
     // The road runs along X; west (-90°) is closer to the old heading than east. The heading stays unwrapped.
     expect(driving.vehicle.heading).toBeCloseTo(-Math.PI / 2 + 2 * Math.PI, 6);

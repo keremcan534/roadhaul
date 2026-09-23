@@ -2,6 +2,7 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
+  CircleGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -151,16 +152,20 @@ export class TrackView {
   /**
    * Every road in four draw calls: gravel shoulders, asphalt, painted lines
    * and instanced dashes. The markings follow each road's kind (see
-   * roadMarkings) and stop short of junctions, where another road crosses.
+   * roadMarkings) and stop short of junctions, where another road crosses,
+   * and of the turning circles at dead ends, which are paved like the road.
    */
   private createRoads(world: DrivingWorld, anisotropy: number): (Mesh | InstancedMesh)[] {
-    const { roads, network } = world;
+    const { roads, network, turningCircles } = world;
     const asphalt = this.texture(toTexture(asphaltImage(), { repeat: true, anisotropy }));
     const gravel = this.texture(toTexture(gravelImage(), { repeat: true, anisotropy }));
     const markingY = ROAD_Y + roads.length * ROAD_STACK + MARKING_GAP;
     const junctionReach = Math.max(...roads.map((road) => road.widthMeters)) / 2 + JUNCTION_MARKING_GAP;
     const clearOfJunctions = (x: number, z: number): boolean =>
-      network.junctions.every((junction) => Math.hypot(junction.x - x, junction.z - z) > junctionReach);
+      network.junctions.every((junction) => Math.hypot(junction.x - x, junction.z - z) > junctionReach) &&
+      turningCircles.every(
+        (circle) => Math.hypot(circle.x - x, circle.z - z) > circle.radiusMeters + JUNCTION_MARKING_GAP,
+      );
 
     const shoulders: BufferGeometry[] = [];
     const surfaces: BufferGeometry[] = [];
@@ -199,6 +204,15 @@ export class TrackView {
         dashes.push({ road, offset });
       }
     });
+    // Turning circles lie over the end of their road, with a gravel rim like its shoulders.
+    for (const circle of turningCircles) {
+      shoulders.push(
+        flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS),
+      );
+      surfaces.push(
+        flatDisc(circle.x, circle.z, circle.radiusMeters, ROAD_Y + roads.length * ROAD_STACK, ASPHALT_TILE_METERS),
+      );
+    }
 
     const meshes: (Mesh | InstancedMesh)[] = [
       new Mesh(this.merged(shoulders), this.overlayMaterial({ map: gravel }, 1)),
@@ -465,6 +479,17 @@ function hash(a: number, b: number): number {
 /** A horizontal quad facing up, centred on the origin. */
 function flatQuad(width = 1, depth = 1): BufferGeometry {
   return new PlaneGeometry(width, depth).rotateX(-Math.PI / 2);
+}
+
+/** A flat disc facing up at (x, y, z), textured in world space: one texture tile per `tileMeters`. */
+function flatDisc(x: number, z: number, radius: number, y: number, tileMeters: number): BufferGeometry {
+  const disc = new CircleGeometry(radius, 32).rotateX(-Math.PI / 2).translate(x, y, z);
+  const positions = disc.getAttribute('position');
+  const uvs = disc.getAttribute('uv');
+  for (let i = 0; i < positions.count; i++) {
+    uvs.setXY(i, positions.getX(i) / tileMeters, positions.getZ(i) / tileMeters);
+  }
+  return disc;
 }
 
 /** Three stacked cones on top of the trunk (origin at the crown's base). */

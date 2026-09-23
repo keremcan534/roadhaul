@@ -9,6 +9,19 @@ import { ROUTE_LOOK_AHEAD_METERS, type RouteGuidance } from './roadRoute';
  */
 export const JUNCTION_RADIUS_METERS = 0.5;
 
+/** One road's centreline sample, e.g. where the road meets another. */
+export interface RoadSampleRef {
+  readonly roadIndex: number;
+  readonly sampleIndex: number;
+}
+
+/** Where roads meet: one sample of each road that passes through or ends here. */
+export interface Junction {
+  readonly x: number;
+  readonly z: number;
+  readonly members: readonly RoadSampleRef[];
+}
+
 /** Shortest distances by road to one target, and the way there. */
 interface RouteField {
   /** From each node to the target, meters; Infinity where no road leads there. */
@@ -37,8 +50,10 @@ export class RoadNetwork {
   private readonly neighbours: Int32Array;
   private readonly edgeLengths: Float64Array;
   private readonly fields = new Map<number, RouteField>();
-  /** Where two roads meet (one entry per junction). */
-  readonly junctions: readonly { readonly x: number; readonly z: number }[];
+  /** Where roads meet (one entry per junction). */
+  readonly junctions: readonly Junction[];
+  /** Ends of open roads that join no other road: traffic turns round there. */
+  readonly deadEnds: readonly RoadSampleRef[];
 
   constructor(roads: readonly RoadPath[]) {
     const count = roads.reduce((sum, road) => sum + road.pointCount, 0);
@@ -54,8 +69,10 @@ export class RoadNetwork {
       }
     };
 
+    const firstNode: number[] = [];
     let base = 0;
     roads.forEach((road, roadIndex) => {
+      firstNode.push(base);
       for (let i = 0; i < road.pointCount; i++) {
         this.nodeX[base + i] = road.x(i);
         this.nodeZ[base + i] = road.z(i);
@@ -66,16 +83,38 @@ export class RoadNetwork {
       }
       base += road.pointCount;
     });
-    const junctions: { x: number; z: number }[] = [];
+    const junctions: { x: number; z: number; members: RoadSampleRef[] }[] = [];
+    const sampleOf = (node: number): RoadSampleRef => {
+      const roadIndex = this.roadOf[node]!;
+      return { roadIndex, sampleIndex: node - firstNode[roadIndex]! };
+    };
     this.linkJunctions((a, b) => {
       link(a, b);
       const x = (this.nodeX[a]! + this.nodeX[b]!) / 2;
       const z = (this.nodeZ[a]! + this.nodeZ[b]!) / 2;
-      if (!junctions.some((junction) => Math.hypot(junction.x - x, junction.z - z) < 1)) {
-        junctions.push({ x, z });
+      let junction = junctions.find((candidate) => Math.hypot(candidate.x - x, candidate.z - z) < 1);
+      if (junction === undefined) {
+        junction = { x, z, members: [] };
+        junctions.push(junction);
+      }
+      for (const member of [sampleOf(a), sampleOf(b)]) {
+        if (!junction.members.some((known) => known.roadIndex === member.roadIndex)) {
+          junction.members.push(member);
+        }
       }
     });
     this.junctions = junctions;
+    const joined = (roadIndex: number, sampleIndex: number): boolean =>
+      junctions.some((junction) =>
+        junction.members.some((member) => member.roadIndex === roadIndex && member.sampleIndex === sampleIndex),
+      );
+    this.deadEnds = roads.flatMap((road, roadIndex) =>
+      road.closed
+        ? []
+        : [0, road.pointCount - 1]
+            .filter((sampleIndex) => !joined(roadIndex, sampleIndex))
+            .map((sampleIndex) => ({ roadIndex, sampleIndex })),
+    );
 
     this.firstNeighbour = new Int32Array(count + 1);
     let edgeCount = 0;

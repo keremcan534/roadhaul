@@ -106,6 +106,26 @@ describe('RoadNetwork', () => {
     expect(route.aimZ).toBeCloseTo(0, 0);
   });
 
+  it('lists the roads that meet at each junction, and the road ends that meet none', () => {
+    const network = new RoadNetwork([loop, spur, island]);
+
+    expect(network.junctions).toHaveLength(1);
+    const [junction] = network.junctions;
+    expect(junction!.x).toBeCloseTo(100, 6);
+    expect(junction!.z).toBeCloseTo(0, 6);
+    const members = junction!.members.map((member) => ({ ...member, x: [loop, spur][member.roadIndex]!.x(member.sampleIndex) }));
+    expect(members.map((member) => member.roadIndex).sort()).toEqual([0, 1]);
+    for (const member of members) {
+      expect(member.x).toBeCloseTo(100, 6);
+    }
+    // The loop is closed; the spur ends at the junction on one side; the island has two loose ends.
+    expect(network.deadEnds).toEqual([
+      { roadIndex: 1, sampleIndex: spur.pointCount - 1 },
+      { roadIndex: 2, sampleIndex: 0 },
+      { roadIndex: 2, sampleIndex: island.pointCount - 1 },
+    ]);
+  });
+
   it('reuses the object it is given, and the route to a target once computed', () => {
     const network = new RoadNetwork([loop, spur]);
     const out = createRouteGuidance();

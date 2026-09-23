@@ -7,7 +7,8 @@ import { VehicleDynamics } from '../../domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint, type VehicleFootprint } from '../../domain/vehicles/VehicleFootprint';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
-import { DrivingWorld, type ServicePoint } from '../../domain/world/DrivingWorld';
+import { DrivingWorld, type MovingObstacles, type ServicePoint } from '../../domain/world/DrivingWorld';
+import { laneOffsetMeters } from '../../domain/world/lanes';
 import type { Surface } from '../../domain/world/Surface';
 import type { GameEvents } from '../GameEvents';
 
@@ -70,6 +71,8 @@ export class DrivingService {
   private session: DrivingSession | null = null;
   private readonly modifiers = new Map<string, PerformanceModifier>();
   private engineRunning = true;
+  /** Vehicles the truck can hit besides the world's static obstacles (TrafficService). */
+  private obstacles: MovingObstacles | null = null;
 
   constructor(
     private readonly content: ContentCatalog,
@@ -97,6 +100,11 @@ export class DrivingService {
 
   get definition(): VehicleDefinition {
     return this.requireSession().definition;
+  }
+
+  /** The truck's collision shape. */
+  get footprint(): VehicleFootprint {
+    return this.requireSession().footprint;
   }
 
   /** Cargo on board, kg. */
@@ -210,6 +218,11 @@ export class DrivingService {
     this.requireSession().dynamics.setReverseAllowed(allowed);
   }
 
+  /** Moving things the truck collides with from now on, in every drive (traffic); null for none. */
+  setMovingObstacles(obstacles: MovingObstacles | null): void {
+    this.obstacles = obstacles;
+  }
+
   /** Stalls or restarts the engine (FuelService: an empty tank). It carries over to later drives. */
   setEngineRunning(running: boolean): void {
     this.engineRunning = running;
@@ -228,8 +241,8 @@ export class DrivingService {
   }
 
   /**
-   * Gets a stuck truck going again: puts it at rest in the middle of the
-   * nearest road, facing along the road the way closest to its current heading.
+   * Gets a stuck truck going again: puts it at rest on the nearest road, in
+   * the right-hand lane for the way along the road closest to its heading.
    */
   recover(): void {
     const { state, world } = this.requireSession();
@@ -249,7 +262,9 @@ export class DrivingService {
     if (Math.abs(turn) > Math.PI / 2) {
       turn -= Math.sign(turn) * Math.PI;
     }
-    this.placeTruck(road.x(index), road.z(index), state.heading + turn);
+    const heading = state.heading + turn;
+    const lane = laneOffsetMeters(road.kind, road.widthMeters, 0);
+    this.placeTruck(road.x(index) - Math.cos(heading) * lane, road.z(index) + Math.sin(heading) * lane, heading);
     this.logger.info(`Recovered the truck onto ${road.id}.`);
   }
 
@@ -273,7 +288,7 @@ export class DrivingService {
     session.surface = surface;
     session.dynamics.step(state, input, surface, dt);
 
-    const impact = world.resolveCollisions(state, session.footprint);
+    const impact = world.resolveCollisions(state, session.footprint, this.obstacles);
     if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }

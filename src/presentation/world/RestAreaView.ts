@@ -122,7 +122,7 @@ export class RestAreaView {
 
 /**
  * Which long side of the lot is its back, away from the road: 1 for the side
- * to the right of its heading, -1 for the left.
+ * to the left of its heading (seen by a driver facing that way), -1 for the right.
  */
 function backSide(restArea: RestAreaDefinition, world: DrivingWorld): 1 | -1 {
   const { lot } = restArea;
