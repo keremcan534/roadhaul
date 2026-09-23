@@ -169,5 +169,6 @@ function describeContent(catalog: ContentCatalog): string {
     `cities ${catalog.cities.size}`,
     `missions ${catalog.missions.size}`,
     `maps ${catalog.maps.size}`,
+    `upgrades ${catalog.upgrades.size}`,
   ].join(', ');
 }

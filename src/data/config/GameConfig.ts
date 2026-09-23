@@ -143,12 +143,28 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'company.levelXp',
     'must start at 0 and rise strictly in whole numbers',
   );
-  content.missions.all.forEach((mission, index) => {
+  // Whatever needs a company level must need one the company can reach.
+  const checkReachable = (id: string, requiredLevel: number | undefined, path: string): void => {
     validator.check(
-      (mission.requiredCompanyLevel ?? 1) <= levels.length,
-      `content.missions[${index}].requiredCompanyLevel`,
-      `"${mission.id}" needs level ${mission.requiredCompanyLevel}, but the company only has ${levels.length} levels`,
+      (requiredLevel ?? 1) <= levels.length,
+      path,
+      `"${id}" needs level ${requiredLevel}, but the company only has ${levels.length} levels`,
     );
+  };
+  content.missions.all.forEach((mission, index) => {
+    checkReachable(mission.id, mission.requiredCompanyLevel, `content.missions[${index}].requiredCompanyLevel`);
+  });
+  content.vehicles.all.forEach((vehicle, index) => {
+    checkReachable(vehicle.id, vehicle.requiredCompanyLevel, `content.vehicles[${index}].requiredCompanyLevel`);
+  });
+  content.upgrades.all.forEach((upgrade, upgradeIndex) => {
+    upgrade.levels.forEach((level, index) => {
+      checkReachable(
+        upgrade.id,
+        level.requiredCompanyLevel,
+        `content.upgrades[${upgradeIndex}].levels[${index}].requiredCompanyLevel`,
+      );
+    });
   });
   validator.nonNegativeInteger(newGame.startingCredits, 'newGame.startingCredits');
   validator.check(

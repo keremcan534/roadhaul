@@ -8,6 +8,7 @@ import {
   vehicleCanHaul,
   type MissionDefinition,
 } from './definitions/MissionDefinition';
+import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import type { GameContent } from './GameContent';
 
@@ -56,6 +57,7 @@ export class ContentCatalog {
   readonly cities: DefinitionTable<CityDefinition>;
   readonly missions: DefinitionTable<MissionDefinition>;
   readonly maps: DefinitionTable<MapDefinition>;
+  readonly upgrades: DefinitionTable<UpgradeDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -63,6 +65,7 @@ export class ContentCatalog {
     this.cities = new DefinitionTable('city', content.cities);
     this.missions = new DefinitionTable('mission', content.missions);
     this.maps = new DefinitionTable('map', content.maps);
+    this.upgrades = new DefinitionTable('upgrade', content.upgrades);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -83,6 +86,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'cities', content.cities, validateCityDefinition);
   validateTable(validator, 'missions', content.missions, validateMissionDefinition);
   validateTable(validator, 'maps', content.maps, validateMapDefinition);
+  validateTable(validator, 'upgrades', content.upgrades, validateUpgradeDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   return validator.issues;

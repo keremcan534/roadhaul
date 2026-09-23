@@ -2,6 +2,7 @@ import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
+import type { UpgradeDefinition } from '../../src/data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
 import type { GameContent } from '../../src/data/GameContent';
 
@@ -16,6 +17,7 @@ export function vehicleFixture(overrides: Partial<VehicleDefinition> = {}): Vehi
     fuelCapacityLiters: 300,
     baseFuelLitersPerKm: 0.3,
     maxSpeedKmh: 90,
+    purchasePrice: 20000,
     body: {
       massKg: 8000,
       lengthMeters: 9,
@@ -130,6 +132,19 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     cities: [cityFixture(), cityFixture({ id: 'test_destination', specialization: 'industrial' })],
     missions: [missionFixture()],
     maps: [mapFixture()],
+    upgrades: [upgradeFixture()],
+    ...overrides,
+  };
+}
+
+/** Two levels: +10 % engine power, then +20 % from company level 2. */
+export function upgradeFixture(overrides: Partial<UpgradeDefinition> = {}): UpgradeDefinition {
+  return {
+    id: 'test_upgrade',
+    levels: [
+      { cost: 1000, modifiers: [{ stat: 'enginePower', bonus: 0.1 }] },
+      { cost: 2000, requiredCompanyLevel: 2, modifiers: [{ stat: 'enginePower', bonus: 0.2 }] },
+    ],
     ...overrides,
   };
 }

@@ -2,6 +2,7 @@ import type { CargoDefinition } from './definitions/CargoDefinition';
 import type { CityDefinition } from './definitions/CityDefinition';
 import type { MapDefinition } from './definitions/MapDefinition';
 import type { MissionDefinition } from './definitions/MissionDefinition';
+import type { UpgradeDefinition } from './definitions/UpgradeDefinition';
 import type { VehicleDefinition } from './definitions/VehicleDefinition';
 
 /**
@@ -16,4 +17,5 @@ export interface GameContent {
   readonly cities: readonly CityDefinition[];
   readonly missions: readonly MissionDefinition[];
   readonly maps: readonly MapDefinition[];
+  readonly upgrades: readonly UpgradeDefinition[];
 }

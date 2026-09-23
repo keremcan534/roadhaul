@@ -1,12 +1,15 @@
 import type { MissionDefinition } from '../definitions/MissionDefinition';
 
 /**
- * The spec's first 10 missions (§77), between the three depots of the test
- * track. All fit the starting box truck. Titles come from the string tables
- * (`mission.<id>.title`). Time limits cover the delivery leg, from loading to
- * unloading. Four contracts are open from the start; company levels unlock
- * the rest, harder and better paid (spec §14, §42: a level-up in the first
- * half hour).
+ * The spec's first 20 missions (§43, §77), between the three depots of the
+ * test track. Titles come from the string tables (`mission.<id>.title`). Time
+ * limits cover the delivery leg, from loading to unloading.
+ *
+ * The first ten fit the starting box truck. Four are open from the start and
+ * company levels unlock the rest, harder and better paid (spec §14, §42: a
+ * level-up in the first half hour). The last ten need the trucks the garage
+ * sells: chilled cargo and loads over 5 t need the H2's refrigerated box,
+ * building materials the H3's flatbed.
  */
 export const MISSIONS: readonly MissionDefinition[] = [
   {
@@ -122,6 +125,126 @@ export const MISSIONS: readonly MissionDefinition[] = [
     baseReward: 2600,
     timeLimitSeconds: 200,
     damageTolerance: 0.05,
+    difficulty: 'expert',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'warehouse_transfer',
+    originCityId: 'city_a',
+    destinationCityId: 'city_b',
+    cargoId: 'furniture',
+    cargoWeightTons: 8,
+    baseReward: 2400,
+    timeLimitSeconds: 130,
+    damageTolerance: 0.2,
+    difficulty: 'normal',
+    requiredCompanyLevel: 2,
+  },
+  {
+    id: 'cold_chain',
+    originCityId: 'city_b',
+    destinationCityId: 'city_c',
+    cargoId: 'frozen_food',
+    cargoWeightTons: 8,
+    baseReward: 3600,
+    timeLimitSeconds: 190,
+    damageTolerance: 0.15,
+    difficulty: 'hard',
+    requiredCompanyLevel: 2,
+  },
+  {
+    id: 'pharmacy_run',
+    originCityId: 'city_a',
+    destinationCityId: 'city_c',
+    cargoId: 'medical_supplies',
+    cargoWeightTons: 3,
+    baseReward: 2400,
+    timeLimitSeconds: 100,
+    damageTolerance: 0.1,
+    difficulty: 'hard',
+    requiredCompanyLevel: 2,
+  },
+  {
+    id: 'ice_cream_express',
+    originCityId: 'city_c',
+    destinationCityId: 'city_a',
+    cargoId: 'frozen_food',
+    cargoWeightTons: 6,
+    baseReward: 3000,
+    timeLimitSeconds: 95,
+    damageTolerance: 0.15,
+    difficulty: 'hard',
+    requiredCompanyLevel: 3,
+  },
+  {
+    id: 'farm_machinery',
+    originCityId: 'city_b',
+    destinationCityId: 'city_c',
+    cargoId: 'machine_parts',
+    cargoWeightTons: 9,
+    baseReward: 3800,
+    timeLimitSeconds: 230,
+    damageTolerance: 0.2,
+    difficulty: 'normal',
+    requiredCompanyLevel: 3,
+  },
+  {
+    id: 'building_site',
+    originCityId: 'city_a',
+    destinationCityId: 'city_c',
+    cargoId: 'construction_materials',
+    cargoWeightTons: 14,
+    baseReward: 3400,
+    timeLimitSeconds: 170,
+    damageTolerance: 0.3,
+    difficulty: 'normal',
+    requiredCompanyLevel: 3,
+  },
+  {
+    id: 'harbor_pier',
+    originCityId: 'city_b',
+    destinationCityId: 'city_a',
+    cargoId: 'construction_materials',
+    cargoWeightTons: 12,
+    baseReward: 3000,
+    timeLimitSeconds: 140,
+    damageTolerance: 0.3,
+    difficulty: 'normal',
+    requiredCompanyLevel: 3,
+  },
+  {
+    id: 'hospital_restock',
+    originCityId: 'city_b',
+    destinationCityId: 'city_a',
+    cargoId: 'medical_supplies',
+    cargoWeightTons: 5,
+    baseReward: 3400,
+    timeLimitSeconds: 90,
+    damageTolerance: 0.08,
+    difficulty: 'expert',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'quarry_run',
+    originCityId: 'city_c',
+    destinationCityId: 'city_b',
+    cargoId: 'construction_materials',
+    cargoWeightTons: 18,
+    baseReward: 5200,
+    timeLimitSeconds: 260,
+    damageTolerance: 0.25,
+    difficulty: 'hard',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'grand_opening',
+    originCityId: 'city_c',
+    destinationCityId: 'city_a',
+    cargoId: 'consumer_electronics',
+    cargoWeightTons: 7,
+    baseReward: 4600,
+    timeLimitSeconds: 140,
+    damageTolerance: 0.06,
     difficulty: 'expert',
     requiredCompanyLevel: 4,
   },

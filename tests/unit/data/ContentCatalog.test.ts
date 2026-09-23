@@ -133,6 +133,7 @@ describe('ContentCatalog', () => {
       cities: [null, cityFixture(), cityFixture({ id: 'test_destination' })],
       missions: [null, missionFixture()],
       maps: [],
+      upgrades: [7],
     } as unknown as Parameters<typeof validateGameContent>[0];
 
     expect(issuePaths(content)).toEqual([
@@ -140,6 +141,7 @@ describe('ContentCatalog', () => {
       'cargo[0]',
       'cities[0]',
       'missions[0]',
+      'upgrades[0]',
       'missions[1].originCityId', // No maps, so no depots.
       'missions[1].destinationCityId',
       'missions[1].cargoId',
