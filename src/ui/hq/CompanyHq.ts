@@ -70,6 +70,8 @@ export class CompanyHq {
   private readonly serviceNote: HTMLParagraphElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
   private readonly list: HTMLDivElement;
+  /** Where the tutorial's hint goes while the HQ is open: above the list, in the flow. */
+  readonly hintSlot: HTMLDivElement;
   private tab: HqTab = 'jobs';
 
   constructor(
@@ -158,7 +160,8 @@ export class CompanyHq {
     header.append(tabBar, tools);
     this.list = el('div', 'hq__list');
     this.list.setAttribute('role', 'tabpanel');
-    board.append(header, this.list);
+    this.hintSlot = el('div', 'hq__hint');
+    board.append(header, this.hintSlot, this.list);
     this.root.append(side, board);
     parent.append(this.root);
   }

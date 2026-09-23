@@ -67,6 +67,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 4,
     migrate: (save) => ({ ...save, version: 5, events: { runs: [] } }),
   },
+  {
+    // v6 records the tutorial's step. Companies from older builds have been played: no tutorial for them.
+    from: 5,
+    migrate: (save) => ({ ...save, version: 6, tutorial: { step: 'done' } }),
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {

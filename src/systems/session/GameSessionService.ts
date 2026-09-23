@@ -14,6 +14,7 @@ import type { EventService } from '../events/EventService';
 import type { GameEvents } from '../GameEvents';
 import type { MissionService } from '../missions/MissionService';
 import type { LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
+import type { TutorialService } from '../tutorial/TutorialService';
 import type { GarageService } from '../vehicles/GarageService';
 
 /** While driving, the game saves itself this often (seconds of driving). */
@@ -32,6 +33,7 @@ export interface GameSessionDependencies {
   readonly garage: GarageService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
+  readonly tutorial: TutorialService;
   readonly logger: Logger;
 }
 
@@ -67,6 +69,7 @@ export class GameSessionService {
       events.on('VehiclePurchased', saveNow),
       events.on('UpgradePurchased', saveNow),
       events.on('ActiveVehicleChanged', saveNow),
+      events.on('TutorialStepChanged', saveNow),
       events.on('GameStateChanged', ({ previous }) => {
         if (previous === 'driving') {
           saveNow();
@@ -137,7 +140,7 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, garage, specialEvents } = this.deps;
+    const { driving, missions, economy, company, garage, specialEvents, tutorial } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -158,6 +161,7 @@ export class GameSessionService {
         distanceDrivenMeters: this.distanceBeforeThisDrive + vehicle.odometerMeters,
       },
       events: { runs: specialEvents.snapshot() },
+      tutorial: { step: tutorial.step },
     };
   }
 
@@ -169,7 +173,7 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, garage, specialEvents } = this.deps;
+    const { driving, missions, economy, company, garage, specialEvents, tutorial } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -184,6 +188,7 @@ export class GameSessionService {
     garage.restore(save.garage);
     missions.restore(save.missions.active);
     specialEvents.restore(save.events.runs);
+    tutorial.restore(save.tutorial.step);
     this.createdAtMs = save.createdAtMs;
     this.distanceBeforeThisDrive = save.stats.distanceDrivenMeters;
     this.sinceAutosave = 0;

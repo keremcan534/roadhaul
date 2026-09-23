@@ -70,6 +70,7 @@ describe('validateSaveGameData', () => {
       'missions',
       'stats',
       'events',
+      'tutorial',
     ]);
   });
 
@@ -90,6 +91,7 @@ describe('validateSaveGameData', () => {
     ['stats.deliveriesCompleted', -2],
     ['stats.distanceDrivenMeters', Number.POSITIVE_INFINITY],
     ['events.runs', null],
+    ['tutorial.step', 'finished'],
   ])('reports %s = %j', (path, value) => {
     expect(paths(withPart(path, value))).toEqual([path]);
   });

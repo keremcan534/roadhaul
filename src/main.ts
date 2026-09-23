@@ -34,6 +34,7 @@ import { objectiveText } from './ui/hq/eventText';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
+import { TutorialHint, tutorialPlace } from './ui/hud/TutorialHint';
 import { chooseLanguage, stringsFor } from './ui/i18n';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
@@ -87,6 +88,7 @@ async function start(): Promise<void> {
   const missions = services.resolve(ServiceKeys.missions);
   const navigation = services.resolve(ServiceKeys.navigation);
   const specialEvents = services.resolve(ServiceKeys.specialEvents);
+  const tutorial = services.resolve(ServiceKeys.tutorial);
   const economy = services.resolve(ServiceKeys.economy);
   const company = services.resolve(ServiceKeys.company);
   const fuel = services.resolve(ServiceKeys.fuel);
@@ -133,6 +135,7 @@ async function start(): Promise<void> {
   const touch = new TouchControls(ui, { onToggleCamera: toggleCamera });
   const hud = new MissionHud(ui, strings, missions, navigation, driving);
   const toasts = new Toasts(ui);
+
   const result = new ResultDialog(ui, strings, () => {
     paused = false;
     gameState.transitionTo('companyHq');
@@ -228,6 +231,7 @@ async function start(): Promise<void> {
   const enterCompany = (): void => {
     showActiveTruck();
     syncMissionView();
+    root.dataset.tutorialStep = tutorial.step;
     gameState.transitionTo('companyHq');
   };
   const newCompany = new NewCompanyDialog(ui, strings, {
@@ -305,6 +309,7 @@ async function start(): Promise<void> {
     },
   );
   const perfOverlay = config.debug.showPerfOverlay ? new PerfOverlay(ui) : null;
+  const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
   const syncMissionView = (): void => {
@@ -371,6 +376,12 @@ async function start(): Promise<void> {
   events.on('VehicleDamaged', ({ damage: total, addedDamage }) => {
     if (addedDamage >= 0.02) {
       toasts.show(strings.t('toast.truckDamaged', { percent: strings.percent(total) }), 'warning');
+    }
+  });
+  events.on('TutorialStepChanged', ({ step, previous }) => {
+    root.dataset.tutorialStep = step;
+    if (step === 'done' && previous === 'buyUpgrade') {
+      toasts.show(strings.t('tutorial.finished'), 'success');
     }
   });
   events.on('WeatherChanged', ({ weatherId }) => {
@@ -502,6 +513,9 @@ async function start(): Promise<void> {
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
+        const tutorialStep = tutorial.step;
+        const tutorialAt = tutorialPlace(tutorialStep);
+        tutorialHint.show(tutorialAt === gameState.current && !paused && !result.isOpen ? tutorialStep : null, tutorialAt);
         restArea.visible = simulating;
         restArea.update();
         toasts.update(deltaSeconds);

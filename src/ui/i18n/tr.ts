@@ -205,6 +205,13 @@ export const TR: StringTable = {
   'result.eventCompleted': 'Etkinlik tamamlandı! {credits} ve {xp} XP',
   'toast.eventCompleted': '{event} tamamlandı!',
 
+  'tutorial.takeContract': 'İlk işini al: parlayan “İşi al” düğmesine dokun.',
+  'tutorial.driveToPickup': 'Sağ pedalla hızlan, direksiyonla dön. Mavi çizgiyi izle ve sarı alanda dur.',
+  'tutorial.deliver': 'Yük alındı! Mavi çizgiyi izleyerek teslimat deposuna git, alanında dur.',
+  'tutorial.buyUpgrade': 'İlk kazancın geldi. Yükseltmeler sekmesinden kamyonunu güçlendir.',
+  'tutorial.finished': 'Harika! Artık şirketin senin ellerinde.',
+  'tutorial.skip': 'Geç',
+
   'vehicle.rh_h1.name': 'RoadHaul H1',
   'vehicle.rh_h2.name': 'RoadHaul H2',
   'vehicle.rh_h3.name': 'RoadHaul H3',

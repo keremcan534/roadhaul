@@ -2,6 +2,7 @@ import type { EventReward } from '../data/definitions/EventDefinition';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
+import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
@@ -114,6 +115,11 @@ export interface GameEvents {
     readonly target: number;
     /** Paid now, with this delivery; null when the objective is not met, or was met before. */
     readonly reward: EventReward | null;
+  };
+  /** The tutorial moved on (spec §41), or was skipped (step: done). */
+  TutorialStepChanged: {
+    readonly step: TutorialStep;
+    readonly previous: TutorialStep;
   };
   /** The weather is turning (spec §38): from `previousId` to `weatherId`, over the transition. */
   WeatherChanged: {

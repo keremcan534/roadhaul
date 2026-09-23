@@ -1,5 +1,6 @@
 import type { Credits, Fraction } from '../../data/units';
 import type { MissionFailureReason, MissionState } from '../missions/MissionInstance';
+import type { TutorialStep } from '../tutorial/tutorialSteps';
 
 /**
  * Version of the save schema written by this build (spec §32).
@@ -14,8 +15,9 @@ import type { MissionFailureReason, MissionState } from '../missions/MissionInst
  * - v4: same shape; the test track is retired, and saves on it move to the
  *   start of the 3-city region.
  * - v5: adds events (the progress in each event's latest run).
+ * - v6: adds the tutorial's step.
  */
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 6;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -36,6 +38,7 @@ export interface SaveGameData {
   readonly missions: MissionsSaveData;
   readonly stats: StatsSaveData;
   readonly events: EventsSaveData;
+  readonly tutorial: TutorialSaveData;
 }
 
 export interface ProfileSaveData {
@@ -101,6 +104,11 @@ export interface ActiveMissionSaveData {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly failureReason: MissionFailureReason | null;
+}
+
+export interface TutorialSaveData {
+  /** The step the company is on; `done` once finished or skipped (spec §41). */
+  readonly step: TutorialStep;
 }
 
 export interface EventsSaveData {

@@ -2,6 +2,7 @@ import { Validator, type ValidationIssue } from '../../core/validation/Validator
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateCompanyName } from '../company/companyName';
 import { MISSION_STATES } from '../missions/MissionInstance';
+import { TUTORIAL_STEPS } from '../tutorial/tutorialSteps';
 import { statBonuses, type FittedUpgrades } from '../vehicles/upgradeBonuses';
 import { CURRENT_SAVE_VERSION } from './SaveGameData';
 
@@ -126,6 +127,7 @@ export function validateSaveGameData(
     );
   });
   section('events', (events) => validateEventRuns(events['runs'], content, validator));
+  section('tutorial', (tutorial) => validator.oneOf(tutorial['step'], TUTORIAL_STEPS, 'tutorial.step'));
   return validator.issues;
 }
 

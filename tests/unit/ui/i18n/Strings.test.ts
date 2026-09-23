@@ -6,6 +6,7 @@ import { CARGO_CATEGORIES } from '../../../../src/data/definitions/CargoDefiniti
 import { MISSION_DIFFICULTIES } from '../../../../src/data/definitions/MissionDefinition';
 import { VEHICLE_STATS } from '../../../../src/data/definitions/UpgradeDefinition';
 import { VEHICLE_CLASSES } from '../../../../src/data/definitions/VehicleDefinition';
+import { TUTORIAL_STEPS } from '../../../../src/domain/tutorial/tutorialSteps';
 import { DAMAGE_BANDS } from '../../../../src/domain/vehicles/vehicleDamage';
 import { HQ_TABS } from '../../../../src/ui/hq/hqTabs';
 import { EN } from '../../../../src/ui/i18n/en';
@@ -20,7 +21,7 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, truck, upgrade, weather, event, cargo category, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, cargo, mission, truck, upgrade, weather, event, cargo category, tutorial step, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
@@ -30,6 +31,7 @@ describe('string tables', () => {
       ...GAME_CONTENT.weather.map((weather) => `weather.${weather.id}.message`),
       ...GAME_CONTENT.events.flatMap((event) => [`event.${event.id}.name`, `event.${event.id}.description`]),
       ...CARGO_CATEGORIES.map((category) => `cargoCategory.${category}`),
+      ...TUTORIAL_STEPS.filter((step) => step !== 'done').map((step) => `tutorial.${step}`),
       ...VEHICLE_STATS.map((stat) => `stat.${stat}`),
       ...VEHICLE_CLASSES.map((vehicleClass) => `vehicleClass.${vehicleClass}`),
       ...BODY_TYPES.map((body) => `body.${body}`),

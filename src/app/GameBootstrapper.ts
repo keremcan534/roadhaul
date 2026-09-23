@@ -18,6 +18,7 @@ import { NavigationService } from '../systems/navigation/NavigationService';
 import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
 import { TrafficService } from '../systems/traffic/TrafficService';
+import { TutorialService } from '../systems/tutorial/TutorialService';
 import { WeatherService } from '../systems/weather/WeatherService';
 import { DamageService } from '../systems/vehicles/DamageService';
 import { FuelService } from '../systems/vehicles/FuelService';
@@ -161,6 +162,7 @@ export class GameBootstrapper {
         ServiceKeys.specialEvents,
         new EventService(catalog, company, economy, clock, events, logger.withCategory('Events')),
       );
+      const tutorial = container.register(ServiceKeys.tutorial, new TutorialService(events, logger.withCategory('Tutorial')));
       const saves = container.register(
         ServiceKeys.saves,
         new SaveService(
@@ -187,6 +189,7 @@ export class GameBootstrapper {
           company,
           garage,
           specialEvents,
+          tutorial,
           logger: logger.withCategory('Session'),
         }),
       );

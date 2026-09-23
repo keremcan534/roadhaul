@@ -971,6 +971,84 @@ body {
   background: #f08a7c;
 }
 
+/* ---- Tutorial (src/ui/hud/TutorialHint.ts): one short hint, and a glow on the control it is about ---- */
+
+/* Over the road it floats under the mission HUD, clear of the pedals and the wheel. */
+.tutorial-hint {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 112px);
+  left: 50%;
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(92vw, 540px);
+  padding: 8px 10px 8px 16px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(62 52 28 / 96%), rgb(34 30 22 / 96%));
+  box-shadow:
+    0 6px 24px rgb(0 0 0 / 45%),
+    inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+  transform: translateX(-50%);
+}
+
+.tutorial-hint[hidden] {
+  display: none;
+}
+
+/* Upright phones: the mission HUD is lower and taller there (like the rest area counter). */
+@media (orientation: portrait) {
+  .tutorial-hint {
+    top: calc(env(safe-area-inset-top, 0px) + 178px);
+  }
+}
+
+/* In the HQ it sits above the list, in the flow, so it never covers a button. */
+.tutorial-hint--inline {
+  position: static;
+  width: auto;
+  max-width: none;
+  box-shadow: inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+  transform: none;
+}
+
+.hq__hint:empty {
+  display: none;
+}
+
+.tutorial-hint__text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.tutorial-hint__skip {
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+@keyframes tutorial-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(242 178 51 / 0%);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgb(242 178 51 / 60%);
+  }
+}
+
+html[data-tutorial-step='takeContract'] .hq__tab[data-tab='jobs']:not(.is-selected),
+html[data-tutorial-step='takeContract'] .hq__list[data-tab='jobs'] .job-card:first-child .job-card__accept,
+html[data-tutorial-step='buyUpgrade'] .hq__tab[data-tab='upgrades']:not(.is-selected),
+html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-card__action:not(:disabled) {
+  animation: tutorial-glow 1.4s ease-in-out infinite;
+}
+
 /* ---- Special events (src/ui/hq/eventCards.ts) and their marks on the job board ---- */
 
 .event-card {

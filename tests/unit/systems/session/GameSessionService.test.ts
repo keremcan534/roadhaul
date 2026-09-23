@@ -92,6 +92,23 @@ describe('GameSessionService', () => {
     ]);
   });
 
+  it('teaches a new company by playing, and remembers how far it got, or that it skipped', async () => {
+    const first = await boot();
+    first.session.startNewGame('Kuzey Lojistik');
+    expect(first.tutorial.step).toBe('takeContract');
+    deliver(first, 'first_package');
+    expect(first.tutorial.step).toBe('buyUpgrade');
+
+    const second = await boot(first.storage, 5_000);
+    second.session.continueGame();
+    expect(second.tutorial.step).toBe('buyUpgrade');
+    second.tutorial.skip(); // Saved straight away.
+
+    const third = await boot(first.storage, 9_000);
+    third.session.continueGame();
+    expect(third.tutorial.step).toBe('done');
+  });
+
   it('saves each purchase together with what it bought', async () => {
     const game = await boot();
     game.session.startNewGame('Kuzey Lojistik');

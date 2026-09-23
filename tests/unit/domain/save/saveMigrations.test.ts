@@ -31,7 +31,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 5,
+        version: 6,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {} }],
@@ -40,6 +40,7 @@ describe('save migrations', () => {
         missions: { active: null },
         stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
         events: { runs: [] },
+        tutorial: { step: 'done' },
       },
     });
   });
@@ -98,12 +99,12 @@ describe('save migrations', () => {
     const moved = migrateSave(v3, { defaultMapId: 'north_valley' });
     const kept = migrateSave(elsewhere, { defaultMapId: 'north_valley' });
 
-    const noEvents = { events: { runs: [] } };
+    const added = { events: { runs: [] }, tutorial: { step: 'done' } };
     expect(moved).toEqual({
       ok: true,
-      value: { ...v3, version: 5, world: { mapId: 'north_valley', truck: null }, ...noEvents },
+      value: { ...v3, version: 6, world: { mapId: 'north_valley', truck: null }, ...added },
     });
-    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 5, ...noEvents } });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 6, ...added } });
   });
 
   it('starts the events of a v4 save with no progress, keeping the rest', () => {
@@ -119,7 +120,27 @@ describe('save migrations', () => {
       stats: { deliveriesCompleted: 4, deliveriesFailed: 1, creditsEarned: 5200, distanceDrivenMeters: 9000 },
     };
 
-    expect(migrateSave(v4, context)).toEqual({ ok: true, value: { ...v4, version: 5, events: { runs: [] } } });
+    expect(migrateSave(v4, context)).toEqual({
+      ok: true,
+      value: { ...v4, version: 6, events: { runs: [] }, tutorial: { step: 'done' } },
+    });
+  });
+
+  it('spares companies from older builds the tutorial: they have been played', () => {
+    const v5 = {
+      ...V1_SAVE,
+      version: 5,
+      garage: {
+        activeVehicleInstanceId: 'truck_001',
+        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {} }],
+      },
+      world: { mapId: 'north_valley', truck: null },
+      missions: { active: null },
+      stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
+      events: { runs: [{ eventId: 'safe_driver', edition: 18, progress: 1, rewarded: false }] },
+    };
+
+    expect(migrateSave(v5, context)).toEqual({ ok: true, value: { ...v5, version: 6, tutorial: { step: 'done' } } });
   });
 
   it('migrates odd data without throwing, leaving it to validation', () => {
