@@ -23,7 +23,7 @@ Build RoadHaul as a web game:
 | Build / dev server | Vite |
 | Unit tests (spec: EditMode) | Vitest |
 | End-to-end tests (spec: PlayMode) | Playwright on emulated Android phones |
-| Vehicle physics (roadmap step 05) | Rapier (`@dimforge/rapier3d-compat`, WASM), raycast vehicle controller |
+| Vehicle physics (roadmap step 05) | ~~Rapier (`@dimforge/rapier3d-compat`, WASM), raycast vehicle controller~~. Superseded by [ADR 0002](0002-custom-vehicle-model.md): a custom deterministic truck model in TypeScript |
 | Android / iOS packaging (step 28) | Capacitor wrapper around the same build, built in CI |
 | Windows | The browser, or a desktop wrapper later |
 
@@ -37,8 +37,8 @@ Build RoadHaul as a web game:
 ## Consequences and risks
 
 - **No visual editor.** Levels are built from code and data (and Blender glTF assets once art exists). *Mitigation:* data-driven road and city generation.
-- **Vehicle physics is not built in.** It needs Rapier plus tuning. The spec already names vehicle feel as the biggest technical risk (§74). *Mitigation:* prototype first (steps 04–08) and test on a real phone early.
-- **Lower performance ceiling than native Unity**, with WebView variance on old devices. *Mitigation:* the `?debug` overlay, explicit budgets (ARCHITECTURE.md §10) and device tests from step 07.
+- **Vehicle physics is not built in.** It needs Rapier plus tuning (ADR 0002 replaced Rapier with a custom model). The spec already names vehicle feel as the biggest technical risk (§74). *Mitigation:* prototype first (steps 04–08) and test on a real phone early.
+- **Lower performance ceiling than native Unity**, with WebView variance on old devices. *Mitigation:* the `?debug` overlay, explicit budgets (ARCHITECTURE.md §11) and device tests from step 07.
 - **Stores need a wrapper.** Google Play needs a Capacitor build, and CI needs the Android SDK.
 - **Large worlds (V2+) need streaming.** Dynamic `import()` per region replaces Addressables.
 - **The spec uses Unity vocabulary.** CLAUDE.md contains the translation table.
