@@ -150,6 +150,16 @@ describe('VehicleDynamics', () => {
     expect(loadedTime).toBeGreaterThan(emptyTime * 1.3);
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -500])('treats a cargo mass of %s kg as no cargo', (cargoMassKg) => {
+    const { dynamics, state } = setup(cargoMassKg);
+
+    drive(dynamics, state, input({ throttle: 1 }), 2);
+
+    expect(dynamics.totalMassKg).toBe(truck.body.massKg);
+    expect(Number.isFinite(state.x) && Number.isFinite(state.z) && Number.isFinite(state.speed)).toBe(true);
+    expect(state.speed).toBeGreaterThan(0);
+  });
+
   it('is slower on grass than on asphalt', () => {
     const road = setup();
     const field = setup();

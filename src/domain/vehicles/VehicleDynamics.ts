@@ -64,7 +64,7 @@ export class VehicleDynamics {
     this.maxReverseSpeed = kmhToMetersPerSecond(handling.maxReverseSpeedKmh);
     this.maxSteerAngle = degreesToRadians(handling.maxSteerAngleDegrees);
     this.steerSpeed = degreesToRadians(handling.steerSpeedDegreesPerSecond);
-    this.massKg = body.massKg + Math.max(0, cargoMassKg);
+    this.massKg = body.massKg + usableCargoMass(cargoMassKg);
   }
 
   /** Truck plus cargo. */
@@ -74,7 +74,7 @@ export class VehicleDynamics {
 
   /** Loading and unloading change how the truck accelerates, brakes and corners. */
   setCargoMass(cargoMassKg: number): void {
-    this.massKg = this.definition.body.massKg + Math.max(0, finiteOr(cargoMassKg, 0));
+    this.massKg = this.definition.body.massKg + usableCargoMass(cargoMassKg);
   }
 
   /** A truck at rest in first gear. */
@@ -241,4 +241,9 @@ export class VehicleDynamics {
     const gearRatio = gear < 0 ? reverseGearRatio : (this.gearRatios[gear - 1] ?? 1);
     return gearRatio * finalDriveRatio;
   }
+}
+
+/** Negative, NaN or infinite cargo counts as none, so a bad value cannot turn the truck's state into NaN. */
+function usableCargoMass(cargoMassKg: number): number {
+  return Math.max(0, finiteOr(cargoMassKg, 0));
 }
