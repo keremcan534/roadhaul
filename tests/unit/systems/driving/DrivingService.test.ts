@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../../../src/core/events/EventBus';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
+import { BASE_PERFORMANCE } from '../../../../src/domain/vehicles/performance';
 import {
   COLLISION_EVENT_MIN_SPEED,
   DrivingService,
@@ -8,7 +9,7 @@ import {
 } from '../../../../src/systems/driving/DrivingService';
 import type { MapDefinition } from '../../../../src/data/definitions/MapDefinition';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
-import { contentFixture, mapFixture } from '../../../support/contentFixtures';
+import { contentFixture, mapFixture, vehicleFixture } from '../../../support/contentFixtures';
 import { input, STEP_SECONDS } from '../../../support/driving';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
@@ -23,7 +24,11 @@ function setup(mapOverrides: Partial<MapDefinition> = {}) {
   const collisions: number[] = [];
   events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => collisions.push(impactSpeedMetersPerSecond));
   const map = mapFixture(mapOverrides);
-  const driving = new DrivingService(ContentCatalog.create(contentFixture({ maps: [map] })), events, logger);
+  const bigTruck = vehicleFixture({ id: 'big_truck', maxPayloadTons: 20 });
+  const content = ContentCatalog.create(
+    contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }] }),
+  );
+  const driving = new DrivingService(content, events, logger);
   return { driving, collisions };
 }
 
@@ -128,14 +133,54 @@ describe('DrivingService', () => {
     const plain = setup().driving;
     const modified = setup().driving;
     plain.start('test_truck', 'test_map');
-    modified.setPerformanceModifier('damage', { torqueFactor: 0.8, brakeFactor: 1 });
-    modified.setPerformanceModifier('upgrade', { torqueFactor: 0.8, brakeFactor: 1 });
+    modified.setPerformanceModifier('damage', { ...BASE_PERFORMANCE, torqueFactor: 0.8 });
+    modified.setPerformanceModifier('upgrade', { ...BASE_PERFORMANCE, torqueFactor: 0.8 });
     modified.start('test_truck', 'test_map'); // Set before the drive started: still applied.
 
     stepFor(plain, 12, input({ throttle: 1 }));
     stepFor(modified, 12, input({ throttle: 1 }));
 
     // 0.8 × 0.8 of the torque: about 55 instead of 69 km/h after 12 s.
+    expect(modified.vehicle.speed).toBeLessThan(plain.vehicle.speed * 0.85);
+  });
+
+  it('swaps the truck in place: same spot, world, cargo and odometer, the new truck at rest', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    driving.setCargoMass(2000);
+    driving.setEngineRunning(false);
+    stepFor(driving, 0.1);
+    driving.setEngineRunning(true);
+    stepFor(driving, 3, input({ throttle: 1 }));
+    const { x, z, heading, odometerMeters } = driving.vehicle;
+    const world = driving.world;
+    const state = driving.vehicle;
+
+    driving.switchVehicle('big_truck');
+
+    expect(driving.definition.id).toBe('big_truck');
+    expect(driving.world).toBe(world);
+    expect(driving.vehicle).toBe(state); // Presentation may hold on to the state.
+    expect(driving.vehicle).toMatchObject({ x, z, heading, odometerMeters, speed: 0, gear: 1 });
+    expect(driving.previousPose).toEqual({ x, z, heading });
+    expect(driving.cargoMassKg).toBe(2000);
+    expect(driving.totalMassKg).toBe(14000);
+    expect(() => driving.switchVehicle('ghost_truck')).toThrow('Unknown vehicle "ghost_truck".');
+  });
+
+  it('applies the performance modifiers to a truck swapped in', () => {
+    const plain = setup().driving;
+    const modified = setup().driving;
+    for (const driving of [plain, modified]) {
+      driving.start('test_truck', 'test_map');
+    }
+    modified.setPerformanceModifier('upgrades', { ...BASE_PERFORMANCE, torqueFactor: 0.6 });
+    plain.switchVehicle('big_truck');
+    modified.switchVehicle('big_truck');
+
+    stepFor(plain, 12, input({ throttle: 1 }));
+    stepFor(modified, 12, input({ throttle: 1 }));
+
     expect(modified.vehicle.speed).toBeLessThan(plain.vehicle.speed * 0.85);
   });
 

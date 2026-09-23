@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
-import type { SaveGameData } from '../../../../src/domain/save/SaveGameData';
+import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
 import { contentFixture, vehicleFixture } from '../../../support/contentFixtures';
 
@@ -59,7 +59,7 @@ describe('validateSaveGameData', () => {
   it('rejects things that are not saves at all', () => {
     expect(paths(null)).toEqual(['save']);
     expect(paths([])).toEqual(['save']);
-    expect(paths({ version: 2 })).toEqual([
+    expect(paths({ version: CURRENT_SAVE_VERSION })).toEqual([
       'createdAtMs',
       'updatedAtMs',
       'profile',
@@ -73,7 +73,7 @@ describe('validateSaveGameData', () => {
   });
 
   it.each([
-    ['version', 1],
+    ['version', CURRENT_SAVE_VERSION - 1],
     ['profile.companyName', ' padded '],
     ['profile.companyName', ''],
     ['company.level', 0],
@@ -106,6 +106,34 @@ describe('validateSaveGameData', () => {
     expect(paths(withPart('garage.activeVehicleInstanceId', 'truck_002'))).toEqual(['garage.activeVehicleInstanceId']);
   });
 
+  it('checks each truck\'s upgrades, and lets a bigger tank hold more fuel', () => {
+    // The fixture upgrade adds engine power only; test_truck has a 300 L tank.
+    expect(paths(withPart('garage.vehicles.0.upgrades', { test_upgrade: 2 }))).toEqual([]);
+    expect(paths(withPart('garage.vehicles.0.upgrades', null))).toEqual(['garage.vehicles[0].upgrades']);
+    expect(paths(withPart('garage.vehicles.0.upgrades', { test_upgrade: 3 }))).toEqual([
+      'garage.vehicles[0].upgrades.test_upgrade',
+    ]);
+    expect(paths(withPart('garage.vehicles.0.upgrades', { test_upgrade: 0.5, turbo: 1 }))).toEqual([
+      'garage.vehicles[0].upgrades.test_upgrade',
+      'garage.vehicles[0].upgrades.turbo',
+    ]);
+
+    const tankContent = ContentCatalog.create(
+      contentFixture({
+        upgrades: [{ id: 'big_tank', levels: [{ cost: 100, modifiers: [{ stat: 'fuelCapacity', bonus: 0.5 }] }] }],
+      }),
+    );
+    const fuelled = (liters: number, upgrades: Record<string, number>): unknown => {
+      const data = withPart('garage.vehicles.0.upgrades', upgrades) as SaveGameData;
+      return withFuel(data, liters);
+    };
+    const tankPaths = (data: unknown): string[] =>
+      validateSaveGameData(data, tankContent, MAX_LEVEL).map((issue) => issue.path);
+    expect(tankPaths(fuelled(450, { big_tank: 1 }))).toEqual([]);
+    expect(tankPaths(fuelled(451, { big_tank: 1 }))).toEqual(['garage.vehicles[0].fuelLiters']);
+    expect(tankPaths(fuelled(301, {}))).toEqual(['garage.vehicles[0].fuelLiters']);
+  });
+
   it('only keeps unfinished contracts of known missions', () => {
     const active = { missionId: 'test_mission', state: 'loaded', handlingSeconds: 0, deliverySeconds: 3, cargoDamage: 0, failureReason: null };
 
@@ -119,3 +147,8 @@ describe('validateSaveGameData', () => {
     ]);
   });
 });
+
+function withFuel(data: SaveGameData, liters: number): unknown {
+  const [truck] = data.garage.vehicles;
+  return { ...data, garage: { ...data.garage, vehicles: [{ ...truck!, fuelLiters: liters }] } };
+}

@@ -178,7 +178,7 @@ export class CompanyHq {
   private card(document: Document, offer: JobOffer): HTMLElement {
     const { mission, cargo } = offer;
     const strings = this.strings;
-    const card = element(document, 'article', offer.locked ? 'job-card is-locked' : 'job-card');
+    const card = element(document, 'article', offer.blockedBy === null ? 'job-card' : 'job-card is-locked');
     card.dataset.missionId = mission.id;
 
     const top = element(document, 'div', 'job-card__top');
@@ -204,8 +204,8 @@ export class CompanyHq {
     }
     const bottom = element(document, 'div', 'job-card__bottom');
     bottom.append(element(document, 'span', 'job-card__pay', strings.money(offer.basePay)));
-    if (offer.locked) {
-      bottom.append(element(document, 'span', 'job-card__locked', strings.t('hq.locked', { level: offer.requiredCompanyLevel })));
+    if (offer.blockedBy !== null) {
+      bottom.append(element(document, 'span', 'job-card__locked', blockerText(strings, offer)));
     } else {
       bottom.append(
         button(document, 'button--primary job-card__accept', strings.t('hq.accept'), 'accept', () =>
@@ -216,6 +216,15 @@ export class CompanyHq {
     card.append(top, route, load, facts, bottom);
     return card;
   }
+}
+
+/** Why a contract cannot be taken yet: "Unlocks at level 3", "Needs the RoadHaul H2". */
+export function blockerText(strings: Strings, offer: JobOffer): string {
+  if (offer.blockedBy === 'companyLevel') {
+    return strings.t('hq.locked', { level: offer.requiredCompanyLevel });
+  }
+  const trucks = offer.suitableVehicles.map((vehicle) => strings.vehicleName(vehicle.id)).join(' / ');
+  return strings.t('hq.needsTruck', { trucks });
 }
 
 /** "Yeniliman → Demirkent". */

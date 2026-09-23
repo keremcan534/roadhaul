@@ -10,8 +10,9 @@ import type { MissionFailureReason, MissionState } from '../missions/MissionInst
  * - v1: profile, company, economy, garage.
  * - v2: adds world (where the truck is parked), missions (the contract under
  *   way) and stats.
+ * - v3: adds the upgrades fitted to each truck.
  */
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -63,6 +64,8 @@ export interface VehicleSaveData {
   readonly definitionId: string;
   readonly fuelLiters: number;
   readonly damage: Fraction;
+  /** UpgradeDefinition id → fitted level (1 is the first). Upgrades not listed are not fitted. */
+  readonly upgrades: Readonly<Record<string, number>>;
 }
 
 export interface WorldSaveData {

@@ -1,12 +1,14 @@
 import type { EventBus, Unsubscribe } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
+import { finiteOr } from '../../core/math/scalar';
 import { err, ok, type Result } from '../../core/Result';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { CargoDefinition } from '../../data/definitions/CargoDefinition';
 import type { DepotDefinition } from '../../data/definitions/MapDefinition';
 import { vehicleCanHaul, type MissionDefinition } from '../../data/definitions/MissionDefinition';
-import type { Credits } from '../../data/units';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import type { Credits, Fraction } from '../../data/units';
 import { addCargoDamage, cargoDamageFromImpact, isWithinTolerance } from '../../domain/missions/cargoDamage';
 import { isParkedInBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
 import {
@@ -22,11 +24,15 @@ import {
 import { deliveryReputation, deliveryXp, FAILURE_REPUTATION_LOSS } from '../../domain/missions/missionProgress';
 import { calculateMissionReward, missionBasePay } from '../../domain/missions/missionReward';
 import type { ActiveMissionSaveData } from '../../domain/save/SaveGameData';
+import { MAX_SAVING } from '../../domain/vehicles/upgradeBonuses';
 import { createRouteGuidance, routeAlongRoads, type RouteGuidance } from '../../domain/world/roadRoute';
 import type { DrivingService } from '../driving/DrivingService';
 import type { GameEvents } from '../GameEvents';
 
-export type AcceptMissionError = 'missionInProgress' | 'notOffered' | 'locked';
+export type AcceptMissionError = 'missionInProgress' | 'notOffered' | 'locked' | 'needsAnotherTruck';
+
+/** What keeps the company from taking a contract on the board: its level, or a truck that cannot haul it. */
+export type JobBlocker = 'companyLevel' | 'truck';
 
 /** Where the company's level comes from (CompanyService). */
 export interface CompanyLevelSource {
@@ -45,8 +51,13 @@ export interface JobOffer {
   readonly distanceMeters: number;
   /** The company level that unlocks it (spec §14). */
   readonly requiredCompanyLevel: number;
-  /** True until the company reaches that level: shown, but it cannot be taken yet. */
-  readonly locked: boolean;
+  /** Trucks with the body and payload for it (spec §29 step 4). */
+  readonly suitableVehicles: readonly VehicleDefinition[];
+  /**
+   * Null when it can be taken now. Otherwise it is shown but cannot be taken:
+   * the company's level is too low, or the truck being driven cannot haul it.
+   */
+  readonly blockedBy: JobBlocker | null;
 }
 
 /** The bay the truck must reach next. */
@@ -69,6 +80,8 @@ export class MissionService {
   private currentTarget: MissionTarget | null = null;
   /** The truck stands in the target bay: the brake holds it instead of engaging reverse. */
   private holdingInBay = false;
+  /** Share of collision damage the truck's suspension keeps away from the cargo. */
+  private cargoProtection: Fraction = 0;
   private readonly unsubscribeCollisions: Unsubscribe;
 
   constructor(
@@ -105,10 +118,10 @@ export class MissionService {
   }
 
   /**
-   * Contracts the truck being driven can take on this map (spec §28): the
-   * right body and payload, with both depots on the map. Contracts above the
-   * company's level are listed as locked. Hand-authored for now; the mission
-   * generator comes later.
+   * Every contract between two depots of this map (spec §28), with what keeps
+   * the company from taking it: its level, or the truck being driven lacking
+   * the body or payload. Hand-authored for now; the mission generator comes
+   * later.
    */
   jobBoard(): readonly JobOffer[] {
     const offers: JobOffer[] = [];
@@ -131,8 +144,11 @@ export class MissionService {
     if (definition === undefined || offer === null) {
       return err('notOffered');
     }
-    if (offer.locked) {
+    if (offer.blockedBy === 'companyLevel') {
       return err('locked');
+    }
+    if (offer.blockedBy === 'truck') {
+      return err('needsAnotherTruck');
     }
     const mission = createMissionInstance(missionId);
     this.mission = mission;
@@ -169,6 +185,11 @@ export class MissionService {
   /** The active contract as save data, or null. */
   snapshot(): ActiveMissionSaveData | null {
     return this.mission === null ? null : { ...this.mission };
+  }
+
+  /** The active truck's suspension upgrade (GarageService): the share of collision damage kept from the cargo. */
+  setCargoProtection(protection: Fraction): void {
+    this.cargoProtection = Math.min(MAX_SAVING, Math.max(0, finiteOr(protection, 0)));
   }
 
   /** Gives up the active contract: it fails and the cargo is gone. Does nothing without one. */
@@ -242,11 +263,7 @@ export class MissionService {
     const cargo = this.content.cargo.get(mission.cargoId);
     const originDepot = world.depotOf(mission.originCityId);
     const destinationDepot = world.depotOf(mission.destinationCityId);
-    if (
-      originDepot === undefined ||
-      destinationDepot === undefined ||
-      !vehicleCanHaul(this.driving.definition, mission, cargo)
-    ) {
+    if (originDepot === undefined || destinationDepot === undefined) {
       return null;
     }
     const route = routeAlongRoads(
@@ -258,6 +275,12 @@ export class MissionService {
       createRouteGuidance(),
     );
     const requiredCompanyLevel = mission.requiredCompanyLevel ?? 1;
+    let blockedBy: JobBlocker | null = null;
+    if (this.company.level < requiredCompanyLevel) {
+      blockedBy = 'companyLevel';
+    } else if (!vehicleCanHaul(this.driving.definition, mission, cargo)) {
+      blockedBy = 'truck';
+    }
     return {
       mission,
       cargo,
@@ -266,7 +289,8 @@ export class MissionService {
       basePay: missionBasePay(mission.baseReward, cargo.rewardMultiplier),
       distanceMeters: route.distanceMeters,
       requiredCompanyLevel,
-      locked: this.company.level < requiredCompanyLevel,
+      suitableVehicles: this.content.vehicles.all.filter((vehicle) => vehicleCanHaul(vehicle, mission, cargo)),
+      blockedBy,
     };
   }
 
@@ -304,7 +328,8 @@ export class MissionService {
       return;
     }
     const cargo = this.content.cargo.get(definition.cargoId);
-    const addedDamage = cargoDamageFromImpact(impactSpeedMetersPerSecond, cargo.damageSensitivity);
+    const addedDamage =
+      cargoDamageFromImpact(impactSpeedMetersPerSecond, cargo.damageSensitivity) * (1 - this.cargoProtection);
     if (addedDamage <= 0) {
       return;
     }

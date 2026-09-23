@@ -93,6 +93,7 @@ export const TR: StringTable = {
   'hq.tankFull': 'Depo dolu',
   'hq.noDamage': 'Hasar yok',
   'hq.locked': 'Seviye {level} ile açılır',
+  'hq.needsTruck': '{trucks} gerekir',
   'damage.minor': 'hafif',
   'damage.damaged': 'hasarlı',
   'damage.severe': 'ağır',
@@ -111,6 +112,10 @@ export const TR: StringTable = {
   'toast.repaired': 'Tamir edildi: {cost}.',
   'toast.truckDamaged': 'Kamyon hasarı {percent}',
   'toast.levelUp': 'Seviye atladın! {name}',
+
+  'vehicle.rh_h1.name': 'RoadHaul H1',
+  'vehicle.rh_h2.name': 'RoadHaul H2',
+  'vehicle.rh_h3.name': 'RoadHaul H3',
 
   'city.city_a.name': 'Yeniliman',
   'city.city_b.name': 'Demirkent',

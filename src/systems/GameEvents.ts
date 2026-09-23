@@ -69,6 +69,29 @@ export interface GameEvents {
   VehicleRepaired: {
     readonly cost: Credits;
   };
+  /** The tank was filled (or given emergency fuel), and paid for. */
+  Refuelled: {
+    readonly liters: number;
+    readonly cost: Credits;
+  };
+  /** The company bought a truck at the dealer. It waits in the garage. */
+  VehiclePurchased: {
+    readonly instanceId: string;
+    readonly definitionId: string;
+    readonly price: Credits;
+  };
+  /** The player now drives another of the company's trucks, standing where the last one stood. */
+  ActiveVehicleChanged: {
+    readonly instanceId: string;
+    readonly definitionId: string;
+  };
+  /** An upgrade level was fitted to the active truck (spec §16). */
+  UpgradePurchased: {
+    readonly instanceId: string;
+    readonly upgradeId: string;
+    readonly level: number;
+    readonly cost: Credits;
+  };
   /** XP or reputation changed. */
   CompanyProgressed: {
     readonly xp: number;

@@ -1,6 +1,7 @@
 import { approach, clamp, clamp01, degreesToRadians, finiteOr, kmhToMetersPerSecond } from '../../core/math/scalar';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Surface } from '../world/Surface';
+import type { PerformanceFactors } from './performance';
 import type { VehicleInput } from './VehicleInput';
 import type { VehicleRuntimeState } from './VehicleRuntimeState';
 
@@ -55,6 +56,8 @@ export class VehicleDynamics {
   private massKg: number;
   private torqueFactor = 1;
   private brakeFactor = 1;
+  private gripFactor = 1;
+  private stabilityFactor = 1;
   private engineRunning = true;
   private reverseAllowed = true;
 
@@ -87,13 +90,15 @@ export class VehicleDynamics {
   }
 
   /**
-   * Engine and brake strength relative to the definition (damage now,
-   * upgrades later): torque and power, and brake force, are multiplied by
-   * these. Unusable values count as 1.
+   * Engine, brake, tyre and body strength relative to the definition (damage
+   * and upgrades): torque and power, brake force, grip and the cornering
+   * limit are multiplied by these. Unusable values count as 1.
    */
-  setPerformance(torqueFactor: number, brakeFactor: number): void {
-    this.torqueFactor = Math.max(0, finiteOr(torqueFactor, 1));
-    this.brakeFactor = Math.max(0, finiteOr(brakeFactor, 1));
+  setPerformance(factors: PerformanceFactors): void {
+    this.torqueFactor = Math.max(0, finiteOr(factors.torqueFactor, 1));
+    this.brakeFactor = Math.max(0, finiteOr(factors.brakeFactor, 1));
+    this.gripFactor = Math.max(0, finiteOr(factors.gripFactor, 1));
+    this.stabilityFactor = Math.max(0, finiteOr(factors.stabilityFactor, 1));
   }
 
   /** A stalled engine (an empty tank) drives nothing; the truck still rolls, brakes and steers. */
@@ -215,7 +220,7 @@ export class VehicleDynamics {
   ): void {
     const mass = this.massKg;
     const weight = mass * GRAVITY;
-    const grip = this.definition.handling.tireGrip * surface.gripFactor;
+    const grip = this.definition.handling.tireGrip * this.gripFactor * surface.gripFactor;
     const reversing = state.gear < 0;
 
     let driveForce = 0;
@@ -251,7 +256,9 @@ export class VehicleDynamics {
     // Understeer: never turn tighter than the tyres hold or the truck stays upright
     // (lateral acceleration v² · tan(angle) / wheelbase ≤ limit).
     const { tireGrip, maxLateralAccelerationG } = this.definition.handling;
-    const lateralLimit = Math.min(tireGrip * surface.gripFactor, maxLateralAccelerationG) * GRAVITY;
+    const lateralLimit =
+      Math.min(tireGrip * this.gripFactor * surface.gripFactor, maxLateralAccelerationG * this.stabilityFactor) *
+      GRAVITY;
     const speedSquared = state.speed * state.speed;
     const limitedAngle =
       speedSquared > 1e-6 ? Math.atan((lateralLimit * this.wheelbase) / speedSquared) : this.maxSteerAngle;

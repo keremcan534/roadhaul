@@ -2,6 +2,7 @@ import type { EventBus } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import type { PerformanceFactors } from '../../domain/vehicles/performance';
 import { VehicleDynamics } from '../../domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint, type VehicleFootprint } from '../../domain/vehicles/VehicleFootprint';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
@@ -56,11 +57,8 @@ interface DrivingSession {
   surface: Surface;
 }
 
-/** Engine and brake strength from one source (damage, an upgrade): the service multiplies all sources. */
-export interface PerformanceModifier {
-  readonly torqueFactor: number;
-  readonly brakeFactor: number;
-}
+/** Engine, brake, tyre and body strength from one source (damage, upgrades): the service multiplies all sources. */
+export type PerformanceModifier = PerformanceFactors;
 
 /**
  * Owns the truck being driven and the world it drives in (roadmap steps 05
@@ -141,6 +139,33 @@ export class DrivingService {
     this.logger.info(`Driving ${vehicleId} on ${mapId}: ${world.trees.length} trees, ${world.buildings.length} buildings.`);
   }
 
+  /**
+   * Swaps the truck being driven for `vehicleId`, standing where the old one
+   * stood (GarageService). The world, pose, cargo and odometer stay; the new
+   * truck starts at rest. Performance modifiers apply to it too.
+   */
+  switchVehicle(vehicleId: string): void {
+    const session = this.requireSession();
+    const definition = this.content.vehicles.get(vehicleId);
+    const dynamics = new VehicleDynamics(definition, session.cargoMassKg);
+    const { state } = session;
+    Object.assign(state, dynamics.createState(state.x, state.z, state.heading), {
+      odometerMeters: state.odometerMeters,
+    });
+    session.previousPose.x = state.x;
+    session.previousPose.z = state.z;
+    session.previousPose.heading = state.heading;
+    this.session = {
+      ...session,
+      definition,
+      dynamics,
+      footprint: createVehicleFootprint(definition.body),
+      lastImpactSpeed: 0,
+    };
+    this.applyPerformance();
+    this.logger.info(`Switched to ${vehicleId}.`);
+  }
+
   stop(): void {
     this.session = null;
   }
@@ -153,8 +178,9 @@ export class DrivingService {
   }
 
   /**
-   * Sets the engine and brake strength that `source` (e.g. "damage") imposes;
-   * all sources multiply. It carries over to later drives.
+   * Sets the engine, brake, tyre and body strength that `source` (e.g.
+   * "damage", "upgrades") imposes; all sources multiply. It carries over to
+   * later drives and other trucks.
    */
   setPerformanceModifier(source: string, modifier: PerformanceModifier): void {
     this.modifiers.set(source, modifier);
@@ -247,11 +273,15 @@ export class DrivingService {
     }
     let torqueFactor = 1;
     let brakeFactor = 1;
+    let gripFactor = 1;
+    let stabilityFactor = 1;
     for (const modifier of this.modifiers.values()) {
       torqueFactor *= modifier.torqueFactor;
       brakeFactor *= modifier.brakeFactor;
+      gripFactor *= modifier.gripFactor;
+      stabilityFactor *= modifier.stabilityFactor;
     }
-    session.dynamics.setPerformance(torqueFactor, brakeFactor);
+    session.dynamics.setPerformance({ torqueFactor, brakeFactor, gripFactor, stabilityFactor });
     session.dynamics.setEngineRunning(this.engineRunning);
   }
 

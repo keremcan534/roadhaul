@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BASE_PERFORMANCE } from '../../../../src/domain/vehicles/performance';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { vehicleFixture } from '../../../support/contentFixtures';
@@ -188,7 +189,7 @@ describe('VehicleDynamics', () => {
   it('accelerates more slowly with a weakened engine and stops later with weakened brakes', () => {
     const healthy = setup();
     const damaged = setup();
-    damaged.dynamics.setPerformance(0.65, 0.75);
+    damaged.dynamics.setPerformance({ ...BASE_PERFORMANCE, torqueFactor: 0.65, brakeFactor: 0.75 });
 
     // Pulling away is grip-limited either way; the weaker engine shows once the truck is rolling.
     const to50 = (run: typeof healthy): number =>
@@ -202,6 +203,32 @@ describe('VehicleDynamics', () => {
       drive(dynamics, state, input({ brake: 1 }), 20, { until: (current) => current.speed <= 0.01 });
     }
     expect(damaged.state.odometerMeters).toBeGreaterThan(healthy.state.odometerMeters * 1.15);
+  });
+
+  it('corners harder with a stiffer body and brakes shorter on grippier tyres', () => {
+    const lateralAt60 = (stabilityFactor: number): number => {
+      const { dynamics, state } = setup();
+      dynamics.setPerformance({ ...BASE_PERFORMANCE, stabilityFactor });
+      state.speed = 60 / 3.6;
+      drive(dynamics, state, input({ steer: 1 }), 1);
+      return Math.abs(state.lateralAcceleration) / 9.81;
+    };
+    // The fixture corners at 0.4 g at most: its tyres (0.85) hold more, so the body sets the limit.
+    expect(lateralAt60(1)).toBeCloseTo(truck.handling.maxLateralAccelerationG, 2);
+    expect(lateralAt60(1.15)).toBeCloseTo(truck.handling.maxLateralAccelerationG * 1.15, 2);
+
+    // On grass the tyres, not the 70 kN brakes, set how hard the truck can stop.
+    const stopFrom15 = (gripFactor: number): number => {
+      const { dynamics, state } = setup();
+      dynamics.setPerformance({ ...BASE_PERFORMANCE, gripFactor });
+      state.speed = 15;
+      drive(dynamics, state, input({ brake: 1 }), 20, {
+        surface: GRASS,
+        until: (current) => current.speed <= 0.01,
+      });
+      return state.odometerMeters;
+    };
+    expect(stopFrom15(1.18)).toBeLessThan(stopFrom15(1) * 0.92);
   });
 
   it('drives nothing with the engine stalled, but still rolls, brakes and steers', () => {

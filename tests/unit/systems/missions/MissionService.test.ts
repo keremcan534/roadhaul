@@ -11,7 +11,9 @@ import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { MissionService } from '../../../../src/systems/missions/MissionService';
 import {
   cargoFixture,
+  cityFixture,
   contentFixture,
+  mapFixture,
   missionFixture,
   vehicleFixture,
 } from '../../../support/contentFixtures';
@@ -66,13 +68,19 @@ function acceptAndLoad(context: ReturnType<typeof setup>) {
 }
 
 describe('MissionService', () => {
-  it('offers the contracts the truck can haul, with their base pay and road distance', () => {
+  it('offers the contracts of the map, with their base pay and road distance', () => {
     const { missions } = setup();
 
     const [offer, ...others] = missions.jobBoard();
 
     expect(others).toEqual([]);
-    expect(offer).toMatchObject({ mission: { id: 'test_mission' }, cargo: { id: 'test_cargo' }, basePay: 1000 });
+    expect(offer).toMatchObject({
+      mission: { id: 'test_mission' },
+      cargo: { id: 'test_cargo' },
+      basePay: 1000,
+      blockedBy: null,
+      suitableVehicles: [{ id: 'test_truck' }],
+    });
     expect(offer!.originDepot.id).toBe('test_origin_depot');
     expect(offer!.destinationDepot.id).toBe('test_destination_depot');
     // 200 m along the road, plus 17 m from each bay to it.
@@ -80,7 +88,7 @@ describe('MissionService', () => {
     expect(offer!.distanceMeters).toBeLessThan(245);
   });
 
-  it('leaves out contracts that need another body or more payload', () => {
+  it('lists contracts that need another body or more payload as blocked by the truck, naming the trucks that can', () => {
     const { missions } = setup({
       vehicles: [vehicleFixture(), vehicleFixture({ id: 'reefer', bodyType: 'refrigerated', maxPayloadTons: 30 })],
       cargo: [cargoFixture(), cargoFixture({ id: 'ice_cream', temperature: 'frozen', requiredBody: 'refrigerated' })],
@@ -92,8 +100,37 @@ describe('MissionService', () => {
     });
 
     // The box truck is driven (the first vehicle).
+    const board = missions.jobBoard();
+    expect(board.map((offer) => [offer.mission.id, offer.blockedBy])).toEqual([
+      ['test_mission', null],
+      ['frozen_run', 'truck'],
+      ['too_heavy', 'truck'],
+    ]);
+    expect(board[1]!.suitableVehicles.map((vehicle) => vehicle.id)).toEqual(['reefer']);
+    expect(board[2]!.suitableVehicles.map((vehicle) => vehicle.id)).toEqual(['reefer']);
+    expect(missions.accept('frozen_run')).toEqual({ ok: false, error: 'needsAnotherTruck' });
+    expect(missions.active).toBeNull();
+  });
+
+  it('leaves out contracts between cities without a depot on this map', () => {
+    const { missions } = setup({
+      cities: [
+        cityFixture(),
+        cityFixture({ id: 'test_destination', specialization: 'industrial' }),
+        cityFixture({ id: 'far_away', specialization: 'agricultural' }),
+      ],
+      maps: [
+        mapFixture(),
+        mapFixture({
+          id: 'other_map',
+          depots: [{ ...mapFixture().depots[0]!, id: 'far_depot', cityId: 'far_away' }],
+        }),
+      ],
+      missions: [missionFixture(), missionFixture({ id: 'elsewhere', destinationCityId: 'far_away' })],
+    });
+
     expect(missions.jobBoard().map((offer) => offer.mission.id)).toEqual(['test_mission']);
-    expect(missions.accept('frozen_run')).toEqual({ ok: false, error: 'notOffered' });
+    expect(missions.accept('elsewhere')).toEqual({ ok: false, error: 'notOffered' });
   });
 
   it('accepts one contract at a time and refuses unknown ones', () => {
@@ -232,6 +269,22 @@ describe('MissionService', () => {
     expect(context.driving.totalMassKg).toBe(EMPTY_MASS);
   });
 
+  it('keeps part of every hit away from the cargo with a protecting suspension', () => {
+    const context = setup();
+    const { events, missions } = context;
+    const damage: number[] = [];
+    events.on('CargoDamaged', ({ addedDamage }) => damage.push(addedDamage));
+    acceptAndLoad(context);
+
+    missions.setCargoProtection(0.3);
+    events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 5 });
+    missions.setCargoProtection(Number.NaN); // Unusable: no protection.
+    events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 5 });
+
+    expect(damage[0]).toBeCloseTo(0.7 * 0.5 * (5 / 14) ** 2, 9);
+    expect(damage[1]).toBeCloseTo(0.5 * (5 / 14) ** 2, 9);
+  });
+
   it('fails an abandoned contract and frees the truck for the next one', () => {
     const context = setup();
     const { missions, log } = context;
@@ -277,12 +330,21 @@ describe('MissionService', () => {
   it('lists contracts above the company level as locked and refuses them', () => {
     const { missions, company } = setup({ missions: [missionFixture({ requiredCompanyLevel: 3 })] });
 
-    expect(missions.jobBoard()[0]).toMatchObject({ requiredCompanyLevel: 3, locked: true });
+    expect(missions.jobBoard()[0]).toMatchObject({ requiredCompanyLevel: 3, blockedBy: 'companyLevel' });
     expect(missions.accept('test_mission')).toEqual({ ok: false, error: 'locked' });
 
     company.level = 3;
-    expect(missions.jobBoard()[0]!.locked).toBe(false);
+    expect(missions.jobBoard()[0]!.blockedBy).toBeNull();
     expect(missions.accept('test_mission').ok).toBe(true);
+  });
+
+  it('names the company level first when a contract also needs another truck', () => {
+    const { missions } = setup({
+      vehicles: [vehicleFixture(), vehicleFixture({ id: 'big_truck', maxPayloadTons: 40 })],
+      missions: [missionFixture({ requiredCompanyLevel: 2, cargoWeightTons: 40 })],
+    });
+
+    expect(missions.jobBoard()[0]!.blockedBy).toBe('companyLevel');
   });
 
   it('awards XP and reputation with a delivery, and takes reputation for a failure', () => {

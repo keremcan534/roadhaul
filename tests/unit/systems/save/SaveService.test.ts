@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MemoryStorage, type KeyValueStorage } from '../../../../src/core/storage/KeyValueStorage';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
-import type { SaveGameData } from '../../../../src/domain/save/SaveGameData';
+import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { SAVE_KEYS, SaveService } from '../../../../src/systems/save/SaveService';
 import { contentFixture, vehicleFixture } from '../../../support/contentFixtures';
 import { MemoryLogger } from '../../../support/MemoryLogger';
@@ -77,13 +77,15 @@ describe('SaveService', () => {
 
   it('upgrades an older save on load', () => {
     const { service, storage } = setup();
-    const { world: _world, missions: _missions, stats: _stats, ...v1 } = newSave();
-    storage.setItem(SAVE_KEYS.main, JSON.stringify({ ...v1, version: 1 }));
+    const { world: _world, missions: _missions, stats: _stats, garage, ...rest } = newSave();
+    const v1Garage = { ...garage, vehicles: garage.vehicles.map(({ upgrades: _upgrades, ...truck }) => truck) };
+    storage.setItem(SAVE_KEYS.main, JSON.stringify({ ...rest, garage: v1Garage, version: 1 }));
 
     const loaded = service.load();
 
-    expect(loaded.ok && loaded.value.version).toBe(2);
+    expect(loaded.ok && loaded.value.version).toBe(CURRENT_SAVE_VERSION);
     expect(loaded.ok && loaded.value.world).toEqual({ mapId: 'test_map', truck: null });
+    expect(loaded.ok && loaded.value.garage.vehicles[0]!.upgrades).toEqual({});
   });
 
   it('never touches a save from a newer build', () => {

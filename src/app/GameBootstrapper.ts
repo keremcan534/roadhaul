@@ -17,6 +17,8 @@ import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
 import { DamageService } from '../systems/vehicles/DamageService';
 import { FuelService } from '../systems/vehicles/FuelService';
+import { GarageService } from '../systems/vehicles/GarageService';
+import { UpgradeService } from '../systems/vehicles/UpgradeService';
 import { ServiceKeys } from './ServiceKeys';
 
 export interface BootstrapOptions {
@@ -92,7 +94,8 @@ export class GameBootstrapper {
         ServiceKeys.driving,
         new DrivingService(catalog, events, logger.withCategory('Driving')),
       );
-      // Subscription order matters: the economy and the company apply a delivery before the session saves it.
+      // Subscription order matters: the economy and the company apply a delivery before the session saves it,
+      // and the garage must be created after the services it drives (missions, damage, fuel).
       const economy = container.register(
         ServiceKeys.economy,
         new EconomyService(events, config.economy, logger.withCategory('Economy')),
@@ -112,6 +115,24 @@ export class GameBootstrapper {
       const fuel = container.register(
         ServiceKeys.fuel,
         new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel')),
+      );
+      const garage = container.register(
+        ServiceKeys.garage,
+        new GarageService(
+          catalog,
+          driving,
+          missions,
+          fuel,
+          damage,
+          economy,
+          company,
+          events,
+          logger.withCategory('Garage'),
+        ),
+      );
+      container.register(
+        ServiceKeys.upgrades,
+        new UpgradeService(catalog, garage, economy, company, events, logger.withCategory('Upgrades')),
       );
       const saves = container.register(
         ServiceKeys.saves,
@@ -137,8 +158,7 @@ export class GameBootstrapper {
           missions,
           economy,
           company,
-          fuel,
-          damage,
+          garage,
           logger: logger.withCategory('Session'),
         }),
       );

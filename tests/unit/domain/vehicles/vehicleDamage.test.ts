@@ -31,7 +31,7 @@ describe('truck damage', () => {
   });
 
   it('weakens the engine and brakes, but never takes them away', () => {
-    expect(damagePerformance(0)).toEqual({ torqueFactor: 1, brakeFactor: 1 });
+    expect(damagePerformance(0)).toEqual({ torqueFactor: 1, brakeFactor: 1, gripFactor: 1, stabilityFactor: 1 });
     expect(damagePerformance(1).torqueFactor).toBeCloseTo(WRECKED_TORQUE_FACTOR, 12);
     expect(damagePerformance(1).brakeFactor).toBeCloseTo(WRECKED_BRAKE_FACTOR, 12);
     expect(damagePerformance(0.5).torqueFactor).toBeCloseTo((1 + WRECKED_TORQUE_FACTOR) / 2, 12);

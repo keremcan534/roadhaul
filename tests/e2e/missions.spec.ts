@@ -28,8 +28,9 @@ test('boots into the main menu and opens the job board', async ({ page }) => {
   await expect(page.locator('.hq__company-name')).toHaveText('Kuzey Lojistik');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   await expect(page.locator('.hq__level')).toHaveText('Level 1 · Rookie');
-  await expect(page.locator('.job-card')).toHaveCount(10);
-  await expect(page.locator('.job-card.is-locked')).toHaveCount(6);
+  await expect(page.locator('.job-card')).toHaveCount(20);
+  // Six need a higher company level; the other ten also need a bigger truck.
+  await expect(page.locator('.job-card.is-locked')).toHaveCount(16);
   const first = page.locator('.job-card').first();
   await expect(first.locator('.job-card__title')).toHaveText('First Package');
   await expect(first.locator('.job-card__route')).toHaveText('Yeniliman → Demirkent');
@@ -80,7 +81,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await result.locator('[data-action="continue"]').click();
   await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
-  await expect(page.locator('.job-card')).toHaveCount(10);
+  await expect(page.locator('.job-card')).toHaveCount(20);
   expect(problems).toEqual([]);
 });
 

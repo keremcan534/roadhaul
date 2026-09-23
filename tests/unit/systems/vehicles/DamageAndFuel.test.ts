@@ -124,6 +124,8 @@ describe('FuelService', () => {
 
   it('fills the tank for money, dearer on the road, and restarts the engine', () => {
     const context = setup();
+    const refuelled: GameEvents['Refuelled'][] = [];
+    context.events.on('Refuelled', (event) => refuelled.push({ ...event, liters: context.fuel.fuelLiters }));
     context.fuel.restore(250);
 
     expect(context.fuel.fillUpCost()).toBe(500);
@@ -132,6 +134,40 @@ describe('FuelService', () => {
     expect(context.fuel.fuelLiters).toBe(300);
     expect(context.economy.credits).toBe(9000);
     expect(context.fuel.refuel()).toEqual({ ok: false, error: 'tankFull' });
+    // Announced once the fuel is in the tank (the session saves then).
+    expect(refuelled).toEqual([{ liters: 300, cost: 1000 }]);
+  });
+
+  it('holds more in an upgraded tank and burns less with an upgraded engine', () => {
+    const plain = setup();
+    const upgraded = setup();
+
+    upgraded.fuel.setUpgradeBonuses(0.5, 0.2);
+    expect(upgraded.fuel.capacityLiters).toBe(450);
+    expect(upgraded.fuel.fuelLiters).toBe(300);
+    expect(upgraded.fuel.fraction).toBeCloseTo(2 / 3, 12);
+    expect(upgraded.fuel.refuel()).toEqual({ ok: true, value: { liters: 150, cost: 1500 } });
+
+    upgraded.fuel.restore(300);
+    driveFor(plain, 5);
+    driveFor(upgraded, 5);
+    const plainBurn = (300 - plain.fuel.fuelLiters) / plain.driving.vehicle.odometerMeters;
+    const upgradedBurn = (300 - upgraded.fuel.fuelLiters) / upgraded.driving.vehicle.odometerMeters;
+    expect(upgradedBurn).toBeCloseTo(plainBurn * 0.8, 9);
+  });
+
+  it('keeps what fits when the tank gets smaller, and ignores unusable bonuses', () => {
+    const context = setup();
+    context.fuel.setUpgradeBonuses(0.5, 0);
+    context.fuel.restore(450);
+
+    context.fuel.setUpgradeBonuses(0, 0);
+    expect(context.fuel.fuelLiters).toBe(300);
+
+    context.fuel.setUpgradeBonuses(Number.NaN, 5);
+    expect(context.fuel.capacityLiters).toBe(300);
+    driveFor(context, 2);
+    expect(context.fuel.fuelLiters).toBeLessThan(300); // At most 90 % saved: fuel still burns.
   });
 
   it('buys what the company can afford when a full tank is too dear', () => {

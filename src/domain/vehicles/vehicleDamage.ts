@@ -1,5 +1,6 @@
 import { clamp01 } from '../../core/math/scalar';
 import type { Fraction } from '../../data/units';
+import type { PerformanceFactors } from './performance';
 
 /** Damage bands (spec §18): 0–20% minor, 21–50% damaged, 51–80% severe, 81–100% critical. */
 export const DAMAGE_BANDS = ['minor', 'damaged', 'severe', 'critical'] as const;
@@ -28,16 +29,13 @@ export function truckDamageFromImpact(impactSpeedMetersPerSecond: number): Fract
   return clamp01(severity * severity);
 }
 
-/** How much of its engine and brakes a truck with `damage` still has. */
-export interface PerformanceFactors {
-  readonly torqueFactor: number;
-  readonly brakeFactor: number;
-}
-
+/** How much of its engine and brakes a truck with `damage` still has. Tyres and body are unaffected. */
 export function damagePerformance(damage: Fraction): PerformanceFactors {
   const d = clamp01(damage);
   return {
     torqueFactor: 1 - (1 - WRECKED_TORQUE_FACTOR) * d,
     brakeFactor: 1 - (1 - WRECKED_BRAKE_FACTOR) * d,
+    gripFactor: 1,
+    stabilityFactor: 1,
   };
 }

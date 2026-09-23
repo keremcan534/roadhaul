@@ -1,10 +1,12 @@
 import type { EventBus } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
+import { finiteOr } from '../../core/math/scalar';
 import { err, ok, type Result } from '../../core/Result';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { Credits, Fraction } from '../../data/units';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
 import { fuelUsedLiters } from '../../domain/vehicles/fuelConsumption';
+import { MAX_SAVING } from '../../domain/vehicles/upgradeBonuses';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
@@ -31,6 +33,10 @@ export class FuelService {
   private liters = 0;
   private lastOdometerMeters = 0;
   private shownPercent = -1;
+  /** Tank size relative to the definition: the fuel tank upgrade. */
+  private capacityFactor = 1;
+  /** Share of the formula's consumption actually burnt: the engine upgrade saves some. */
+  private consumptionFactor = 1;
 
   constructor(
     private readonly driving: DrivingService,
@@ -45,9 +51,9 @@ export class FuelService {
     return this.liters;
   }
 
-  /** Tank size of the truck being driven (0 when nothing is driven). */
+  /** Tank size of the truck being driven, with its fuel tank upgrade (0 when nothing is driven). */
   get capacityLiters(): number {
-    return this.driving.isDriving ? this.driving.definition.fuelCapacityLiters : 0;
+    return this.driving.isDriving ? this.driving.definition.fuelCapacityLiters * this.capacityFactor : 0;
   }
 
   get fraction(): Fraction {
@@ -68,7 +74,20 @@ export class FuelService {
     return Math.max(0, this.capacityLiters - this.liters);
   }
 
-  /** Takes over a loaded or new truck's fuel. Call after the truck is on the map. */
+  /**
+   * The active truck's upgrade bonuses (GarageService): a bigger tank, and a
+   * share of the consumption saved. A smaller tank than before keeps what fits.
+   */
+  setUpgradeBonuses(fuelCapacityBonus: number, fuelEfficiencyBonus: number): void {
+    this.capacityFactor = 1 + Math.max(0, finiteOr(fuelCapacityBonus, 0));
+    this.consumptionFactor = 1 - Math.min(MAX_SAVING, Math.max(0, finiteOr(fuelEfficiencyBonus, 0)));
+    if (this.liters > this.capacityLiters) {
+      this.liters = this.capacityLiters;
+    }
+    this.announce(true);
+  }
+
+  /** Takes over a loaded or new truck's fuel. Call after the truck is on the map and its upgrades are set. */
   restore(liters: number): void {
     this.liters = Math.min(this.capacityLiters, Math.max(0, liters));
     this.lastOdometerMeters = this.driving.isDriving ? this.driving.vehicle.odometerMeters : 0;
@@ -95,7 +114,7 @@ export class FuelService {
       this.driving.surface.fuelFactor,
       vehicle.speed,
       this.damage.damage,
-      this.config.consumptionScale,
+      this.config.consumptionScale * this.consumptionFactor,
     );
     this.liters = Math.max(0, this.liters - burnt);
     if (this.liters <= 0) {
@@ -141,6 +160,7 @@ export class FuelService {
     this.liters = Math.min(this.capacityLiters, this.liters + liters);
     this.driving.setEngineRunning(true);
     this.announce(true);
+    this.events.emit('Refuelled', { liters, cost });
     return ok({ liters, cost });
   }
 

@@ -1,53 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { GameBootstrapper } from '../../../../src/app/GameBootstrapper';
-import { ServiceKeys } from '../../../../src/app/ServiceKeys';
 import { MemoryStorage } from '../../../../src/core/storage/KeyValueStorage';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
-import { GAME_CONTENT } from '../../../../src/data/content';
-import { bayParkingPose } from '../../../../src/domain/missions/loadingBay';
+import type { SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { SAVE_KEYS } from '../../../../src/systems/save/SaveService';
 import { AUTOSAVE_INTERVAL_SECONDS } from '../../../../src/systems/session/GameSessionService';
-import { input, STEP_SECONDS } from '../../../support/driving';
-import { MemoryLogger } from '../../../support/MemoryLogger';
-
-/** Boots the real game headless, sharing `storage` like a browser tab shares localStorage. */
-async function boot(storage = new MemoryStorage(), nowMs = 1_000) {
-  const services = await new GameBootstrapper({
-    config: DEFAULT_GAME_CONFIG,
-    content: GAME_CONTENT,
-    logger: new MemoryLogger(),
-    clock: { now: () => nowMs },
-    storage,
-  }).boot();
-  return {
-    storage,
-    session: services.resolve(ServiceKeys.session),
-    driving: services.resolve(ServiceKeys.driving),
-    missions: services.resolve(ServiceKeys.missions),
-    economy: services.resolve(ServiceKeys.economy),
-    company: services.resolve(ServiceKeys.company),
-    fuel: services.resolve(ServiceKeys.fuel),
-    damage: services.resolve(ServiceKeys.damage),
-    events: services.resolve(ServiceKeys.events),
-  };
-}
-
-type Game = Awaited<ReturnType<typeof boot>>;
-
-/** Runs fixed steps like the game loop does while driving. */
-function play(game: Game, seconds: number, throttle = 0): void {
-  for (let elapsed = 0; elapsed < seconds - 1e-9; elapsed += STEP_SECONDS) {
-    game.driving.step(STEP_SECONDS, input({ throttle }));
-    game.missions.update(STEP_SECONDS);
-    game.fuel.update();
-    game.session.update(STEP_SECONDS);
-  }
-}
-
-function parkInTargetBay(game: Game): void {
-  const pose = bayParkingPose(game.missions.target!.depot.bay, game.driving.definition.body);
-  game.driving.placeTruck(pose.x, pose.z, pose.heading);
-}
+import { STEP_SECONDS } from '../../../support/driving';
+import { bootGame as boot, parkInTargetBay, play, reachLevel } from '../../../support/game';
 
 describe('GameSessionService', () => {
   it('founds a new company with the starting truck, credits and a full tank, and saves it', async () => {
@@ -82,6 +40,7 @@ describe('GameSessionService', () => {
     play(first, 3, 1);
     first.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 7 });
     first.economy.spend(123, 'repair');
+    first.session.save(); // As when the page is hidden or closed.
     const before = first.session.snapshot();
 
     const second = await boot(first.storage, 5_000);
@@ -114,6 +73,58 @@ describe('GameSessionService', () => {
 
     play(game, AUTOSAVE_INTERVAL_SECONDS + 1, 1);
     expect(savedDistance()).toBeGreaterThan(distance);
+  });
+
+  it('saves each purchase together with what it bought', async () => {
+    const game = await boot();
+    game.session.startNewGame('Kuzey Lojistik');
+    const saved = (): SaveGameData => JSON.parse(game.storage.getItem(SAVE_KEYS.main)!) as SaveGameData;
+    const savedTruck = (index = 0) => saved().garage.vehicles[index]!;
+    play(game, 5, 1);
+    game.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 7 });
+    reachLevel(game, 2);
+    game.economy.restore(40_000);
+
+    game.fuel.restore(60);
+    expect(game.fuel.refuel().ok).toBe(true);
+    expect(savedTruck().fuelLiters).toBe(150);
+    expect(saved().economy.credits).toBe(game.economy.credits);
+
+    expect(game.damage.repair().ok).toBe(true);
+    expect(savedTruck().damage).toBe(0);
+    expect(saved().economy.credits).toBe(game.economy.credits);
+
+    game.upgrades.buy('engine');
+    expect(savedTruck().upgrades).toEqual({ engine: 1 });
+
+    game.garage.buy('rh_h2');
+    expect(saved().garage.vehicles.map((truck) => truck.definitionId)).toEqual(['rh_h1', 'rh_h2']);
+
+    game.garage.switchTo('truck_002');
+    expect(saved().garage.activeVehicleInstanceId).toBe('truck_002');
+    expect(saved().economy.credits).toBe(game.economy.credits);
+  });
+
+  it('continues with every truck, the one being driven and each one\'s upgrades', async () => {
+    const first = await boot();
+    first.session.startNewGame('Kuzey Lojistik');
+    reachLevel(first, 2);
+    first.economy.restore(40_000);
+    first.upgrades.buy('fuel_tank');
+    first.garage.buy('rh_h2');
+    first.garage.switchTo('truck_002');
+    first.upgrades.buy('brakes');
+    play(first, 3, 1);
+    first.session.save();
+
+    const second = await boot(first.storage, 9_000);
+    second.session.continueGame();
+
+    expect(second.driving.definition.id).toBe('rh_h2');
+    expect(second.garage.activeTruck.upgrades).toEqual({ brakes: 1 });
+    expect(second.garage.trucks[0]!.upgrades).toEqual({ fuel_tank: 1 });
+    expect(second.fuel.fuelLiters).toBeCloseTo(first.fuel.fuelLiters, 9);
+    expect(second.session.snapshot()).toEqual({ ...first.session.snapshot(), updatedAtMs: 9_000 });
   });
 
   it('reports a missing or corrupted save and keeps playing nothing', async () => {

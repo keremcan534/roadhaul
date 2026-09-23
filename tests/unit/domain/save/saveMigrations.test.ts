@@ -31,12 +31,51 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 2,
+        version: 3,
+        garage: {
+          activeVehicleInstanceId: 'truck_001',
+          vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {} }],
+        },
         world: { mapId: 'test_track', truck: null },
         missions: { active: null },
         stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
       },
     });
+  });
+
+  it('gives every truck of a v2 save an empty set of upgrades', () => {
+    const v2 = {
+      ...V1_SAVE,
+      version: 2,
+      garage: {
+        activeVehicleInstanceId: 'truck_002',
+        vehicles: [
+          { instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1 },
+          { instanceId: 'truck_002', definitionId: 'rh_h2', fuelLiters: 200, damage: 0 },
+        ],
+      },
+      world: { mapId: 'test_track', truck: { x: 1, z: 2, headingRadians: 3 } },
+      missions: { active: null },
+      stats: { deliveriesCompleted: 4, deliveriesFailed: 1, creditsEarned: 5200, distanceDrivenMeters: 9000 },
+    };
+
+    const migrated = migrateSave(v2, context);
+
+    expect(migrated.ok && migrated.value['garage']).toEqual({
+      activeVehicleInstanceId: 'truck_002',
+      vehicles: [
+        { instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {} },
+        { instanceId: 'truck_002', definitionId: 'rh_h2', fuelLiters: 200, damage: 0, upgrades: {} },
+      ],
+    });
+    expect(migrated.ok && migrated.value['stats']).toEqual(v2.stats);
+  });
+
+  it('migrates odd data without throwing, leaving it to validation', () => {
+    for (const garage of [undefined, null, 'garage', { vehicles: 'none' }, { vehicles: [null, 7] }]) {
+      const migrated = migrateSave({ ...V1_SAVE, version: 2, garage }, context);
+      expect(migrated.ok && migrated.value['version'], JSON.stringify(garage)).toBe(3);
+    }
   });
 
   it('leaves a current save alone', () => {

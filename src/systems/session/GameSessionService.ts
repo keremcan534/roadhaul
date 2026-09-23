@@ -13,8 +13,7 @@ import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
 import type { MissionService } from '../missions/MissionService';
 import type { LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
-import type { DamageService } from '../vehicles/DamageService';
-import type { FuelService } from '../vehicles/FuelService';
+import type { GarageService } from '../vehicles/GarageService';
 
 /** While driving, the game saves itself this often (seconds of driving). */
 export const AUTOSAVE_INTERVAL_SECONDS = 20;
@@ -29,8 +28,7 @@ export interface GameSessionDependencies {
   readonly missions: MissionService;
   readonly economy: EconomyService;
   readonly company: CompanyService;
-  readonly fuel: FuelService;
-  readonly damage: DamageService;
+  readonly garage: GarageService;
   readonly logger: Logger;
 }
 
@@ -38,13 +36,12 @@ export interface GameSessionDependencies {
  * The company being played (spec §41 onboarding, §32 saving): starts a new
  * game or continues the saved one, hands each part of the save to the
  * service that owns it, and writes it back. It saves after every delivery,
- * failure and purchase, when the player leaves the road for a menu, and every
- * 20 s of driving, so closing the tab loses little.
+ * failure, purchase and truck change, when the player leaves the road for a
+ * menu, and every 20 s of driving, so closing the tab loses little.
  */
 export class GameSessionService {
   private active = false;
   private createdAtMs = 0;
-  private activeVehicleInstanceId = '';
   private distanceBeforeThisDrive = 0;
   private sinceAutosave = 0;
   private readonly unsubscribe: Unsubscribe[];
@@ -57,14 +54,16 @@ export class GameSessionService {
       }
     };
     // Subscribed after the services that apply these events, so their changes are in the save.
+    // Purchases save on the event that completes them, not on MoneyChanged: when the
+    // money moves, the fuel, repair, truck or upgrade bought is not in place yet.
     this.unsubscribe = [
       events.on('MissionCompleted', saveNow),
       events.on('MissionFailed', saveNow),
-      events.on('MoneyChanged', ({ reason }) => {
-        if (reason !== 'delivery') {
-          saveNow(); // Purchases. Delivery pay is saved with MissionCompleted.
-        }
-      }),
+      events.on('Refuelled', saveNow),
+      events.on('VehicleRepaired', saveNow),
+      events.on('VehiclePurchased', saveNow),
+      events.on('UpgradePurchased', saveNow),
+      events.on('ActiveVehicleChanged', saveNow),
       events.on('GameStateChanged', ({ previous }) => {
         if (previous === 'driving') {
           saveNow();
@@ -135,7 +134,7 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, fuel, damage } = this.deps;
+    const { driving, missions, economy, company, garage } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -145,17 +144,7 @@ export class GameSessionService {
       profile: { companyName: company.companyName },
       company: { level: progress.level, xp: company.xp, reputation: company.reputation },
       economy: { credits: economy.credits },
-      garage: {
-        activeVehicleInstanceId: this.activeVehicleInstanceId,
-        vehicles: [
-          {
-            instanceId: this.activeVehicleInstanceId,
-            definitionId: driving.definition.id,
-            fuelLiters: fuel.fuelLiters,
-            damage: damage.damage,
-          },
-        ],
-      },
+      garage: garage.snapshot(),
       world: {
         mapId: driving.world.id,
         truck: { x: vehicle.x, z: vehicle.z, headingRadians: vehicle.heading },
@@ -176,7 +165,7 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, fuel, damage } = this.deps;
+    const { driving, missions, economy, company, garage } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -188,11 +177,9 @@ export class GameSessionService {
     }
     economy.restore(save.economy.credits);
     company.restore(save.profile, save.company, save.stats);
-    damage.restore(truck.damage);
-    fuel.restore(truck.fuelLiters);
+    garage.restore(save.garage);
     missions.restore(save.missions.active);
     this.createdAtMs = save.createdAtMs;
-    this.activeVehicleInstanceId = truck.instanceId;
     this.distanceBeforeThisDrive = save.stats.distanceDrivenMeters;
     this.sinceAutosave = 0;
     this.active = true;

@@ -33,7 +33,25 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
     }),
   },
+  {
+    // v3 records the upgrades fitted to each truck: the trucks of older saves have none.
+    from: 2,
+    migrate: (save) => {
+      const garage = save['garage'];
+      if (!isJsonObject(garage) || !Array.isArray(garage['vehicles'])) {
+        return { ...save, version: 3 };
+      }
+      const vehicles = (garage['vehicles'] as unknown[]).map((vehicle) =>
+        isJsonObject(vehicle) ? { ...vehicle, upgrades: {} } : vehicle,
+      );
+      return { ...save, version: 3, garage: { ...garage, vehicles } };
+    },
+  },
 ];
+
+function isJsonObject(value: unknown): value is SaveJson {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /** notASave: not an object with a version; tooNew: written by a newer build (never overwrite it); noMigration: a gap in the chain. */
 export type MigrationError = 'notASave' | 'tooNew' | 'noMigration';

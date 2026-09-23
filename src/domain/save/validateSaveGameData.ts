@@ -2,6 +2,7 @@ import { Validator, type ValidationIssue } from '../../core/validation/Validator
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateCompanyName } from '../company/companyName';
 import { MISSION_STATES } from '../missions/MissionInstance';
+import { statBonuses, type FittedUpgrades } from '../vehicles/upgradeBonuses';
 import { CURRENT_SAVE_VERSION } from './SaveGameData';
 
 /** Contract stages a save may hold: a finished contract is never saved as active. */
@@ -152,9 +153,15 @@ function validateGarage(garage: Json, content: ContentCatalog, validator: Valida
     const definitionId = vehicle['definitionId'];
     const definition = typeof definitionId === 'string' ? content.vehicles.find(definitionId) : undefined;
     validator.check(definition !== undefined, `${path}.definitionId`, `unknown vehicle ${JSON.stringify(definitionId)}`);
+    const upgrades = validateUpgrades(vehicle['upgrades'], `${path}.upgrades`, content, validator);
+    // A bigger tank holds more: the capacity includes the fitted fuel tank upgrade.
+    const capacity =
+      definition === undefined
+        ? Infinity
+        : definition.fuelCapacityLiters * (1 + statBonuses(upgrades, content.upgrades.all).fuelCapacity);
     const fuel = vehicle['fuelLiters'];
     validator.check(
-      isFiniteNumber(fuel) && fuel >= 0 && (definition === undefined || fuel <= definition.fuelCapacityLiters + 1e-6),
+      isFiniteNumber(fuel) && fuel >= 0 && fuel <= capacity + 1e-6,
       `${path}.fuelLiters`,
       'must be from 0 to the tank capacity',
     );
@@ -166,4 +173,22 @@ function validateGarage(garage: Json, content: ContentCatalog, validator: Valida
     'garage.activeVehicleInstanceId',
     'must name one of the trucks',
   );
+}
+
+/** Checks a truck's fitted upgrades and returns the usable ones (none when the whole field is broken). */
+function validateUpgrades(value: unknown, path: string, content: ContentCatalog, validator: Validator): FittedUpgrades {
+  if (!isJson(value)) {
+    validator.report(path, 'must be an object of upgrade levels');
+    return {};
+  }
+  const usable: Record<string, number> = {};
+  for (const [upgradeId, level] of Object.entries(value)) {
+    const upgrade = content.upgrades.find(upgradeId);
+    const valid =
+      upgrade !== undefined && Number.isInteger(level) && (level as number) >= 1 && (level as number) <= upgrade.levels.length;
+    if (validator.check(valid, `${path}.${upgradeId}`, 'must be a known upgrade at one of its levels')) {
+      usable[upgradeId] = level as number;
+    }
+  }
+  return usable;
 }

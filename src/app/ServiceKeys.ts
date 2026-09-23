@@ -14,6 +14,8 @@ import type { SaveService } from '../systems/save/SaveService';
 import type { GameSessionService } from '../systems/session/GameSessionService';
 import type { DamageService } from '../systems/vehicles/DamageService';
 import type { FuelService } from '../systems/vehicles/FuelService';
+import type { GarageService } from '../systems/vehicles/GarageService';
+import type { UpgradeService } from '../systems/vehicles/UpgradeService';
 
 /** Keys of every service registered by GameBootstrapper. Only composition code resolves them. */
 export const ServiceKeys = Object.freeze({
@@ -29,6 +31,8 @@ export const ServiceKeys = Object.freeze({
   company: serviceKey<CompanyService>('CompanyService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
+  garage: serviceKey<GarageService>('GarageService'),
+  upgrades: serviceKey<UpgradeService>('UpgradeService'),
   saves: serviceKey<SaveService>('SaveService'),
   session: serviceKey<GameSessionService>('GameSessionService'),
 });

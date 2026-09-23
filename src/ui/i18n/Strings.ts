@@ -55,6 +55,14 @@ export class Strings {
     return this.t(`mission.${missionId}.title`);
   }
 
+  vehicleName(vehicleId: string): string {
+    return this.t(`vehicle.${vehicleId}.name`);
+  }
+
+  upgradeName(upgradeId: string): string {
+    return this.t(`upgrade.${upgradeId}.name`);
+  }
+
   /** A whole number with the language's grouping: "12.000", "12,000". */
   number(value: number): string {
     return this.integer.format(value);
