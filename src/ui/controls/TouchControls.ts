@@ -5,6 +5,41 @@ import { createVehicleInput, type VehicleInput } from '../../domain/vehicles/Veh
 const MAX_WHEEL_ANGLE = (130 * Math.PI) / 180;
 /** How fast a released wheel returns to centre, 1/s. */
 const WHEEL_RETURN_RATE = 7;
+/** The speed dial's arc is full at this speed. */
+const DIAL_MAX_KMH = 100;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** The on-screen steering wheel, drawn as SVG: leather rim with stitching, three spokes, hub and top marker. */
+const WHEEL_ART = `
+  <defs>
+    <linearGradient id="rh-wheel-rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5a6069"/><stop offset="0.45" stop-color="#2c3036"/><stop offset="1" stop-color="#141619"/>
+    </linearGradient>
+    <radialGradient id="rh-wheel-hub" cx="0.45" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#626973"/><stop offset="1" stop-color="#1b1e22"/>
+    </radialGradient>
+  </defs>
+  <circle cx="100" cy="100" r="85" fill="none" stroke="rgb(0 0 0 / 35%)" stroke-width="24"/>
+  <circle cx="100" cy="100" r="85" fill="none" stroke="url(#rh-wheel-rim)" stroke-width="19"/>
+  <circle cx="100" cy="100" r="85" fill="none" stroke="rgb(255 255 255 / 22%)" stroke-width="1.2" stroke-dasharray="3 5"/>
+  <path d="M 22 94 Q 60 86 76 88 L 76 112 Q 60 114 22 106 Z" fill="#30353b"/>
+  <path d="M 178 94 Q 140 86 124 88 L 124 112 Q 140 114 178 106 Z" fill="#30353b"/>
+  <path d="M 90 122 L 110 122 L 106 182 L 94 182 Z" fill="#30353b"/>
+  <circle cx="100" cy="100" r="30" fill="url(#rh-wheel-hub)" stroke="#0d0f11" stroke-width="2"/>
+  <circle cx="100" cy="100" r="13" fill="none" stroke="#f2b233" stroke-width="3.5"/>
+  <rect x="93" y="5" width="14" height="20" rx="4" fill="#f2b233"/>
+`;
+
+/** The speed dial: a half-circle track and the arc that fills with speed. */
+const DIAL_ART = `
+  <defs>
+    <linearGradient id="rh-dial" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5fd38a"/><stop offset="0.6" stop-color="#f2b233"/><stop offset="1" stop-color="#f0643c"/>
+    </linearGradient>
+  </defs>
+  <path class="dashboard__track" d="M 12 58 A 48 48 0 0 1 108 58"/>
+  <path class="dashboard__fill" d="M 12 58 A 48 48 0 0 1 108 58" pathLength="100"/>
+`;
 
 export interface TouchControlsOptions {
   readonly onToggleCamera: () => void;
@@ -22,6 +57,7 @@ export class TouchControls {
   readonly state: VehicleInput = createVehicleInput();
   private readonly root: HTMLDivElement;
   private readonly wheel: HTMLDivElement;
+  private readonly dialFill: SVGPathElement;
   private readonly speedLabel: HTMLSpanElement;
   private readonly gearLabel: HTMLSpanElement;
   private wheelAngle = 0;
@@ -40,10 +76,20 @@ export class TouchControls {
       return node;
     };
 
+    const art = (className: string, viewBox: string, markup: string): SVGSVGElement => {
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('class', className);
+      svg.setAttribute('viewBox', viewBox);
+      svg.setAttribute('aria-hidden', 'true');
+      svg.innerHTML = markup;
+      return svg;
+    };
+
     this.root = element('div', 'touch-controls');
     this.wheel = element('div', 'steering-wheel');
     this.wheel.setAttribute('role', 'slider');
     this.wheel.setAttribute('aria-label', 'Steering wheel');
+    this.wheel.append(art('steering-wheel__art', '0 0 200 200', WHEEL_ART));
 
     const brake = element('button', 'pedal pedal--brake');
     brake.type = 'button';
@@ -55,11 +101,15 @@ export class TouchControls {
     pedals.append(brake, gas);
 
     const dashboard = element('div', 'dashboard');
+    const dial = element('div', 'dashboard__dial');
+    const dialArt = art('dashboard__arc', '0 0 120 64', DIAL_ART);
+    this.dialFill = dialArt.querySelector<SVGPathElement>('.dashboard__fill')!;
     this.speedLabel = element('span', 'dashboard__speed');
     const unit = element('span', 'dashboard__unit');
     unit.textContent = 'km/h';
+    dial.append(dialArt, this.speedLabel, unit);
     this.gearLabel = element('span', 'dashboard__gear');
-    dashboard.append(this.speedLabel, unit, this.gearLabel);
+    dashboard.append(dial, this.gearLabel);
 
     const camera = element('button', 'camera-button');
     camera.type = 'button';
@@ -111,6 +161,7 @@ export class TouchControls {
     if (speed !== this.shownSpeed) {
       this.shownSpeed = speed;
       this.speedLabel.textContent = String(speed);
+      this.dialFill.style.strokeDashoffset = String(100 - Math.min(1, speed / DIAL_MAX_KMH) * 100);
     }
     if (gear !== this.shownGear) {
       this.shownGear = gear;
