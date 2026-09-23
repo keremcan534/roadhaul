@@ -22,12 +22,12 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 06 | Camera | 1 | ✅ | Chase + cabin cameras |
 | 07 | Mobile controls | 1 | ✅ | On-screen steering wheel, gas, brake, camera button, speed/gear readout |
 | 08 | Small test road | 1 | ✅ | 2.4 km data-driven loop: asphalt/grass, seeded trees, depot buildings, collisions |
-| 09 | Cargo data | 2 | ⬜ **next** | 6–8 cargo types |
-| 10 | Pickup zone | 2 | ⬜ | "Stop to load" |
-| 11 | Delivery zone | 2 | ⬜ | "Stop to unload" |
-| 12 | Mission state machine | 2 | ⬜ | Available → … → Completed / Failed |
-| 13 | HUD | 2 | ⬜ | Speed, fuel, damage, cargo, timer |
-| 14 | Economy | 3 | ⬜ | Credits, rewards, costs (EconomyService) |
+| 09 | Cargo data | 2 | ✅ | 8 cargo types; box, refrigerated and flatbed bodies; ten starter missions |
+| 10 | Pickup zone | 2 | ✅ | A depot per city: paved yard and loading bay; "stop in the bay to load" |
+| 11 | Delivery zone | 2 | ✅ | "Stop in the bay to unload"; itemised pay |
+| 12 | Mission state machine | 2 | ✅ | MissionService: accepted → travellingToPickup → loaded → delivering → completed / failed; cargo damage |
+| 13 | HUD | 2 | ✅ | Objective, direction and road distance, loading bar, delivery clock, cargo condition; main menu, job board, pause and result screens in Turkish and English |
+| 14 | Economy | 3 | ⬜ **next** | Credits, rewards, costs (EconomyService) |
 | 15 | Fuel | 3 | ⬜ | Consumption + refuelling |
 | 16 | Damage | 3 | ⬜ | Damage bands, effects, repair |
 | 17 | Reward screen | 3 | ⬜ | Delivery result, XP, reputation |
@@ -59,16 +59,24 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 
 ### Phase 1 notes
 
-- The driving prototype starts straight on the test track: there are no menus yet (they come with the company HQ and the mission loop).
-- The speed and gear readout on the touch controls is part of step 07. Step 13 builds the rest of the HUD around it.
-- Collisions already emit `VehicleCollided`; damage (step 16) will consume it.
+- The speed and gear readout on the touch controls is part of step 07. Step 13 built the rest of the HUD around it.
+- Collisions already emit `VehicleCollided`: the mission loop turns them into cargo damage, and damage (step 16) will turn them into truck damage.
 - Feel needs a real phone: see "Tested on a phone" in the Definition of Done.
 
-## Next step: 09 Cargo data
+### Phase 2 notes
+
+- The loop runs on the 2.4 km test track, which now has a depot for each of the three cities. The 3-city map arrives in step 21.
+- Rewards are shown but not yet kept: the wallet, XP and reputation come with steps 14 and 17, and saving with step 18.
+- The HUD arrow follows the road with a simple stand-in for navigation (step 23): both ends snap to the nearest road.
+- Every contract fits the starting box truck. Refrigerated and flatbed cargo wait for the trucks the garage will sell (step 19).
+- Player-facing text lives in Turkish and English string tables, pulled forward from Phase 7 so the menus never hard-code text.
+- `?debug` adds a T key that parks the truck in the bay the mission needs next, for testing (the e2e tests use it).
+
+## Next step: 14 Economy
 
 Suggested request:
 
-> Implement roadmap step 09 only. Replace the placeholder cargo with the MVP set of 6–8 cargo types (spec §11), including trailer/body requirements, with validation and tests. Keep missions valid. Do not implement pickup/delivery zones, missions, economy or UI.
+> Implement roadmap step 14 only. Add EconomyService with a wallet (add, spend, affordability), pay the mission reward on delivery and show the balance at the HQ, with MoneyChanged events and tests (spec §13, §51). Fuel, repair and upgrade costs come with steps 15, 16 and 20; saving with step 18.
 
 ## Infrastructure track
 

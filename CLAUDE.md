@@ -18,7 +18,7 @@ npm run test:e2e    # Playwright smoke tests against dist/ (run build first)
 npm run check       # everything above, in order
 ```
 
-Append `?debug` to the game URL for the FPS / draw-call overlay and debug logs. Desktop driving: arrows/WASD, Space brakes (hold at a standstill to reverse), C switches camera.
+Append `?debug` to the game URL for the FPS / draw-call overlay, debug logs and the T key (parks the truck in the mission's next bay); `?lang=tr` or `?lang=en` picks the language. Desktop driving: arrows/WASD, Space brakes (hold at a standstill to reverse), C switches camera, Escape or P pauses.
 
 ## Architecture
 

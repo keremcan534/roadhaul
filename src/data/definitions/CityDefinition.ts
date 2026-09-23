@@ -5,8 +5,9 @@ export const CITY_SPECIALIZATIONS = ['starter', 'industrial', 'agricultural'] as
 export type CitySpecialization = (typeof CITY_SPECIALIZATIONS)[number];
 
 /**
- * Static description of a city. Placeholder: region, depots, map placement and
- * the road graph arrive with the 3-city prototype (roadmap step 21).
+ * Static description of a city. Its depot is on the map (DepotDefinition).
+ * Region, map placement and the road graph arrive with the 3-city prototype
+ * (roadmap step 21).
  */
 export interface CityDefinition {
   /** Stable snake_case id. It is written into save files: never rename it. */
