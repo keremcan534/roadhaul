@@ -25,6 +25,7 @@ export interface BootstrapOptions {
  */
 export class GameBootstrapper {
   private container: ServiceContainer | null = null;
+  private booting = false;
 
   constructor(private readonly options: BootstrapOptions) {}
 
@@ -33,9 +34,26 @@ export class GameBootstrapper {
    * for invalid content or config, after releasing anything already created.
    */
   async boot(): Promise<ServiceContainer> {
-    if (this.container !== null) {
-      throw new Error('The game is already booted.');
+    if (this.booting || this.container !== null) {
+      throw new Error('The game is already booted or booting.');
     }
+    this.booting = true;
+    try {
+      this.container = await this.createServices();
+      return this.container;
+    } finally {
+      this.booting = false;
+    }
+  }
+
+  /** Disposes every service in reverse registration order. Safe to call more than once. */
+  shutdown(): void {
+    const container = this.container;
+    this.container = null;
+    container?.disposeAll();
+  }
+
+  private async createServices(): Promise<ServiceContainer> {
     const { config, content, logger, clock } = this.options;
     const log = logger.withCategory('Boot');
     const startedAtMs = clock.now();
@@ -67,16 +85,7 @@ export class GameBootstrapper {
       releaseAfterFailedBoot(container, log);
       throw error;
     }
-
-    this.container = container;
     return container;
-  }
-
-  /** Disposes every service in reverse registration order. Safe to call more than once. */
-  shutdown(): void {
-    const container = this.container;
-    this.container = null;
-    container?.disposeAll();
   }
 }
 

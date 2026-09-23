@@ -67,6 +67,16 @@ describe('GameBootstrapper', () => {
     await expect(bootstrapper.boot()).rejects.toThrow('already booted');
   });
 
+  it('refuses a second boot while the first one is still running', async () => {
+    const bootstrapper = new GameBootstrapper(options());
+
+    const first = bootstrapper.boot();
+    const second = bootstrapper.boot();
+
+    await expect(second).rejects.toThrow('already booted or booting');
+    await expect(first).resolves.toBeDefined();
+  });
+
   it('disposes every service on shutdown and tolerates repeated shutdowns', async () => {
     const bootstrapper = new GameBootstrapper(options());
     const container = await bootstrapper.boot();
