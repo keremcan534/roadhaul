@@ -77,7 +77,7 @@ flowchart TD
    4. creates the `EventBus` and the services in dependency order: game state, driving, economy, company, missions, damage, fuel, the garage and the upgrade shop, saves and the game session (which subscribes last, so it saves state the others have already updated);
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
-3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
+3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `RestAreaView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
 4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event, `data-mission-state` every `MissionStateChanged` and `data-vehicle` the truck being driven. The e2e tests wait for them.
 
 Any failure shows the fatal error screen and sets `data-boot-state="error"`. A failed boot disposes every service it had already created.
@@ -150,9 +150,11 @@ touch controls (ui) ───────┘                              │
 
   All of it is data in `VehicleDefinition`. `vehicleTuning.test.ts` keeps the shipped trucks feeling like trucks.
 - **`DrivingWorld`** (`src/domain/world`) is built from a `MapDefinition`:
-  - road centrelines, sampled from a Catmull-Rom curve (`RoadPath`);
-  - asphalt (roads and depot yards) or grass under the truck;
-  - trees scattered from a seed, kept clear of roads, yards and buildings;
+  - road centrelines, sampled from a Catmull-Rom curve (`RoadPath`), each of a spec §20 kind (street, ring road, highway, country road);
+  - the road network (`RoadNetwork`): roads meet where they share a control point, and routes follow the roads across those junctions;
+  - asphalt (roads, depot yards, rest area lots) or grass under the truck;
+  - service points: the depot yards and rest area lots, the only places with a pump and a workshop;
+  - trees scattered from a seed, kept clear of roads, yards, lots and buildings;
   - buildings and the map edge.
 
   Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two.
@@ -175,9 +177,9 @@ main menu ─► company HQ (job board) ─► accept ─► drive to the pickup
   - `MissionInstance`: the plain, saveable state of an accepted contract, with the stages accepted → travellingToPickup → loaded → delivering → completed or failed (abandoned, or cargo damaged beyond the client's tolerance);
   - `cargoDamage`: each crash damages the cargo with the square of its speed, scaled by the cargo's sensitivity;
   - `missionReward`: base pay (reward × cargo multiplier), an on-time bonus, a late penalty capped at half the base pay (spec §64), and a condition bonus for careful driving.
-  - `world/roadRoute` gives the remaining distance by road and a point to steer toward, until the navigation graph of step 23.
+  - `world/RoadNetwork` gives the remaining distance by road and a point to steer toward. It computes the shortest routes to a target once (Dijkstra from the target) and caches them, so the HUD can ask every frame without allocating.
 - **`MissionService`** (`src/systems/missions`) offers the contracts the truck can haul (the job board), accepts one at a time, and advances it every fixed step after `DrivingService.step()`: loading after `GameConfig.missions.loadingSeconds` in the pickup bay (the truck gets the cargo's weight), the delivery clock, cargo damage from `VehicleCollided`, and unloading and the reward at the destination. It publishes `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed` and never touches the UI.
-- **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the job board, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open, and the truck stays parked where it was left between contracts.
+- **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay; `RestAreaView` draws the rest area's lot, stalls and fuel canopy. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the job board, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open, and the truck stays parked where it was left between contracts.
 - **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`). A unit test keeps both languages complete.
 
 ### Economy, the truck's upkeep and the company
@@ -189,9 +191,10 @@ Roadmap steps 14–17 give deliveries consequences (spec §13–18):
   - the formula is spec §17's `fuelUsedLiters`: distance × base consumption × load × terrain × speed × condition;
   - `fuel.consumptionScale` makes up for the miniature map;
   - an empty tank stalls the engine;
-  - refuelling costs money at the pump (the HQ) or, dearer, from a fuel truck on the road;
+  - refuelling costs money at the pump of a depot or rest area or, dearer, from a fuel truck anywhere on the road;
   - a stranded company that cannot pay gets a little emergency fuel for free, so it can never get stuck.
-- **`DamageService`** turns collisions into truck damage in the spec §18 bands. Damage weakens the engine and brakes through `DrivingService.setPerformanceModifier` (upgrades add their own modifier), never to nothing. Repairs cost money.
+- **`DamageService`** turns collisions into truck damage in the spec §18 bands. Damage weakens the engine and brakes through `DrivingService.setPerformanceModifier` (upgrades add their own modifier), never to nothing. Repairs cost money, at a depot or rest area.
+- **The rest area** (spec §25) has a counter (`RestAreaPanel`): fuel, repair and continue, while the truck stands on its lot. During a contract the HQ is out of reach, so it is where to stop.
 - **`CompanyService`** keeps the company's name, XP, the five levels (`GameConfig.company.levelXp`), reputation and statistics. Deliveries add XP and reputation (computed with the reward in `missionProgress.ts`); failures cost reputation. Contracts can require a company level, and the job board shows what unlocks them.
 
 ### The garage and upgrades
@@ -227,11 +230,12 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - version and timestamps;
 - profile, company, economy and garage;
 - since v2: the world (where the truck is parked), the contract under way, and statistics;
-- since v3: the upgrades fitted to each truck.
+- since v3: the upgrades fitted to each truck;
+- v4 has the same shape: the test track is retired, and saves on it move to the region's spawn.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (3) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (4) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser (`platform/browser/browserStorage.ts`), memory in tests or when the browser forbids storage.
@@ -259,7 +263,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - fog to hide the far plane.
 - **Pre-lit flat surfaces.** The ground and road always face up under a fixed sun. They are unlit materials tinted with exactly what Lambert shading would give them (`flatGroundLight()`), so the pixels that cover most of the screen skip lighting.
 - **Software rendering** (no GPU: headless CI browsers, some virtual machines) is detected from the WebGL renderer name. The host then renders at one pixel per CSS pixel without anisotropic filtering, so the simulation still runs in real time.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. At the spawn point the test track, depots, beacon and truck cost about 35 draw calls and 60k triangles, as the `?debug` overlay shows.
+- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 45 draw calls and 90k triangles are in view, as the `?debug` overlay shows.
 - **Bundle:** three.js ships in its own chunk (about 540 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 100 kB.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).

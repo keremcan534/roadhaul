@@ -39,8 +39,10 @@ export interface GameConfig {
   };
   readonly fuel: {
     /**
-     * The test track is a miniature of real roads: fuel burns as if every map
-     * meter were this many (spec §17 still sets the relative consumption).
+     * The region is a miniature of real roads (spec §76's 35 km prototype in
+     * about 11 km): fuel burns as if every map meter were this many. Spec §17
+     * still sets the relative consumption. A full tank lasts eight or nine
+     * contracts.
      */
     readonly consumptionScale: number;
     /** The HUD warns below this share of a full tank. */
@@ -83,7 +85,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     fullRepairCost: 6000,
   },
   fuel: {
-    consumptionScale: 60,
+    consumptionScale: 10,
     lowFuelFraction: 0.15,
   },
   company: {

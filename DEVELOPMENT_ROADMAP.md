@@ -34,8 +34,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 18 | Save/load | 3 | ✅ | Save v2 with migration; atomic write, backup, corruption handling; continue or found a company; autosave |
 | 19 | Garage | 5 | ✅ | H2 and H3 trucks; buy them at company levels 2 and 3; switch trucks in place; ten contracts that need them; save v3 |
 | 20 | Upgrade | 3/5 | ✅ | Five upgrades of three levels (spec §16): engine, brakes, tyres, suspension, fuel tank; per truck |
-| 21 | 3-city prototype | 4 | ⬜ **next** | City A (starter), B (industrial), C (agricultural), rest area |
-| 22 | Traffic | 4 | ⬜ | Waypoint NPC traffic |
+| 21 | 3-city prototype | 4 | ✅ | The north_valley region: three cities, four road kinds, a rest area; routes across junctions; service only at depots and rest areas |
+| 22 | Traffic | 4 | ⬜ **next** | Waypoint NPC traffic |
 | 23 | Navigation | 4 | ⬜ | Route, GPS arrow, ETA |
 | 24 | Weather | 4 | ⬜ | Clear, cloudy, rain, night |
 | 25 | Events | 6 | ⬜ | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
@@ -65,7 +65,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 
 ### Phase 2 notes
 
-- The loop runs on the 2.4 km test track, which now has a depot for each of the three cities. The 3-city map arrives in step 21.
+- The loop ran on the 2.4 km test track, with a depot for each of the three cities, until the 3-city region replaced it in step 21.
 - Rewards are shown but not yet kept: the wallet, XP and reputation come with steps 14 and 17, and saving with step 18.
 - The HUD arrow follows the road with a simple stand-in for navigation (step 23): both ends snap to the nearest road.
 - Every contract fits the starting box truck. Refrigerated and flatbed cargo wait for the trucks the garage will sell (step 19).
@@ -74,10 +74,10 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 
 ### Phase 3 notes
 
-- The test track is a miniature, so `GameConfig.fuel.consumptionScale` (60) stretches every metre driven. A full tank lasts roughly eight to ten contracts. Prices and XP are first guesses to tune on phones.
+- The test track was a miniature, so `GameConfig.fuel.consumptionScale` (60 then; 10 on the larger region, see Phase 4) stretches every metre driven. A full tank lasts roughly eight to ten contracts. Prices and XP are first guesses to tune on phones.
 - Four contracts are open at level 1; levels 2 to 4 unlock the rest.
 - Saves live in the browser (localStorage); an Android build (step 28) keeps them in the app's storage. There is one save slot.
-- The HQ refuels and repairs by phone: the truck does not need to drive there. Rest areas with pumps come with the 3-city map (step 21).
+- The HQ refuelled and repaired by phone, wherever the truck was. Since step 21 the pump and workshop are at depots and the rest area.
 
 ### Phase 5 notes
 
@@ -89,11 +89,20 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Prices are first guesses: the H2 (22,000 credits) pays for itself in about six refrigerated contracts.
 - Purchases now save once what was bought is in place. Before, the session saved as the money moved, so a save taken right then had paid for fuel or a repair it did not have.
 
-## Next step: 21 3-city prototype
+### Phase 4 notes
+
+- The region is spec §76's 35 km prototype in miniature: 11.5 km of road, depots 3.0 to 4.4 km apart by road, a few minutes' driving each. `fuel.consumptionScale` (10) makes up for the scale: a full tank lasts eight or nine contracts.
+- Roads meet where they share a control point; the road network routes across those junctions. The HUD arrow follows it, which is most of step 23's routing; the GPS line and ETA are still to come.
+- The pump and the workshop are at depots and the rest area only; the fuel truck comes anywhere at twice the price. During a contract the HQ is out of reach, so the rest area is where to stop.
+- The test track is retired. Save v4 moves saves on it to the region's spawn.
+- One region, loaded whole: at the spawn about 45 draw calls and 90k triangles are in view, because the forest is tiled and culled. Streaming regions (spec §21) waits until the world has more than one.
+- Debug: `?debug` adds Y (park at the rest area) to T; `?fuelScale=N` burns fuel faster for tests.
+
+## Next step: 22 Traffic
 
 Suggested request:
 
-> Implement roadmap step 21 only. Replace the test track with a map of three cities (A starter, B industrial, C agricultural) joined by roads, a depot per city and a rest area with a fuel pump and repairs. Keep the missions working on it, and keep the save schema versioned (bump + migration if the map id changes).
+> Implement roadmap step 22 only. Add waypoint-based NPC traffic (spec §19) on the region's roads: pooled, kinematic cars and vans that follow lanes, keep their distance, stop behind the truck and at junctions, and never block a depot yard. The truck collides with them. Keep mobile performance in mind (instancing, a cap on vehicles near the camera).
 
 ## Infrastructure track
 

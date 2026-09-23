@@ -19,6 +19,7 @@ import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
+import { RestAreaView } from './presentation/world/RestAreaView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
 import type { GameState } from './systems/gameState/GameState';
@@ -96,6 +97,7 @@ async function start(): Promise<void> {
   const environment = new EnvironmentView(renderHost.scene);
   new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy });
+  new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition);
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);

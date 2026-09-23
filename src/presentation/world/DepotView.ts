@@ -15,6 +15,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { DepotDefinition, RectangleDefinition } from '../../data/definitions/MapDefinition';
 import { concreteImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
+import { pavedRectangle, placeFlat } from './groundDecals';
 import { flatGroundLight } from './lighting';
 
 /** Yards lie over the grass and the road's gravel shoulders but under the asphalt (see TrackView's layers). */
@@ -181,18 +182,9 @@ export class DepotView {
   }
 }
 
-/** A flat rectangle on the ground, with texture coordinates in concrete tiles. */
+/** A concrete yard on the ground. */
 function yardGeometry(rectangle: RectangleDefinition): BufferGeometry {
-  const geometry = new PlaneGeometry(rectangle.widthMeters, rectangle.lengthMeters);
-  const uv = geometry.getAttribute('uv');
-  for (let i = 0; i < uv.count; i++) {
-    uv.setXY(
-      i,
-      (uv.getX(i) * rectangle.widthMeters) / CONCRETE_TILE_METERS,
-      (uv.getY(i) * rectangle.lengthMeters) / CONCRETE_TILE_METERS,
-    );
-  }
-  return placeFlat(geometry, rectangle, YARD_Y);
+  return pavedRectangle(rectangle, CONCRETE_TILE_METERS, YARD_Y);
 }
 
 /** The painted outline of a bay, just inside its edges. */
@@ -210,18 +202,6 @@ function bayLinesGeometry(bay: RectangleDefinition): BufferGeometry {
     line.dispose();
   }
   return placeFlat(outline, bay, BAY_LINE_Y);
-}
-
-/**
- * Lays a geometry drawn in the XY plane (X across, Y along) flat on the
- * ground: along the rectangle's heading, centred on it, at height `y`.
- */
-function placeFlat(geometry: BufferGeometry, rectangle: RectangleDefinition, y: number): BufferGeometry {
-  // rotateX(-90°) maps +Y to -Z; rotateY(heading + 180°) then turns "along" to (sin h, cos h).
-  return geometry
-    .rotateX(-Math.PI / 2)
-    .rotateY((rectangle.headingDegrees * Math.PI) / 180 + Math.PI)
-    .translate(rectangle.x, y, rectangle.z);
 }
 
 /** Four open walls around the bay, fading from the ground up. */

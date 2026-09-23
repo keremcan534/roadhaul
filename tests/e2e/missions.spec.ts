@@ -198,7 +198,8 @@ test('checks the company name before founding it', async ({ page }) => {
 
 test('burns fuel while driving, and refuels only at a depot or rest area', async ({ page }) => {
   const problems = watchForProblems(page);
-  await openCompanyHq(page, '?lang=en&debug');
+  // fuelScale burns fuel as fast as the old test track did, so the gauge moves within seconds.
+  await openCompanyHq(page, '?lang=en&debug&fuelScale=60');
   await expect(page.locator('[data-action="refuel"]')).toHaveText('Tank full');
   await expect(page.locator('[data-action="refuel"]')).toBeDisabled();
 
@@ -234,7 +235,7 @@ test('burns fuel while driving, and refuels only at a depot or rest area', async
 
 test('offers fuel, repairs and the road again at the rest area', async ({ page }) => {
   const problems = watchForProblems(page);
-  await openGame(page, '?lang=en&debug');
+  await openGame(page, '?lang=en&debug&fuelScale=60');
   await page.keyboard.down('ArrowUp');
   await expect
     .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
