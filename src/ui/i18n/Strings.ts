@@ -60,15 +60,19 @@ export class Strings {
     return this.t('format.money', { amount: this.integer.format(credits) });
   }
 
-  /** Signed, for itemised pay: "+700 kredi", "−900 kredi". */
+  /** Signed, for itemised pay: "+700 kredi", "−900 kredi"; zero has no sign. */
   signedMoney(credits: Credits): string {
+    if (credits === 0) {
+      return this.money(0);
+    }
     return `${credits < 0 ? '−' : '+'}${this.money(Math.abs(credits))}`;
   }
 
-  /** "85 m" under a kilometre, "1,2 km" above. */
+  /** "85 m" (in steps of 5 m) under a kilometre, "1,2 km" from there. */
   distance(meters: number): string {
-    return meters < 1000
-      ? this.t('format.meters', { value: this.integer.format(Math.round(meters / 5) * 5) })
+    const rounded = Math.round(meters / 5) * 5;
+    return rounded < 1000
+      ? this.t('format.meters', { value: this.integer.format(rounded) })
       : this.t('format.kilometers', { value: this.decimal.format(meters / 1000) });
   }
 

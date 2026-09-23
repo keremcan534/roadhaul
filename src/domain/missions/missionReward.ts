@@ -9,6 +9,8 @@ export const ON_TIME_BONUS_PER_TIME_SENSITIVITY: Fraction = 0.2;
 export const LATE_PENALTY_MAX: Fraction = 0.5;
 /** Condition bonus for pristine cargo, as a share of the base pay. It shrinks to 0 at the damage tolerance. */
 export const CONDITION_BONUS_MAX: Fraction = 0.2;
+/** Deliveries up to this late still count as on time: nobody should lose a bonus to a frame. */
+export const LATE_GRACE_SECONDS = 1;
 
 export interface MissionRewardInput {
   readonly baseReward: Credits;
@@ -39,7 +41,7 @@ export interface MissionReward {
   /** basePay + timeBonus + conditionBonus - latePenalty. Always positive for a paid job. */
   readonly total: Credits;
   readonly onTime: boolean;
-  /** Seconds over the time limit; 0 when on time. */
+  /** Seconds over the time limit; 0 when on time (including the grace second). */
   readonly lateSeconds: number;
 }
 
@@ -53,8 +55,9 @@ export interface MissionReward {
  */
 export function calculateMissionReward(input: MissionRewardInput): MissionReward {
   const basePay = missionBasePay(input.baseReward, input.cargoRewardMultiplier);
-  const lateSeconds = Math.max(0, input.deliverySeconds - input.timeLimitSeconds);
-  const onTime = lateSeconds === 0;
+  const overtime = input.deliverySeconds - input.timeLimitSeconds;
+  const onTime = overtime <= LATE_GRACE_SECONDS;
+  const lateSeconds = onTime ? 0 : overtime;
 
   const timeBonus = onTime
     ? Math.round(basePay * (ON_TIME_BONUS_MIN + ON_TIME_BONUS_PER_TIME_SENSITIVITY * input.timeSensitivity))

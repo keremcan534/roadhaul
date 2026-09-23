@@ -56,6 +56,7 @@ export class VehicleDynamics {
   private torqueFactor = 1;
   private brakeFactor = 1;
   private engineRunning = true;
+  private reverseAllowed = true;
 
   constructor(
     readonly definition: VehicleDefinition,
@@ -100,6 +101,14 @@ export class VehicleDynamics {
     this.engineRunning = running;
   }
 
+  /**
+   * While false, holding the brake at a standstill keeps the truck stopped
+   * instead of engaging reverse (a truck standing in a loading bay).
+   */
+  setReverseAllowed(allowed: boolean): void {
+    this.reverseAllowed = allowed;
+  }
+
   /** A truck at rest in first gear. */
   createState(x: number, z: number, heading: number): VehicleRuntimeState {
     return {
@@ -142,7 +151,7 @@ export class VehicleDynamics {
 
   private updateDirection(state: VehicleRuntimeState, throttle: number, brake: number, dt: number): void {
     const standing = Math.abs(state.speed) < STANDSTILL_SPEED;
-    const wantsReverse = state.gear > 0 && brake > 0 && throttle === 0;
+    const wantsReverse = this.reverseAllowed && state.gear > 0 && brake > 0 && throttle === 0;
     const wantsForward = state.gear < 0 && throttle > 0 && brake === 0;
     if (!standing || !(wantsReverse || wantsForward)) {
       state.directionChangeTimer = 0;

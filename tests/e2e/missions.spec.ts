@@ -113,14 +113,19 @@ test('pausing stops the truck, and Escape resumes', async ({ page }) => {
   await expect.poll(async () => page.locator('.dashboard__speed').textContent()).not.toBe(frozen);
 });
 
-test('keeps the mission HUD clear of the buttons in both orientations', async ({ page }) => {
+test('keeps the mission HUD clear of the buttons and its text whole in both orientations', async ({ page }) => {
+  test.setTimeout(90_000);
+  /** True when a text is cut off with an ellipsis. */
+  const truncated = (selector: string) =>
+    page.locator(selector).evaluate((element) => element.scrollWidth > element.clientWidth + 1);
   for (const size of [
     { width: 863, height: 360 },
     { width: 412, height: 839 },
   ]) {
     await page.setViewportSize(size);
-    await openCompanyHq(page, '?lang=tr');
-    await takeContract(page, 'first_package');
+    await openCompanyHq(page, '?debug&lang=tr');
+    // A long objective: the pickup at Başakova (open at level 1).
+    await takeContract(page, 'farm_harvest');
     await expect(page.locator('.mission-hud')).toBeVisible();
 
     const hud = (await page.locator('.mission-hud').boundingBox())!;
@@ -132,5 +137,15 @@ test('keeps the mission HUD clear of the buttons in both orientations', async ({
     }
     expect(hud.x).toBeGreaterThanOrEqual(0);
     expect(hud.x + hud.width).toBeLessThanOrEqual(size.width);
+    expect(await truncated('.mission-hud__objective'), `${size.width}×${size.height}: pickup objective`).toBe(false);
+
+    await page.keyboard.press('KeyT');
+    await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
+    await expect(page.locator('.mission-hud__objective')).toContainText('Yeniliman');
+    expect(await truncated('.mission-hud__objective'), `${size.width}×${size.height}: delivery objective`).toBe(false);
+    // Parked at the delivery bay before driving off: the (long) stop-to-unload hint shows.
+    await page.keyboard.press('KeyT');
+    await expect(page.locator('.mission-hud__hint')).toBeVisible();
+    expect(await truncated('.mission-hud__hint'), `${size.width}×${size.height}: stop hint`).toBe(false);
   }
 });

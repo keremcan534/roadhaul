@@ -40,8 +40,10 @@ describe('calculateMissionReward', () => {
     expect(calculateMissionReward(input({ timeSensitivity: 1 })).timeBonus).toBe(300);
   });
 
-  it('counts a delivery exactly at the limit as on time', () => {
+  it('counts a delivery at the limit, or less than a second over it, as on time', () => {
     expect(calculateMissionReward(input({ deliverySeconds: 100 })).onTime).toBe(true);
+    expect(calculateMissionReward(input({ deliverySeconds: 100.9 }))).toMatchObject({ onTime: true, lateSeconds: 0 });
+    expect(calculateMissionReward(input({ deliverySeconds: 101.5 }))).toMatchObject({ onTime: false, lateSeconds: 1.5 });
   });
 
   it('takes pay in proportion to lateness and time sensitivity', () => {

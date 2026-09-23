@@ -705,7 +705,7 @@ body {
 
 .mission-hud__progress {
   width: 100%;
-  min-width: 120px;
+  min-width: 60px;
   height: 6px;
   overflow: hidden;
   border-radius: 3px;
@@ -747,6 +747,39 @@ body {
   50% {
     opacity: 0.35;
   }
+}
+
+/* Upright phones: the HUD drops below the corner buttons and takes the full width. */
+@media (orientation: portrait) {
+  .mission-hud {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 480px;
+  }
+
+  /* Narrow: wrap instead of cutting words off. */
+  .mission-hud__objective,
+  .mission-hud__hint {
+    white-space: normal;
+  }
+}
+
+/* Stacking: the driving controls, then the HUD and pause button, then full-screen menus. */
+.touch-controls {
+  z-index: 1;
+}
+
+.mission-hud,
+.pause-button {
+  z-index: 2;
+}
+
+.screen {
+  z-index: 10;
+}
+
+.perf-overlay {
+  z-index: 20;
 }
 
 /* ---- Pause button and menu (src/ui/menus/PauseMenu.ts) ---- */

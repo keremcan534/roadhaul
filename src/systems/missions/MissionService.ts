@@ -67,6 +67,8 @@ export class MissionService {
   private mission: MissionInstance | null = null;
   private definition: MissionDefinition | null = null;
   private currentTarget: MissionTarget | null = null;
+  /** The truck stands in the target bay: the brake holds it instead of engaging reverse. */
+  private holdingInBay = false;
   private readonly unsubscribeCollisions: Unsubscribe;
 
   constructor(
@@ -146,6 +148,7 @@ export class MissionService {
    * already be on the map. Cargo that was aboard is loaded again.
    */
   restore(saved: ActiveMissionSaveData | null): void {
+    this.holdingInBay = false; // A new drive: its truck allows reverse.
     this.mission = null;
     this.definition = null;
     this.currentTarget = null;
@@ -267,15 +270,31 @@ export class MissionService {
     };
   }
 
-  /** Counts up the loading time while the truck stands in the target bay; true once it is done. */
+  /**
+   * Counts up the loading time while the truck stands in the target bay; true
+   * once it is done. Meanwhile holding the brake keeps the truck in the bay:
+   * players stop by holding it, and brake-to-reverse would back them out.
+   */
   private standsInTargetBay(mission: MissionInstance, dt: number): boolean {
     const target = this.currentTarget;
-    if (target === null || !isParkedInBay(target.depot.bay, this.driving.vehicle, this.driving.definition.body)) {
+    const parked =
+      target !== null && isParkedInBay(target.depot.bay, this.driving.vehicle, this.driving.definition.body);
+    this.holdInBay(parked);
+    if (!parked) {
       mission.handlingSeconds = 0;
       return false;
     }
     mission.handlingSeconds += dt;
     return mission.handlingSeconds >= this.config.loadingSeconds;
+  }
+
+  private holdInBay(hold: boolean): void {
+    if (hold !== this.holdingInBay) {
+      this.holdingInBay = hold;
+      if (this.driving.isDriving) {
+        this.driving.setReverseAllowed(!hold);
+      }
+    }
   }
 
   private damageCargo(impactSpeedMetersPerSecond: number): void {
@@ -298,6 +317,7 @@ export class MissionService {
 
   private changeState(mission: MissionInstance, next: MissionState): void {
     const previous = mission.state;
+    this.holdInBay(false);
     transitionMission(mission, next);
     this.updateTarget();
     this.logger.info(`${mission.missionId}: ${previous} -> ${next}`);
@@ -348,6 +368,7 @@ export class MissionService {
 
   /** Ends the active mission: no contract, no target, no cargo on the truck. */
   private clear(): void {
+    this.holdInBay(false);
     this.mission = null;
     this.definition = null;
     this.currentTarget = null;

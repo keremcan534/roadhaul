@@ -34,7 +34,7 @@ export interface CargoDefinition {
   readonly rewardMultiplier: number;
   /** How much driving damage reaches the cargo: 0 = sturdy, 1 = very fragile. */
   readonly damageSensitivity: Fraction;
-  /** How strongly late delivery is penalised: 0 = not at all, 1 = strongly. */
+  /** How much punctuality matters: 0 = little (small on-time bonus, mild late penalty), 1 = a lot. */
   readonly timeSensitivity: Fraction;
   readonly temperature: TemperatureRequirement;
   /** The truck body this cargo travels in (see bodyCanHaul). Chilled and frozen cargo needs a refrigerated body. */

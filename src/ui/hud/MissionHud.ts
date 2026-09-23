@@ -3,6 +3,7 @@ import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { arrowRotationDegrees } from './arrowRotation';
 
 /** The HUD redraws at most this often; the DOM is touched only when a shown value changes. */
 const REFRESH_INTERVAL_SECONDS = 0.1;
@@ -34,6 +35,12 @@ export class MissionHud {
   private flashSeconds = 0;
   private shownArrowDegrees = Number.NaN;
   private shownProgress = -1;
+  /** What the shown texts were built from: they are rebuilt only when these change. */
+  private shownTargetKey = '';
+  private shownDistanceStep = -1;
+  private shownHint = '';
+  private shownClock = Number.NaN;
+  private shownCargoPercent = -1;
   private enabled = false;
 
   constructor(
@@ -77,6 +84,11 @@ export class MissionHud {
   set visible(visible: boolean) {
     this.enabled = visible;
     this.sinceRefresh = REFRESH_INTERVAL_SECONDS;
+    // Rebuild every text the next time it shows: the language of shown values may be stale.
+    this.shownTargetKey = '';
+    this.shownDistanceStep = -1;
+    this.shownClock = Number.NaN;
+    this.shownCargoPercent = -1;
     if (!visible) {
       this.root.hidden = true;
     }
@@ -112,16 +124,26 @@ export class MissionHud {
     this.root.hidden = false;
     const strings = this.strings;
     const pickup = target.kind === 'pickup';
-    this.root.classList.toggle('is-delivery', !pickup);
 
-    const depot = strings.t('depot.name', { city: strings.cityName(target.depot.cityId) });
-    setText(this.objective, strings.t(pickup ? 'hud.pickup' : 'hud.deliver', { depot }));
-    setText(this.distance, strings.distance(this.route.distanceMeters));
+    // Texts are rebuilt only when what they show changes, so steady driving allocates nothing here.
+    const targetKey = pickup ? target.depot.id : `>${target.depot.id}`;
+    if (targetKey !== this.shownTargetKey) {
+      this.shownTargetKey = targetKey;
+      this.root.classList.toggle('is-delivery', !pickup);
+      const depot = strings.t('depot.name', { city: strings.cityName(target.depot.cityId) });
+      setText(this.objective, strings.t(pickup ? 'hud.pickup' : 'hud.deliver', { depot }));
+      this.timer.hidden = pickup;
+      this.cargo.hidden = pickup;
+      this.shownHint = '\u0000'; // Force the hint to refresh for the new target.
+    }
+    const distanceStep = Math.round(this.route.distanceMeters / 5);
+    if (distanceStep !== this.shownDistanceStep) {
+      this.shownDistanceStep = distanceStep;
+      setText(this.distance, strings.distance(this.route.distanceMeters));
+    }
 
-    // Screen "up" is straight ahead. Headings grow to the left, CSS rotation to the right.
     const truck = this.driving.vehicle;
-    const bearing = Math.atan2(this.route.aimX - truck.x, this.route.aimZ - truck.z);
-    const degrees = Math.round((((truck.heading - bearing) * 180) / Math.PI) % 360);
+    const degrees = Math.round(arrowRotationDegrees(truck.x, truck.z, truck.heading, this.route.aimX, this.route.aimZ));
     if (degrees !== this.shownArrowDegrees) {
       this.shownArrowDegrees = degrees;
       this.arrow.style.transform = `rotate(${degrees}deg)`;
@@ -129,34 +151,46 @@ export class MissionHud {
 
     const progress = this.missions.handlingProgress;
     const handling = progress > 0;
-    this.progress.hidden = !handling;
+    const hint = handling
+      ? pickup
+        ? 'hud.loading'
+        : 'hud.unloading'
+      : this.route.distanceMeters < STOP_HINT_METERS
+        ? pickup
+          ? 'hud.stopToLoad'
+          : 'hud.stopToUnload'
+        : '';
+    if (hint !== this.shownHint) {
+      this.shownHint = hint;
+      setText(this.hint, hint === '' ? '' : strings.t(hint));
+      this.hint.hidden = hint === '';
+      this.progress.hidden = !handling;
+    }
     if (handling) {
-      setText(this.hint, strings.t(pickup ? 'hud.loading' : 'hud.unloading'));
       const percent = Math.round(progress * 100);
       if (percent !== this.shownProgress) {
         this.shownProgress = percent;
         this.progressFill.style.transform = `scaleX(${percent / 100})`;
       }
-    } else {
-      setText(
-        this.hint,
-        this.route.distanceMeters < STOP_HINT_METERS ? strings.t(pickup ? 'hud.stopToLoad' : 'hud.stopToUnload') : '',
-      );
     }
-    this.hint.hidden = this.hint.textContent === '';
 
-    const aboard = !pickup;
-    this.timer.hidden = !aboard;
-    this.cargo.hidden = !aboard;
-    if (aboard) {
+    if (!pickup) {
       const secondsLeft = definition.timeLimitSeconds - mission.deliverySeconds;
-      const late = secondsLeft < 0;
-      this.timer.classList.toggle('is-late', late);
-      setText(
-        this.timer,
-        late ? `+${strings.duration(-secondsLeft)} ${strings.t('hud.late')}` : strings.duration(secondsLeft),
-      );
-      setText(this.cargo, `${strings.t('hud.cargo')} ${strings.percent(1 - mission.cargoDamage)}`);
+      const clock = Math.ceil(secondsLeft);
+      if (clock !== this.shownClock) {
+        this.shownClock = clock;
+        const late = secondsLeft < 0;
+        this.timer.classList.toggle('is-late', late);
+        setText(
+          this.timer,
+          late ? `+${strings.duration(-secondsLeft)} ${strings.t('hud.late')}` : strings.duration(secondsLeft),
+        );
+      }
+      const cargoPercent = Math.round((1 - mission.cargoDamage) * 100);
+      if (cargoPercent !== this.shownCargoPercent) {
+        this.shownCargoPercent = cargoPercent;
+        setText(this.cargo, `${strings.t('hud.cargo')} ${strings.percent(1 - mission.cargoDamage)}`);
+      }
     }
   }
 

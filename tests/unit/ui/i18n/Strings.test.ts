@@ -56,10 +56,14 @@ describe('Strings', () => {
     expect(en.money(4200)).toBe('4,200 credits');
     expect(tr.signedMoney(700)).toBe('+700 kredi');
     expect(en.signedMoney(-900)).toBe('−900 credits');
+    expect(en.signedMoney(0)).toBe('0 credits');
+    expect(en.signedMoney(-0)).toBe('0 credits');
   });
 
   it('shows short distances in meters and long ones in kilometres', () => {
     expect(en.distance(83)).toBe('85 m');
+    expect(en.distance(998)).toBe('1.0 km');
+    expect(en.distance(997)).toBe('995 m');
     expect(tr.distance(1234)).toBe('1,2 km');
     expect(en.distance(1234)).toBe('1.2 km');
   });

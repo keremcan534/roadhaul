@@ -166,11 +166,13 @@ async function start(): Promise<void> {
   events.on('MissionCompleted', (delivery) => {
     paused = true;
     pauseMenu.close();
+    pauseMenu.buttonVisible = false;
     result.showCompleted(content.missions.get(delivery.missionId), delivery);
   });
   events.on('MissionFailed', ({ missionId, reason }) => {
     paused = true;
     pauseMenu.close();
+    pauseMenu.buttonVisible = false;
     result.showFailed(content.missions.get(missionId), reason);
   });
 

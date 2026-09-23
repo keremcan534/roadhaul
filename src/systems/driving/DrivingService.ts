@@ -161,6 +161,11 @@ export class DrivingService {
     this.applyPerformance();
   }
 
+  /** While false, the brake holds a stopped truck instead of engaging reverse (MissionService: loading). */
+  setReverseAllowed(allowed: boolean): void {
+    this.requireSession().dynamics.setReverseAllowed(allowed);
+  }
+
   /** Stalls or restarts the engine (FuelService: an empty tank). It carries over to later drives. */
   setEngineRunning(running: boolean): void {
     this.engineRunning = running;

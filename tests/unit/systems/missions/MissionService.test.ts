@@ -325,7 +325,44 @@ describe('MissionService', () => {
     expect(resumed.missions.snapshot()).toBeNull();
   });
 
-  it('uses the configured loading time', () => {
-    expect(DEFAULT_GAME_CONFIG.missions.loadingSeconds).toBeGreaterThan(0);
+  it('keeps a truck held on the brake in the bay while it loads, instead of reversing out', () => {
+    const { driving, missions } = setup();
+    missions.accept('test_mission');
+    missions.update(STEP_SECONDS);
+    parkIn(driving, missions.target!.depot.bay);
+
+    // Holding the brake at a standstill would engage reverse after 0.3 s anywhere else.
+    for (let elapsed = 0; elapsed < LOADING_SECONDS + 0.2; elapsed += STEP_SECONDS) {
+      driving.step(STEP_SECONDS, input({ brake: 1 }));
+      missions.update(STEP_SECONDS);
+    }
+
+    expect(missions.active?.state).toBe('loaded');
+    expect(driving.vehicle.gear).toBe(1);
+
+    // Loaded: the brake reverses again.
+    for (let elapsed = 0; elapsed < 1; elapsed += STEP_SECONDS) {
+      driving.step(STEP_SECONDS, input({ brake: 1 }));
+      missions.update(STEP_SECONDS);
+    }
+    expect(driving.vehicle.gear).toBe(-1);
+  });
+
+  it('loads for exactly the configured time', () => {
+    const logger = new MemoryLogger();
+    const events = new EventBus<GameEvents>(logger);
+    const content = ContentCatalog.create(contentFixture());
+    const driving = new DrivingService(content, events, logger);
+    const missions = new MissionService(content, driving, { level: 1 }, events, { loadingSeconds: 2.5 }, logger);
+    driving.start('test_truck', 'test_map');
+    missions.accept('test_mission');
+    missions.update(STEP_SECONDS);
+    parkIn(driving, missions.target!.depot.bay);
+
+    run(driving, missions, 2.4);
+    expect(missions.active?.state).toBe('travellingToPickup');
+    run(driving, missions, 0.15);
+    expect(missions.active?.state).toBe('loaded');
+    expect(DEFAULT_GAME_CONFIG.missions.loadingSeconds).toBe(3);
   });
 });
