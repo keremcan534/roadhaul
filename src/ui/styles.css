@@ -165,6 +165,13 @@ body {
   pointer-events: none;
 }
 
+/* Upright phones: the wheel and pedals fill the bottom row, so the readout sits above them. */
+@media (orientation: portrait) {
+  .dashboard {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + var(--rh-wheel-size) + 12px);
+  }
+}
+
 .dashboard__speed {
   min-width: 3ch;
   font-size: 28px;
