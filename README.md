@@ -13,7 +13,7 @@ Every push to `main` redeploys it through [`.github/workflows/deploy-pages.yml`]
 
 ## Quick start
 
-Requires Node.js 22.12 or newer.
+Requires Node.js 22 (22.12 or later), 24, or 26+. These are the versions Vite and Vitest support.
 
 ```sh
 npm ci

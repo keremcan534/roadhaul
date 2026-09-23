@@ -9,7 +9,7 @@ RoadHaul is a mobile-first logistics and truck simulation game: take a contract,
 ## Commands
 
 ```sh
-npm ci              # install (Node >= 22.12)
+npm ci              # install (Node 22.12+, 24 or 26+)
 npm run dev         # dev server; add `-- --host` to open it from a phone on the same Wi-Fi
 npm run typecheck   # tsc -b over all tsconfig projects
 npm test            # unit + architecture tests (Vitest)

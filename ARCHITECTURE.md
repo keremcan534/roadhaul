@@ -60,8 +60,8 @@ flowchart TD
 
 ### Enforcement
 
-1. **`tsconfig.pure.json`** compiles `core`, `data`, `domain`, `systems` and `app` with only the ES2022 library: no DOM, no Node, no three.js typings. Using `window`, `document`, `console`, `setTimeout` or `performance` there is a compile error.
-2. **`tests/architecture/layering.test.ts`** parses every import in `src/` and fails when a layer imports a layer or npm package it may not use. This is the spec §55 dependency rule turned into a test.
+1. **`tsconfig.pure.json`** compiles `core`, `data`, `domain`, `systems` and `app` with only the ES2022 library and no DOM or Node typings. Using `window`, `document`, `console`, `setTimeout` or `performance` there is a compile error.
+2. **`tests/architecture/layering.test.ts`** scans the imports of every source file in `src/`. That covers static, type-only, re-export, dynamic and `import.meta.glob` imports, in `.ts`, `.mts`, `.cts` and `.tsx` files. The test fails when a layer imports a layer or npm package it may not use; it is what keeps three.js out of the pure layers. This is the spec §55 dependency rule turned into a test. The scanner itself is tested in `tests/architecture/importSpecifiers.test.ts`.
 
 ## 3. Core rules
 
@@ -103,7 +103,9 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 `EventBus<GameEvents>` (`src/core/events`) is a synchronous, typed publish/subscribe channel (spec §57). All cross-system events are declared in one map, `src/systems/GameEvents.ts`. Today it holds `GameStateChanged`. `MissionCompleted`, `MoneyChanged`, `FuelChanged`, `VehicleDamaged` and the others join it as their systems arrive.
 
 - Systems emit. Presentation and UI subscribe.
-- `emit` does not allocate. Handlers may subscribe or unsubscribe during delivery.
+- Events emitted by a handler are queued and delivered right after the current event, so every handler sees events in the order they happened. Otherwise delivery is synchronous.
+- Unsubscribing takes effect immediately, even for the event being delivered. A disposed view never receives another event.
+- `emit` does not allocate, except when it queues an event raised by a handler.
 - A throwing handler is logged and does not break delivery to the others.
 
 ## 7. Game loop and time
@@ -151,8 +153,8 @@ Central tuning values (fixed step, pixel-ratio cap, starting credits, later fuel
 
 | Kind | Where | Runs | Covers |
 |---|---|---|---|
-| Unit (spec: EditMode) | `tests/unit/**` mirroring `src/` | `npm test` (Vitest, Node) | every rule, service and formula in the engine-agnostic layers |
-| Architecture | `tests/architecture` | `npm test` | layer and package import rules |
+| Unit (spec: EditMode) | `tests/unit/**` mirroring `src/` | `npm test` (Vitest, Node) | every rule, service and formula in the engine-agnostic layers, plus presentation code that runs without WebGL (such as resource disposal) |
+| Architecture | `tests/architecture` | `npm test` | layer and package import rules, and the import scanner that checks them |
 | End-to-end (spec: PlayMode) | `tests/e2e` | `npm run build && npm run test:e2e` (Playwright) | boot, rendering, no console errors, on an emulated Pixel 7 with SwiftShader WebGL |
 
 Test helpers live in `tests/support`: `MemoryLogger` and the content fixtures. CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, build and e2e on every pull request.

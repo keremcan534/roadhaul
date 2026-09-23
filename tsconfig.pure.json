@@ -1,7 +1,8 @@
 {
-  // Engine-agnostic layers are checked without DOM or Node typings, so any use of
-  // window, document, console, timers, three.js etc. in them fails to compile.
-  // This keeps game rules headless-testable and reusable on a future server.
+  // Engine-agnostic layers are checked without DOM or Node typings, so using
+  // window, document, console, timers, performance etc. in them fails to compile.
+  // npm packages (three.js, ...) are blocked by tests/architecture/layering.test.ts.
+  // Together they keep game rules headless-testable and reusable on a future server.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.pure.tsbuildinfo",
