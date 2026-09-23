@@ -1,8 +1,8 @@
-import { BufferGeometry, InstancedMesh, Material, Mesh, type Object3D } from 'three';
+import { BufferGeometry, InstancedMesh, Material, Mesh, Texture, type Object3D } from 'three';
 
-type GpuResource = BufferGeometry | Material | InstancedMesh;
+type GpuResource = BufferGeometry | Material | InstancedMesh | Texture;
 
-/** Every GPU-backed resource in a subtree: geometries, materials and instanced meshes. */
+/** Every GPU-backed resource in a subtree: geometries, materials, their textures and instanced meshes. */
 export function gpuResources(root: Object3D): Set<GpuResource> {
   const resources = new Set<GpuResource>();
   root.traverse((object) => {
@@ -10,6 +10,11 @@ export function gpuResources(root: Object3D): Set<GpuResource> {
       resources.add(object.geometry as BufferGeometry);
       for (const material of [object.material].flat() as Material[]) {
         resources.add(material);
+        for (const value of Object.values(material)) {
+          if (value instanceof Texture) {
+            resources.add(value);
+          }
+        }
       }
     }
     if (object instanceof InstancedMesh) {

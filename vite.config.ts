@@ -6,9 +6,10 @@ export default defineConfig({
   base: './',
   build: {
     target: 'es2022',
-    // three.js alone is ~530 kB minified (~135 kB gzip). The limit is set just
-    // above it, so the warning fires when game code starts to bloat the bundle.
-    chunkSizeWarningLimit: 600,
+    // three.js with the geometry-merging addon is ~540 kB minified (~140 kB gzip).
+    // The limit leaves room for the game code, so the warning fires when it
+    // starts to bloat the bundle.
+    chunkSizeWarningLimit: 650,
   },
   test: {
     include: ['tests/unit/**/*.test.ts', 'tests/architecture/**/*.test.ts'],
