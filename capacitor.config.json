@@ -1,0 +1,12 @@
+{
+  "appId": "io.github.keremcan534.roadhaul",
+  "appName": "RoadHaul",
+  "webDir": "dist",
+  "backgroundColor": "#1b2430",
+  "plugins": {
+    "SystemBars": {
+      "hidden": true,
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}
