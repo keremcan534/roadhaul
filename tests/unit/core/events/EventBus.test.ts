@@ -103,6 +103,53 @@ describe('EventBus', () => {
     expect(calls).toEqual(['outer', 'outer', 'inner']);
   });
 
+  it('stops delivering to a handler that is unsubscribed while the event is in flight', () => {
+    const { bus } = createBus();
+    const calls: string[] = [];
+    let unsubscribeB: () => void = () => {};
+    bus.on('Pong', () => {
+      calls.push('a');
+      unsubscribeB();
+    });
+    unsubscribeB = bus.on('Pong', () => calls.push('b'));
+
+    bus.emit('Pong', '1');
+
+    expect(calls).toEqual(['a']);
+  });
+
+  it('delivers events emitted by a handler after the current event, keeping their order', () => {
+    const { bus } = createBus();
+    const seenByFirst: number[] = [];
+    const seenBySecond: number[] = [];
+    bus.on('Ping', ({ value }) => {
+      seenByFirst.push(value);
+      if (value === 1) {
+        bus.emit('Ping', { value: 2 });
+      }
+    });
+    bus.on('Ping', ({ value }) => seenBySecond.push(value));
+
+    bus.emit('Ping', { value: 1 });
+
+    expect(seenByFirst).toEqual([1, 2]);
+    expect(seenBySecond).toEqual([1, 2]);
+  });
+
+  it('stops delivery immediately when disposed from inside a handler', () => {
+    const { bus } = createBus();
+    const calls: string[] = [];
+    bus.on('Pong', () => {
+      calls.push('first');
+      bus.dispose();
+    });
+    bus.on('Pong', () => calls.push('second'));
+
+    bus.emit('Pong', 'x');
+
+    expect(calls).toEqual(['first']);
+  });
+
   it('logs a throwing handler and still delivers to the rest', () => {
     const { bus, logger } = createBus();
     const pings: number[] = [];
