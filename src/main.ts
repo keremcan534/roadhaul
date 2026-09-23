@@ -10,6 +10,7 @@ import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { combineVehicleInputs, createVehicleInput } from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
+import { browserStorage } from './platform/browser/browserStorage';
 import { applyConfigOverrides } from './platform/browser/configOverrides';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
@@ -50,11 +51,16 @@ async function start(): Promise<void> {
   const query = new URLSearchParams(window.location.search);
   const config = applyConfigOverrides(DEFAULT_GAME_CONFIG, query);
   const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
+  const { storage, persistent } = browserStorage(window);
+  if (!persistent) {
+    logger.warn('Storage is unavailable: this game will not be saved after the page closes.');
+  }
   const services = await new GameBootstrapper({
     config,
     content: GAME_CONTENT,
     logger,
     clock: systemClock,
+    storage,
   }).boot();
 
   const content = services.resolve(ServiceKeys.content);

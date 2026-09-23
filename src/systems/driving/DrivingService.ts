@@ -7,6 +7,7 @@ import { createVehicleFootprint, type VehicleFootprint } from '../../domain/vehi
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import { DrivingWorld } from '../../domain/world/DrivingWorld';
+import type { Surface } from '../../domain/world/Surface';
 import type { GameEvents } from '../GameEvents';
 
 /** Rear-axle position and heading. */
@@ -50,6 +51,15 @@ interface DrivingSession {
   readonly previousPose: VehiclePose;
   /** Impact speed of the previous step, 0 when the truck was not driving into anything. */
   lastImpactSpeed: number;
+  cargoMassKg: number;
+  /** The ground under the middle of the truck at the last step. */
+  surface: Surface;
+}
+
+/** Engine and brake strength from one source (damage, an upgrade): the service multiplies all sources. */
+export interface PerformanceModifier {
+  readonly torqueFactor: number;
+  readonly brakeFactor: number;
 }
 
 /**
@@ -60,6 +70,8 @@ interface DrivingSession {
  */
 export class DrivingService {
   private session: DrivingSession | null = null;
+  private readonly modifiers = new Map<string, PerformanceModifier>();
+  private engineRunning = true;
 
   constructor(
     private readonly content: ContentCatalog,
@@ -89,6 +101,20 @@ export class DrivingService {
     return this.requireSession().definition;
   }
 
+  /** Cargo on board, kg. */
+  get cargoMassKg(): number {
+    return this.requireSession().cargoMassKg;
+  }
+
+  /** The ground under the middle of the truck at the last fixed step. */
+  get surface(): Surface {
+    return this.requireSession().surface;
+  }
+
+  get isEngineRunning(): boolean {
+    return this.engineRunning;
+  }
+
   /** Truck plus cargo, kg. */
   get totalMassKg(): number {
     return this.requireSession().dynamics.totalMassKg;
@@ -108,7 +134,10 @@ export class DrivingService {
       state,
       previousPose: { x: state.x, z: state.z, heading: state.heading },
       lastImpactSpeed: 0,
+      cargoMassKg: Math.max(0, cargoMassKg),
+      surface: world.surfaceAt(state.x, state.z),
     };
+    this.applyPerformance();
     this.logger.info(`Driving ${vehicleId} on ${mapId}: ${world.trees.length} trees, ${world.buildings.length} buildings.`);
   }
 
@@ -118,7 +147,24 @@ export class DrivingService {
 
   /** Loading and unloading change how the truck accelerates, brakes and corners. */
   setCargoMass(cargoMassKg: number): void {
-    this.requireSession().dynamics.setCargoMass(cargoMassKg);
+    const session = this.requireSession();
+    session.cargoMassKg = Math.max(0, cargoMassKg);
+    session.dynamics.setCargoMass(session.cargoMassKg);
+  }
+
+  /**
+   * Sets the engine and brake strength that `source` (e.g. "damage") imposes;
+   * all sources multiply. It carries over to later drives.
+   */
+  setPerformanceModifier(source: string, modifier: PerformanceModifier): void {
+    this.modifiers.set(source, modifier);
+    this.applyPerformance();
+  }
+
+  /** Stalls or restarts the engine (FuelService: an empty tank). It carries over to later drives. */
+  setEngineRunning(running: boolean): void {
+    this.engineRunning = running;
+    this.session?.dynamics.setEngineRunning(running);
   }
 
   /** Puts the truck at rest with its rear axle at (x, z), facing `heading` (radians). */
@@ -175,6 +221,7 @@ export class DrivingService {
       state.x + Math.sin(state.heading) * centreAhead,
       state.z + Math.cos(state.heading) * centreAhead,
     );
+    session.surface = surface;
     session.dynamics.step(state, input, surface, dt);
 
     const impact = world.resolveCollisions(state, session.footprint);
@@ -186,6 +233,21 @@ export class DrivingService {
 
   dispose(): void {
     this.stop();
+  }
+
+  private applyPerformance(): void {
+    const session = this.session;
+    if (session === null) {
+      return;
+    }
+    let torqueFactor = 1;
+    let brakeFactor = 1;
+    for (const modifier of this.modifiers.values()) {
+      torqueFactor *= modifier.torqueFactor;
+      brakeFactor *= modifier.brakeFactor;
+    }
+    session.dynamics.setPerformance(torqueFactor, brakeFactor);
+    session.dynamics.setEngineRunning(this.engineRunning);
   }
 
   private requireSession(): DrivingSession {

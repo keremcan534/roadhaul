@@ -4,10 +4,16 @@ import { serviceKey } from '../core/services/ServiceContainer';
 import type { Clock } from '../core/time/Clock';
 import type { GameConfig } from '../data/config/GameConfig';
 import type { ContentCatalog } from '../data/ContentCatalog';
+import type { CompanyService } from '../systems/company/CompanyService';
 import type { DrivingService } from '../systems/driving/DrivingService';
+import type { EconomyService } from '../systems/economy/EconomyService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
 import type { MissionService } from '../systems/missions/MissionService';
+import type { SaveService } from '../systems/save/SaveService';
+import type { GameSessionService } from '../systems/session/GameSessionService';
+import type { DamageService } from '../systems/vehicles/DamageService';
+import type { FuelService } from '../systems/vehicles/FuelService';
 
 /** Keys of every service registered by GameBootstrapper. Only composition code resolves them. */
 export const ServiceKeys = Object.freeze({
@@ -19,4 +25,10 @@ export const ServiceKeys = Object.freeze({
   gameState: serviceKey<GameStateService>('GameStateService'),
   driving: serviceKey<DrivingService>('DrivingService'),
   missions: serviceKey<MissionService>('MissionService'),
+  economy: serviceKey<EconomyService>('EconomyService'),
+  company: serviceKey<CompanyService>('CompanyService'),
+  damage: serviceKey<DamageService>('DamageService'),
+  fuel: serviceKey<FuelService>('FuelService'),
+  saves: serviceKey<SaveService>('SaveService'),
+  session: serviceKey<GameSessionService>('GameSessionService'),
 });

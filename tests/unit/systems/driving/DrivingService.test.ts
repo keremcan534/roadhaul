@@ -124,6 +124,49 @@ describe('DrivingService', () => {
     expect(() => loaded.setCargoMass(0)).not.toThrow();
   });
 
+  it('multiplies performance modifiers from every source and keeps them for later drives', () => {
+    const plain = setup().driving;
+    const modified = setup().driving;
+    plain.start('test_truck', 'test_map');
+    modified.setPerformanceModifier('damage', { torqueFactor: 0.8, brakeFactor: 1 });
+    modified.setPerformanceModifier('upgrade', { torqueFactor: 0.8, brakeFactor: 1 });
+    modified.start('test_truck', 'test_map'); // Set before the drive started: still applied.
+
+    stepFor(plain, 12, input({ throttle: 1 }));
+    stepFor(modified, 12, input({ throttle: 1 }));
+
+    // 0.8 × 0.8 of the torque: about 55 instead of 69 km/h after 12 s.
+    expect(modified.vehicle.speed).toBeLessThan(plain.vehicle.speed * 0.85);
+  });
+
+  it('keeps a stalled engine stalled across drives until it is restarted', () => {
+    const { driving } = setup();
+    driving.setEngineRunning(false);
+    driving.start('test_truck', 'test_map');
+
+    stepFor(driving, 2, input({ throttle: 1 }));
+    expect(driving.isEngineRunning).toBe(false);
+    expect(driving.vehicle.speed).toBe(0);
+
+    driving.setEngineRunning(true);
+    stepFor(driving, 2, input({ throttle: 1 }));
+    expect(driving.vehicle.speed).toBeGreaterThan(1);
+  });
+
+  it('reports the cargo on board and the ground under the truck', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    driving.setCargoMass(4500);
+    stepFor(driving, 0.1);
+
+    expect(driving.cargoMassKg).toBe(4500);
+    expect(driving.surface.name).toBe('asphalt');
+
+    driving.placeTruck(0, 20, 0); // On the grass north of the road.
+    stepFor(driving, 0.1);
+    expect(driving.surface.name).toBe('grass');
+  });
+
   it('places the truck at rest, without interpolating from where it was', () => {
     const { driving } = setup();
     driving.start('test_truck', 'test_map');

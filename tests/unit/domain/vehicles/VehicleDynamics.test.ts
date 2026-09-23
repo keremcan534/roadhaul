@@ -185,6 +185,44 @@ describe('VehicleDynamics', () => {
     expect(rolling.state.speed).toBe(coasting.state.speed);
   });
 
+  it('accelerates more slowly with a weakened engine and stops later with weakened brakes', () => {
+    const healthy = setup();
+    const damaged = setup();
+    damaged.dynamics.setPerformance(0.65, 0.75);
+
+    // Pulling away is grip-limited either way; the weaker engine shows once the truck is rolling.
+    const to50 = (run: typeof healthy): number =>
+      drive(run.dynamics, run.state, input({ throttle: 1 }), 60, { until: (state) => kmh(state) >= 50 });
+    expect(to50(damaged)).toBeGreaterThan(to50(healthy) * 1.3);
+
+    // Same speed, full brakes: the weaker brakes need more road.
+    for (const { dynamics, state } of [healthy, damaged]) {
+      state.speed = 15;
+      state.odometerMeters = 0;
+      drive(dynamics, state, input({ brake: 1 }), 20, { until: (current) => current.speed <= 0.01 });
+    }
+    expect(damaged.state.odometerMeters).toBeGreaterThan(healthy.state.odometerMeters * 1.15);
+  });
+
+  it('drives nothing with the engine stalled, but still rolls, brakes and steers', () => {
+    const { dynamics, state } = setup();
+    dynamics.setEngineRunning(false);
+
+    drive(dynamics, state, input({ throttle: 1 }), 3);
+    expect(state.speed).toBe(0);
+
+    state.speed = 10;
+    drive(dynamics, state, input({ steer: 1 }), 1);
+    expect(state.speed).toBeGreaterThan(8);
+    expect(state.heading).toBeLessThan(0);
+    drive(dynamics, state, input({ brake: 1 }), 5, { until: (current) => current.speed <= 0.01 });
+    expect(state.speed).toBeLessThanOrEqual(0.01);
+
+    dynamics.setEngineRunning(true);
+    drive(dynamics, state, input({ throttle: 1 }), 3);
+    expect(state.speed).toBeGreaterThan(1);
+  });
+
   it('is slower on grass than on asphalt', () => {
     const road = setup();
     const field = setup();

@@ -65,9 +65,7 @@ export function calculateMissionReward(input: MissionRewardInput): MissionReward
     ? 0
     : Math.min(Math.round(basePay * lateShare), Math.floor(basePay * LATE_PENALTY_MAX));
 
-  const condition =
-    input.damageTolerance > 0 ? clamp01(1 - input.cargoDamage / input.damageTolerance) : input.cargoDamage === 0 ? 1 : 0;
-  const conditionBonus = Math.round(basePay * CONDITION_BONUS_MAX * condition);
+  const conditionBonus = Math.round(basePay * CONDITION_BONUS_MAX * cargoCondition(input.cargoDamage, input.damageTolerance));
 
   return {
     basePay,
@@ -78,4 +76,15 @@ export function calculateMissionReward(input: MissionRewardInput): MissionReward
     onTime,
     lateSeconds,
   };
+}
+
+/**
+ * How well the cargo arrived, 1 (pristine) to 0 (at the damage tolerance, the
+ * worst the client accepts). With a zero tolerance only pristine cargo counts.
+ */
+export function cargoCondition(cargoDamage: Fraction, damageTolerance: Fraction): Fraction {
+  if (damageTolerance > 0) {
+    return clamp01(1 - cargoDamage / damageTolerance);
+  }
+  return cargoDamage === 0 ? 1 : 0;
 }

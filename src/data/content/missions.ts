@@ -4,7 +4,9 @@ import type { MissionDefinition } from '../definitions/MissionDefinition';
  * The spec's first 10 missions (§77), between the three depots of the test
  * track. All fit the starting box truck. Titles come from the string tables
  * (`mission.<id>.title`). Time limits cover the delivery leg, from loading to
- * unloading. Rewards are tuned with the economy (roadmap step 14).
+ * unloading. Four contracts are open from the start; company levels unlock
+ * the rest, harder and better paid (spec §14, §42: a level-up in the first
+ * half hour).
  */
 export const MISSIONS: readonly MissionDefinition[] = [
   {
@@ -39,6 +41,7 @@ export const MISSIONS: readonly MissionDefinition[] = [
     timeLimitSeconds: 200,
     damageTolerance: 0.2,
     difficulty: 'normal',
+    requiredCompanyLevel: 2,
   },
   {
     id: 'fragile_electronics',
@@ -50,6 +53,7 @@ export const MISSIONS: readonly MissionDefinition[] = [
     timeLimitSeconds: 200,
     damageTolerance: 0.1,
     difficulty: 'normal',
+    requiredCompanyLevel: 3,
   },
   {
     id: 'farm_harvest',
@@ -72,6 +76,7 @@ export const MISSIONS: readonly MissionDefinition[] = [
     timeLimitSeconds: 75,
     damageTolerance: 0.25,
     difficulty: 'hard',
+    requiredCompanyLevel: 3,
   },
   {
     id: 'long_haul',
@@ -83,6 +88,7 @@ export const MISSIONS: readonly MissionDefinition[] = [
     timeLimitSeconds: 180,
     damageTolerance: 0.2,
     difficulty: 'normal',
+    requiredCompanyLevel: 2,
   },
   {
     id: 'fuel_saver',
@@ -105,6 +111,7 @@ export const MISSIONS: readonly MissionDefinition[] = [
     timeLimitSeconds: 120,
     damageTolerance: 0.15,
     difficulty: 'normal',
+    requiredCompanyLevel: 2,
   },
   {
     id: 'sensitive_cargo',
@@ -116,5 +123,6 @@ export const MISSIONS: readonly MissionDefinition[] = [
     timeLimitSeconds: 200,
     damageTolerance: 0.05,
     difficulty: 'expert',
+    requiredCompanyLevel: 4,
   },
 ];

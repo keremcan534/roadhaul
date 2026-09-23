@@ -19,12 +19,19 @@ import {
   type MissionInstance,
   type MissionState,
 } from '../../domain/missions/MissionInstance';
+import { deliveryReputation, deliveryXp, FAILURE_REPUTATION_LOSS } from '../../domain/missions/missionProgress';
 import { calculateMissionReward, missionBasePay } from '../../domain/missions/missionReward';
+import type { ActiveMissionSaveData } from '../../domain/save/SaveGameData';
 import { createRouteGuidance, routeAlongRoads, type RouteGuidance } from '../../domain/world/roadRoute';
 import type { DrivingService } from '../driving/DrivingService';
 import type { GameEvents } from '../GameEvents';
 
-export type AcceptMissionError = 'missionInProgress' | 'notOffered';
+export type AcceptMissionError = 'missionInProgress' | 'notOffered' | 'locked';
+
+/** Where the company's level comes from (CompanyService). */
+export interface CompanyLevelSource {
+  readonly level: number;
+}
 
 /** A contract on the job board, with what the player needs to choose it. */
 export interface JobOffer {
@@ -36,6 +43,10 @@ export interface JobOffer {
   readonly basePay: Credits;
   /** From the pickup bay to the delivery bay, by road. */
   readonly distanceMeters: number;
+  /** The company level that unlocks it (spec §14). */
+  readonly requiredCompanyLevel: number;
+  /** True until the company reaches that level: shown, but it cannot be taken yet. */
+  readonly locked: boolean;
 }
 
 /** The bay the truck must reach next. */
@@ -61,6 +72,7 @@ export class MissionService {
   constructor(
     private readonly content: ContentCatalog,
     private readonly driving: DrivingService,
+    private readonly company: CompanyLevelSource,
     private readonly events: EventBus<GameEvents>,
     private readonly config: GameConfig['missions'],
     private readonly logger: Logger,
@@ -92,8 +104,9 @@ export class MissionService {
 
   /**
    * Contracts the truck being driven can take on this map (spec §28): the
-   * right body and payload, with both depots on the map. Hand-authored for
-   * now; the mission generator comes later.
+   * right body and payload, with both depots on the map. Contracts above the
+   * company's level are listed as locked. Hand-authored for now; the mission
+   * generator comes later.
    */
   jobBoard(): readonly JobOffer[] {
     const offers: JobOffer[] = [];
@@ -112,8 +125,12 @@ export class MissionService {
       return err('missionInProgress');
     }
     const definition = this.content.missions.find(missionId);
-    if (definition === undefined || this.offerFor(definition) === null) {
+    const offer = definition === undefined ? null : this.offerFor(definition);
+    if (definition === undefined || offer === null) {
       return err('notOffered');
+    }
+    if (offer.locked) {
+      return err('locked');
     }
     const mission = createMissionInstance(missionId);
     this.mission = mission;
@@ -122,6 +139,33 @@ export class MissionService {
     this.logger.info(`Accepted ${missionId}.`);
     this.events.emit('MissionStateChanged', { missionId, previous: null, current: mission.state });
     return ok(mission);
+  }
+
+  /**
+   * Resumes a contract from a saved game (null clears any). The truck must
+   * already be on the map. Cargo that was aboard is loaded again.
+   */
+  restore(saved: ActiveMissionSaveData | null): void {
+    this.mission = null;
+    this.definition = null;
+    this.currentTarget = null;
+    if (saved === null) {
+      if (this.driving.isDriving) {
+        this.driving.setCargoMass(0);
+      }
+      return;
+    }
+    const definition = this.content.missions.get(saved.missionId);
+    this.mission = { ...saved };
+    this.definition = definition;
+    this.updateTarget();
+    this.driving.setCargoMass(isCargoAboard(this.mission) ? definition.cargoWeightTons * 1000 : 0);
+    this.logger.info(`Resumed ${saved.missionId} (${saved.state}).`);
+  }
+
+  /** The active contract as save data, or null. */
+  snapshot(): ActiveMissionSaveData | null {
+    return this.mission === null ? null : { ...this.mission };
   }
 
   /** Gives up the active contract: it fails and the cargo is gone. Does nothing without one. */
@@ -210,6 +254,7 @@ export class MissionService {
       destinationDepot.bay.z,
       createRouteGuidance(),
     );
+    const requiredCompanyLevel = mission.requiredCompanyLevel ?? 1;
     return {
       mission,
       cargo,
@@ -217,6 +262,8 @@ export class MissionService {
       destinationDepot,
       basePay: missionBasePay(mission.baseReward, cargo.rewardMultiplier),
       distanceMeters: route.distanceMeters,
+      requiredCompanyLevel,
+      locked: this.company.level < requiredCompanyLevel,
     };
   }
 
@@ -268,6 +315,8 @@ export class MissionService {
       cargoDamage: mission.cargoDamage,
       damageTolerance: definition.damageTolerance,
     });
+    const xp = deliveryXp(reward, definition.difficulty);
+    const reputation = deliveryReputation(reward, mission.cargoDamage, definition.damageTolerance);
     const previous = mission.state;
     transitionMission(mission, 'completed');
     // Clear first, so handlers of both events already see no active mission and no target.
@@ -279,6 +328,8 @@ export class MissionService {
       reward,
       deliverySeconds: mission.deliverySeconds,
       cargoDamage: mission.cargoDamage,
+      xp,
+      reputation,
     });
   }
 
@@ -288,7 +339,11 @@ export class MissionService {
     this.clear();
     this.logger.info(`${mission.missionId}: ${previous} -> failed (${reason})`);
     this.events.emit('MissionStateChanged', { missionId: mission.missionId, previous, current: 'failed' });
-    this.events.emit('MissionFailed', { missionId: mission.missionId, reason });
+    this.events.emit('MissionFailed', {
+      missionId: mission.missionId,
+      reason,
+      reputationLost: FAILURE_REPUTATION_LOSS[reason],
+    });
   }
 
   /** Ends the active mission: no contract, no target, no cargo on the truck. */

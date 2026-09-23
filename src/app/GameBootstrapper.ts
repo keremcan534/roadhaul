@@ -1,15 +1,22 @@
 import { EventBus } from '../core/events/EventBus';
 import type { Logger } from '../core/logging/Logger';
 import { ServiceContainer } from '../core/services/ServiceContainer';
+import type { KeyValueStorage } from '../core/storage/KeyValueStorage';
 import type { Clock } from '../core/time/Clock';
 import { ValidationError } from '../core/validation/Validator';
 import { validateGameConfig, type GameConfig } from '../data/config/GameConfig';
 import { ContentCatalog } from '../data/ContentCatalog';
 import type { GameContent } from '../data/GameContent';
+import { CompanyService } from '../systems/company/CompanyService';
 import { DrivingService } from '../systems/driving/DrivingService';
+import { EconomyService } from '../systems/economy/EconomyService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
 import { MissionService } from '../systems/missions/MissionService';
+import { SaveService } from '../systems/save/SaveService';
+import { GameSessionService } from '../systems/session/GameSessionService';
+import { DamageService } from '../systems/vehicles/DamageService';
+import { FuelService } from '../systems/vehicles/FuelService';
 import { ServiceKeys } from './ServiceKeys';
 
 export interface BootstrapOptions {
@@ -17,6 +24,8 @@ export interface BootstrapOptions {
   readonly content: GameContent;
   readonly logger: Logger;
   readonly clock: Clock;
+  /** Where saves go: localStorage in the browser, MemoryStorage in tests. */
+  readonly storage: KeyValueStorage;
 }
 
 /**
@@ -56,7 +65,7 @@ export class GameBootstrapper {
   }
 
   private async createServices(): Promise<ServiceContainer> {
-    const { config, content, logger, clock } = this.options;
+    const { config, content, logger, clock, storage } = this.options;
     const log = logger.withCategory('Boot');
     const startedAtMs = clock.now();
     const container = new ServiceContainer();
@@ -83,9 +92,55 @@ export class GameBootstrapper {
         ServiceKeys.driving,
         new DrivingService(catalog, events, logger.withCategory('Driving')),
       );
-      container.register(
+      // Subscription order matters: the economy and the company apply a delivery before the session saves it.
+      const economy = container.register(
+        ServiceKeys.economy,
+        new EconomyService(events, config.economy, logger.withCategory('Economy')),
+      );
+      const company = container.register(
+        ServiceKeys.company,
+        new CompanyService(events, config.company, logger.withCategory('Company')),
+      );
+      const missions = container.register(
         ServiceKeys.missions,
-        new MissionService(catalog, driving, events, config.missions, logger.withCategory('Missions')),
+        new MissionService(catalog, driving, company, events, config.missions, logger.withCategory('Missions')),
+      );
+      const damage = container.register(
+        ServiceKeys.damage,
+        new DamageService(driving, economy, events, logger.withCategory('Damage')),
+      );
+      const fuel = container.register(
+        ServiceKeys.fuel,
+        new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel')),
+      );
+      const saves = container.register(
+        ServiceKeys.saves,
+        new SaveService(
+          storage,
+          catalog,
+          {
+            migration: { defaultMapId: config.newGame.startingMapId },
+            maxCompanyLevel: config.company.levelXp.length,
+          },
+          logger.withCategory('Save'),
+        ),
+      );
+      container.register(
+        ServiceKeys.session,
+        new GameSessionService({
+          content: catalog,
+          config,
+          clock,
+          events,
+          saves,
+          driving,
+          missions,
+          economy,
+          company,
+          fuel,
+          damage,
+          logger: logger.withCategory('Session'),
+        }),
       );
 
       await container.initializeAll();

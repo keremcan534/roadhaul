@@ -61,6 +61,7 @@ describe('ContentCatalog', () => {
     const content = contentFixture({
       vehicles: [vehicleFixture({ id: 'Bad Id', fuelCapacityLiters: -5, vehicleClass: 'flying' as VehicleClass })],
       cargo: [cargoFixture({ damageSensitivity: 1.5, category: 'gold' as CargoCategory })],
+      missions: [missionFixture({ requiredCompanyLevel: 0 })],
     });
 
     expect(issuePaths(content)).toEqual([
@@ -69,6 +70,7 @@ describe('ContentCatalog', () => {
       'vehicles[0].fuelCapacityLiters',
       'cargo[0].category',
       'cargo[0].damageSensitivity',
+      'missions[0].requiredCompanyLevel',
     ]);
   });
 

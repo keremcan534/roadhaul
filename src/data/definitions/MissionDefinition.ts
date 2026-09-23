@@ -30,6 +30,8 @@ export interface MissionDefinition {
   readonly difficulty: MissionDifficulty;
   /** Restricts the mission to one vehicle class. Omit to allow any truck that can carry the weight. */
   readonly requiredVehicleClass?: VehicleClass;
+  /** The company level that unlocks the contract (spec §14). Omit for level 1. */
+  readonly requiredCompanyLevel?: number;
 }
 
 /** Checks the mission's own fields. References to other definitions are checked by the content catalog. */
@@ -45,6 +47,9 @@ export function validateMissionDefinition(mission: MissionDefinition, path: stri
   validator.oneOf(mission.difficulty, MISSION_DIFFICULTIES, `${path}.difficulty`);
   if (mission.requiredVehicleClass !== undefined) {
     validator.oneOf(mission.requiredVehicleClass, VEHICLE_CLASSES, `${path}.requiredVehicleClass`);
+  }
+  if (mission.requiredCompanyLevel !== undefined) {
+    validator.positiveInteger(mission.requiredCompanyLevel, `${path}.requiredCompanyLevel`);
   }
 }
 

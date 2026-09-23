@@ -53,6 +53,9 @@ export class VehicleDynamics {
   private readonly maxSteerAngle: number;
   private readonly steerSpeed: number;
   private massKg: number;
+  private torqueFactor = 1;
+  private brakeFactor = 1;
+  private engineRunning = true;
 
   constructor(
     readonly definition: VehicleDefinition,
@@ -80,6 +83,21 @@ export class VehicleDynamics {
   /** Loading and unloading change how the truck accelerates, brakes and corners. */
   setCargoMass(cargoMassKg: number): void {
     this.massKg = this.definition.body.massKg + usableCargoMass(cargoMassKg);
+  }
+
+  /**
+   * Engine and brake strength relative to the definition (damage now,
+   * upgrades later): torque and power, and brake force, are multiplied by
+   * these. Unusable values count as 1.
+   */
+  setPerformance(torqueFactor: number, brakeFactor: number): void {
+    this.torqueFactor = Math.max(0, finiteOr(torqueFactor, 1));
+    this.brakeFactor = Math.max(0, finiteOr(brakeFactor, 1));
+  }
+
+  /** A stalled engine (an empty tank) drives nothing; the truck still rolls, brakes and steers. */
+  setEngineRunning(running: boolean): void {
+    this.engineRunning = running;
   }
 
   /** A truck at rest in first gear. */
@@ -195,9 +213,9 @@ export class VehicleDynamics {
     const travelSpeed = reversing ? -state.speed : state.speed;
     const speedLimit = reversing ? this.maxReverseSpeed : this.maxSpeed;
     const limiterHit = state.engineRpm >= this.definition.powertrain.maxRpm;
-    if (drivePedal > 0 && state.shiftTimer <= 0 && !limiterHit && travelSpeed < speedLimit) {
+    if (this.engineRunning && drivePedal > 0 && state.shiftTimer <= 0 && !limiterHit && travelSpeed < speedLimit) {
       const engineAngularSpeed = state.engineRpm / RPM_PER_RADIAN_PER_SECOND;
-      const torque = Math.min(this.maxTorque, this.maxPowerWatts / engineAngularSpeed);
+      const torque = this.torqueFactor * Math.min(this.maxTorque, this.maxPowerWatts / engineAngularSpeed);
       const wheelForce = (drivePedal * torque * this.totalRatio(state.gear) * DRIVETRAIN_EFFICIENCY) / this.radius;
       driveForce = Math.min(wheelForce, grip * weight * DRIVEN_WEIGHT_SHARE);
     }
@@ -206,7 +224,7 @@ export class VehicleDynamics {
     const drag = 0.5 * AIR_DENSITY * this.dragArea * speedMagnitude * speedMagnitude;
     const rolling = surface.rollingResistance * weight;
     const engineBrake = drivePedal === 0 && speedMagnitude > STANDSTILL_SPEED ? ENGINE_BRAKE_DECELERATION * mass : 0;
-    const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons, grip * weight);
+    const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons * this.brakeFactor, grip * weight);
     const resistance = drag + rolling + engineBrake + braking;
 
     const previousSpeed = state.speed;

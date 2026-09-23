@@ -51,6 +51,34 @@ describe('GameConfig', () => {
     ]);
   });
 
+  it('checks prices, fuel tuning and the company levels', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairCost: 99.5 },
+      fuel: { consumptionScale: -1, lowFuelFraction: 2 },
+      company: { levelXp: [100, 50, 60, 70, 80] },
+    };
+
+    expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
+      'economy.fuelPricePerLiter',
+      'economy.roadsideFuelPriceFactor',
+      'economy.fullRepairCost',
+      'fuel.consumptionScale',
+      'fuel.lowFuelFraction',
+      'company.levelXp',
+    ]);
+  });
+
+  it('reports contracts locked behind a company level that does not exist', () => {
+    const config: GameConfig = { ...DEFAULT_GAME_CONFIG, company: { levelXp: [0, 1000] } };
+
+    expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual(
+      GAME_CONTENT.missions.flatMap((mission, index) =>
+        (mission.requiredCompanyLevel ?? 1) > 2 ? [`content.missions[${index}].requiredCompanyLevel`] : [],
+      ),
+    );
+  });
+
   it('requires the frame clamp to allow at least one fixed step', () => {
     const config = withChanges({ simulation: { fixedStepSeconds: 0.05, maxFrameDeltaSeconds: 0.01 } });
 

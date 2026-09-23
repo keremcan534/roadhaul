@@ -2,7 +2,7 @@ import { isLogLevel, type LogLevel } from '../../core/logging/Logger';
 import { frozenCopy } from '../../core/objects/frozenCopy';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../ContentCatalog';
-import type { Credits } from '../units';
+import type { Credits, Fraction } from '../units';
 
 /**
  * Central tuning values (spec §17: prices and limits live in config, not in
@@ -28,6 +28,27 @@ export interface GameConfig {
   readonly missions: {
     /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
     readonly loadingSeconds: number;
+  };
+  readonly economy: {
+    /** Price of a litre of diesel at a depot pump (spec §17: prices live in config, not in the world). */
+    readonly fuelPricePerLiter: Credits;
+    /** Fuel brought to a truck stranded on the road costs this many times the pump price. */
+    readonly roadsideFuelPriceFactor: number;
+    /** Repairing a truck from 100% damage costs this much; less damage costs proportionally less. */
+    readonly fullRepairCost: Credits;
+  };
+  readonly fuel: {
+    /**
+     * The test track is a miniature of real roads: fuel burns as if every map
+     * meter were this many (spec §17 still sets the relative consumption).
+     */
+    readonly consumptionScale: number;
+    /** The HUD warns below this share of a full tank. */
+    readonly lowFuelFraction: Fraction;
+  };
+  readonly company: {
+    /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
+    readonly levelXp: readonly number[];
   };
   readonly newGame: {
     readonly startingCredits: Credits;
@@ -56,6 +77,18 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   missions: {
     loadingSeconds: 3,
   },
+  economy: {
+    fuelPricePerLiter: 12,
+    roadsideFuelPriceFactor: 2,
+    fullRepairCost: 6000,
+  },
+  fuel: {
+    consumptionScale: 60,
+    lowFuelFraction: 0.15,
+  },
+  company: {
+    levelXp: [0, 1000, 3000, 6500, 12000],
+  },
   newGame: {
     startingCredits: 5000, // Placeholder until the economy step (roadmap step 14).
     startingVehicleId: 'rh_h1',
@@ -70,7 +103,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, newGame, debug } = config;
+  const { simulation, rendering, missions, economy, fuel, company, newGame, debug } = config;
 
   validator.check(
     Number.isFinite(simulation.fixedStepSeconds) &&
@@ -92,6 +125,31 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'missions.loadingSeconds',
     'must be greater than 0 and at most 30',
   );
+  validator.positiveInteger(economy.fuelPricePerLiter, 'economy.fuelPricePerLiter');
+  validator.check(
+    Number.isFinite(economy.roadsideFuelPriceFactor) && economy.roadsideFuelPriceFactor >= 1,
+    'economy.roadsideFuelPriceFactor',
+    'must be at least 1',
+  );
+  validator.positiveInteger(economy.fullRepairCost, 'economy.fullRepairCost');
+  validator.positiveNumber(fuel.consumptionScale, 'fuel.consumptionScale');
+  validator.fraction(fuel.lowFuelFraction, 'fuel.lowFuelFraction');
+  const levels = company.levelXp;
+  validator.check(
+    Array.isArray(levels) &&
+      levels.length > 0 &&
+      levels[0] === 0 &&
+      levels.every((xp, index) => Number.isInteger(xp) && (index === 0 || xp > levels[index - 1]!)),
+    'company.levelXp',
+    'must start at 0 and rise strictly in whole numbers',
+  );
+  content.missions.all.forEach((mission, index) => {
+    validator.check(
+      (mission.requiredCompanyLevel ?? 1) <= levels.length,
+      `content.missions[${index}].requiredCompanyLevel`,
+      `"${mission.id}" needs level ${mission.requiredCompanyLevel}, but the company only has ${levels.length} levels`,
+    );
+  });
   validator.nonNegativeInteger(newGame.startingCredits, 'newGame.startingCredits');
   validator.check(
     content.vehicles.has(newGame.startingVehicleId),

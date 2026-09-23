@@ -31,14 +31,15 @@ function setup(overrides: Partial<GameContent> = {}) {
   const events = new EventBus<GameEvents>(logger);
   const content = ContentCatalog.create(contentFixture(overrides));
   const driving = new DrivingService(content, events, logger);
-  const missions = new MissionService(content, driving, events, { loadingSeconds: LOADING_SECONDS }, logger);
+  const company = { level: 1 };
+  const missions = new MissionService(content, driving, company, events, { loadingSeconds: LOADING_SECONDS }, logger);
   const log: string[] = [];
   events.on('MissionStateChanged', ({ previous, current }) => log.push(`${previous} -> ${current}`));
   events.on('MissionFailed', ({ reason }) => log.push(`failed: ${reason}`));
   const completed: GameEvents['MissionCompleted'][] = [];
   events.on('MissionCompleted', (event) => completed.push(event));
   driving.start(content.vehicles.all[0]!.id, 'test_map');
-  return { events, driving, missions, log, completed };
+  return { events, driving, missions, company, log, completed };
 }
 
 /** Parks the truck with its body centred in `bay`, facing along it. */
@@ -271,6 +272,57 @@ describe('MissionService', () => {
     missions.dispose();
     expect(missions.active).toBeNull();
     expect(events.listenerCount('VehicleCollided')).toBe(0);
+  });
+
+  it('lists contracts above the company level as locked and refuses them', () => {
+    const { missions, company } = setup({ missions: [missionFixture({ requiredCompanyLevel: 3 })] });
+
+    expect(missions.jobBoard()[0]).toMatchObject({ requiredCompanyLevel: 3, locked: true });
+    expect(missions.accept('test_mission')).toEqual({ ok: false, error: 'locked' });
+
+    company.level = 3;
+    expect(missions.jobBoard()[0]!.locked).toBe(false);
+    expect(missions.accept('test_mission').ok).toBe(true);
+  });
+
+  it('awards XP and reputation with a delivery, and takes reputation for a failure', () => {
+    const context = setup();
+    const { driving, missions, completed, events } = context;
+    const failures: GameEvents['MissionFailed'][] = [];
+    events.on('MissionFailed', (failure) => failures.push(failure));
+    acceptAndLoad(context);
+    run(driving, missions, 1, 1);
+    parkIn(driving, missions.target!.depot.bay);
+    run(driving, missions, LOADING_SECONDS + 0.1);
+
+    // Easy, 1400 credits, on time and pristine: 112 XP and the full 10 reputation.
+    expect(completed[0]).toMatchObject({ xp: 112, reputation: 10 });
+
+    missions.accept('test_mission');
+    missions.abandon();
+    expect(failures).toEqual([{ missionId: 'test_mission', reason: 'abandoned', reputationLost: 3 }]);
+  });
+
+  it('saves the contract under way and resumes it, cargo and all', () => {
+    const context = setup();
+    acceptAndLoad(context);
+    run(context.driving, context.missions, 1, 1);
+    const saved = context.missions.snapshot();
+    expect(saved).toMatchObject({ missionId: 'test_mission', state: 'delivering' });
+
+    const resumed = setup();
+    resumed.missions.restore(saved);
+
+    expect(resumed.missions.active).toEqual(saved);
+    expect(resumed.missions.active).not.toBe(saved);
+    expect(resumed.missions.target).toMatchObject({ kind: 'delivery', depot: { id: 'test_destination_depot' } });
+    expect(resumed.driving.totalMassKg).toBe(EMPTY_MASS + 5000);
+
+    resumed.missions.restore(null);
+    expect(resumed.missions.active).toBeNull();
+    expect(resumed.missions.target).toBeNull();
+    expect(resumed.driving.totalMassKg).toBe(EMPTY_MASS);
+    expect(resumed.missions.snapshot()).toBeNull();
   });
 
   it('uses the configured loading time', () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameBootstrapper, type BootstrapOptions } from '../../../src/app/GameBootstrapper';
 import { ServiceKeys } from '../../../src/app/ServiceKeys';
+import { MemoryStorage } from '../../../src/core/storage/KeyValueStorage';
 import { ValidationError } from '../../../src/core/validation/Validator';
 import { DEFAULT_GAME_CONFIG } from '../../../src/data/config/GameConfig';
 import { GAME_CONTENT } from '../../../src/data/content';
@@ -13,6 +14,7 @@ function options(overrides: Partial<BootstrapOptions> = {}): BootstrapOptions {
     content: GAME_CONTENT,
     logger: new MemoryLogger(),
     clock: { now: () => 1_000 },
+    storage: new MemoryStorage(),
     ...overrides,
   };
 }
