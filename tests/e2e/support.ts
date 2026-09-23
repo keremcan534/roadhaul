@@ -40,6 +40,14 @@ export async function waitForFrames(page: Page, count: number): Promise<void> {
   );
 }
 
+/**
+ * Screenshot of the 3D view alone. The HTML overlays are hidden, because a
+ * changing speed readout would otherwise make a frozen view look alive.
+ */
+export async function sceneScreenshot(page: Page): Promise<Buffer> {
+  return page.locator('#game-canvas').screenshot({ style: '.touch-controls, .perf-overlay { visibility: hidden !important; }' });
+}
+
 /** The speed shown on the on-screen dashboard, km/h. */
 export async function shownSpeed(page: Page): Promise<number> {
   return Number(await page.locator('.dashboard__speed').textContent());

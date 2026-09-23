@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
-import { centreOf, openGame, shownSpeed, waitForFrames, watchForProblems, wheelRotation } from './support';
+import {
+  centreOf,
+  openGame,
+  sceneScreenshot,
+  shownSpeed,
+  waitForFrames,
+  watchForProblems,
+  wheelRotation,
+} from './support';
 
 test('boots straight into driving with the touch controls on screen', async ({ page }) => {
   const problems = watchForProblems(page);
@@ -20,15 +28,14 @@ test('boots straight into driving with the touch controls on screen', async ({ p
 test('drives forward with the keyboard while the view follows the truck', async ({ page }, testInfo) => {
   const problems = watchForProblems(page);
   await openGame(page);
-  const canvas = page.locator('#game-canvas');
   await waitForFrames(page, 5);
-  const before = await canvas.screenshot();
+  const before = await sceneScreenshot(page);
 
   await page.keyboard.down('ArrowUp');
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(20);
   await page.keyboard.up('ArrowUp');
 
-  const after = await canvas.screenshot();
+  const after = await sceneScreenshot(page);
   expect(before.equals(after), 'the view did not change while driving').toBe(false);
   await testInfo.attach('driving', { body: after, contentType: 'image/png' });
   expect(problems).toEqual([]);
@@ -78,13 +85,12 @@ test('drives with the on-screen gas pedal and steering wheel', async ({ page }) 
 test('switches between the chase and cabin cameras', async ({ page }) => {
   const problems = watchForProblems(page);
   await openGame(page);
-  const canvas = page.locator('#game-canvas');
   await waitForFrames(page, 5);
-  const chase = await canvas.screenshot();
+  const chase = await sceneScreenshot(page);
 
   await page.locator('.camera-button').click();
   await waitForFrames(page, 5);
-  const cabin = await canvas.screenshot();
+  const cabin = await sceneScreenshot(page);
   await page.locator('.camera-button').click();
 
   expect(chase.equals(cabin), 'the camera did not change').toBe(false);
