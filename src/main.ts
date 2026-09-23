@@ -19,6 +19,7 @@ import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
+import { TrafficView } from './presentation/traffic/TrafficView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
@@ -74,6 +75,7 @@ async function start(): Promise<void> {
   const events = services.resolve(ServiceKeys.events);
   const gameState = services.resolve(ServiceKeys.gameState);
   const driving = services.resolve(ServiceKeys.driving);
+  const traffic = services.resolve(ServiceKeys.traffic);
   const missions = services.resolve(ServiceKeys.missions);
   const economy = services.resolve(ServiceKeys.economy);
   const company = services.resolve(ServiceKeys.company);
@@ -98,6 +100,9 @@ async function start(): Promise<void> {
   new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
+  const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles);
+  /** Vehicles on the road, as last written to the page (e2e tests read it). */
+  let shownTraffic = -1;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition);
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
@@ -425,7 +430,12 @@ async function start(): Promise<void> {
     new FixedTimestep(config.simulation.fixedStepSeconds, config.simulation.maxStepsPerFrame),
     {
       fixedUpdate: (stepSeconds) => {
-        if (!isDriving() || paused) {
+        if (paused) {
+          return;
+        }
+        // Traffic moves first, so the truck collides with where it is now. It drives behind the menus too.
+        traffic.update(stepSeconds);
+        if (!isDriving()) {
           return;
         }
         combineVehicleInputs(driverInput, keyboard.state, touch.state);
@@ -441,6 +451,12 @@ async function start(): Promise<void> {
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
+        trafficView.update(traffic.simulation, paused ? 1 : alpha);
+        const vehicles = traffic.simulation?.vehicleCount ?? 0;
+        if (vehicles !== shownTraffic) {
+          shownTraffic = vehicles;
+          root.dataset.traffic = String(vehicles);
+        }
         cameraRig.update(pose, vehicle.speed, deltaSeconds);
         environment.update(renderHost.camera.position);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);

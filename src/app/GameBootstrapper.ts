@@ -15,6 +15,7 @@ import { GameStateService } from '../systems/gameState/GameStateService';
 import { MissionService } from '../systems/missions/MissionService';
 import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
+import { TrafficService } from '../systems/traffic/TrafficService';
 import { DamageService } from '../systems/vehicles/DamageService';
 import { FuelService } from '../systems/vehicles/FuelService';
 import { GarageService } from '../systems/vehicles/GarageService';
@@ -93,6 +94,10 @@ export class GameBootstrapper {
       const driving = container.register(
         ServiceKeys.driving,
         new DrivingService(catalog, events, logger.withCategory('Driving')),
+      );
+      container.register(
+        ServiceKeys.traffic,
+        new TrafficService(driving, catalog, config.traffic, logger.withCategory('Traffic')),
       );
       // Subscription order matters: the economy and the company apply a delivery before the session saves it,
       // and the garage must be created after the services it drives (missions, damage, fuel).
@@ -190,5 +195,6 @@ function describeContent(catalog: ContentCatalog): string {
     `missions ${catalog.missions.size}`,
     `maps ${catalog.maps.size}`,
     `upgrades ${catalog.upgrades.size}`,
+    `traffic vehicles ${catalog.trafficVehicles.size}`,
   ].join(', ');
 }

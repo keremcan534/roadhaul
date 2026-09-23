@@ -33,4 +33,14 @@ describe('applyConfigOverrides', () => {
       );
     }
   });
+
+  it('sets how much traffic drives around with ?traffic, from none to the most a phone can take', () => {
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?traffic=0')).traffic.maxVehicles).toBe(0);
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?traffic=30')).traffic.maxVehicles).toBe(30);
+    for (const bad of ['-1', '2.5', 'lots', '', '1000']) {
+      expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query(`?traffic=${bad}`)).traffic, bad).toEqual(
+        DEFAULT_GAME_CONFIG.traffic,
+      );
+    }
+  });
 });
