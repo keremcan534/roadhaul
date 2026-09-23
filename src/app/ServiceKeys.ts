@@ -7,6 +7,7 @@ import type { ContentCatalog } from '../data/ContentCatalog';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
+import type { MissionService } from '../systems/missions/MissionService';
 
 /** Keys of every service registered by GameBootstrapper. Only composition code resolves them. */
 export const ServiceKeys = Object.freeze({
@@ -17,4 +18,5 @@ export const ServiceKeys = Object.freeze({
   events: serviceKey<EventBus<GameEvents>>('EventBus'),
   gameState: serviceKey<GameStateService>('GameStateService'),
   driving: serviceKey<DrivingService>('DrivingService'),
+  missions: serviceKey<MissionService>('MissionService'),
 });

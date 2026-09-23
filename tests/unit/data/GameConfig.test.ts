@@ -7,11 +7,13 @@ const catalog = ContentCatalog.create(GAME_CONTENT);
 
 function withChanges(changes: {
   simulation?: Partial<GameConfig['simulation']>;
+  missions?: Partial<GameConfig['missions']>;
   newGame?: Partial<GameConfig['newGame']>;
 }): GameConfig {
   return {
     ...DEFAULT_GAME_CONFIG,
     simulation: { ...DEFAULT_GAME_CONFIG.simulation, ...changes.simulation },
+    missions: { ...DEFAULT_GAME_CONFIG.missions, ...changes.missions },
     newGame: { ...DEFAULT_GAME_CONFIG.newGame, ...changes.newGame },
   };
 }
@@ -37,12 +39,14 @@ describe('GameConfig', () => {
   it('reports out-of-range values', () => {
     const config = withChanges({
       simulation: { fixedStepSeconds: 0, maxStepsPerFrame: 0 },
+      missions: { loadingSeconds: 0 },
       newGame: { startingCredits: -100 },
     });
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
       'simulation.fixedStepSeconds',
       'simulation.maxStepsPerFrame',
+      'missions.loadingSeconds',
       'newGame.startingCredits',
     ]);
   });

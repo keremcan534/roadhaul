@@ -64,4 +64,50 @@ describe('RoadPath', () => {
     }
     expect(path.distances[path.pointCount - 1]).toBeLessThan(path.lengthMeters);
   });
+
+  it('finds the nearest centreline sample', () => {
+    const path = new RoadPath(straight);
+    const index = path.nearestSampleIndex(20, 30);
+
+    for (let i = 0; i < path.pointCount; i++) {
+      expect(Math.hypot(path.x(i) - 20, path.z(i) - 30)).toBeGreaterThanOrEqual(
+        Math.hypot(path.x(index) - 20, path.z(index) - 30),
+      );
+    }
+    expect(Math.abs(path.x(index) - 20)).toBeLessThan(3);
+  });
+
+  it('measures signed distances along an open road', () => {
+    const path = new RoadPath(straight);
+    const west = path.nearestSampleIndex(-100, 0);
+    const east = path.nearestSampleIndex(100, 0);
+
+    expect(path.distanceAlong(west, east)).toBeCloseTo(path.distances[east]! - path.distances[west]!, 9);
+    expect(path.distanceAlong(west, east)).toBeGreaterThan(190);
+    expect(path.distanceAlong(east, west)).toBeLessThan(-190);
+  });
+
+  it('goes the shorter way round a closed road', () => {
+    const path = new RoadPath(loop);
+    const start = path.nearestSampleIndex(-100, -100);
+    const oneSideOn = path.nearestSampleIndex(100, -100);
+    const lastSide = path.nearestSampleIndex(-100, 100);
+
+    // Forward along the first side; backward across the join to the last corner.
+    expect(path.distanceAlong(start, oneSideOn)).toBeGreaterThan(150);
+    expect(path.distanceAlong(start, lastSide)).toBeLessThan(-150);
+    expect(Math.abs(path.distanceAlong(start, lastSide))).toBeLessThan(path.lengthMeters / 2);
+  });
+
+  it('steps between samples, wrapping on a loop and stopping at the ends of an open road', () => {
+    const open = new RoadPath(straight);
+    const closed = new RoadPath(loop);
+
+    expect(open.stepIndex(0, -1)).toBe(0);
+    expect(open.stepIndex(open.pointCount - 1, 3)).toBe(open.pointCount - 1);
+    expect(open.stepIndex(5, 2)).toBe(7);
+    expect(closed.stepIndex(0, -1)).toBe(closed.pointCount - 1);
+    expect(closed.stepIndex(closed.pointCount - 1, 2)).toBe(1);
+  });
 });
+

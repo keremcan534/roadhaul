@@ -109,6 +109,49 @@ describe('DrivingService', () => {
     expect(driving.vehicle.speed * 3.6).toBeGreaterThan(60);
   });
 
+  it('makes a loaded truck slower to accelerate', () => {
+    const empty = setup().driving;
+    const loaded = setup().driving;
+    empty.start('test_truck', 'test_map');
+    loaded.start('test_truck', 'test_map');
+    loaded.setCargoMass(10_000);
+
+    stepFor(empty, 4, input({ throttle: 1 }));
+    stepFor(loaded, 4, input({ throttle: 1 }));
+
+    expect(loaded.vehicle.speed).toBeLessThan(empty.vehicle.speed * 0.8);
+    loaded.setCargoMass(0);
+    expect(() => loaded.setCargoMass(0)).not.toThrow();
+  });
+
+  it('places the truck at rest, without interpolating from where it was', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    stepFor(driving, 3, input({ throttle: 1, steer: 0.3 }));
+    const odometer = driving.vehicle.odometerMeters;
+
+    driving.placeTruck(-100, -20, Math.PI);
+
+    expect(driving.vehicle).toMatchObject({ x: -100, z: -20, heading: Math.PI, speed: 0, steerAngle: 0, gear: 1 });
+    expect(driving.vehicle.odometerMeters).toBe(odometer);
+    expect(driving.previousPose).toEqual({ x: -100, z: -20, heading: Math.PI });
+  });
+
+  it('recovers a stuck truck onto the nearest road, facing along it the way it was heading', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    // On the grass north of the road, nose to the building, heading a little west of north.
+    driving.placeTruck(20, 25, -0.3 + 2 * Math.PI);
+
+    driving.recover();
+
+    expect(driving.vehicle.z).toBeCloseTo(0, 6);
+    expect(Math.abs(driving.vehicle.x - 20)).toBeLessThanOrEqual(3); // The nearest centreline sample.
+    // The road runs along X; west (-90°) is closer to the old heading than east. The heading stays unwrapped.
+    expect(driving.vehicle.heading).toBeCloseTo(-Math.PI / 2 + 2 * Math.PI, 6);
+    expect(driving.vehicle.speed).toBe(0);
+  });
+
   it('rejects unknown trucks and maps', () => {
     const { driving } = setup();
 

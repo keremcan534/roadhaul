@@ -1,10 +1,13 @@
 import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
-import { bodyCanHaul } from './definitions/BodyType';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
 import { validateCityDefinition, type CityDefinition } from './definitions/CityDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
-import { validateMissionDefinition, type MissionDefinition } from './definitions/MissionDefinition';
+import {
+  validateMissionDefinition,
+  vehicleCanHaul,
+  type MissionDefinition,
+} from './definitions/MissionDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import type { GameContent } from './GameContent';
 
@@ -151,12 +154,7 @@ function validateMissionReferences(validator: Validator, content: GameContent): 
 
     // A contract that no truck can haul could never be completed (spec §29, step 4).
     const requiredClass = mission.requiredVehicleClass;
-    const haulable = vehicles.some(
-      (vehicle) =>
-        vehicle.maxPayloadTons >= mission.cargoWeightTons &&
-        bodyCanHaul(vehicle.bodyType, cargo!.requiredBody) &&
-        (requiredClass === undefined || vehicle.vehicleClass === requiredClass),
-    );
+    const haulable = vehicles.some((vehicle) => vehicleCanHaul(vehicle, mission, cargo!));
     const vehicleKind = requiredClass === undefined ? 'vehicle' : `${requiredClass} vehicle`;
     validator.check(
       haulable,

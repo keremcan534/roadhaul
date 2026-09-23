@@ -1,6 +1,8 @@
 import type { Validator } from '../../core/validation/Validator';
 import type { Credits, Fraction } from '../units';
-import { VEHICLE_CLASSES, type VehicleClass } from './VehicleDefinition';
+import { bodyCanHaul } from './BodyType';
+import type { CargoDefinition } from './CargoDefinition';
+import { VEHICLE_CLASSES, type VehicleClass, type VehicleDefinition } from './VehicleDefinition';
 
 /** Spec §40. */
 export const MISSION_DIFFICULTIES = ['easy', 'normal', 'hard', 'expert'] as const;
@@ -44,4 +46,13 @@ export function validateMissionDefinition(mission: MissionDefinition, path: stri
   if (mission.requiredVehicleClass !== undefined) {
     validator.oneOf(mission.requiredVehicleClass, VEHICLE_CLASSES, `${path}.requiredVehicleClass`);
   }
+}
+
+/** Whether `vehicle` may take `mission`: payload, body for the cargo and, if required, vehicle class (spec §29 step 4). */
+export function vehicleCanHaul(vehicle: VehicleDefinition, mission: MissionDefinition, cargo: CargoDefinition): boolean {
+  return (
+    vehicle.maxPayloadTons >= mission.cargoWeightTons &&
+    bodyCanHaul(vehicle.bodyType, cargo.requiredBody) &&
+    (mission.requiredVehicleClass === undefined || vehicle.vehicleClass === mission.requiredVehicleClass)
+  );
 }

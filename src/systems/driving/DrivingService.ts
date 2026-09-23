@@ -89,6 +89,11 @@ export class DrivingService {
     return this.requireSession().definition;
   }
 
+  /** Truck plus cargo, kg. */
+  get totalMassKg(): number {
+    return this.requireSession().dynamics.totalMassKg;
+  }
+
   /** Puts `vehicleId` at the spawn point of `mapId`. Replaces any current session. */
   start(vehicleId: string, mapId: string, cargoMassKg = 0): void {
     const definition = this.content.vehicles.get(vehicleId);
@@ -109,6 +114,48 @@ export class DrivingService {
 
   stop(): void {
     this.session = null;
+  }
+
+  /** Loading and unloading change how the truck accelerates, brakes and corners. */
+  setCargoMass(cargoMassKg: number): void {
+    this.requireSession().dynamics.setCargoMass(cargoMassKg);
+  }
+
+  /** Puts the truck at rest with its rear axle at (x, z), facing `heading` (radians). */
+  placeTruck(x: number, z: number, heading: number): void {
+    const session = this.requireSession();
+    const odometerMeters = session.state.odometerMeters;
+    Object.assign(session.state, session.dynamics.createState(x, z, heading), { odometerMeters });
+    session.previousPose.x = x;
+    session.previousPose.z = z;
+    session.previousPose.heading = heading;
+    session.lastImpactSpeed = 0;
+  }
+
+  /**
+   * Gets a stuck truck going again: puts it at rest in the middle of the
+   * nearest road, facing along the road the way closest to its current heading.
+   */
+  recover(): void {
+    const { state, world } = this.requireSession();
+    let road = world.roads[0]!;
+    for (const candidate of world.roads) {
+      if (candidate.distanceTo(state.x, state.z) < road.distanceTo(state.x, state.z)) {
+        road = candidate;
+      }
+    }
+    const index = road.nearestSampleIndex(state.x, state.z);
+    const next = road.stepIndex(index, 1);
+    const previous = road.stepIndex(index, -1);
+    const along = Math.atan2(road.x(next) - road.x(previous), road.z(next) - road.z(previous));
+    // Keep the heading unwrapped (interpolation relies on it), turning by at most a quarter turn.
+    let turn = along - state.heading;
+    turn -= Math.round(turn / (2 * Math.PI)) * 2 * Math.PI;
+    if (Math.abs(turn) > Math.PI / 2) {
+      turn -= Math.sign(turn) * Math.PI;
+    }
+    this.placeTruck(road.x(index), road.z(index), state.heading + turn);
+    this.logger.info(`Recovered the truck onto ${road.id}.`);
   }
 
   /** Advances the truck by one fixed step. Allocation-free unless it emits a collision event. */

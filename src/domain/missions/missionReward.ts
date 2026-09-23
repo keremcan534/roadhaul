@@ -22,6 +22,11 @@ export interface MissionRewardInput {
   readonly damageTolerance: Fraction;
 }
 
+/** The pay for a contract before bonuses and penalties: its reward times the cargo multiplier, in whole credits. */
+export function missionBasePay(baseReward: Credits, cargoRewardMultiplier: number): Credits {
+  return Math.round(baseReward * cargoRewardMultiplier);
+}
+
 /** A successful delivery's pay, itemised for the result screen (spec §12). Every item is whole credits. */
 export interface MissionReward {
   readonly basePay: Credits;
@@ -47,7 +52,7 @@ export interface MissionReward {
  * not delivered at all (the mission fails), so it never reaches this function.
  */
 export function calculateMissionReward(input: MissionRewardInput): MissionReward {
-  const basePay = Math.round(input.baseReward * input.cargoRewardMultiplier);
+  const basePay = missionBasePay(input.baseReward, input.cargoRewardMultiplier);
   const lateSeconds = Math.max(0, input.deliverySeconds - input.timeLimitSeconds);
   const onTime = lateSeconds === 0;
 

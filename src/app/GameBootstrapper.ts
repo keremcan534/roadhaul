@@ -9,6 +9,7 @@ import type { GameContent } from '../data/GameContent';
 import { DrivingService } from '../systems/driving/DrivingService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
+import { MissionService } from '../systems/missions/MissionService';
 import { ServiceKeys } from './ServiceKeys';
 
 export interface BootstrapOptions {
@@ -78,7 +79,14 @@ export class GameBootstrapper {
         ServiceKeys.gameState,
         new GameStateService(events, logger.withCategory('GameState')),
       );
-      container.register(ServiceKeys.driving, new DrivingService(catalog, events, logger.withCategory('Driving')));
+      const driving = container.register(
+        ServiceKeys.driving,
+        new DrivingService(catalog, events, logger.withCategory('Driving')),
+      );
+      container.register(
+        ServiceKeys.missions,
+        new MissionService(catalog, driving, events, config.missions, logger.withCategory('Missions')),
+      );
 
       await container.initializeAll();
       gameState.transitionTo('mainMenu');

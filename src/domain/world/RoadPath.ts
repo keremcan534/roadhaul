@@ -70,6 +70,43 @@ export class RoadPath {
   contains(x: number, z: number): boolean {
     return this.distanceTo(x, z) <= this.widthMeters / 2;
   }
+
+  /** Index of the centreline sample closest to (x, z). Samples are about 4 m apart. Allocation-free. */
+  nearestSampleIndex(x: number, z: number): number {
+    let best = 0;
+    let bestDistanceSquared = Infinity;
+    for (let i = 0; i < this.pointCount; i++) {
+      const dx = this.x(i) - x;
+      const dz = this.z(i) - z;
+      const distanceSquared = dx * dx + dz * dz;
+      if (distanceSquared < bestDistanceSquared) {
+        bestDistanceSquared = distanceSquared;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Signed distance along the road from sample `from` to sample `to`:
+   * positive in the direction of increasing sample index. A closed road
+   * takes whichever way round is shorter.
+   */
+  distanceAlong(from: number, to: number): number {
+    const along = (this.distances[to] ?? 0) - (this.distances[from] ?? 0);
+    if (!this.closed) {
+      return along;
+    }
+    const forward = ((along % this.lengthMeters) + this.lengthMeters) % this.lengthMeters;
+    return forward <= this.lengthMeters / 2 ? forward : forward - this.lengthMeters;
+  }
+
+  /** The sample `steps` samples after `index` (before it for negative steps); a closed road wraps, an open one stops at its ends. */
+  stepIndex(index: number, steps: number): number {
+    const count = this.pointCount;
+    const next = index + steps;
+    return this.closed ? ((next % count) + count) % count : Math.max(0, Math.min(count - 1, next));
+  }
 }
 
 function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {

@@ -25,6 +25,10 @@ export interface GameConfig {
     readonly maxPixelRatio: number;
     readonly antialias: boolean;
   };
+  readonly missions: {
+    /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
+    readonly loadingSeconds: number;
+  };
   readonly newGame: {
     readonly startingCredits: Credits;
     /** VehicleDefinition id of the truck every new company starts with. */
@@ -49,6 +53,9 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     maxPixelRatio: 1.5,
     antialias: false,
   },
+  missions: {
+    loadingSeconds: 3,
+  },
   newGame: {
     startingCredits: 5000, // Placeholder until the economy step (roadmap step 14).
     startingVehicleId: 'rh_h1',
@@ -63,7 +70,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, newGame, debug } = config;
+  const { simulation, rendering, missions, newGame, debug } = config;
 
   validator.check(
     Number.isFinite(simulation.fixedStepSeconds) &&
@@ -80,6 +87,11 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   );
   validator.positiveNumber(rendering.maxPixelRatio, 'rendering.maxPixelRatio');
   validator.boolean(rendering.antialias, 'rendering.antialias');
+  validator.check(
+    Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,
+    'missions.loadingSeconds',
+    'must be greater than 0 and at most 30',
+  );
   validator.nonNegativeInteger(newGame.startingCredits, 'newGame.startingCredits');
   validator.check(
     content.vehicles.has(newGame.startingVehicleId),
