@@ -30,12 +30,14 @@ import {
   grassImage,
   gravelImage,
   officeFacadeImage,
+  officeWindowLightsImage,
   softBoxShadowImage,
   softShadowImage,
   warehouseFacadeImage,
+  warehouseWindowLightsImage,
 } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
-import { flatGroundLight, SHADOW_OFFSET_PER_METER } from './lighting';
+import { flatGroundLight, SHADOW_OFFSET_PER_METER, type PrelitMaterials } from './lighting';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
@@ -68,6 +70,10 @@ const GRAVEL_TILE_METERS = 4;
 /** One facade texture tile covers 2 bays × 2 floors. */
 const FACADE_TILE_WIDTH = 8;
 const FACADE_TILE_HEIGHT = 7;
+/** The lit-window maps cover this many facade tiles each way; walls start at different tiles of them. */
+const WINDOW_LIGHT_TILES = 4;
+/** How brightly lit windows glow at night (setLamps(1)). */
+const WINDOW_GLOW = 1.2;
 /** Footprints larger than this are warehouses (ribbed cladding), smaller ones offices. */
 const WAREHOUSE_MIN_AREA = 350;
 /** The ground reaches this far past the map edge, so it fades into the haze instead of ending. */
@@ -80,6 +86,8 @@ const UP = new Vector3(0, 1, 0);
 export interface TrackViewOptions {
   /** Texture anisotropy for the ground and road (renderer capability). */
   readonly anisotropy?: number;
+  /** Where the pre-lit ground and road and the shadows register, to follow the weather's light. */
+  readonly prelit?: PrelitMaterials;
 }
 
 /**
@@ -96,12 +104,17 @@ export class TrackView {
   private readonly resources: { dispose(): void }[] = [];
   /** Flat, upward-facing surfaces are pre-lit: see flatGroundLight(). */
   private readonly groundLight = flatGroundLight();
+  private readonly prelit: PrelitMaterials | undefined;
+  /** Facades whose windows light up at night. */
+  private readonly facades: MeshLambertMaterial[] = [];
+  private lamps = 0;
 
   constructor(
     private readonly scene: Scene,
     world: DrivingWorld,
     options: TrackViewOptions = {},
   ) {
+    this.prelit = options.prelit;
     const anisotropy = options.anisotropy ?? 1;
     this.root.add(this.createGround(world.halfSizeMeters, anisotropy));
     if (world.roads.length > 0) {
@@ -117,6 +130,17 @@ export class TrackView {
       this.root.add(...this.createBuildings(world.buildings));
     }
     scene.add(this.root);
+  }
+
+  /** How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): lit windows glow. Cheap to call every frame. */
+  setLamps(level: number): void {
+    if (level === this.lamps) {
+      return;
+    }
+    this.lamps = level;
+    for (const facade of this.facades) {
+      facade.emissive.setScalar(level * WINDOW_GLOW);
+    }
   }
 
   dispose(): void {
@@ -146,7 +170,9 @@ export class TrackView {
     geometry.setAttribute('color', new BufferAttribute(colors, 3));
     const grass = this.texture(toTexture(grassImage(), { repeat: true, anisotropy }));
     grass.repeat.set(size / GRASS_TILE_METERS, size / GRASS_TILE_METERS);
-    return new Mesh(geometry, this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight })));
+    const material = this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight }));
+    this.prelit?.add(material);
+    return new Mesh(geometry, material);
   }
 
   /**
@@ -392,7 +418,7 @@ export class TrackView {
       const width = box.maxX - box.minX;
       const depth = box.maxZ - box.minZ;
       const tint = new Color(BUILDING_TINTS[index % BUILDING_TINTS.length]!);
-      (width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices).push(wallsGeometry(box, tint));
+      (width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices).push(wallsGeometry(box, tint, index));
       roofs.push(
         new BoxGeometry(width + 0.6, 0.45, depth + 0.6).translate(box.minX + width / 2, box.heightMeters + 0.2, box.minZ + depth / 2),
       );
@@ -416,18 +442,31 @@ export class TrackView {
       }
     };
     add(shadows, this.shadowMaterial(softBoxShadowImage(), 0.38));
-    add(offices, this.facadeMaterial(officeFacadeImage()));
-    add(warehouses, this.facadeMaterial(warehouseFacadeImage()));
+    add(offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)));
+    add(warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)));
     add(roofs, this.track(new MeshLambertMaterial({ color: ROOF_COLOR })));
     return meshes;
   }
 
-  private facadeMaterial(image: PixelImage): MeshLambertMaterial {
-    return this.track(new MeshLambertMaterial({ map: this.texture(toTexture(image, { repeat: true })), vertexColors: true }));
+  /** A facade from `image`, with the windows in `lights` glowing at night (see setLamps). */
+  private facadeMaterial(image: PixelImage, lights: PixelImage): MeshLambertMaterial {
+    const emissiveMap = this.texture(toTexture(lights, { repeat: true }));
+    // The facade repeats every tile; the lit windows every WINDOW_LIGHT_TILES tiles.
+    emissiveMap.repeat.set(1 / WINDOW_LIGHT_TILES, 1 / WINDOW_LIGHT_TILES);
+    const material = this.track(
+      new MeshLambertMaterial({
+        map: this.texture(toTexture(image, { repeat: true })),
+        vertexColors: true,
+        emissive: 0x000000,
+        emissiveMap,
+      }),
+    );
+    this.facades.push(material);
+    return material;
   }
 
   private shadowMaterial(image: PixelImage, opacity: number): MeshBasicMaterial {
-    return this.track(
+    return this.registerShadow(
       new MeshBasicMaterial({
         map: this.texture(toTexture(image, { srgb: false })),
         color: 0x000000,
@@ -441,6 +480,11 @@ export class TrackView {
     );
   }
 
+  private registerShadow(material: MeshBasicMaterial): MeshBasicMaterial {
+    this.prelit?.addShadow(material);
+    return this.track(material);
+  }
+
   /**
    * Road layers lie flat on the ground: pull them toward the camera instead of
    * relying on tiny height gaps. Higher `layer`s win over lower ones. Like
@@ -448,7 +492,7 @@ export class TrackView {
    */
   private overlayMaterial(parameters: { map?: Texture; color?: number }, layer: number): MeshBasicMaterial {
     const { map, color = 0xffffff } = parameters;
-    return this.track(
+    return this.registerLit(
       new MeshBasicMaterial({
         ...(map === undefined ? {} : { map }),
         color: new Color(color).multiply(this.groundLight),
@@ -457,6 +501,11 @@ export class TrackView {
         polygonOffsetUnits: -2 * layer,
       }),
     );
+  }
+
+  private registerLit(material: MeshBasicMaterial): MeshBasicMaterial {
+    this.prelit?.add(material);
+    return this.track(material);
   }
 
   private texture<T extends Texture>(texture: T): T {
@@ -537,9 +586,11 @@ function broadleafCrownGeometry(): BufferGeometry {
 /**
  * The four walls of a building as outward-facing quads, with texture
  * coordinates in facade tiles (so windows keep their size on any building)
- * and the building's tint as vertex colour.
+ * and the building's tint as vertex colour. Each wall starts at a whole
+ * tile picked by the building's `index` and side: the facade looks the
+ * same, but the pattern of windows lit at night differs from wall to wall.
  */
-function wallsGeometry(box: BuildingObstacle, tint: Color): BufferGeometry {
+function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): BufferGeometry {
   const corners = [
     [box.minX, box.maxZ],
     [box.maxX, box.maxZ],
@@ -564,9 +615,11 @@ function wallsGeometry(box: BuildingObstacle, tint: Color): BufferGeometry {
       normals.push(nx, 0, nz);
       colors.push(tint.r, tint.g, tint.b);
     }
-    const u = length / FACADE_TILE_WIDTH;
-    const v = height / FACADE_TILE_HEIGHT;
-    uvs.push(0, 0, u, 0, u, v, 0, v);
+    const u0 = (index * 3 + side) % WINDOW_LIGHT_TILES;
+    const v0 = (index + side * 2) % WINDOW_LIGHT_TILES;
+    const u1 = u0 + length / FACADE_TILE_WIDTH;
+    const v1 = v0 + height / FACADE_TILE_HEIGHT;
+    uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   });
   const geometry = new BufferGeometry();

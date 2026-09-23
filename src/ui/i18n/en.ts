@@ -159,6 +159,11 @@ export const EN: StringTable = {
   'toast.truckDamaged': 'Truck damage {percent}',
   'toast.levelUp': 'Level up! {name}',
 
+  'weather.clear.message': 'The sky is clearing. Enjoy the drive!',
+  'weather.cloudy.message': 'Clouds are rolling in.',
+  'weather.rain.message': 'Rain! The road is getting slippery: brake earlier.',
+  'weather.night.message': 'Night is falling: headlights on, drive carefully.',
+
   'vehicle.rh_h1.name': 'RoadHaul H1',
   'vehicle.rh_h2.name': 'RoadHaul H2',
   'vehicle.rh_h3.name': 'RoadHaul H3',

@@ -5,9 +5,11 @@ import {
   Mesh,
   MeshBasicMaterial,
   PerspectiveCamera,
+  Points,
   Quaternion,
   Scene,
   Vector3,
+  type BufferAttribute,
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
@@ -27,6 +29,31 @@ function wheelsOf(scene: Scene): InstancedMesh {
     throw new Error('No wheels found.');
   }
   return wheels;
+}
+
+function glowsOf(scene: Scene): Points {
+  let glows: Points | undefined;
+  scene.traverse((object) => {
+    if (object instanceof Points) {
+      glows = object;
+    }
+  });
+  if (glows === undefined) {
+    throw new Error('No lamp glows found.');
+  }
+  return glows;
+}
+
+/** The self-lit lamps' material: the one unlit, opaque material painted per vertex. */
+function lampMaterialOf(scene: Scene): MeshBasicMaterial {
+  const materials = new Set<MeshBasicMaterial>();
+  scene.traverse((object) => {
+    if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && !object.material.transparent) {
+      materials.add(object.material);
+    }
+  });
+  expect(materials.size).toBe(1);
+  return [...materials][0]!;
 }
 
 describe.each(VEHICLES)('TruckView of $id', (truck) => {
@@ -188,10 +215,54 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(visibleMeshes()).toBe(empty);
   });
 
+  it('lights the road ahead and makes its lamps glow at night, and does neither by day', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const pool = scene.getObjectByName('headlight-pool') as Mesh;
+    const glows = glowsOf(scene);
+    const lamps = lampMaterialOf(scene);
+    const dayBrightness = lamps.color.r;
+    expect(pool.visible).toBe(false);
+    expect(glows.visible).toBe(false);
+
+    view.setLamps(1);
+
+    expect(pool.visible).toBe(true);
+    expect(glows.visible).toBe(true);
+    expect(lamps.color.r).toBeGreaterThan(dayBrightness * 2);
+    // The light lies flat on the road, from the front bumper on.
+    const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
+    const bounds = new Box3().setFromBufferAttribute(pool.geometry.getAttribute('position') as BufferAttribute);
+    expect(bounds.min.z).toBeCloseTo(front, 5);
+    expect(bounds.max.z).toBeGreaterThan(front + 25);
+    expect(bounds.max.y - bounds.min.y).toBeLessThan(1e-6);
+    expect(bounds.max.y).toBeLessThan(0.2);
+    // A glow on each headlight, ahead of the nose, and on each tail light, behind the back.
+    expect(glows.geometry.drawRange.count).toBe(4);
+    const positions = glows.geometry.getAttribute('position');
+    const colors = glows.geometry.getAttribute('color');
+    for (let i = 0; i < 4; i++) {
+      if (i < 2) {
+        expect(positions.getZ(i)).toBeGreaterThan(front);
+        expect(colors.getX(i) - colors.getZ(i)).toBeLessThan(0.5); // White, a little warm.
+      } else {
+        expect(positions.getZ(i)).toBeLessThan(front - truck.body.lengthMeters);
+        expect(colors.getX(i) - colors.getZ(i)).toBeGreaterThan(0.8); // Red.
+      }
+    }
+
+    view.setLamps(0);
+
+    expect(pool.visible).toBe(false);
+    expect(glows.visible).toBe(false);
+    expect(lamps.color.r).toBe(dayBrightness);
+  });
+
   it('releases every GPU resource on dispose', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
     view.setLoaded(true);
+    view.setLamps(1);
     const resources = gpuResources(scene);
     const disposed = watchDisposal(resources);
 

@@ -19,13 +19,14 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, truck, upgrade, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, cargo, mission, truck, upgrade, weather, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
       ...GAME_CONTENT.missions.map((mission) => `mission.${mission.id}.title`),
       ...GAME_CONTENT.vehicles.map((vehicle) => `vehicle.${vehicle.id}.name`),
       ...GAME_CONTENT.upgrades.map((upgrade) => `upgrade.${upgrade.id}.name`),
+      ...GAME_CONTENT.weather.map((weather) => `weather.${weather.id}.message`),
       ...VEHICLE_STATS.map((stat) => `stat.${stat}`),
       ...VEHICLE_CLASSES.map((vehicleClass) => `vehicleClass.${vehicleClass}`),
       ...BODY_TYPES.map((body) => `body.${body}`),

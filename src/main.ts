@@ -21,6 +21,8 @@ import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
+import { RainView } from './presentation/weather/RainView';
+import { PrelitMaterials } from './presentation/world/lighting';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
@@ -47,8 +49,8 @@ import './ui/styles.css';
  * as it goes.
  *
  * `<html data-boot-state>` (booting | ready | error), `data-game-state`,
- * `data-mission-state` and `data-vehicle` let the end-to-end tests follow
- * progress.
+ * `data-mission-state`, `data-vehicle`, `data-traffic` and `data-weather`
+ * let the end-to-end tests follow progress.
  */
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -77,6 +79,7 @@ async function start(): Promise<void> {
   const gameState = services.resolve(ServiceKeys.gameState);
   const driving = services.resolve(ServiceKeys.driving);
   const traffic = services.resolve(ServiceKeys.traffic);
+  const weather = services.resolve(ServiceKeys.weather);
   const missions = services.resolve(ServiceKeys.missions);
   const navigation = services.resolve(ServiceKeys.navigation);
   const economy = services.resolve(ServiceKeys.economy);
@@ -97,13 +100,15 @@ async function start(): Promise<void> {
   driving.start(config.newGame.startingVehicleId, config.newGame.startingMapId);
 
   const renderHost = new RenderHost(canvas, config.rendering);
-  // The views add themselves to the scene for the page's lifetime.
+  // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
+  const prelit = new PrelitMaterials();
   const environment = new EnvironmentView(renderHost.scene);
-  new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
-  const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy });
-  new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
+  const track = new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
+  const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
+  new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles);
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
+  const rain = new RainView(renderHost.scene);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
@@ -354,6 +359,12 @@ async function start(): Promise<void> {
       toasts.show(strings.t('toast.truckDamaged', { percent: strings.percent(total) }), 'warning');
     }
   });
+  events.on('WeatherChanged', ({ weatherId }) => {
+    root.dataset.weather = weatherId;
+    if (isDriving()) {
+      toasts.show(strings.t(`weather.${weatherId}.message`), 'info');
+    }
+  });
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
@@ -394,6 +405,7 @@ async function start(): Promise<void> {
   });
   root.dataset.missionState = 'none';
   root.dataset.vehicle = driving.definition.id;
+  root.dataset.weather = weather.current.id;
   showState(gameState.current);
 
   // Closing or hiding the tab keeps the latest state.
@@ -422,6 +434,7 @@ async function start(): Promise<void> {
 
   const resize = (): void => {
     renderHost.setSize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio);
+    rain.setViewport(canvas.clientWidth * renderHost.pixelRatio, canvas.clientHeight * renderHost.pixelRatio);
   };
   resize();
   new ResizeObserver(resize).observe(canvas);
@@ -436,8 +449,10 @@ async function start(): Promise<void> {
         if (paused) {
           return;
         }
-        // Traffic moves first, so the truck collides with where it is now. It drives behind the menus too.
+        // Traffic moves first, so the truck collides with where it is now. It drives behind the menus too,
+        // under the weather.
         traffic.update(stepSeconds);
+        weather.update(stepSeconds);
         if (!isDriving()) {
           return;
         }
@@ -454,6 +469,10 @@ async function start(): Promise<void> {
         const vehicle = driving.vehicle;
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        const lamps = weather.lamps;
+        track.setLamps(lamps);
+        trafficView.setLamps(lamps);
+        truck.setLamps(lamps);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
         trafficView.update(traffic.simulation, paused ? 1 : alpha);
         gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
@@ -463,7 +482,10 @@ async function start(): Promise<void> {
           root.dataset.traffic = String(vehicles);
         }
         cameraRig.update(pose, vehicle.speed, deltaSeconds);
+        environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
         environment.update(renderHost.camera.position);
+        const eye = renderHost.camera.position;
+        rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         restArea.visible = simulating;

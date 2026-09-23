@@ -1,4 +1,4 @@
-import { Frustum, InstancedMesh, Matrix4, Mesh, PerspectiveCamera, Scene, Vector3 } from 'three';
+import { Frustum, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
@@ -112,6 +112,44 @@ describe('TrackView', () => {
     });
 
     expect(wallVertices).toBe(world.buildings.length * 16);
+  });
+
+  it('lights windows at night, a different pattern on each wall', () => {
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const facades = new Map<MeshLambertMaterial, Mesh>();
+    scene.traverse((object) => {
+      if (object instanceof Mesh && object.material instanceof MeshLambertMaterial && object.material.emissiveMap !== null) {
+        facades.set(object.material, object);
+      }
+    });
+    expect(facades.size).toBe(2); // Offices and warehouses.
+    for (const facade of facades.keys()) {
+      expect(facade.emissive.getHex()).toBe(0x000000);
+      // The lit windows cover several facade tiles before they repeat.
+      expect(facade.emissiveMap!.repeat.x).toBeLessThan(1);
+    }
+
+    view.setLamps(1);
+    for (const facade of facades.keys()) {
+      expect(facade.emissive.r).toBeGreaterThan(0.9);
+    }
+    view.setLamps(0);
+    for (const facade of facades.keys()) {
+      expect(facade.emissive.getHex()).toBe(0x000000);
+    }
+
+    // Walls start at whole facade tiles (so the facade looks the same), but not all at the same one.
+    const starts = new Set<string>();
+    for (const mesh of facades.values()) {
+      const uv = mesh.geometry.getAttribute('uv');
+      for (let i = 0; i < uv.count; i += 4) {
+        expect(Number.isInteger(uv.getX(i))).toBe(true);
+        expect(Number.isInteger(uv.getY(i))).toBe(true);
+        starts.add(`${uv.getX(i)},${uv.getY(i)}`);
+      }
+    }
+    expect(starts.size).toBeGreaterThan(4);
   });
 
   it('turns every flat ground-level surface up toward the sky', () => {

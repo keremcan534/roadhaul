@@ -145,6 +145,71 @@ export function warehouseFacadeImage(size = 256, seed = 43): PixelImage {
   return image;
 }
 
+/**
+ * Office windows lit at night, as an emissive map: `tiles` × `tiles` facade
+ * tiles in officeFacadeImage()'s layout (2 bays × 2 floors each), with about
+ * half the windows glowing warm, each a little differently. Black elsewhere.
+ */
+export function officeWindowLightsImage(tiles = 4, tileSize = 64, seed = 53): PixelImage {
+  const size = tiles * tileSize;
+  const image = createImage(size, size, [0, 0, 0]);
+  const cell = tileSize / 2;
+  for (let row = 0; row < tiles * 2; row++) {
+    for (let column = 0; column < tiles * 2; column++) {
+      if (grain(column, row, seed) < 0.45) {
+        continue;
+      }
+      const x0 = column * cell;
+      const y0 = row * cell;
+      fillRect(image, x0 + cell * 0.2, y0 + cell * 0.3, x0 + cell * 0.8, y0 + cell * 0.8, windowLight(grain(column, row, seed + 1)));
+    }
+  }
+  return image;
+}
+
+/** The same for warehouses: warehouseFacadeImage()'s row of four high windows per tile. */
+export function warehouseWindowLightsImage(tiles = 4, tileSize = 64, seed = 59): PixelImage {
+  const size = tiles * tileSize;
+  const image = createImage(size, size, [0, 0, 0]);
+  const pane = tileSize / 4;
+  for (let row = 0; row < tiles; row++) {
+    for (let column = 0; column < tiles * 4; column++) {
+      if (grain(column, row, seed) < 0.5) {
+        continue;
+      }
+      const y0 = row * tileSize;
+      fillRect(
+        image,
+        (column + 0.18) * pane,
+        y0 + tileSize * 0.8,
+        (column + 0.82) * pane,
+        y0 + tileSize * 0.9,
+        windowLight(grain(column, row, seed + 1)),
+      );
+    }
+  }
+  return image;
+}
+
+/** Warm window light, from a dim amber (t = 0) to a bright cream (t = 1). */
+function windowLight(t: number): Rgb {
+  return mixRgb([150, 96, 40], [255, 214, 150], t);
+}
+
+/** A lamp's glow at night: white, its alpha fading from a bright core out to a soft halo. */
+export function glowImage(size = 64): PixelImage {
+  const image = createImage(size, size, [255, 255, 255], 0);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const r = Math.hypot((x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5) * 2;
+      const halo = Math.max(0, 1 - r) ** 2.5;
+      const core = 1 - smoothstep(0.08, 0.3, r);
+      image.data[(y * size + x) * 4 + 3] = Math.round(255 * Math.min(1, halo * 0.8 + core));
+    }
+  }
+  return image;
+}
+
 /** A soft round shadow (black with falling-off alpha) for trees and the truck. */
 export function softShadowImage(size = 64): PixelImage {
   const image = createImage(size, size, [0, 0, 0], 0);

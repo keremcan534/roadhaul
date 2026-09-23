@@ -16,7 +16,7 @@ import type { DepotDefinition, RectangleDefinition } from '../../data/definition
 import { concreteImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { pavedRectangle, placeFlat } from './groundDecals';
-import { flatGroundLight } from './lighting';
+import { flatGroundLight, type PrelitMaterials } from './lighting';
 
 /** Yards lie over the grass and the road's gravel shoulders but under the asphalt (see TrackView's layers). */
 const YARD_Y = 0.02;
@@ -42,6 +42,8 @@ export const BEACON_COLORS: Readonly<Record<DepotTargetKind, number>> = { pickup
 export interface DepotViewOptions {
   /** Texture anisotropy for the concrete (renderer capability). */
   readonly anisotropy?: number;
+  /** Where the pre-lit yards register, to follow the weather's light. */
+  readonly prelit?: PrelitMaterials;
 }
 
 /**
@@ -60,12 +62,14 @@ export class DepotView {
   private activeBay: RectangleDefinition | null = null;
   private readonly bays = new Map<string, RectangleDefinition>();
   private pulseSeconds = 0;
+  private readonly prelit: PrelitMaterials | undefined;
 
   constructor(
     private readonly scene: Scene,
     depots: readonly DepotDefinition[],
     options: DepotViewOptions = {},
   ) {
+    this.prelit = options.prelit;
     const groundLight = flatGroundLight();
     if (depots.length > 0) {
       const concrete = this.track(toTexture(concreteImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 }));
@@ -164,7 +168,7 @@ export class DepotView {
 
   /** Unlit and pre-lit like the road (flatGroundLight), pulled toward the camera by `layer` (see TrackView). */
   private overlayMaterial(map: Texture | null, color: Color, layer: number): MeshBasicMaterial {
-    return this.track(
+    const material = this.track(
       new MeshBasicMaterial({
         ...(map === null ? {} : { map }),
         color,
@@ -173,6 +177,8 @@ export class DepotView {
         polygonOffsetUnits: -2 * layer,
       }),
     );
+    this.prelit?.add(material);
+    return material;
   }
 
   /** Remembers a GPU resource so dispose() can release it. */

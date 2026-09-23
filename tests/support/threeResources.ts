@@ -1,12 +1,17 @@
-import { BufferGeometry, InstancedMesh, Material, Mesh, Texture, type Object3D } from 'three';
+import { BufferGeometry, InstancedMesh, Line, Material, Mesh, Points, Texture, type Object3D } from 'three';
 
 type GpuResource = BufferGeometry | Material | InstancedMesh | Texture;
+
+/** Objects that draw: meshes (instanced or not), points and lines. */
+function isDrawn(object: Object3D): object is Mesh | Points | Line {
+  return object instanceof Mesh || object instanceof Points || object instanceof Line;
+}
 
 /** Every GPU-backed resource in a subtree: geometries, materials, their textures and instanced meshes. */
 export function gpuResources(root: Object3D): Set<GpuResource> {
   const resources = new Set<GpuResource>();
   root.traverse((object) => {
-    if (object instanceof Mesh) {
+    if (isDrawn(object)) {
       resources.add(object.geometry as BufferGeometry);
       for (const material of [object.material].flat() as Material[]) {
         resources.add(material);
@@ -33,11 +38,11 @@ export function watchDisposal(resources: Iterable<GpuResource>): Set<GpuResource
   return disposed;
 }
 
-/** Number of draw calls a subtree costs: one per mesh (instanced or not). */
+/** Number of draw calls a subtree costs with everything shown: one per mesh (instanced or not), points or lines. */
 export function drawCallCount(root: Object3D): number {
   let count = 0;
   root.traverse((object) => {
-    if (object instanceof Mesh) {
+    if (isDrawn(object)) {
       count++;
     }
   });

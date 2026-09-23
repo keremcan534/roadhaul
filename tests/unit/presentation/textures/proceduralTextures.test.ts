@@ -4,11 +4,14 @@ import { createImage, type PixelImage } from '../../../../src/presentation/textu
 import {
   asphaltImage,
   concreteImage,
+  glowImage,
   grassImage,
   liveryImage,
   officeFacadeImage,
+  officeWindowLightsImage,
   rearDoorsImage,
   softShadowImage,
+  warehouseWindowLightsImage,
 } from '../../../../src/presentation/textures/proceduralImages';
 import { drawText, measureText } from '../../../../src/presentation/textures/strokeFont';
 import { toTexture } from '../../../../src/presentation/textures/toTexture';
@@ -134,6 +137,56 @@ describe('procedural images', () => {
     // Wall between windows stays light.
     const [wr, wg, wb] = pixel(facade, 64, 20);
     expect(wr! + wg! + wb!).toBeGreaterThan(3 * 180);
+  });
+
+  it('light about half the office windows at night, and nothing between them', () => {
+    const tiles = 4;
+    const tileSize = 64;
+    const lights = officeWindowLightsImage(tiles, tileSize);
+    const cell = tileSize / 2; // A window per cell: two bays by two floors a tile, as on the facade.
+    let lit = 0;
+    for (let row = 0; row < tiles * 2; row++) {
+      for (let column = 0; column < tiles * 2; column++) {
+        const [r, g, b] = pixel(lights, column * cell + cell / 2, row * cell + Math.round(cell * 0.55));
+        if (r! + g! + b! > 0) {
+          lit++;
+          expect(r!).toBeGreaterThan(b!); // Warm light.
+        }
+        // The wall beside and under each window stays dark.
+        expect(pixel(lights, column * cell + 2, row * cell + cell / 2).slice(0, 3)).toEqual([0, 0, 0]);
+        expect(pixel(lights, column * cell + cell / 2, row * cell + 3).slice(0, 3)).toEqual([0, 0, 0]);
+      }
+    }
+    expect(lit / (tiles * tiles * 4)).toBeGreaterThan(0.3);
+    expect(lit / (tiles * tiles * 4)).toBeLessThan(0.7);
+  });
+
+  it('light some of the warehouses\' high windows at night, and only those', () => {
+    const lights = warehouseWindowLightsImage(4, 64);
+    let lit = 0;
+    for (let y = 0; y < lights.height; y++) {
+      for (let x = 0; x < lights.width; x++) {
+        const [r, g, b] = pixel(lights, x, y);
+        if (r! + g! + b! > 0) {
+          lit++;
+          const upTheTile = (y % 64) / 64;
+          expect(upTheTile).toBeGreaterThanOrEqual(0.79);
+          expect(upTheTile).toBeLessThan(0.91);
+        }
+      }
+    }
+    expect(lit).toBeGreaterThan(0);
+  });
+
+  it('glow brightest in the middle, fading to nothing at the edge', () => {
+    const glow = glowImage(32);
+
+    expect(pixel(glow, 16, 16)).toEqual([255, 255, 255, 255]);
+    expect(pixel(glow, 0, 16)[3]).toBeLessThan(5);
+    expect(pixel(glow, 0, 0)[3]).toBe(0);
+    for (let x = 17; x < 31; x++) {
+      expect(pixel(glow, x + 1, 16)[3]).toBeLessThanOrEqual(pixel(glow, x, 16)[3]!);
+    }
   });
 
   it('fade the soft shadow from the centre to transparent edges', () => {

@@ -20,13 +20,16 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import type { WeatherLook } from '../../data/definitions/WeatherDefinition';
 import {
   GROUND_LIGHT_COLOR,
+  relativeGroundLight,
   SKY_LIGHT_COLOR,
   SKY_LIGHT_INTENSITY,
   SUN_COLOR,
   SUN_DIRECTION,
   SUN_INTENSITY,
+  type PrelitMaterials,
 } from './lighting';
 
 const ZENITH = 0x3f7fc7;
@@ -36,30 +39,108 @@ const GROUND_HAZE = 0xa9bfcf;
 const FOG_DENSITY = 0.0023;
 const DOME_RADIUS = 800;
 const HILL_RADIUS = 640;
-const CLOUD_COUNT = 26;
+/** Clouds in a fully overcast sky; the weather shows a share of them. */
+const CLOUD_COUNT = 48;
+const CLOUD_COLOR = 0xf6f8fb;
+const CLOUD_EMISSIVE = 0x6d7a88;
+/** The ground below the horizon is the horizon's colour, this much darker. */
+const GROUND_HAZE_SHADE = 0.86;
 
 /**
  * Sky, horizon and light: a gradient dome with a sun glow, low-poly clouds,
  * a ring of hazy hills, fog, and the sun and sky lights. The dome, clouds
  * and hills follow the camera (call update() every frame), so they always
- * sit at the horizon. About three draw calls.
+ * sit at the horizon. About three draw calls. applyWeather() turns it all
+ * to the weather (spec §38): sky, haze, light, clouds, and the pre-lit
+ * ground with it.
  */
 export class EnvironmentView {
   private readonly backdrop = new Group();
   private readonly lights: readonly (HemisphereLight | DirectionalLight)[];
+  private readonly skyLight: HemisphereLight;
+  private readonly sunLight: DirectionalLight;
+  private readonly fog: FogExp2;
+  private readonly background: Color;
+  private readonly skyUniforms: {
+    readonly zenith: { value: Color };
+    readonly horizon: { value: Color };
+    readonly groundHaze: { value: Color };
+    readonly sunColor: { value: Color };
+  };
+  private readonly clouds: InstancedMesh;
+  private readonly cloudMaterial: MeshLambertMaterial;
   private readonly resources: { dispose(): void }[] = [];
+  /** Scratch colours for blending looks, and what was last applied (so an unchanged look costs nothing). */
+  private readonly tint = new Color();
+  private readonly scratch = new Color();
+  private readonly groundLight = new Color();
+  private appliedFrom: WeatherLook | null = null;
+  private appliedTo: WeatherLook | null = null;
+  private appliedBlend = Number.NaN;
 
   constructor(private readonly scene: Scene) {
-    scene.background = new Color(HORIZON);
-    scene.fog = new FogExp2(HORIZON, FOG_DENSITY);
+    this.background = new Color(HORIZON);
+    scene.background = this.background;
+    this.fog = new FogExp2(HORIZON, FOG_DENSITY);
+    scene.fog = this.fog;
 
-    const sun = new DirectionalLight(SUN_COLOR, SUN_INTENSITY);
-    sun.position.set(SUN_DIRECTION.x * 300, SUN_DIRECTION.y * 300, SUN_DIRECTION.z * 300);
-    this.lights = [new HemisphereLight(SKY_LIGHT_COLOR, GROUND_LIGHT_COLOR, SKY_LIGHT_INTENSITY), sun];
+    this.sunLight = new DirectionalLight(SUN_COLOR, SUN_INTENSITY);
+    this.sunLight.position.set(SUN_DIRECTION.x * 300, SUN_DIRECTION.y * 300, SUN_DIRECTION.z * 300);
+    this.skyLight = new HemisphereLight(SKY_LIGHT_COLOR, GROUND_LIGHT_COLOR, SKY_LIGHT_INTENSITY);
+    this.lights = [this.skyLight, this.sunLight];
     scene.add(...this.lights);
 
-    this.backdrop.add(this.createDome(), this.createHills(), this.createClouds());
+    this.skyUniforms = {
+      zenith: { value: new Color(ZENITH) },
+      horizon: { value: new Color(HORIZON) },
+      groundHaze: { value: new Color(GROUND_HAZE) },
+      sunColor: { value: new Color(SUN_COLOR) },
+    };
+    this.cloudMaterial = this.track(
+      new MeshLambertMaterial({ color: CLOUD_COLOR, emissive: CLOUD_EMISSIVE, flatShading: true, fog: false }),
+    );
+    this.clouds = this.createClouds();
+    this.clouds.count = Math.round(CLOUD_COUNT * 0.55);
+    this.backdrop.add(this.createDome(), this.createHills(), this.clouds);
     scene.add(this.backdrop);
+  }
+
+  /**
+   * Shows the weather `blend` (0..1) of the way from look `from` to look
+   * `to`, and relights the pre-lit ground in `prelit`. Cheap to call every
+   * frame: it does nothing while the look stays the same. Allocation-free.
+   */
+  applyWeather(from: WeatherLook, to: WeatherLook, blend: number, prelit?: PrelitMaterials): void {
+    if (from === this.appliedFrom && to === this.appliedTo && blend === this.appliedBlend) {
+      return;
+    }
+    this.appliedFrom = from;
+    this.appliedTo = to;
+    this.appliedBlend = blend;
+    const sunlight = mix(from.sunlight, to.sunlight, blend);
+    const skylight = mix(from.skylight, to.skylight, blend);
+    this.tint.setHex(from.lightColor).lerp(this.scratch.setHex(to.lightColor), blend);
+
+    const uniforms = this.skyUniforms;
+    uniforms.zenith.value.setHex(from.zenithColor).lerp(this.scratch.setHex(to.zenithColor), blend);
+    uniforms.horizon.value.setHex(from.horizonColor).lerp(this.scratch.setHex(to.horizonColor), blend);
+    uniforms.groundHaze.value.copy(uniforms.horizon.value).multiplyScalar(GROUND_HAZE_SHADE);
+    uniforms.sunColor.value.setHex(SUN_COLOR).multiplyScalar(sunlight);
+    this.background.copy(uniforms.horizon.value);
+    this.fog.color.copy(uniforms.horizon.value);
+    this.fog.density = mix(from.fogDensity, to.fogDensity, blend);
+
+    this.skyLight.intensity = SKY_LIGHT_INTENSITY * skylight;
+    this.skyLight.color.setHex(SKY_LIGHT_COLOR).multiply(this.tint);
+    this.sunLight.intensity = SUN_INTENSITY * sunlight;
+    this.sunLight.color.setHex(SUN_COLOR).multiply(this.tint);
+
+    const brightness = mix(from.cloudBrightness, to.cloudBrightness, blend);
+    this.cloudMaterial.color.setHex(CLOUD_COLOR).multiplyScalar(brightness);
+    this.cloudMaterial.emissive.setHex(CLOUD_EMISSIVE).multiplyScalar(brightness);
+    this.clouds.count = Math.round(CLOUD_COUNT * mix(from.cloudCover, to.cloudCover, blend));
+
+    prelit?.setLight(relativeGroundLight(sunlight, skylight, this.tint, this.groundLight), sunlight);
   }
 
   /** Keeps the backdrop centred on the camera. Allocation-free. */
@@ -83,10 +164,7 @@ export class EnvironmentView {
         depthWrite: false,
         fog: false,
         uniforms: {
-          zenith: { value: new Color(ZENITH) },
-          horizon: { value: new Color(HORIZON) },
-          groundHaze: { value: new Color(GROUND_HAZE) },
-          sunColor: { value: new Color(SUN_COLOR) },
+          ...this.skyUniforms,
           sunDirection: { value: new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z) },
         },
         vertexShader: /* glsl */ `
@@ -193,13 +271,7 @@ export class EnvironmentView {
       position.setY(i, Math.max(position.getY(i), -0.35));
     }
     cloud.computeVertexNormals();
-    const clouds = this.track(
-      new InstancedMesh(
-        this.track(cloud),
-        this.track(new MeshLambertMaterial({ color: 0xf6f8fb, emissive: 0x6d7a88, flatShading: true, fog: false })),
-        CLOUD_COUNT,
-      ),
-    );
+    const clouds = this.track(new InstancedMesh(this.track(cloud), this.cloudMaterial, CLOUD_COUNT));
     const matrix = new Matrix4();
     const where = new Vector3();
     const rotation = new Quaternion();
@@ -223,4 +295,8 @@ export class EnvironmentView {
     this.resources.push(resource);
     return resource;
   }
+}
+
+function mix(from: number, to: number, t: number): number {
+  return from + (to - from) * t;
 }

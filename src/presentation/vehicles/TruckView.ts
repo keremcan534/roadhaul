@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -15,6 +16,7 @@ import {
   MeshPhongMaterial,
   PlaneGeometry,
   Quaternion,
+  ShaderMaterial,
   Vector3,
   type Material,
   type Scene,
@@ -28,6 +30,7 @@ import type { VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
 import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
+import { LampGlows } from './LampGlows';
 
 /** Cab paint and livery accent per truck class: original colours, no real-world liveries. */
 const CLASS_PAINT: Readonly<Record<VehicleClass, number>> = {
@@ -50,6 +53,19 @@ const ROLL_PER_ACCELERATION = 0.012;
 const MAX_LEAN = 0.07;
 const LEAN_RESPONSE_RATE = 5;
 
+/** The lamps shine this much brighter at night (setLamps(1)) than by day. */
+const LAMP_NIGHT_BOOST = 1.5;
+const HEADLIGHT_GLOW = 0xfff1cf;
+const TAIL_LIGHT_GLOW = 0xff2a1a;
+const GLOW_SIZE_METERS = 1.8;
+/** The headlights' pool of light on the road: its extent ahead of the bumper and across, and its colour. */
+const POOL_LENGTH_METERS = 40;
+const POOL_WIDTH_METERS = 20;
+/** Above the road's markings and the GPS line, so it lights them too. */
+const POOL_Y = 0.11;
+const POOL_COLOR = 0xffe7b8;
+const POOL_STRENGTH = 0.5;
+
 type PartMaterial =
   | 'paint'
   | 'dark'
@@ -69,9 +85,10 @@ type PartMaterial =
  * and doors; a refrigerated one adds a cooling unit over the cab; a flatbed
  * has a deck, headboard and stakes, and shows its load of bricks while loaded.
  * Heavy trucks stand on two rear axles. Parts that share a material are
- * merged, so a truck costs about 15 draw calls. Its origin is the rear axle,
- * like VehicleRuntimeState. Front wheels steer, all wheels roll, and the body
- * pitches and rolls with acceleration.
+ * merged, so a truck costs about 15 draw calls (two more at night, when its
+ * lamps glow and the headlights light the road: setLamps()). Its origin is
+ * the rear axle, like VehicleRuntimeState. Front wheels steer, all wheels
+ * roll, and the body pitches and rolls with acceleration.
  *
  * update() runs every frame and allocates nothing.
  */
@@ -84,6 +101,12 @@ export class TruckView {
   /** The flatbed's visible load; null for closed bodies, whose load is out of sight. */
   private readonly load: Mesh | null = null;
   private readonly wheels: InstancedMesh;
+  /** Night: brighter lamps, their glows, and the headlights' light on the road ahead. */
+  private readonly lampMaterial: MeshBasicMaterial;
+  private readonly glows: LampGlows;
+  private readonly headlightPool: Mesh;
+  private readonly poolIntensity = { value: 0 };
+  private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
   private wheelSpin = 0;
@@ -232,12 +255,13 @@ export class TruckView {
     }
 
     const accentRgb: Rgb = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
+    this.lampMaterial = this.track(new MeshBasicMaterial({ vertexColors: true }));
     const materials: Readonly<Record<PartMaterial, Material>> = {
       paint: this.track(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 })),
       dark: this.track(new MeshLambertMaterial({ color: 0x2b2e33 })),
       metal: this.track(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd })),
       glass: this.track(new MeshPhongMaterial({ color: 0x1b2733, shininess: 140, specular: 0x9aa7b3 })),
-      lamps: this.track(new MeshBasicMaterial({ vertexColors: true })),
+      lamps: this.lampMaterial,
       grille: this.track(new MeshLambertMaterial({ map: this.texture(toTexture(grilleImage())) })),
       panels: this.track(new MeshPhongMaterial({ color: 0xf2f2ee, shininess: 25, specular: 0x222222 })),
       livery: this.track(
@@ -316,7 +340,21 @@ export class TruckView {
       ),
     );
 
-    this.root.add(shadow, this.body, this.dashboard, this.wheels);
+    // At night: a glow on each headlight and tail light (they lean with the body), and light on the road ahead.
+    const headlightX = halfW - 0.32;
+    this.glows = this.track(new LampGlows(4, GLOW_SIZE_METERS));
+    for (const side of [1, -1] as const) {
+      const index = side === 1 ? 0 : 1;
+      this.glows.setPosition(index, side * headlightX, bumperTop + 0.2, frontZ + 0.12);
+      this.glows.setColor(index, HEADLIGHT_GLOW);
+      this.glows.setPosition(index + 2, side * (halfW - 0.3), R + 0.26, rearZ - 0.12);
+      this.glows.setColor(index + 2, TAIL_LIGHT_GLOW);
+    }
+    this.glows.setCount(4);
+    this.body.add(this.glows.points);
+    this.headlightPool = this.createHeadlightPool(frontZ, headlightX);
+
+    this.root.add(shadow, this.headlightPool, this.body, this.dashboard, this.wheels);
     scene.add(this.root);
   }
 
@@ -344,6 +382,22 @@ export class TruckView {
     }
   }
 
+  /**
+   * How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night):
+   * brighter lamps, a glow round them, and the headlights' pool of light on
+   * the road ahead. Cheap to call every frame.
+   */
+  setLamps(level: number): void {
+    if (level === this.lamps) {
+      return;
+    }
+    this.lamps = level;
+    this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
+    this.glows.setLevel(level);
+    this.poolIntensity.value = level * POOL_STRENGTH;
+    this.headlightPool.visible = level > 0.01;
+  }
+
   /** From the driver's seat the windshield would block the view: swap it for the dashboard. */
   setCabinView(enabled: boolean): void {
     this.windshield.visible = !enabled;
@@ -355,6 +409,60 @@ export class TruckView {
     for (const resource of this.resources) {
       resource.dispose();
     }
+  }
+
+  /**
+   * The headlights' light on the road: two beams from the lamps `lampX` either
+   * side of the middle, widening ahead of the bumper at `frontZ` and fading
+   * out with distance. Added onto the road, so it lights whatever lies there.
+   */
+  private createHeadlightPool(frontZ: number, lampX: number): Mesh {
+    const geometry = new PlaneGeometry(POOL_WIDTH_METERS, POOL_LENGTH_METERS)
+      .rotateX(-Math.PI / 2)
+      .translate(0, POOL_Y, frontZ + POOL_LENGTH_METERS / 2);
+    const material = new ShaderMaterial({
+      uniforms: { intensity: this.poolIntensity, color: { value: new Color(POOL_COLOR) } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      // The road's layers are pulled toward the camera (TrackView): pull the light further, or far off, where
+      // the road is seen at a grazing angle, the road would cover it.
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -12,
+      vertexShader: /* glsl */ `
+        varying vec2 vPlace;
+        void main() {
+          // Across the truck, and ahead of its front bumper, in meters.
+          vPlace = vec2(position.x, position.z - ${frontZ.toFixed(3)});
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        #define LAMP_X ${lampX.toFixed(3)}
+        #define LENGTH ${POOL_LENGTH_METERS.toFixed(1)}
+        #define HALF_WIDTH ${(POOL_WIDTH_METERS / 2).toFixed(1)}
+        uniform float intensity;
+        uniform vec3 color;
+        varying vec2 vPlace;
+        float beam(float x, float ahead, float lampX) {
+          float across = (x - lampX) / (0.35 + ahead * 0.18);
+          return exp(-across * across * 1.5);
+        }
+        void main() {
+          float ahead = vPlace.y;
+          float light = min(beam(vPlace.x, ahead, -LAMP_X) + beam(vPlace.x, ahead, LAMP_X), 1.3);
+          float distance = ahead / 16.0;
+          light *= smoothstep(0.3, 4.0, ahead) * (1.0 - smoothstep(LENGTH * 0.5, LENGTH - 1.0, ahead)) / (1.0 + distance * distance);
+          light *= 1.0 - smoothstep(0.7, 1.0, abs(vPlace.x) / HALF_WIDTH);
+          gl_FragColor = vec4(color * light * intensity, 1.0);
+        }
+      `,
+    });
+    const pool = new Mesh(this.track(geometry), this.track(material));
+    pool.name = 'headlight-pool';
+    pool.visible = false;
+    return pool;
   }
 
   /** Tyres with a rim on each face: two draw calls for all the wheels. */

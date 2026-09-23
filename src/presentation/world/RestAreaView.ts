@@ -16,7 +16,7 @@ import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import { concreteImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { pavedRectangle, placeFlat } from './groundDecals';
-import { flatGroundLight } from './lighting';
+import { flatGroundLight, type PrelitMaterials } from './lighting';
 
 /** The lot lies like a depot yard: over the grass and shoulders, under the asphalt (see TrackView). */
 const LOT_Y = 0.02;
@@ -42,6 +42,8 @@ const SCREEN_COLOR = 0x1f262e;
 export interface RestAreaViewOptions {
   /** Texture anisotropy for the concrete (renderer capability). */
   readonly anisotropy?: number;
+  /** Where the pre-lit lot registers, to follow the weather's light. */
+  readonly prelit?: PrelitMaterials;
 }
 
 /**
@@ -68,7 +70,8 @@ export class RestAreaView {
       this.root.add(
         new Mesh(
           this.merged(restAreas.map((restArea) => pavedRectangle(restArea.lot, CONCRETE_TILE_METERS, LOT_Y))),
-          this.track(
+          this.prelitMaterial(
+            options.prelit,
             new MeshBasicMaterial({
               map: concrete,
               color: new Color(0xffffff).multiply(groundLight),
@@ -80,7 +83,8 @@ export class RestAreaView {
         ),
         new Mesh(
           this.merged(restAreas.flatMap((restArea, index) => stallLines(restArea.lot, backs[index]!))),
-          this.track(
+          this.prelitMaterial(
+            options.prelit,
             new MeshBasicMaterial({
               color: new Color(0xf4f3ec).multiply(groundLight),
               polygonOffset: true,
@@ -111,6 +115,11 @@ export class RestAreaView {
       part.dispose();
     }
     return geometry;
+  }
+
+  private prelitMaterial(prelit: PrelitMaterials | undefined, material: MeshBasicMaterial): MeshBasicMaterial {
+    prelit?.add(material);
+    return this.track(material);
   }
 
   /** Remembers a GPU resource so dispose() can release it. */
