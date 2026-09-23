@@ -1,0 +1,146 @@
+import { describe, expect, it } from 'vitest';
+import { fractalNoise, grain, tileableNoise } from '../../../../src/presentation/textures/noise';
+import { createImage, type PixelImage } from '../../../../src/presentation/textures/pixelImage';
+import {
+  asphaltImage,
+  grassImage,
+  liveryImage,
+  officeFacadeImage,
+  rearDoorsImage,
+  softShadowImage,
+} from '../../../../src/presentation/textures/proceduralImages';
+import { drawText, measureText } from '../../../../src/presentation/textures/strokeFont';
+import { toTexture } from '../../../../src/presentation/textures/toTexture';
+
+const style = { height: 40, weight: 0.17, spacing: 0.12, slant: 0.16, color: [0, 0, 0] as const };
+
+function pixel(image: PixelImage, x: number, y: number): number[] {
+  const i = (y * image.width + x) * 4;
+  return [...image.data.subarray(i, i + 4)];
+}
+
+describe('procedural noise', () => {
+  it('is deterministic and stays within 0..1', () => {
+    for (let i = 0; i < 200; i++) {
+      const u = (i * 0.137) % 1;
+      const v = (i * 0.311) % 1;
+      const value = fractalNoise(u, v, 8, 3, 42);
+      expect(value).toBe(fractalNoise(u, v, 8, 3, 42));
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(1);
+      expect(grain(i, i * 3, 5)).toBe(grain(i, i * 3, 5));
+    }
+  });
+
+  it('tiles seamlessly: the right edge continues the left one', () => {
+    for (let i = 0; i < 20; i++) {
+      const v = i / 20;
+      expect(tileableNoise(1, v, 8, 7)).toBeCloseTo(tileableNoise(0, v, 8, 7), 12);
+      expect(fractalNoise(0.25, 1, 4, 3, 7)).toBeCloseTo(fractalNoise(0.25, 0, 4, 3, 7), 12);
+    }
+  });
+
+  it('changes with the seed', () => {
+    expect(fractalNoise(0.3, 0.6, 8, 3, 1)).not.toBe(fractalNoise(0.3, 0.6, 8, 3, 2));
+  });
+});
+
+describe('stroke font', () => {
+  it('measures longer text as wider and draws only inside its bounds', () => {
+    const image = createImage(400, 80);
+    const width = measureText('ROADHAUL', style);
+
+    drawText(image, 'ROADHAUL', 10, 20, style);
+
+    expect(width).toBeGreaterThan(measureText('ROAD', style));
+    let inked = 0;
+    for (let y = 0; y < image.height; y++) {
+      for (let x = 0; x < image.width; x++) {
+        if (pixel(image, x, y)[0]! < 128) {
+          inked++;
+          expect(x).toBeGreaterThanOrEqual(10);
+          expect(x).toBeLessThanOrEqual(10 + width + 2);
+          expect(y).toBeGreaterThanOrEqual(20 - 4);
+          expect(y).toBeLessThanOrEqual(20 + style.height + 4);
+        }
+      }
+    }
+    expect(inked).toBeGreaterThan(500);
+  });
+
+  it('renders unknown characters as spaces', () => {
+    const image = createImage(200, 80);
+
+    drawText(image, '?!', 10, 20, style);
+
+    expect([...image.data].every((value) => value === 255)).toBe(true);
+    expect(measureText('R?R', style)).toBeGreaterThan(measureText('RR', style));
+  });
+});
+
+describe('procedural images', () => {
+  it('are deterministic', () => {
+    expect(grassImage(64).data).toEqual(grassImage(64).data);
+    expect(liveryImage([224, 98, 42], 256, 128).data).toEqual(liveryImage([224, 98, 42], 256, 128).data);
+  });
+
+  it('keep grass green and asphalt dark grey', () => {
+    const grass = grassImage(64);
+    const asphalt = asphaltImage(64);
+    let greenish = 0;
+    let dark = 0;
+    for (let i = 0; i < 64 * 64; i++) {
+      const [r, g, b] = [grass.data[i * 4]!, grass.data[i * 4 + 1]!, grass.data[i * 4 + 2]!];
+      greenish += g > r && g > b ? 1 : 0;
+      dark += asphalt.data[i * 4]! < 110 ? 1 : 0;
+    }
+    expect(greenish / (64 * 64)).toBeGreaterThan(0.95);
+    expect(dark / (64 * 64)).toBeGreaterThan(0.95);
+  });
+
+  it('put the company accent and the dark logo on the livery and the rear doors', () => {
+    const accent = [224, 98, 42] as const;
+    for (const image of [liveryImage(accent, 512, 256), rearDoorsImage(accent, 256)]) {
+      let accentPixels = 0;
+      let logoPixels = 0;
+      for (let i = 0; i < image.width * image.height; i++) {
+        const [r, g, b] = [image.data[i * 4]!, image.data[i * 4 + 1]!, image.data[i * 4 + 2]!];
+        accentPixels += r === accent[0] && g === accent[1] && b === accent[2] ? 1 : 0;
+        logoPixels += r === 44 && g === 52 && b === 64 ? 1 : 0;
+      }
+      expect(accentPixels).toBeGreaterThan(image.width * image.height * 0.03);
+      expect(logoPixels).toBeGreaterThan(200);
+    }
+  });
+
+  it('draw window glass on the office facade', () => {
+    const facade = officeFacadeImage(128);
+
+    // Lower-left window, beside its centre mullion: dark glass, not wall.
+    const [r, g, b] = pixel(facade, 24, 36);
+    expect(r! + g! + b!).toBeLessThan(3 * 140);
+    // Wall between windows stays light.
+    const [wr, wg, wb] = pixel(facade, 64, 20);
+    expect(wr! + wg! + wb!).toBeGreaterThan(3 * 180);
+  });
+
+  it('fade the soft shadow from the centre to transparent edges', () => {
+    const shadow = softShadowImage(32);
+
+    expect(pixel(shadow, 16, 16)[3]).toBeGreaterThan(200);
+    expect(pixel(shadow, 0, 0)[3]).toBe(0);
+    expect(pixel(shadow, 31, 16)[3]).toBeLessThan(10);
+  });
+
+  it('upload as mipmapped textures, tiled or clamped', () => {
+    const tiled = toTexture(grassImage(32), { repeat: true, anisotropy: 4 });
+    const clamped = toTexture(softShadowImage(16), { srgb: false });
+
+    expect(tiled.generateMipmaps).toBe(true);
+    expect(tiled.anisotropy).toBe(4);
+    expect(tiled.wrapS).not.toBe(clamped.wrapS);
+    expect(tiled.colorSpace).not.toBe(clamped.colorSpace);
+    tiled.dispose();
+    clamped.dispose();
+  });
+});
