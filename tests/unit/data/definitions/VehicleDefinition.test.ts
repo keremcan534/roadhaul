@@ -35,6 +35,19 @@ describe('validateVehicleDefinition', () => {
     ]);
   });
 
+  it('reports every broken engine speed, not just the first', () => {
+    const fixture = vehicleFixture();
+    const vehicle = vehicleFixture({
+      powertrain: { ...fixture.powertrain, idleRpm: -1, shiftDownRpm: Number.NaN, maxRpm: 0 },
+    });
+
+    expect(issues(vehicle).map((issue) => issue.path)).toEqual([
+      'vehicle.powertrain.idleRpm',
+      'vehicle.powertrain.shiftDownRpm',
+      'vehicle.powertrain.maxRpm',
+    ]);
+  });
+
   it('requires engine speeds to rise from idle to the rev limiter', () => {
     const fixture = vehicleFixture();
     const vehicle = vehicleFixture({ powertrain: { ...fixture.powertrain, shiftUpRpm: 900 } });
