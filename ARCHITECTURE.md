@@ -69,7 +69,7 @@ flowchart TD
 
 ## 4. Boot sequence
 
-1. `src/main.ts` reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar) and creates a `ConsoleLogger`.
+1. `src/main.ts` picks the graphics preset (`?quality=`, the saved setting or the device) and reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar) and creates a `ConsoleLogger`.
 2. `GameBootstrapper.boot()`:
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
@@ -300,15 +300,21 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - `TruckView` builds a detailed cab-over truck carrying the RoadHaul livery.
 - **Procedural textures, no image files** (`presentation/textures`). Grass, asphalt, facades, livery, rims and shadows are drawn in plain TypeScript: tileable noise and a small stroke font. They cost nothing to download and are original by construction. The same code runs in Node, so it is unit-tested.
 - **Defaults for low/mid Android:**
-  - pixel ratio capped at 1.5, MSAA off;
+  - pixel ratio capped by the graphics preset (1 to 1.5), MSAA off;
   - Lambert or Phong materials;
   - no real-time shadows (shadows are soft decals);
   - fog to hide the far plane.
+- **Graphics presets** (`GameConfig.rendering`, `QUALITY_PRESETS`): low, medium and high set the pixel ratio cap (1, 1.25, 1.5), how far the resolution may drop (to 70% or 60%), how many rain streaks fall (half, three quarters, all), whether lamps glow at night, and how many traffic vehicles drive (8, 12, 16). The preset comes from `?quality=`, else the player's choice in Settings, else the device (`platform/browser/deviceQuality.ts`): 4 cores or fewer, or 3 GB of memory or less, is low; other phones and tablets are medium; desktops are high. The choice is kept apart from the save (`roadhaul.settings`: it belongs to the phone, not the company), and changing it restarts the game. Where storage forgets (no persistent storage), the address carries it as `?quality=`.
+- **Dynamic resolution** (`AdaptiveResolution`, a 30 FPS floor): frame times on the road are averaged over 2 s windows (the menus, drawn at half rate, are no measure). When a window averages slower than 27 FPS the resolution drops by 15%, down to the preset's floor; after three windows faster than 50 FPS it rises by 10%, back to the full pixel ratio. The wide gap keeps it from see-sawing. Frames over 0.2 s are hitches, not a measure, and the first window after a start or a return to the tab is not measured. `RenderHost` resizes the drawing buffer once per change (a resize waits for the GPU) and never to the size it has. The rain's streaks keep their width in pixels.
+- **Behind the menus** the scene is a backdrop: it renders every other frame, which saves the battery.
 - **Pre-lit flat surfaces.** The ground and road always face up under a fixed sun. They are unlit materials tinted with exactly what Lambert shading would give them (`flatGroundLight()`), so the pixels that cover most of the screen skip lighting.
 - **Software rendering** (no GPU: headless CI browsers, some virtual machines) is detected from the WebGL renderer name. The host then renders at one pixel per CSS pixel without anisotropic filtering, so the simulation still runs in real time.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 45 draw calls and 90k triangles are in view, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle and one for their lamps. Weather adds at most a few: rain one, and at night the glows (two) and the headlight pool (one).
-- **Bundle:** three.js ships in its own chunk (about 540 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 100 kB.
+- **Budgets** (checked by `tests/e2e/performance.spec.ts`; to confirm on real phones in step 29): at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 48 draw calls and 91k triangles are in view, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle and one for their lamps. Weather adds at most a few: rain one, and at night the glows (two) and the headlight pool (one). The heaviest scenes measured, with 24 vehicles: a city yard at night, 52 draw calls and 92k triangles; the HQ backdrop at night, 59 and 98k; rain at the spawn, 52 and 109k.
+- **Translucent two-sided materials** set `forceSinglePass`. Otherwise three.js draws them twice (back, then front) and sets their shader up afresh for each pass, every frame.
+- **The simulation's share:** a fixed step of every system, with 16 vehicles, takes about 60 µs on a desktop CPU. Whatever runs every step must not visit the whole map: which ground the truck is on comes from `RoadGrid`, the road pieces filed by 20 m cell, like the trees for collisions.
+- **Bundle:** three.js ships in its own chunk (about 545 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 270 kB (85 kB gzipped).
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
+- **Profiling:** Chrome DevTools, on a phone through remote debugging. The Performance panel shows where frame time goes; Memory → "Allocation sampling" shows what allocates while driving. Profile with `npm run dev`, whose modules keep their file names.
 - The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
 
 ## 12. Testing
@@ -317,7 +323,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 |---|---|---|---|
 | Unit (spec: EditMode) | `tests/unit/**` mirroring `src/` | `npm test` (Vitest, Node) | every rule, service and formula in the engine-agnostic layers, plus presentation code that runs without WebGL (such as resource disposal) |
 | Architecture | `tests/architecture` | `npm test` | layer and package import rules, and the import scanner that checks them |
-| End-to-end (spec: PlayMode) | `tests/e2e` | `npm run build && npm run test:e2e` (Playwright) | on an emulated Pixel 7 with SwiftShader WebGL: boot into the menu, the job board, a whole delivery (with the `?debug` T key), abandoning, pausing, keyboard and touch driving, reverse, camera switch, layout in both orientations, no console errors |
+| End-to-end (spec: PlayMode) | `tests/e2e` | `npm run build && npm run test:e2e` (Playwright) | on an emulated Pixel 7 with SwiftShader WebGL: boot into the menu, the job board, a whole delivery (with the `?debug` T key), abandoning, pausing, keyboard and touch driving, reverse, camera switch, layout in both orientations, the draw budget in the heaviest scenes, no console errors. The tests play on the high preset (`?quality=high`) unless they pick one, so what they count does not depend on the machine |
 
 Test helpers live in `tests/support`: `MemoryLogger`, the content fixtures, the driving loop helpers and the three.js resource helpers. CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, build and e2e on every pull request.
 

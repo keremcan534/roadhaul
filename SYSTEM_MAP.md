@@ -18,14 +18,14 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Validator | core | `src/core/validation/Validator.ts` | Collects every validation issue; throws `ValidationError` | none | none |
 | Math helpers, SeededRandom | core | `src/core/math/`, `src/core/random/` | Allocation-free scalar helpers; deterministic random numbers | none | none |
 | ContentCatalog | data | `src/data/ContentCatalog.ts` | Validates content and cross-references; frozen id lookups | Definitions | none |
-| GameConfig | data | `src/data/config/GameConfig.ts` | Central tuning values + validation against content | ContentCatalog | none |
+| GameConfig | data | `src/data/config/GameConfig.ts` | Central tuning values + validation against content; the low, medium and high graphics presets | ContentCatalog | none |
 | Company name rules | domain | `src/domain/company/companyName.ts` | Normalise and validate the player's company name | none | none |
 | SaveGameData | domain | `src/domain/save/` | Versioned save schema (v6), new-game state, migrations, validation of loaded saves | Definitions | none |
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
-| RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio, tone mapping, software-rendering fallback | three | none |
+| RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio scaled by AdaptiveResolution (one drawing-buffer resize per change), tone mapping, software-rendering fallback | three | none |
 | PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
-| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`, `?date`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
+| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`, `?date`, `?quality`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result) and pausing; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
 
 ### Driving prototype (Phase 1, roadmap steps 04–08)
@@ -37,7 +37,8 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | VehicleDynamics | domain | `src/domain/vehicles/VehicleDynamics.ts` | Deterministic truck model: drivetrain, gearbox, governor, brakes, reverse, understeer (ADR 0002) | VehicleDefinition | none |
 | VehicleInput, VehicleRuntimeState | domain | `src/domain/vehicles/` | Device-independent driver input; live truck state | none | none |
 | RoadPath | domain | `src/domain/world/RoadPath.ts` | Catmull-Rom centreline shared by driving and rendering | MapDefinition | none |
-| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, buildings, depots, rest areas, service points, collisions, map edge | RoadPath, RoadNetwork, SeededRandom | none |
+| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, buildings, depots, rest areas, service points, collisions, map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
+| RoadGrid | domain | `src/domain/world/RoadGrid.ts`, `gridCells.ts` | The roads' centreline pieces filed by 20 m cell: on a road, or near one, from the few pieces round a point | RoadPath | none |
 | DrivingService | systems | `src/systems/driving/DrivingService.ts` | Owns the driven truck and world; steps them every fixed step; cargo mass, parking, recovery onto the road; the service point the truck stands at | ContentCatalog, EventBus | emits `VehicleCollided` |
 | EnvironmentView | presentation | `src/presentation/world/EnvironmentView.ts`, `world/lighting.ts` | Gradient sky with sun glow, clouds and horizon hills that follow the camera; fog; sun and sky lights | three | none |
 | Procedural textures | presentation | `src/presentation/textures/` | Grass, asphalt, gravel, concrete, facades, livery, rims and soft shadows drawn in code (tileable noise, stroke font): no image files | three | none |
@@ -153,6 +154,15 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | TutorialService | systems | `src/systems/tutorial/TutorialService.ts` | The step the company is on, followed through the game's events; skip; the save's step | EventBus | listens `MissionStateChanged`, `MissionCompleted`, `MissionFailed`, `UpgradePurchased`; emits `TutorialStepChanged` |
 | TutorialHint | ui | `src/ui/hud/TutorialHint.ts`, styles.css | One short hint (in the HQ above the list, on the road under the HUD) and a skip button; the control it is about glows | TutorialService (read only) | none |
 
+### Performance (Phase 7, roadmap step 27)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Graphics presets | data | `QUALITY_PRESETS`, `applyQualityPreset` in `src/data/config/GameConfig.ts` | Low, medium, high: pixel ratio cap, resolution floor, rain density, lamp glows, traffic | none | none |
+| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings, kept apart from the save | GameConfig, KeyValueStorage | none |
+| AdaptiveResolution | presentation | `src/presentation/AdaptiveResolution.ts` | Lowers the resolution when frames run slow, raises it when they are quick again (a 30 FPS floor) | none | none |
+| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use | Strings | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -162,7 +172,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
 | AudioService | presentation | ⬜ Phase 7 | Engine, brake, horn, ambience, UI sounds (spec §37) |
-| Settings, more languages | ui | ⬜ Phase 7 | A settings screen (language, sound, quality); more string tables |
+| More settings, more languages | ui | ⬜ Phase 7 | Language and sound in Settings (graphics are there since step 27); more string tables |
 | Android packaging | tooling | ⬜ 28 | Capacitor app built in CI |
 
 ## Not in the MVP (spec §44)

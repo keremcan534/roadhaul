@@ -40,8 +40,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 24 | Weather | 4 | ✅ | Clear, cloudy, rain and night on a seeded schedule: sky, haze, light, clouds and rain change with it; lit windows, glowing lamps and headlights at night; wet roads grip less and traffic slows |
 | 25 | Events | 6 | ✅ | Express Week, Safe Driver and Heavy Cargo as data: a week every other week, a bonus on qualifying deliveries, a reward for the objective; an HQ tab; save v5 |
 | 26 | Tutorial | 7 | ✅ | The first contract and the first upgrade, taught by playing: one short hint at a time, the control it is about glows; skippable; save v6 |
-| 27 | Optimization | 7 | ⬜ **next** | Hit the device budgets (ARCHITECTURE.md §11) |
-| 28 | Android build | 8 | ⬜ | Capacitor app built in CI |
+| 27 | Optimization | 7 | ✅ | Low, medium and high graphics presets, picked for the device and in Settings; dynamic resolution; half-rate menus; the heaviest scenes at 52–59 draw calls and under 110k triangles, checked by an e2e test; the ground under the truck found through a grid |
+| 28 | Android build | 8 | ⬜ **next** | Capacitor app built in CI |
 | 29 | Device testing | 8 | ⬜ | Real low/mid Android phones |
 | 30 | MVP release candidate | 8 | ⬜ | Save migration check, crash handling, store assets |
 
@@ -117,12 +117,17 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 ### Phase 7 notes
 - Tutorial (step 26): a new company is walked through spec §41's first ten minutes by playing: take a contract, drive to the pickup bay (right pedal, the wheel, the blue line), deliver, then spend the pay on an upgrade. One short hint at a time, in the HQ above the list (so it never covers a button) or on the road under the mission HUD; the control it is about glows. A failed contract starts the drive over. Skip ends it for good.
 - TutorialService follows the game's events (MissionStateChanged, MissionCompleted, MissionFailed, UpgradePurchased); it never blocks the controls. Save v6 keeps the step; companies from older saves have played already and skip it.
+- Optimization (step 27): three graphics presets. Low (1× pixel ratio, half the rain, no lamp glows, 8 vehicles), medium (1.25×, three quarters of the rain, 12 vehicles) and high (1.5×, all of it, 16 vehicles). The game picks one for the device (4 cores or fewer, or 3 GB of memory or less, is low; other phones medium; desktops high); Settings on the main menu overrides it and restarts the game. The choice belongs to the phone, not the company: it is kept apart from the save. `?quality=low|medium|high` overrides both.
+- Dynamic resolution holds a 30 FPS floor: when frames on the road average under 27 FPS over 2 s the resolution drops 15%, down to 60–70% of the preset's; after 6 s above 50 FPS it climbs back. Behind the menus the scene renders every other frame.
+- Measured with 24 vehicles: a city yard at night, 52 draw calls and 92k triangles; the HQ backdrop at night, 59 and 98k; rain at the spawn, 52 and 109k. The budget is 150 and 300k; `tests/e2e/performance.spec.ts` fails above it.
+- Profiling found three costs and removed them; the first two made about a third of the garbage per frame while driving a contract. The bay beacon's two translucent two-sided materials were drawn twice each, with their shaders set up afresh every frame. The ground under the truck was found by measuring all ~2,900 road pieces every step; a grid of road pieces answers a hundred times faster, and the world builds in a quarter of the time (its trees ask the same question). The canvas was resized twice per resolution change, each time waiting for the GPU.
+- Frame rate itself waits for real phones (step 29): CI renders in software, so its tests check what is drawn, not how fast. The clouds are one draw call, so every preset keeps them.
 
-## Next step: 27 Optimization
+## Next step: 28 Android build
 
 Suggested request:
 
-> Implement roadmap step 27 only. Optimization (ARCHITECTURE.md §11 budgets, spec's performance rules): measure frame time, draw calls and triangles in the heaviest scenes (a busy junction at night in the rain, the HQ over the showcase) on a throttled low-end profile, then bring them within budget: an adaptive pixel ratio that drops when frames run long and recovers when they do not; quality presets (low, medium, high) picked automatically from the device and in a settings screen, scaling rain streaks, clouds, traffic and glows; and a check that per-frame code allocates nothing. Add a performance e2e that fails when the frame budget regresses.
+> Implement roadmap step 28 only. Android build (spec §81, ARCHITECTURE.md): wrap the production build in a Capacitor Android app that runs offline from the app's own files (the relative asset paths already allow it), full screen in either orientation, with the app's name and an original icon. Keep saves in the app's storage (Capacitor Preferences or the WebView's localStorage, behind the existing `KeyValueStorage` interface), pause the game when the app goes to the background, and let the Android back button open the pause menu. Build a debug APK in CI on every pull request and keep it as a workflow artifact, so it can be installed on test phones (step 29). Document how to build it locally.
 
 ## Infrastructure track
 
