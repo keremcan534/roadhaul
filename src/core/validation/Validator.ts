@@ -109,6 +109,20 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+const MAX_DESCRIBED_LENGTH = 60;
+
+/** Renders a value for an error message so that `[5]`, `"5"` and `5` look different. */
 function describe(value: unknown): string {
-  return typeof value === 'string' ? `"${value}"` : String(value);
+  if (typeof value === 'string') {
+    return JSON.stringify(value);
+  }
+  if (typeof value !== 'object' || value === null) {
+    return String(value);
+  }
+  try {
+    const json = JSON.stringify(value);
+    return json.length > MAX_DESCRIBED_LENGTH ? `${json.slice(0, MAX_DESCRIBED_LENGTH - 3)}...` : json;
+  } catch {
+    return Object.prototype.toString.call(value); // Circular or otherwise unserialisable.
+  }
 }

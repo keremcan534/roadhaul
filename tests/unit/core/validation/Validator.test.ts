@@ -45,6 +45,24 @@ describe('Validator', () => {
     expect(validator.issues[0]?.message).toBe('must be one of clear, rain, got "snow"');
   });
 
+  it('describes non-string values unambiguously in messages', () => {
+    const validator = new Validator();
+
+    validator.positiveNumber([5], 'array');
+    validator.positiveNumber([], 'empty');
+    validator.positiveNumber(Object.create(null) as object, 'bare');
+    validator.positiveNumber({ speed: 90 }, 'object');
+    validator.positiveNumber(undefined, 'missing');
+
+    expect(validator.issues.map((issue) => issue.message)).toEqual([
+      'must be a positive number, got [5]',
+      'must be a positive number, got []',
+      'must be a positive number, got {}',
+      'must be a positive number, got {"speed":90}',
+      'must be a positive number, got undefined',
+    ]);
+  });
+
   it('throws one error that lists every issue', () => {
     const validator = new Validator();
     validator.report('vehicles[0].id', 'duplicate id "rh_h1"');

@@ -8,10 +8,9 @@ export function frozenCopy<T>(value: T): T {
     return Object.freeze(value.map((item: unknown) => frozenCopy(item))) as T;
   }
   if (value !== null && typeof value === 'object') {
-    const copy: Record<string, unknown> = {};
-    for (const [key, item] of Object.entries(value)) {
-      copy[key] = frozenCopy(item);
-    }
+    // Object.fromEntries defines own data properties, so even a "__proto__" key
+    // (possible in parsed JSON) stays data instead of replacing the prototype.
+    const copy = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, frozenCopy(item)]));
     return Object.freeze(copy) as T;
   }
   return value;

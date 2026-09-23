@@ -50,12 +50,14 @@ describe('FixedTimestep', () => {
     expect(timestep.advance(0)).toBe(0);
   });
 
-  it('ignores negative and NaN frame times', () => {
+  it('ignores negative, NaN and infinite frame times', () => {
     const timestep = new FixedTimestep(STEP, 5);
 
     expect(timestep.advance(-1)).toBe(0);
     expect(timestep.advance(Number.NaN)).toBe(0);
+    expect(timestep.advance(Number.POSITIVE_INFINITY)).toBe(0);
     expect(timestep.alpha).toBe(0);
+    expect(timestep.advance(STEP)).toBe(1);
   });
 
   it('forgets accumulated time on reset', () => {

@@ -74,15 +74,20 @@ export class ServiceContainer {
     return this.instances.has(key);
   }
 
-  /** Initializes every service registered since the previous call, in registration order. */
+  /**
+   * Initializes every service registered since the previous successful call,
+   * in registration order. A service whose initialize() throws is retried by
+   * the next call. Rejects if the container is disposed meanwhile.
+   */
   async initializeAll(): Promise<void> {
     this.assertNotDisposed();
     while (this.initializedCount < this.registrationOrder.length) {
       const instance = this.registrationOrder[this.initializedCount];
-      this.initializedCount++;
       if (isInitializable(instance)) {
         await instance.initialize();
+        this.assertNotDisposed(); // disposeAll() may have run while we were waiting.
       }
+      this.initializedCount++;
     }
   }
 

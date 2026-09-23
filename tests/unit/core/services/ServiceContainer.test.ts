@@ -79,6 +79,44 @@ describe('ServiceContainer', () => {
     expect(log).toEqual(['init:a', 'init:b']);
   });
 
+  it('retries an initialize() that failed on the next initializeAll()', async () => {
+    const container = new ServiceContainer();
+    let attempts = 0;
+    container.register(serviceKey('Flaky'), {
+      initialize: () => {
+        attempts++;
+        if (attempts === 1) {
+          throw new Error('not yet');
+        }
+      },
+    });
+
+    await expect(container.initializeAll()).rejects.toThrow('not yet');
+    await container.initializeAll();
+
+    expect(attempts).toBe(2);
+  });
+
+  it('stops initializing when disposed while an async initialize() is pending', async () => {
+    const container = new ServiceContainer();
+    const log: string[] = [];
+    let release: () => void = () => {};
+    container.register(serviceKey('Slow'), {
+      initialize: () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    });
+    container.register(serviceKey('Later'), recordingService('later', log));
+
+    const initializing = container.initializeAll();
+    container.disposeAll();
+    release();
+
+    await expect(initializing).rejects.toThrow('disposed');
+    expect(log).toEqual(['dispose:later']);
+  });
+
   it('disposes services in reverse registration order', () => {
     const container = new ServiceContainer();
     const log: string[] = [];

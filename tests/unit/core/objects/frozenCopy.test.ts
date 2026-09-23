@@ -25,6 +25,16 @@ describe('frozenCopy', () => {
     }).toThrow(TypeError);
   });
 
+  it('keeps a "__proto__" key from JSON as plain data instead of a prototype', () => {
+    const parsed = JSON.parse('{"id":"m","__proto__":{"requiredVehicleClass":"flying"}}') as Record<string, unknown>;
+
+    const copy = frozenCopy(parsed);
+
+    expect(Object.hasOwn(copy, '__proto__')).toBe(true);
+    expect(copy['requiredVehicleClass']).toBeUndefined();
+    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+  });
+
   it('returns primitives and null unchanged', () => {
     expect(frozenCopy(5)).toBe(5);
     expect(frozenCopy('id')).toBe('id');

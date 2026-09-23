@@ -36,7 +36,8 @@ export class FixedTimestep {
 
   /** Adds a frame's elapsed time and returns how many fixed steps to run now. */
   advance(frameDeltaSeconds: number): number {
-    if (frameDeltaSeconds > 0) {
+    // Negative, NaN and infinite times are ignored: one bad value must not poison the accumulator.
+    if (Number.isFinite(frameDeltaSeconds) && frameDeltaSeconds > 0) {
       this.accumulatorSeconds += frameDeltaSeconds;
     }
     let steps = 0;
