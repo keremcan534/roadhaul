@@ -1,0 +1,64 @@
+:root {
+  color-scheme: dark;
+  --rh-bg: #1b2430;
+  --rh-fg: #e8edf2;
+  --rh-overlay-bg: rgb(0 0 0 / 55%);
+  --rh-danger: #ff8a7a;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--rh-bg);
+  color: var(--rh-fg);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* A game surface: no pull-to-refresh, text selection, callouts or tap flashes. */
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#game-canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.perf-overlay {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  left: calc(env(safe-area-inset-left, 0px) + 8px);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--rh-overlay-bg);
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.fatal-error {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--rh-bg);
+  text-align: center;
+}
+
+.fatal-error pre {
+  margin: 0;
+  max-width: min(90vw, 720px);
+  white-space: pre-wrap;
+  text-align: left;
+  color: var(--rh-danger);
+  font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
