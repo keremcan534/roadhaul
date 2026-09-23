@@ -1,0 +1,17 @@
+import type { CargoDefinition } from './definitions/CargoDefinition';
+import type { CityDefinition } from './definitions/CityDefinition';
+import type { MissionDefinition } from './definitions/MissionDefinition';
+import type { VehicleDefinition } from './definitions/VehicleDefinition';
+
+/**
+ * Every static definition the game knows about. Today it is authored as
+ * TypeScript in `src/data/content`; later content packs (spec §79) can supply
+ * the same shape as JSON. Either way it goes through ContentCatalog.create(),
+ * which validates it.
+ */
+export interface GameContent {
+  readonly vehicles: readonly VehicleDefinition[];
+  readonly cargo: readonly CargoDefinition[];
+  readonly cities: readonly CityDefinition[];
+  readonly missions: readonly MissionDefinition[];
+}
