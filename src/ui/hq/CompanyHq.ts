@@ -1,11 +1,17 @@
-import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
-import type { JobOffer, MissionService } from '../../systems/missions/MissionService';
+import type { MissionService } from '../../systems/missions/MissionService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
+import type { GarageService } from '../../systems/vehicles/GarageService';
+import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { truckCard } from './garageCards';
+import { HQ_TABS, type HqTab } from './hqTabs';
+import { jobCard } from './jobCards';
+import { sortJobOffers } from './jobOrder';
+import { upgradeCard } from './upgradeCards';
 
 /** What the HQ shows. It only reads them; changes go through the actions. */
 export interface CompanyHqServices {
@@ -14,21 +20,27 @@ export interface CompanyHqServices {
   readonly company: CompanyService;
   readonly fuel: FuelService;
   readonly damage: DamageService;
+  readonly garage: GarageService;
+  readonly upgrades: UpgradeService;
 }
 
 export interface CompanyHqActions {
   readonly onAccept: (missionId: string) => void;
   readonly onRefuel: () => void;
   readonly onRepair: () => void;
+  readonly onBuyTruck: (definitionId: string) => void;
+  readonly onSwitchTruck: (instanceId: string) => void;
+  readonly onBuyUpgrade: (upgradeId: string) => void;
   readonly onFreeDrive: () => void;
   readonly onMainMenu: () => void;
 }
 
 /**
  * The company HQ (spec §26): the company's name, level, XP, reputation and
- * credits; the truck's fuel and damage with refuelling and repairs; and the
- * job board (spec §28), where contracts above the company's level show what
- * unlocks them.
+ * credits; the truck being driven, with its fuel and damage, refuelling and
+ * repairs; and three tabs: the job board (spec §28), where each blocked
+ * contract says what unlocks it; the garage (spec §15), to buy and switch
+ * trucks; and the upgrade shop for the truck being driven (spec §16).
  */
 export class CompanyHq {
   private readonly root: HTMLDivElement;
@@ -44,7 +56,10 @@ export class CompanyHq {
   private readonly damageLabel: HTMLSpanElement;
   private readonly refuelButton: HTMLButtonElement;
   private readonly repairButton: HTMLButtonElement;
+  private readonly truckName: HTMLParagraphElement;
+  private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
   private readonly list: HTMLDivElement;
+  private tab: HqTab = 'jobs';
 
   constructor(
     parent: HTMLElement,
@@ -94,7 +109,15 @@ export class CompanyHq {
     this.damageFill = damageFill;
     this.refuelButton = button(document, 'button--secondary hq__service', '', 'refuel', actions.onRefuel);
     this.repairButton = button(document, 'button--secondary hq__service', '', 'repair', actions.onRepair);
-    truck.append(el('h3', 'hq__card-title', strings.t('hq.truck')), fuelRow, this.refuelButton, damageRow, this.repairButton);
+    this.truckName = el('p', 'hq__truck-name');
+    truck.append(
+      el('h3', 'hq__card-title', strings.t('hq.truck')),
+      this.truckName,
+      fuelRow,
+      this.refuelButton,
+      damageRow,
+      this.repairButton,
+    );
 
     side.append(company, truck);
 
@@ -106,8 +129,20 @@ export class CompanyHq {
       button(document, 'button--ghost', strings.t('hq.mainMenu'), 'main-menu', actions.onMainMenu),
       button(document, 'button--secondary', strings.t('hq.freeDrive'), 'free-drive', actions.onFreeDrive),
     );
-    header.append(el('h2', 'hq__board-title', strings.t('hq.jobBoard')), tools);
-    this.list = el('div', 'hq__jobs');
+    const tabBar = el('div', 'hq__tabs');
+    tabBar.setAttribute('role', 'tablist');
+    const tabs = new Map<HqTab, HTMLButtonElement>();
+    for (const tab of HQ_TABS) {
+      const tabButton = button(document, 'hq__tab', strings.t(`hq.tab.${tab}`), 'tab', () => this.selectTab(tab));
+      tabButton.dataset.tab = tab;
+      tabButton.setAttribute('role', 'tab');
+      tabs.set(tab, tabButton);
+      tabBar.append(tabButton);
+    }
+    this.tabs = tabs;
+    header.append(tabBar, tools);
+    this.list = el('div', 'hq__list');
+    this.list.setAttribute('role', 'tabpanel');
     board.append(header, this.list);
     this.root.append(side, board);
     parent.append(this.root);
@@ -117,16 +152,22 @@ export class CompanyHq {
     return !this.root.hidden;
   }
 
-  /** Opens the HQ with fresh figures and the current job board. */
+  /** Opens the HQ on the job board, with fresh figures. */
   show(): void {
-    this.refresh();
-    this.list.scrollTop = 0;
+    this.selectTab('jobs');
     this.root.hidden = false;
   }
 
-  /** Redraws the figures and the job board (after a purchase, a level-up, a delivery). Not per frame. */
+  /** Shows `tab`, from the top. */
+  selectTab(tab: HqTab): void {
+    this.tab = tab;
+    this.refresh();
+    this.list.scrollTop = 0;
+  }
+
+  /** Redraws the figures and the open tab (after a purchase, a level-up, a delivery). Not per frame. */
   refresh(): void {
-    const { company, economy, fuel, damage, missions } = this.services;
+    const { company, economy, fuel, damage, garage } = this.services;
     const strings = this.strings;
 
     setText(this.companyName, company.companyName);
@@ -145,6 +186,8 @@ export class CompanyHq {
     setText(this.credits, strings.money(economy.credits));
     setText(this.reputation, `${strings.t('company.reputation')} ${company.reputation}`);
 
+    const active = garage.activeTruck.definition;
+    setText(this.truckName, `${strings.vehicleName(active.id)} · ${strings.t(`body.${active.bodyType}`)}`);
     setText(this.fuelLabel, `${strings.percent(fuel.fraction)} · ${strings.t('format.liters', { value: Math.round(fuel.fuelLiters) })}`);
     this.fuelFill.style.transform = `scaleX(${fuel.fraction})`;
     this.fuelFill.parentElement!.classList.toggle('is-low', fuel.isLow);
@@ -158,13 +201,12 @@ export class CompanyHq {
     this.repairButton.disabled = undamaged || !economy.canAfford(damage.repairCost);
     setText(this.repairButton, undamaged ? strings.t('hq.noDamage') : strings.t('hq.repair', { cost: strings.money(damage.repairCost) }));
 
-    const document = this.root.ownerDocument;
-    const offers = missions.jobBoard();
-    const cards = offers.map((offer) => this.card(document, offer));
-    if (cards.length === 0) {
-      cards.push(element(document, 'p', 'hq__empty', strings.t('hq.noJobs')));
+    for (const [tab, tabButton] of this.tabs) {
+      tabButton.classList.toggle('is-selected', tab === this.tab);
+      tabButton.setAttribute('aria-selected', String(tab === this.tab));
     }
-    this.list.replaceChildren(...cards);
+    this.list.dataset.tab = this.tab;
+    this.list.replaceChildren(...this.tabContent());
   }
 
   hide(): void {
@@ -175,59 +217,43 @@ export class CompanyHq {
     this.root.remove();
   }
 
-  private card(document: Document, offer: JobOffer): HTMLElement {
-    const { mission, cargo } = offer;
-    const strings = this.strings;
-    const card = element(document, 'article', offer.blockedBy === null ? 'job-card' : 'job-card is-locked');
-    card.dataset.missionId = mission.id;
-
-    const top = element(document, 'div', 'job-card__top');
-    top.append(
-      element(document, 'h3', 'job-card__title', strings.missionTitle(mission.id)),
-      element(document, 'span', `badge badge--${mission.difficulty}`, strings.t(`difficulty.${mission.difficulty}`)),
-    );
-    const route = element(document, 'p', 'job-card__route', routeText(strings, mission));
-    const load = element(
-      document,
-      'p',
-      'job-card__cargo',
-      `${strings.cargoName(cargo.id)} · ${strings.tons(mission.cargoWeightTons)}`,
-    );
-    const facts = element(document, 'dl', 'job-card__facts');
-    for (const [label, value] of [
-      [strings.t('hq.distance'), strings.distance(offer.distanceMeters)],
-      [strings.t('hq.timeLimit'), strings.duration(mission.timeLimitSeconds)],
-    ] as const) {
-      const fact = element(document, 'div', 'job-card__fact');
-      fact.append(element(document, 'dt', '', label), element(document, 'dd', '', value));
-      facts.append(fact);
+  private tabContent(): HTMLElement[] {
+    const document = this.root.ownerDocument;
+    const { strings, actions } = this;
+    const { missions, economy, garage, upgrades } = this.services;
+    switch (this.tab) {
+      case 'jobs': {
+        const cards = sortJobOffers(missions.jobBoard()).map((offer) => jobCard(document, strings, offer, actions.onAccept));
+        return cards.length > 0 ? cards : [element(document, 'p', 'hq__empty', strings.t('hq.noJobs'))];
+      }
+      case 'garage': {
+        const owned = garage.trucks;
+        const busy = missions.active !== null;
+        return garage.dealer().map((offer) =>
+          truckCard(
+            document,
+            strings,
+            {
+              offer,
+              owned: owned.find((truck) => truck.definition.id === offer.definition.id),
+              busy,
+              canAfford: economy.canAfford(offer.price),
+            },
+            { onBuy: actions.onBuyTruck, onSwitch: actions.onSwitchTruck },
+          ),
+        );
+      }
+      case 'upgrades': {
+        const truck = strings.vehicleName(garage.activeTruck.definition.id);
+        return [
+          element(document, 'p', 'hq__note', strings.t('hq.upgrades.for', { truck })),
+          ...upgrades
+            .offers()
+            .map((offer) =>
+              upgradeCard(document, strings, offer, offer.next !== null && economy.canAfford(offer.next.cost), actions.onBuyUpgrade),
+            ),
+        ];
+      }
     }
-    const bottom = element(document, 'div', 'job-card__bottom');
-    bottom.append(element(document, 'span', 'job-card__pay', strings.money(offer.basePay)));
-    if (offer.blockedBy !== null) {
-      bottom.append(element(document, 'span', 'job-card__locked', blockerText(strings, offer)));
-    } else {
-      bottom.append(
-        button(document, 'button--primary job-card__accept', strings.t('hq.accept'), 'accept', () =>
-          this.actions.onAccept(mission.id),
-        ),
-      );
-    }
-    card.append(top, route, load, facts, bottom);
-    return card;
   }
-}
-
-/** Why a contract cannot be taken yet: "Unlocks at level 3", "Needs the RoadHaul H2". */
-export function blockerText(strings: Strings, offer: JobOffer): string {
-  if (offer.blockedBy === 'companyLevel') {
-    return strings.t('hq.locked', { level: offer.requiredCompanyLevel });
-  }
-  const trucks = offer.suitableVehicles.map((vehicle) => strings.vehicleName(vehicle.id)).join(' / ');
-  return strings.t('hq.needsTruck', { trucks });
-}
-
-/** "Yeniliman → Demirkent". */
-export function routeText(strings: Strings, mission: MissionDefinition): string {
-  return `${strings.cityName(mission.originCityId)} → ${strings.cityName(mission.destinationCityId)}`;
 }

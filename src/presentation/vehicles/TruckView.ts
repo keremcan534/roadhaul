@@ -37,6 +37,12 @@ const CLASS_PAINT: Readonly<Record<VehicleClass, number>> = {
 };
 const DASHBOARD_COLOR = 0x3a4047;
 const TIRE_WIDTH = 0.36;
+/** A heavy truck's two rear axles stand this far either side of the rear axle the physics uses. */
+const TANDEM_HALF_SPACING = 0.68;
+/** Colours of the flatbed's load: pallets, bricks and ratchet straps. */
+const PALLET_COLOR = 0x9c7a4f;
+const BRICK_COLOR = 0xa94f35;
+const STRAP_COLOR = 0xffa21c;
 
 /** Body lean per m/s² of acceleration (radians), capped, and how fast the lean follows. */
 const PITCH_PER_ACCELERATION = 0.008;
@@ -44,16 +50,28 @@ const ROLL_PER_ACCELERATION = 0.012;
 const MAX_LEAN = 0.07;
 const LEAN_RESPONSE_RATE = 5;
 
-type PartMaterial = 'paint' | 'dark' | 'metal' | 'glass' | 'lamps' | 'grille' | 'panels' | 'livery' | 'doors';
+type PartMaterial =
+  | 'paint'
+  | 'dark'
+  | 'metal'
+  | 'glass'
+  | 'lamps'
+  | 'grille'
+  | 'panels'
+  | 'livery'
+  | 'doors'
+  | 'deck';
 
 /**
- * A cab-over box truck built from a VehicleDefinition's body dimensions:
- * original design, no real-world model. The cab has windows, grille,
- * headlights and mirrors; the cargo box carries the RoadHaul livery on its
- * sides and doors; the wheels have rims. Parts that share a material are merged, so
- * the whole truck costs about 15 draw calls. Its origin is the rear axle,
- * like VehicleRuntimeState. Front wheels steer, all wheels roll, and the
- * body pitches and rolls with acceleration.
+ * A cab-over truck built from a VehicleDefinition's body dimensions and body
+ * type: original designs, no real-world models. The cab has windows, grille,
+ * headlights and mirrors. A box body carries the RoadHaul livery on its sides
+ * and doors; a refrigerated one adds a cooling unit over the cab; a flatbed
+ * has a deck, headboard and stakes, and shows its load of bricks while loaded.
+ * Heavy trucks stand on two rear axles. Parts that share a material are
+ * merged, so a truck costs about 15 draw calls. Its origin is the rear axle,
+ * like VehicleRuntimeState. Front wheels steer, all wheels roll, and the body
+ * pitches and rolls with acceleration.
  *
  * update() runs every frame and allocates nothing.
  */
@@ -63,6 +81,8 @@ export class TruckView {
   private readonly windshield: Mesh;
   /** Only shown from the driver's seat. */
   private readonly dashboard: Mesh;
+  /** The flatbed's visible load; null for closed bodies, whose load is out of sight. */
+  private readonly load: Mesh | null = null;
   private readonly wheels: InstancedMesh;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
@@ -78,7 +98,7 @@ export class TruckView {
 
   constructor(
     private readonly scene: Scene,
-    private readonly definition: VehicleDefinition,
+    readonly definition: VehicleDefinition,
   ) {
     const { lengthMeters: L, widthMeters: W, heightMeters: H, wheelbaseMeters: B, wheelRadiusMeters: R } = definition.body;
     const paint = CLASS_PAINT[definition.vehicleClass];
@@ -96,6 +116,8 @@ export class TruckView {
     const cabRear = frontZ - cabLength;
     const boxFront = cabRear - 0.12;
     const halfW = W / 2;
+    const { bodyType } = definition;
+    const tandem = definition.vehicleClass === 'heavy';
 
     const parts = new Map<PartMaterial, BufferGeometry[]>();
     const add = (material: PartMaterial, geometry: BufferGeometry): void => {
@@ -108,11 +130,24 @@ export class TruckView {
     const lamp = (color: number, size: readonly [number, number, number], at: readonly [number, number, number]): void =>
       add('lamps', colored(new BoxGeometry(...size).translate(...at), color));
 
-    // Cab: lower body, the apron in front of the front wheels, the glasshouse and a roof deflector.
+    // Cab: lower body, the apron in front of the front wheels and the glasshouse. On the roof, a
+    // deflector in front of the box, the cooling unit of a refrigerated body, or a flatbed's beacons.
     box('paint', [W, beltY - cabBottom, cabLength], [0, (cabBottom + beltY) / 2, frontZ - cabLength / 2]);
     box('paint', [W, cabBottom - bumperTop + 0.02, 0.36], [0, (bumperTop + cabBottom) / 2, frontZ - 0.18]);
     box('paint', [W - 0.06, cabTop - beltY, cabLength - 0.1], [0, (beltY + cabTop) / 2, frontZ - 0.05 - (cabLength - 0.1) / 2]);
-    add('paint', wedge(W - 0.12, H - 0.06 - cabTop, cabLength * 0.72).translate(0, (cabTop + H - 0.06) / 2, cabRear + (cabLength * 0.72) / 2));
+    if (bodyType === 'box') {
+      add('paint', wedge(W - 0.12, H - 0.06 - cabTop, cabLength * 0.72).translate(0, (cabTop + H - 0.06) / 2, cabRear + (cabLength * 0.72) / 2));
+    } else if (bodyType === 'refrigerated') {
+      const unitHeight = H - 0.04 - (cabTop + 0.04);
+      const unitDepth = 0.62;
+      box('panels', [W * 0.72, unitHeight, unitDepth], [0, cabTop + 0.04 + unitHeight / 2, boxFront + unitDepth / 2]);
+      add('grille', frontQuad(W * 0.6, unitHeight * 0.7, boxFront + unitDepth + 0.005, cabTop + 0.04 + unitHeight * 0.15));
+    } else {
+      for (const side of [1, -1] as const) {
+        lamp(0xffa21c, [0.26, 0.14, 0.22], [side * 0.45, cabTop + 0.07, frontZ - 0.45]);
+      }
+      box('dark', [W * 0.7, 0.06, 0.3], [0, cabTop + 0.03, frontZ - 0.45]);
+    }
     // Side windows face outward only, so they do not block the view from the driver's seat.
     const windowHeight = (cabTop - beltY) * 0.7;
     const windowLength = cabLength * 0.5;
@@ -138,8 +173,9 @@ export class TruckView {
     box('dark', [W * 0.7, 0.24, L * 0.9], [0, frameY, centreZ]);
     add('metal', new CylinderGeometry(0.28, 0.28, 1.1, 16).rotateX(Math.PI / 2).translate(halfW - 0.32, frameY - 0.05, B * 0.45));
     box('dark', [0.5, 0.45, 0.7], [-(halfW - 0.3), frameY - 0.08, B * 0.45]);
+    const guardLength = 2 * R + 0.3 + (tandem ? 2 * TANDEM_HALF_SPACING : 0);
     for (const side of [1, -1] as const) {
-      box('dark', [TIRE_WIDTH + 0.08, 0.05, 2 * R + 0.3], [side * (halfW - 0.2), 2 * R + 0.05, 0]);
+      box('dark', [TIRE_WIDTH + 0.08, 0.05, guardLength], [side * (halfW - 0.2), 2 * R + 0.05, 0]);
     }
     box('dark', [W - 0.3, 0.12, 0.1], [0, R + 0.02, rearZ + 0.08]);
     box('dark', [W, 0.2, 0.08], [0, R + 0.26, rearZ + 0.02]);
@@ -149,18 +185,49 @@ export class TruckView {
       lamp(0xffa21c, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, rearZ - 0.03]);
     }
 
-    // Cargo box: livery on both sides, doors at the back, plain white roof and front, metal corner posts.
-    const boxHeight = H - deckY;
-    const boxLength = boxFront - rearZ;
-    for (const side of [1, -1] as const) {
-      add('livery', sideQuad(side, side * (halfW + 0.02), deckY, boxHeight, rearZ, boxLength));
-    }
-    add('doors', rearQuad(W + 0.04, boxHeight, rearZ, deckY));
-    box('panels', [W + 0.04, 0.02, boxLength], [0, H - 0.01, rearZ + boxLength / 2]);
-    box('panels', [W + 0.04, boxHeight, 0.02], [0, deckY + boxHeight / 2, boxFront - 0.01]);
-    for (const x of [halfW + 0.02, -(halfW + 0.02)]) {
-      for (const z of [rearZ, boxFront]) {
-        box('metal', [0.07, boxHeight, 0.07], [x, deckY + boxHeight / 2, z]);
+    const bodyLength = boxFront - rearZ;
+    const loadParts: BufferGeometry[] = [];
+    if (bodyType === 'flatbed') {
+      // Deck with side rails, a headboard behind the cab and stakes along both sides.
+      box('deck', [W, 0.16, bodyLength], [0, deckY - 0.08, rearZ + bodyLength / 2]);
+      for (const side of [1, -1] as const) {
+        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, rearZ + bodyLength / 2]);
+        for (let z = rearZ + 0.2; z < boxFront - 0.5; z += 1.6) {
+          box('dark', [0.07, 0.45, 0.07], [side * (halfW - 0.035), deckY + 0.22, z]);
+        }
+      }
+      box('metal', [W, 1.35, 0.08], [0, deckY + 0.675, boxFront - 0.04]);
+      box('dark', [W, 0.08, 0.1], [0, deckY + 1.35, boxFront - 0.04]);
+      // The load: pallets of bricks under ratchet straps, shown while loaded (setLoaded).
+      const palletLength = Math.min(2.2, (bodyLength - 0.9) / 3);
+      for (let i = 0; i < 3; i++) {
+        const z = boxFront - 0.35 - (palletLength + 0.1) * (i + 0.5);
+        loadParts.push(colored(new BoxGeometry(W * 0.86, 0.14, palletLength).translate(0, deckY + 0.07, z), PALLET_COLOR));
+        loadParts.push(
+          colored(new BoxGeometry(W * 0.8, 0.85, palletLength - 0.12).translate(0, deckY + 0.565, z), BRICK_COLOR),
+        );
+        for (const dz of [-palletLength * 0.25, palletLength * 0.25]) {
+          loadParts.push(colored(new BoxGeometry(W * 0.82, 0.03, 0.06).translate(0, deckY + 1.005, z + dz), STRAP_COLOR));
+          for (const side of [1, -1] as const) {
+            loadParts.push(
+              colored(new BoxGeometry(0.03, 0.85, 0.06).translate(side * W * 0.41, deckY + 0.565, z + dz), STRAP_COLOR),
+            );
+          }
+        }
+      }
+    } else {
+      // Cargo box: livery on both sides, doors at the back, plain white roof and front, metal corner posts.
+      const boxHeight = H - deckY;
+      for (const side of [1, -1] as const) {
+        add('livery', sideQuad(side, side * (halfW + 0.02), deckY, boxHeight, rearZ, bodyLength));
+      }
+      add('doors', rearQuad(W + 0.04, boxHeight, rearZ, deckY));
+      box('panels', [W + 0.04, 0.02, bodyLength], [0, H - 0.01, rearZ + bodyLength / 2]);
+      box('panels', [W + 0.04, boxHeight, 0.02], [0, deckY + boxHeight / 2, boxFront - 0.01]);
+      for (const x of [halfW + 0.02, -(halfW + 0.02)]) {
+        for (const z of [rearZ, boxFront]) {
+          box('metal', [0.07, boxHeight, 0.07], [x, deckY + boxHeight / 2, z]);
+        }
       }
     }
 
@@ -179,6 +246,7 @@ export class TruckView {
       doors: this.track(
         new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
       ),
+      deck: this.track(new MeshLambertMaterial({ color: 0x6e5238 })),
     };
     for (const [material, geometries] of parts) {
       this.body.add(new Mesh(this.track(mergeGeometries(geometries)), materials[material]));
@@ -211,14 +279,27 @@ export class TruckView {
     }
     this.dashboard.visible = false;
 
-    this.wheels = this.createWheels(R);
+    if (loadParts.length > 0) {
+      this.load = new Mesh(this.track(mergeGeometries(loadParts)), this.track(new MeshLambertMaterial({ vertexColors: true })));
+      for (const part of loadParts) {
+        part.dispose();
+      }
+      this.load.visible = false;
+      this.body.add(this.load);
+    }
+
+    // Front wheels first: they steer.
     const trackHalf = halfW - 0.2;
+    const rearAxles = tandem ? [TANDEM_HALF_SPACING, -TANDEM_HALF_SPACING] : [0];
     this.wheelPositions = [
       [trackHalf, R, B],
       [-trackHalf, R, B],
-      [trackHalf, R, 0],
-      [-trackHalf, R, 0],
+      ...rearAxles.flatMap((z) => [
+        [trackHalf, R, z] as const,
+        [-trackHalf, R, z] as const,
+      ]),
     ];
+    this.wheels = this.createWheels(R, this.wheelPositions.length);
     this.updateWheels(0);
 
     // A soft shadow under the truck; it stays flat on the road while the body leans.
@@ -256,6 +337,13 @@ export class TruckView {
     this.body.rotation.set(this.pitch, 0, this.roll);
   }
 
+  /** Shows or hides a flatbed's load. Closed bodies keep their load out of sight. */
+  setLoaded(loaded: boolean): void {
+    if (this.load !== null) {
+      this.load.visible = loaded;
+    }
+  }
+
   /** From the driver's seat the windshield would block the view: swap it for the dashboard. */
   setCabinView(enabled: boolean): void {
     this.windshield.visible = !enabled;
@@ -269,8 +357,8 @@ export class TruckView {
     }
   }
 
-  /** Tyres with a rim on each face: two draw calls for all four wheels. */
-  private createWheels(radius: number): InstancedMesh {
+  /** Tyres with a rim on each face: two draw calls for all the wheels. */
+  private createWheels(radius: number, count: number): InstancedMesh {
     const tire = new CylinderGeometry(radius, radius, TIRE_WIDTH, 22).rotateZ(Math.PI / 2);
     const outer = new CircleGeometry(radius * 0.72, 22).rotateY(Math.PI / 2).translate(TIRE_WIDTH / 2 + 0.002, 0, 0);
     const inner = new CircleGeometry(radius * 0.72, 22).rotateY(-Math.PI / 2).translate(-TIRE_WIDTH / 2 - 0.002, 0, 0);
@@ -280,7 +368,7 @@ export class TruckView {
     }
     const rim = this.track(new MeshPhongMaterial({ map: this.texture(toTexture(rimImage())), shininess: 90 }));
     return this.track(
-      new InstancedMesh(this.track(wheel), [this.track(new MeshLambertMaterial({ color: 0x1d1d1f })), rim, rim], 4),
+      new InstancedMesh(this.track(wheel), [this.track(new MeshLambertMaterial({ color: 0x1d1d1f })), rim, rim], count),
     );
   }
 

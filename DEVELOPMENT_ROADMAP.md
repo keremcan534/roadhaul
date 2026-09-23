@@ -32,9 +32,9 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 16 | Damage | 3 | ✅ | Spec §18 bands; weaker engine and brakes; paid repairs |
 | 17 | Reward screen | 3 | ✅ | XP, reputation, balance, level-up; five company levels unlock contracts |
 | 18 | Save/load | 3 | ✅ | Save v2 with migration; atomic write, backup, corruption handling; continue or found a company; autosave |
-| 19 | Garage | 5 | ⬜ **next** | Owned trucks, active truck |
-| 20 | Upgrade | 3/5 | ⬜ | Upgrade definitions, costs, stat modifiers |
-| 21 | 3-city prototype | 4 | ⬜ | City A (starter), B (industrial), C (agricultural), rest area |
+| 19 | Garage | 5 | ✅ | H2 and H3 trucks; buy them at company levels 2 and 3; switch trucks in place; ten contracts that need them; save v3 |
+| 20 | Upgrade | 3/5 | ✅ | Five upgrades of three levels (spec §16): engine, brakes, tyres, suspension, fuel tank; per truck |
+| 21 | 3-city prototype | 4 | ⬜ **next** | City A (starter), B (industrial), C (agricultural), rest area |
 | 22 | Traffic | 4 | ⬜ | Waypoint NPC traffic |
 | 23 | Navigation | 4 | ⬜ | Route, GPS arrow, ETA |
 | 24 | Weather | 4 | ⬜ | Clear, cloudy, rain, night |
@@ -79,11 +79,21 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Saves live in the browser (localStorage); an Android build (step 28) keeps them in the app's storage. There is one save slot.
 - The HQ refuels and repairs by phone: the truck does not need to drive there. Rest areas with pumps come with the 3-city map (step 21).
 
-## Next step: 19 Garage
+### Phase 5 notes
+
+- Steps 19 and 20 came before Phase 4 so the first-success loop (spec §80: "upgrades the truck, takes the next contract") closes on the test track. The 3-city map follows.
+- The dealer sells each model once: a fleet of several trucks of one model needs drivers, which is FleetService, after the MVP (spec §44).
+- A truck bought waits in the garage; switching puts it where the active truck stands, never during a contract. Each truck keeps its own fuel, damage and upgrades.
+- Upgrades are per truck and replace the level below. The engine also saves a little fuel; the suspension protects cargo and steadies cornering. The gearbox and cabin upgrades of spec §16 come later.
+- The job board lists all twenty contracts. Contracts that need a bigger truck name it, so the player sees what to buy next.
+- Prices are first guesses: the H2 (22,000 credits) pays for itself in about six refrigerated contracts.
+- Purchases now save once what was bought is in place. Before, the session saved as the money moved, so a save taken right then had paid for fuel or a repair it did not have.
+
+## Next step: 21 3-city prototype
 
 Suggested request:
 
-> Implement roadmap step 19 only. Add the H2 (medium) and H3 (heavy) trucks as data, a GarageService that owns the company's trucks and the active one, buying a truck with credits at the HQ, and switching trucks; missions that need their bodies or payloads become available. Keep the save schema versioned (v3 + migration).
+> Implement roadmap step 21 only. Replace the test track with a map of three cities (A starter, B industrial, C agricultural) joined by roads, a depot per city and a rest area with a fuel pump and repairs. Keep the missions working on it, and keep the save schema versioned (bump + migration if the map id changes).
 
 ## Infrastructure track
 

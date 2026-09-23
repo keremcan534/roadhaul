@@ -3,7 +3,7 @@ import type { Credits } from '../../data/units';
 import type { MissionFailureReason } from '../../domain/missions/MissionInstance';
 import type { GameEvents } from '../../systems/GameEvents';
 import { button, element } from '../dom';
-import { routeText } from '../hq/CompanyHq';
+import { routeText } from '../hq/jobCards';
 import type { Strings } from '../i18n';
 
 /**

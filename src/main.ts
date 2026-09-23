@@ -38,11 +38,13 @@ import './ui/styles.css';
  * Browser entry point and composition root. It boots the headless game
  * services, then adds rendering, input, the menus, the HUD, the frame loop
  * and debug tooling, and wires the game flow: main menu → company HQ (job
- * board, fuel, repairs) → driving the contract → result → HQ. A company is
- * started or continued from the main menu and saves itself as it goes.
+ * board, garage, upgrades, fuel, repairs) → driving the contract → result →
+ * HQ. A company is started or continued from the main menu and saves itself
+ * as it goes.
  *
- * `<html data-boot-state>` (booting | ready | error), `data-game-state` and
- * `data-mission-state` let the end-to-end tests follow progress.
+ * `<html data-boot-state>` (booting | ready | error), `data-game-state`,
+ * `data-mission-state` and `data-vehicle` let the end-to-end tests follow
+ * progress.
  */
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -75,6 +77,8 @@ async function start(): Promise<void> {
   const company = services.resolve(ServiceKeys.company);
   const fuel = services.resolve(ServiceKeys.fuel);
   const damage = services.resolve(ServiceKeys.damage);
+  const garage = services.resolve(ServiceKeys.garage);
+  const upgrades = services.resolve(ServiceKeys.upgrades);
   const session = services.resolve(ServiceKeys.session);
 
   // Older WebViews may only have navigator.language.
@@ -91,7 +95,8 @@ async function start(): Promise<void> {
   const environment = new EnvironmentView(renderHost.scene);
   new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy });
-  const truck = new TruckView(renderHost.scene, driving.definition);
+  // Rebuilt whenever the player drives another truck (showActiveTruck).
+  let truck = new TruckView(renderHost.scene, driving.definition);
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
 
   /** The simulation stands still while a menu or the result is open over the road. */
@@ -175,7 +180,19 @@ async function start(): Promise<void> {
   });
 
   const menuMessage = (): string | null => (persistent ? null : strings.t('menu.storageOff'));
+  /** Shows the truck being driven: a new model gets its own view, and the camera follows it. */
+  const showActiveTruck = (): void => {
+    if (truck.definition.id !== driving.definition.id) {
+      truck.dispose();
+      truck = new TruckView(renderHost.scene, driving.definition);
+      cameraRig.setBody(driving.definition.body);
+      truck.setCabinView(isDriving() && cameraRig.currentMode === 'cabin');
+    }
+    truck.setLoaded(driving.cargoMassKg > 0);
+    root.dataset.vehicle = driving.definition.id;
+  };
   const enterCompany = (): void => {
+    showActiveTruck();
     syncMissionView();
     gameState.transitionTo('companyHq');
   };
@@ -209,7 +226,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { missions, economy, company, fuel, damage },
+    { missions, economy, company, fuel, damage, garage, upgrades },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -228,17 +245,46 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
         }
       },
+      onBuyTruck: (definitionId) => {
+        const bought = garage.buy(definitionId);
+        if (bought.ok) {
+          toasts.show(strings.t('toast.truckBought', { truck: strings.vehicleName(definitionId) }), 'success');
+        } else if (bought.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not buy ${definitionId}: ${bought.error}.`);
+        }
+      },
+      onSwitchTruck: (instanceId) => {
+        const switched = garage.switchTo(instanceId);
+        if (switched.ok) {
+          toasts.show(strings.t('toast.truckSwitched', { truck: strings.vehicleName(switched.value.definition.id) }), 'success');
+        } else {
+          logger.warn(`Could not switch to ${instanceId}: ${switched.error}.`);
+        }
+      },
+      onBuyUpgrade: (upgradeId) => {
+        const fitted = upgrades.buy(upgradeId);
+        if (fitted.ok) {
+          toasts.show(strings.t('toast.upgraded', { upgrade: strings.upgradeName(upgradeId), level: fitted.value }), 'success');
+        } else if (fitted.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not fit ${upgradeId}: ${fitted.error}.`);
+        }
+      },
       onFreeDrive: () => gameState.transitionTo('driving'),
       onMainMenu: () => gameState.transitionTo('mainMenu'),
     },
   );
   const perfOverlay = config.debug.showPerfOverlay ? new PerfOverlay(ui) : null;
 
-  /** Points the depot beacon and the test hook at the contract under way. */
+  /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
   const syncMissionView = (): void => {
     const target = missions.target;
     depots.setTarget(target?.depot.id ?? null, target?.kind);
     root.dataset.missionState = missions.active?.state ?? 'none';
+    truck.setLoaded(driving.cargoMassKg > 0);
   };
   const refreshHq = (): void => {
     if (hq.isOpen) {
@@ -290,6 +336,12 @@ async function start(): Promise<void> {
   });
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
+  events.on('VehiclePurchased', refreshHq);
+  events.on('UpgradePurchased', refreshHq);
+  events.on('ActiveVehicleChanged', () => {
+    showActiveTruck();
+    refreshHq();
+  });
 
   const showState = (state: GameState): void => {
     root.dataset.gameState = state;
@@ -321,6 +373,7 @@ async function start(): Promise<void> {
     showState(current);
   });
   root.dataset.missionState = 'none';
+  root.dataset.vehicle = driving.definition.id;
   showState(gameState.current);
 
   // Closing or hiding the tab keeps the latest state.

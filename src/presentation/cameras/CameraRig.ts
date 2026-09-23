@@ -5,11 +5,12 @@ import type { VehiclePose } from '../../systems/driving/DrivingService';
 
 export type CameraMode = 'chase' | 'cabin';
 
-const CHASE_DISTANCE_METERS = 10.5;
+/** Behind the truck's middle: half its length plus this much (10.5 m for the H1). */
+const CHASE_GAP_METERS = 6.8;
 /** Extra distance per m/s of speed, so the truck does not fill the screen at speed. */
 const CHASE_DISTANCE_PER_SPEED = 0.1;
-/** High enough to see the road over the cargo box. */
-const CHASE_HEIGHT_METERS = 4.8;
+/** Above the truck's roof: high enough to see the road over the cargo box (4.8 m for the H1). */
+const CHASE_HEIGHT_ABOVE_ROOF_METERS = 1.5;
 const CHASE_LOOK_AHEAD_METERS = 10;
 const CHASE_LOOK_HEIGHT_METERS = 2.6;
 const CHASE_FOLLOW_RATE = 6;
@@ -38,9 +39,15 @@ export class CameraRig {
 
   constructor(
     private readonly camera: PerspectiveCamera,
-    private readonly body: VehicleBody,
+    private body: VehicleBody,
   ) {
     this.applyFieldOfView();
+  }
+
+  /** Follows another truck (the garage swapped it): a bigger one is watched from further back. */
+  setBody(body: VehicleBody): void {
+    this.body = body;
+    this.snapNextFrame = true;
   }
 
   get currentMode(): CameraMode {
@@ -85,18 +92,19 @@ export class CameraRig {
       );
       this.target.set(centreX, SHOWCASE_LOOK_HEIGHT_METERS, centreZ);
     } else if (this.mode === 'chase') {
-      const back = CHASE_DISTANCE_METERS + Math.abs(speed) * CHASE_DISTANCE_PER_SPEED;
+      const back = this.body.lengthMeters / 2 + CHASE_GAP_METERS + Math.abs(speed) * CHASE_DISTANCE_PER_SPEED;
+      const height = this.body.heightMeters + CHASE_HEIGHT_ABOVE_ROOF_METERS;
       const desiredX = pose.x + sin * (centreAhead - back);
       const desiredZ = pose.z + cos * (centreAhead - back);
       const lookX = pose.x + sin * (centreAhead + CHASE_LOOK_AHEAD_METERS);
       const lookZ = pose.z + cos * (centreAhead + CHASE_LOOK_AHEAD_METERS);
       if (this.snapNextFrame) {
-        this.position.set(desiredX, CHASE_HEIGHT_METERS, desiredZ);
+        this.position.set(desiredX, height, desiredZ);
         this.target.set(lookX, CHASE_LOOK_HEIGHT_METERS, lookZ);
       } else {
         const follow = dampFactor(CHASE_FOLLOW_RATE, deltaSeconds);
         this.position.x += (desiredX - this.position.x) * follow;
-        this.position.y += (CHASE_HEIGHT_METERS - this.position.y) * follow;
+        this.position.y += (height - this.position.y) * follow;
         this.position.z += (desiredZ - this.position.z) * follow;
         this.target.x += (lookX - this.target.x) * follow;
         this.target.y += (CHASE_LOOK_HEIGHT_METERS - this.target.y) * follow;

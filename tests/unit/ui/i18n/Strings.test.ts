@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_CONTENT } from '../../../../src/data/content';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
+import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
 import { MISSION_DIFFICULTIES } from '../../../../src/data/definitions/MissionDefinition';
+import { VEHICLE_STATS } from '../../../../src/data/definitions/UpgradeDefinition';
+import { VEHICLE_CLASSES } from '../../../../src/data/definitions/VehicleDefinition';
 import { DAMAGE_BANDS } from '../../../../src/domain/vehicles/vehicleDamage';
+import { HQ_TABS } from '../../../../src/ui/hq/hqTabs';
 import { EN } from '../../../../src/ui/i18n/en';
 import { chooseLanguage, stringsFor } from '../../../../src/ui/i18n';
 import { TR } from '../../../../src/ui/i18n/tr';
@@ -15,11 +19,17 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, cargo, mission, truck, upgrade, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
       ...GAME_CONTENT.missions.map((mission) => `mission.${mission.id}.title`),
+      ...GAME_CONTENT.vehicles.map((vehicle) => `vehicle.${vehicle.id}.name`),
+      ...GAME_CONTENT.upgrades.map((upgrade) => `upgrade.${upgrade.id}.name`),
+      ...VEHICLE_STATS.map((stat) => `stat.${stat}`),
+      ...VEHICLE_CLASSES.map((vehicleClass) => `vehicleClass.${vehicleClass}`),
+      ...BODY_TYPES.map((body) => `body.${body}`),
+      ...HQ_TABS.map((tab) => `hq.tab.${tab}`),
       ...MISSION_DIFFICULTIES.map((difficulty) => `difficulty.${difficulty}`),
       ...DEFAULT_GAME_CONFIG.company.levelXp.map((_, index) => `company.levelName.${index + 1}`),
       ...DAMAGE_BANDS.map((band) => `damage.${band}`),

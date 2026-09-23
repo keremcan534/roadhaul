@@ -74,11 +74,11 @@ flowchart TD
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
    3. validates the config against the content (for example, that the starting truck exists);
-   4. creates the `EventBus` and the services in dependency order: game state, driving, economy, company, missions, damage, fuel, saves and the game session (which subscribes last, so it saves state the others have already updated);
+   4. creates the `EventBus` and the services in dependency order: game state, driving, economy, company, missions, damage, fuel, the garage and the upgrade shop, saves and the game session (which subscribes last, so it saves state the others have already updated);
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
 3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
-4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event and `data-mission-state` every `MissionStateChanged`. The e2e tests wait for them.
+4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event, `data-mission-state` every `MissionStateChanged` and `data-vehicle` the truck being driven. The e2e tests wait for them.
 
 Any failure shows the fatal error screen and sets `data-boot-state="error"`. A failed boot disposes every service it had already created.
 
@@ -100,7 +100,8 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 
 - game flow and driving: `GameStateChanged`, `VehicleCollided`;
 - missions: `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed`;
-- money and the truck: `MoneyChanged`, `FuelChanged`, `VehicleDamaged`, `VehicleRepaired`;
+- money and the truck: `MoneyChanged`, `FuelChanged`, `Refuelled`, `VehicleDamaged`, `VehicleRepaired`;
+- the garage: `VehiclePurchased`, `ActiveVehicleChanged`, `UpgradePurchased`;
 - the company: `CompanyProgressed`, `CompanyLevelUp`.
 
 Events join as their systems arrive.
@@ -190,21 +191,34 @@ Roadmap steps 14–17 give deliveries consequences (spec §13–18):
   - an empty tank stalls the engine;
   - refuelling costs money at the pump (the HQ) or, dearer, from a fuel truck on the road;
   - a stranded company that cannot pay gets a little emergency fuel for free, so it can never get stuck.
-- **`DamageService`** turns collisions into truck damage in the spec §18 bands. Damage weakens the engine and brakes through `DrivingService.setPerformanceModifier` (upgrades will add their own modifiers), never to nothing. Repairs cost money.
+- **`DamageService`** turns collisions into truck damage in the spec §18 bands. Damage weakens the engine and brakes through `DrivingService.setPerformanceModifier` (upgrades add their own modifier), never to nothing. Repairs cost money.
 - **`CompanyService`** keeps the company's name, XP, the five levels (`GameConfig.company.levelXp`), reputation and statistics. Deliveries add XP and reputation (computed with the reward in `missionProgress.ts`); failures cost reputation. Contracts can require a company level, and the job board shows what unlocks them.
+
+### The garage and upgrades
+
+Roadmap steps 19–20 close the first-success loop (spec §80): deliver, earn, upgrade, take a bigger contract.
+
+- **Trucks.** H1 (light box), H2 (medium refrigerated) and H3 (heavy flatbed) are tuned against per-class ranges (`vehicleTuning.test.ts`). The dealer sells H2 and H3 from company levels 2 and 3. Ten of the twenty contracts need them: chilled cargo, heavier boxes, building materials.
+- **`GarageService`** owns the company's trucks and the active one. Buying adds a full, unupgraded truck to the garage. Switching is refused during a contract. Otherwise the new truck takes the old one's place on the map (`DrivingService.switchVehicle`), with its own fuel, damage and upgrades. The browser entry rebuilds the `TruckView` on `ActiveVehicleChanged`.
+- **Upgrades** (spec §16) are definitions with levels. Each level has a cost, a company level and stat modifiers, and replaces the level below. `statBonuses` sums the fitted levels of a truck. The garage applies them to the active truck:
+  - engine, brakes, grip and stability through the `'upgrades'` performance modifier, which multiplies with damage;
+  - the tank size and fuel saving through `FuelService.setUpgradeBonuses`;
+  - cargo protection through `MissionService.setCargoProtection`.
+- **`UpgradeService`** is the shop: the next level of each upgrade for the active truck, paid through the economy.
+- **The HQ** has three tabs: the job board, the garage and the upgrade shop. Every blocked contract, truck or upgrade says what unlocks it.
 
 ## 9. Data and content
 
 The spec's ScriptableObjects become **definition interfaces** (`src/data/definitions`) plus **content** (`src/data/content`):
 
-- Vehicle (with physics data), map (with depots), cargo, city and mission definitions. Each definition file also exports its validation function.
+- Vehicle (with physics data, price and unlock level), map (with depots), cargo, city, mission and upgrade definitions. Each definition file also exports its validation function.
 - `GAME_CONTENT` (`src/data/content/index.ts`) is the built-in content set. `ContentCatalog.create()` validates every field and every cross-reference, then serves frozen lookups (`catalog.vehicles.get(id)`).
 - References are checked at boot: missions must point to existing cities and cargo, origin and destination must differ, both cities need a depot, and some truck must have the body and payload for the load. Depots must name known cities. The config's starting truck and map must exist. Checks that need geometry, such as the spawn being on the road or every yard opening onto it, are content tests (`tests/unit/data/content`).
 - **Ids** are `snake_case` and never change once shipped, because saves store them. **Units** are part of field names (`timeLimitSeconds`, `fuelCapacityLiters`). Money is integer `Credits`. Ratios are `Fraction`s from 0 to 1.
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (a contract cannot require a level that does not exist).
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
 
 ## 10. Save data
 
@@ -212,21 +226,22 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 
 - version and timestamps;
 - profile, company, economy and garage;
-- since v2: the world (where the truck is parked), the contract under way, and statistics.
+- since v2: the world (where the truck is parked), the contract under way, and statistics;
+- since v3: the upgrades fitted to each truck.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (2) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (3) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
-- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later.
+- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser (`platform/browser/browserStorage.ts`), memory in tests or when the browser forbids storage.
   - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
   - **Backup:** loading falls back to it when the latest save is unreadable.
   - **Corruption:** unreadable data is set aside and reported.
   - **Storage errors** (a full quota, private mode) come back as Results: the game never crashes because of a save.
 - **`GameSessionService`** (`src/systems/session`) is the company being played.
-  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, fuel, damage, missions, the truck's position).
-  - It saves after every delivery, failure and purchase, when the player leaves the road for a menu, and every 20 s of driving. The browser entry also saves when the tab hides or closes.
+  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, missions, the truck's position).
+  - It saves after every delivery and failure; after each purchase and truck change, once what was bought is in place (`Refuelled`, `VehicleRepaired`, `VehiclePurchased`, `UpgradePurchased`, `ActiveVehicleChanged`, never on `MoneyChanged`); when the player leaves the road for a menu; and every 20 s of driving. The browser entry also saves when the tab hides or closes.
 
 ## 11. Rendering and the mobile performance budget
 

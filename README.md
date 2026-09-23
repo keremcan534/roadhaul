@@ -2,14 +2,16 @@
 
 Mobile-first logistics and truck simulation game: take a contract, load the cargo, drive, deliver, earn credits, upgrade your truck and grow your company.
 
-**Status:** Phase 3 (economy). Found your company and take contracts from the HQ's job board. Drive to the pickup depot and stop in the yellow bay to load, then deliver to the destination depot.
+**Status:** Phase 5 (garage and upgrades). Found your company and take contracts from the HQ's job board. Drive to the pickup depot and stop in the yellow bay to load, then deliver to the destination depot.
 
 - **Pay:** credits with on-time and careful-driving bonuses, or a late penalty; the contract fails if the cargo breaks.
 - **Progress:** XP, company levels that unlock better contracts, and reputation.
+- **Garage:** three trucks: the light H1 box truck you start with, the H2 refrigerated truck and the H3 heavy flatbed. Twenty contracts, half of them for the bigger trucks.
+- **Upgrades:** engine, brakes, tyres, suspension and fuel tank, three levels each, fitted to each truck.
 - **Upkeep:** watch the fuel and the truck's damage; refuel and repair at the HQ, or call a fuel truck when stranded.
 - **Saving:** the game saves itself; Continue picks up where you left off.
 
-It runs on a 2.4 km test track with three depots, in Turkish or English. Trucks to buy and upgrades come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+It runs on a 2.4 km test track with three depots, in Turkish or English. The 3-city map, traffic and navigation come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
 
 **Controls:**
 - **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button top right switches between the chase and cabin cameras; the one top left pauses.

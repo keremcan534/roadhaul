@@ -93,5 +93,22 @@ describe('CameraRig', () => {
     expect(rig.currentMode).toBe('cabin');
     expect(camera.fov).toBe(72);
   });
-});
 
+  it('follows a truck swapped in from the same gap behind its tail, and above its roof', () => {
+    const camera = new PerspectiveCamera();
+    const pose = { x: 0, z: 0, heading: 0 };
+    const rig = new CameraRig(camera, body);
+    /** How far behind the back of the body the camera is. */
+    const gapBehindTail = (truck: typeof body): number =>
+      -inTruckFrame(camera, pose).z - (truck.lengthMeters / 2 - truck.wheelbaseMeters / 2);
+    rig.update(pose, 0, 1 / 60);
+    const gap = gapBehindTail(body);
+
+    for (const truck of VEHICLES.slice(1).map((vehicle) => vehicle.body)) {
+      rig.setBody(truck);
+      rig.update(pose, 0, 1 / 60); // Snaps: no swing across the map.
+      expect(gapBehindTail(truck)).toBeCloseTo(gap, 9);
+      expect(camera.position.y).toBeGreaterThan(truck.heightMeters + 1);
+    }
+  });
+});

@@ -28,6 +28,49 @@ export async function foundCompany(page: Page, name = 'Test Lojistik'): Promise<
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
 }
 
+/** One owned truck as the game saves it. */
+export interface SavedTruck {
+  readonly instanceId: string;
+  readonly definitionId: string;
+  readonly fuelLiters: number;
+}
+
+/** A company as the game saves it, part way up the ladder: level 2, with credits for a truck. */
+export function savedCompany(
+  overrides: { credits?: number; xp?: number; trucks?: readonly SavedTruck[]; activeTruck?: string } = {},
+): string {
+  const xp = overrides.xp ?? 1000;
+  const trucks = overrides.trucks ?? [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150 }];
+  return JSON.stringify({
+    version: 3,
+    createdAtMs: 1_700_000_000_000,
+    updatedAtMs: 1_700_000_000_000,
+    profile: { companyName: 'Kuzey Lojistik' },
+    company: { level: xp >= 3000 ? 3 : xp >= 1000 ? 2 : 1, xp, reputation: 40 },
+    economy: { credits: overrides.credits ?? 30_000 },
+    garage: {
+      activeVehicleInstanceId: overrides.activeTruck ?? trucks[0]!.instanceId,
+      vehicles: trucks.map((truck) => ({ ...truck, damage: 0, upgrades: {} })),
+    },
+    world: { mapId: 'test_track', truck: null },
+    missions: { active: null },
+    stats: { deliveriesCompleted: 9, deliveriesFailed: 0, creditsEarned: 12_000, distanceDrivenMeters: 9_000 },
+  });
+}
+
+/** Opens the game with `save` in storage and continues it: its HQ. */
+export async function continueSavedCompany(page: Page, save: string, query = ''): Promise<void> {
+  await page.addInitScript((json) => {
+    if (sessionStorage.getItem('roadhaul.e2e.seeded') === null) {
+      localStorage.setItem('roadhaul.save', json);
+      sessionStorage.setItem('roadhaul.e2e.seeded', 'yes');
+    }
+  }, save);
+  await openMainMenu(page, query);
+  await page.locator('[data-action="continue-game"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
+}
+
 /** Opens the game and founds a new company: its HQ. */
 export async function openCompanyHq(page: Page, query = ''): Promise<void> {
   await openMainMenu(page, query);
