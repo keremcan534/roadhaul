@@ -10,6 +10,7 @@ import type { EconomyService } from '../systems/economy/EconomyService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
 import type { MissionService } from '../systems/missions/MissionService';
+import type { NavigationService } from '../systems/navigation/NavigationService';
 import type { SaveService } from '../systems/save/SaveService';
 import type { GameSessionService } from '../systems/session/GameSessionService';
 import type { TrafficService } from '../systems/traffic/TrafficService';
@@ -29,6 +30,7 @@ export const ServiceKeys = Object.freeze({
   driving: serviceKey<DrivingService>('DrivingService'),
   traffic: serviceKey<TrafficService>('TrafficService'),
   missions: serviceKey<MissionService>('MissionService'),
+  navigation: serviceKey<NavigationService>('NavigationService'),
   economy: serviceKey<EconomyService>('EconomyService'),
   company: serviceKey<CompanyService>('CompanyService'),
   damage: serviceKey<DamageService>('DamageService'),

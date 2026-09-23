@@ -5,7 +5,6 @@ import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import type { GameContent } from '../../../../src/data/GameContent';
 import type { RectangleDefinition } from '../../../../src/data/definitions/MapDefinition';
 import { bayParkingPose } from '../../../../src/domain/missions/loadingBay';
-import { createRouteGuidance } from '../../../../src/domain/world/roadRoute';
 import { DrivingService } from '../../../../src/systems/driving/DrivingService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { MissionService } from '../../../../src/systems/missions/MissionService';
@@ -297,21 +296,6 @@ describe('MissionService', () => {
     expect(context.driving.totalMassKg).toBe(EMPTY_MASS);
     expect(missions.accept('test_mission').ok).toBe(true);
     expect(() => setup().missions.abandon()).not.toThrow();
-  });
-
-  it('guides the truck to its target by road', () => {
-    const { driving, missions } = setup();
-    const guidance = createRouteGuidance();
-    expect(missions.guide(guidance)).toBe(false);
-
-    missions.accept('test_mission');
-    missions.update(STEP_SECONDS);
-    driving.placeTruck(100, 0, Math.PI / 2); // At the east end, facing away from the pickup.
-
-    expect(missions.guide(guidance)).toBe(true);
-    expect(guidance.distanceMeters).toBeGreaterThan(200);
-    expect(guidance.aimX).toBeLessThan(100); // Back west, along the road.
-    expect(guidance.aimZ).toBeCloseTo(0, 6);
   });
 
   it('waits while nothing is being driven, and stops listening when disposed', () => {

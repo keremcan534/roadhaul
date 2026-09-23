@@ -59,6 +59,14 @@ export interface GameConfig {
     /** Speed limits by kind of road, km/h. Each vehicle cruises at its own share of the limit. */
     readonly speedLimitsKmh: Readonly<Record<RoadKind, number>>;
   };
+  readonly navigation: {
+    /**
+     * The arrival time (ETA) assumes the truck drives at this share of each
+     * road's speed limit (or of its own top speed, if lower): a truck slows
+     * for bends, junctions and traffic.
+     */
+    readonly etaPaceFactor: Fraction;
+  };
   readonly company: {
     /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
     readonly levelXp: readonly number[];
@@ -108,6 +116,9 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     minSpawnDistanceMeters: 180,
     speedLimitsKmh: { street: 45, ringRoad: 60, highway: 90, rural: 70 },
   },
+  navigation: {
+    etaPaceFactor: 0.8,
+  },
   company: {
     levelXp: [0, 1000, 3000, 6500, 12000],
   },
@@ -125,7 +136,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, economy, fuel, traffic, company, newGame, debug } = config;
+  const { simulation, rendering, missions, economy, fuel, traffic, navigation, company, newGame, debug } = config;
 
   validator.check(
     Number.isFinite(simulation.fixedStepSeconds) &&
@@ -170,6 +181,11 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   for (const kind of ROAD_KINDS) {
     validator.positiveNumber(traffic.speedLimitsKmh?.[kind], `traffic.speedLimitsKmh.${kind}`);
   }
+  validator.check(
+    Number.isFinite(navigation.etaPaceFactor) && navigation.etaPaceFactor > 0 && navigation.etaPaceFactor <= 1,
+    'navigation.etaPaceFactor',
+    'must be greater than 0 and at most 1',
+  );
   const levels = company.levelXp;
   validator.check(
     Array.isArray(levels) &&

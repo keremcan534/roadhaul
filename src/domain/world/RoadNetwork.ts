@@ -22,6 +22,34 @@ export interface Junction {
   readonly members: readonly RoadSampleRef[];
 }
 
+/**
+ * A route over the roads as a run of road samples (RoadNetwork.trace). The
+ * arrays hold one entry per sample, up to `count`; create one with
+ * createRouteTrace() and reuse it, so tracing allocates nothing.
+ */
+export interface RouteTrace {
+  /** Samples on the route, from the one nearest the start to the one nearest the target. */
+  count: number;
+  readonly x: Float64Array;
+  readonly z: Float64Array;
+  /** The road each sample is on (an index into the network's roads). */
+  readonly road: Int32Array;
+  /** Distance along the route from the first sample, meters. */
+  readonly along: Float64Array;
+  /** Where the route leads: the target point itself (it may lie off the road, in a depot yard). */
+  targetX: number;
+  targetZ: number;
+  /** The whole way, meters: from the start to the road, along it, and off it to the target. */
+  distanceMeters: number;
+  /** How long the whole way takes at the given paces, seconds. */
+  seconds: number;
+  /** False when no road joins the start to the target: the route is then a straight line. */
+  connected: boolean;
+}
+
+/** Leaving the road for the target, or joining it from the start, is this slow (yards, verges), m/s. */
+const OFF_ROAD_PACE = 4;
+
 /** Shortest distances by road to one target, and the way there. */
 interface RouteField {
   /** From each node to the target, meters; Infinity where no road leads there. */
@@ -209,6 +237,58 @@ export class RoadNetwork {
     return out;
   }
 
+  /**
+   * The shortest route by road from (fromX, fromZ) to (toX, toZ), written
+   * into `out` sample by sample (both ends snap to their nearest road), with
+   * its length and how long it takes when each road is driven at its pace
+   * (`paces[roadIndex]`, m/s). Allocation-free once the target's route has
+   * been computed.
+   */
+  trace(fromX: number, fromZ: number, toX: number, toZ: number, paces: ArrayLike<number>, out: RouteTrace): RouteTrace {
+    out.count = 0;
+    out.targetX = toX;
+    out.targetZ = toZ;
+    out.connected = false;
+    out.distanceMeters = Math.hypot(toX - fromX, toZ - fromZ);
+    out.seconds = out.distanceMeters / OFF_ROAD_PACE;
+    const target = this.nearestNode(toX, toZ);
+    const start = this.nearestNode(fromX, fromZ);
+    if (target < 0 || start < 0) {
+      return out;
+    }
+    const field = this.routeTo(target);
+    if (!(field.distance[start]! < Infinity)) {
+      return out;
+    }
+    const capacity = out.x.length;
+    let node = start;
+    let along = 0;
+    let seconds = 0;
+    for (;;) {
+      if (out.count < capacity) {
+        const i = out.count++;
+        out.x[i] = this.nodeX[node]!;
+        out.z[i] = this.nodeZ[node]!;
+        out.road[i] = this.roadOf[node]!;
+        out.along[i] = along;
+      }
+      const next = field.next[node]!;
+      if (node === target || next < 0) {
+        break;
+      }
+      const step = Math.hypot(this.nodeX[next]! - this.nodeX[node]!, this.nodeZ[next]! - this.nodeZ[node]!);
+      along += step;
+      seconds += step / Math.max(0.1, paces[this.roadOf[node]!] ?? 1);
+      node = next;
+    }
+    const onRoad = Math.hypot(this.nodeX[start]! - fromX, this.nodeZ[start]! - fromZ);
+    const offRoad = Math.hypot(toX - this.nodeX[target]!, toZ - this.nodeZ[target]!);
+    out.connected = true;
+    out.distanceMeters = onRoad + along + offRoad;
+    out.seconds = seconds + (onRoad + offRoad) / OFF_ROAD_PACE;
+    return out;
+  }
+
   /** Joins samples of different roads that share a position (see JUNCTION_RADIUS_METERS). */
   private linkJunctions(link: (a: number, b: number) => void): void {
     const cellOf = (value: number): number => Math.floor(value / JUNCTION_RADIUS_METERS);
@@ -350,4 +430,21 @@ class MinHeap {
     this.nodes = nodes;
     this.priorities = priorities;
   }
+}
+
+/** A trace with room for every sample of `network`. */
+export function createRouteTrace(network: RoadNetwork): RouteTrace {
+  const capacity = Math.max(1, network.nodeCount);
+  return {
+    count: 0,
+    x: new Float64Array(capacity),
+    z: new Float64Array(capacity),
+    road: new Int32Array(capacity),
+    along: new Float64Array(capacity),
+    targetX: 0,
+    targetZ: 0,
+    distanceMeters: 0,
+    seconds: 0,
+    connected: false,
+  };
 }

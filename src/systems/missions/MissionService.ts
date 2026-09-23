@@ -25,7 +25,7 @@ import { deliveryReputation, deliveryXp, FAILURE_REPUTATION_LOSS } from '../../d
 import { calculateMissionReward, missionBasePay } from '../../domain/missions/missionReward';
 import type { ActiveMissionSaveData } from '../../domain/save/SaveGameData';
 import { MAX_SAVING } from '../../domain/vehicles/upgradeBonuses';
-import { createRouteGuidance, type RouteGuidance } from '../../domain/world/roadRoute';
+import { createRouteGuidance } from '../../domain/world/roadRoute';
 import type { DrivingService } from '../driving/DrivingService';
 import type { GameEvents } from '../GameEvents';
 
@@ -72,7 +72,7 @@ export interface MissionTarget {
  * bay. The browser entry calls update() every fixed step while driving, after
  * DrivingService.step(). It never touches the UI: it publishes
  * MissionStateChanged, CargoDamaged, MissionCompleted and MissionFailed, and
- * the UI reads `active`, `target` and guide().
+ * the UI reads `active` and `target` (NavigationService routes to the target).
  */
 export class MissionService {
   private mission: MissionInstance | null = null;
@@ -197,20 +197,6 @@ export class MissionService {
     if (this.mission !== null) {
       this.fail(this.mission, 'abandoned');
     }
-  }
-
-  /**
-   * Writes the route from the truck to the target bay into `out` and returns
-   * true, or returns false without a target. Allocation-free.
-   */
-  guide(out: RouteGuidance): boolean {
-    const target = this.currentTarget;
-    if (target === null || !this.driving.isDriving) {
-      return false;
-    }
-    const truck = this.driving.vehicle;
-    this.driving.world.network.guide(truck.x, truck.z, target.depot.bay.x, target.depot.bay.z, out);
-    return true;
   }
 
   /** Advances the active mission by one fixed step. Allocation-free unless the mission changes stage. */

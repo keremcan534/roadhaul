@@ -113,6 +113,15 @@ describe('GameConfig', () => {
     ).toEqual([]);
   });
 
+  it('keeps the arrival-time pace a share of the speed limit', () => {
+    for (const etaPaceFactor of [0, 1.2, Number.NaN]) {
+      const config: GameConfig = { ...DEFAULT_GAME_CONFIG, navigation: { etaPaceFactor } };
+      expect(validateGameConfig(config, catalog).map((issue) => issue.path), String(etaPaceFactor)).toEqual([
+        'navigation.etaPaceFactor',
+      ]);
+    }
+  });
+
   it('requires the frame clamp to allow at least one fixed step', () => {
     const config = withChanges({ simulation: { fixedStepSeconds: 0.05, maxFrameDeltaSeconds: 0.01 } });
 
