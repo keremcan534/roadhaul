@@ -91,6 +91,28 @@ describe('GameConfig', () => {
     expect(validateGameConfig(config, catalog).length).toBeGreaterThan(10);
   });
 
+  it('checks the traffic: how many vehicles, how far round the truck, and a speed limit for every kind of road', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      traffic: {
+        maxVehicles: 2.5,
+        radiusMeters: 100,
+        minSpawnDistanceMeters: 150,
+        speedLimitsKmh: { street: 45, ringRoad: 0, highway: 90 } as GameConfig['traffic']['speedLimitsKmh'],
+      },
+    };
+
+    expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
+      'traffic.maxVehicles',
+      'traffic.radiusMeters',
+      'traffic.speedLimitsKmh.ringRoad',
+      'traffic.speedLimitsKmh.rural',
+    ]);
+    expect(
+      validateGameConfig({ ...DEFAULT_GAME_CONFIG, traffic: { ...DEFAULT_GAME_CONFIG.traffic, maxVehicles: 0 } }, catalog),
+    ).toEqual([]);
+  });
+
   it('requires the frame clamp to allow at least one fixed step', () => {
     const config = withChanges({ simulation: { fixedStepSeconds: 0.05, maxFrameDeltaSeconds: 0.01 } });
 

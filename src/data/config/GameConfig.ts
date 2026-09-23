@@ -2,6 +2,7 @@ import { isLogLevel, type LogLevel } from '../../core/logging/Logger';
 import { frozenCopy } from '../../core/objects/frozenCopy';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../ContentCatalog';
+import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
 import type { Credits, Fraction } from '../units';
 
 /**
@@ -48,6 +49,16 @@ export interface GameConfig {
     /** The HUD warns below this share of a full tank. */
     readonly lowFuelFraction: Fraction;
   };
+  readonly traffic: {
+    /** NPC vehicles alive at once, all around the truck (0 turns traffic off). */
+    readonly maxVehicles: number;
+    /** Traffic lives within this distance of the truck; vehicles further away are recycled. */
+    readonly radiusMeters: number;
+    /** New vehicles appear at least this far from the truck, out of sight. */
+    readonly minSpawnDistanceMeters: number;
+    /** Speed limits by kind of road, km/h. Each vehicle cruises at its own share of the limit. */
+    readonly speedLimitsKmh: Readonly<Record<RoadKind, number>>;
+  };
   readonly company: {
     /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
     readonly levelXp: readonly number[];
@@ -65,6 +76,9 @@ export interface GameConfig {
     readonly showPerfOverlay: boolean;
   };
 }
+
+/** More NPC vehicles than this would cost too much on low-end phones. */
+export const MAX_TRAFFIC_VEHICLES = 48;
 
 export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   simulation: {
@@ -88,6 +102,12 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     consumptionScale: 10,
     lowFuelFraction: 0.15,
   },
+  traffic: {
+    maxVehicles: 16,
+    radiusMeters: 700,
+    minSpawnDistanceMeters: 180,
+    speedLimitsKmh: { street: 45, ringRoad: 60, highway: 90, rural: 70 },
+  },
   company: {
     levelXp: [0, 1000, 3000, 6500, 12000],
   },
@@ -105,7 +125,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, economy, fuel, company, newGame, debug } = config;
+  const { simulation, rendering, missions, economy, fuel, traffic, company, newGame, debug } = config;
 
   validator.check(
     Number.isFinite(simulation.fixedStepSeconds) &&
@@ -136,6 +156,20 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.positiveInteger(economy.fullRepairCost, 'economy.fullRepairCost');
   validator.positiveNumber(fuel.consumptionScale, 'fuel.consumptionScale');
   validator.fraction(fuel.lowFuelFraction, 'fuel.lowFuelFraction');
+  validator.check(
+    Number.isInteger(traffic.maxVehicles) && traffic.maxVehicles >= 0 && traffic.maxVehicles <= MAX_TRAFFIC_VEHICLES,
+    'traffic.maxVehicles',
+    `must be a whole number from 0 to ${MAX_TRAFFIC_VEHICLES}`,
+  );
+  validator.positiveNumber(traffic.minSpawnDistanceMeters, 'traffic.minSpawnDistanceMeters');
+  validator.check(
+    Number.isFinite(traffic.radiusMeters) && traffic.radiusMeters > traffic.minSpawnDistanceMeters,
+    'traffic.radiusMeters',
+    'must be greater than minSpawnDistanceMeters',
+  );
+  for (const kind of ROAD_KINDS) {
+    validator.positiveNumber(traffic.speedLimitsKmh?.[kind], `traffic.speedLimitsKmh.${kind}`);
+  }
   const levels = company.levelXp;
   validator.check(
     Array.isArray(levels) &&

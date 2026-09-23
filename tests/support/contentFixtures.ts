@@ -2,6 +2,7 @@ import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
+import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from '../../src/data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
 import type { GameContent } from '../../src/data/GameContent';
@@ -135,6 +136,22 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     missions: [missionFixture()],
     maps: [mapFixture()],
     upgrades: [upgradeFixture()],
+    trafficVehicles: [trafficVehicleFixture()],
+    ...overrides,
+  };
+}
+
+export function trafficVehicleFixture(overrides: Partial<TrafficVehicleDefinition> = {}): TrafficVehicleDefinition {
+  return {
+    id: 'test_car',
+    kind: 'car',
+    lengthMeters: 4,
+    widthMeters: 1.8,
+    heightMeters: 1.5,
+    cruiseSpeedFactor: 1,
+    accelerationMetersPerSecondSquared: 2,
+    spawnWeight: 1,
+    colors: [0xff0000],
     ...overrides,
   };
 }

@@ -3,6 +3,7 @@ import { CARGO } from './cargo';
 import { CITIES } from './cities';
 import { MAPS } from './maps';
 import { MISSIONS } from './missions';
+import { TRAFFIC_VEHICLES } from './trafficVehicles';
 import { UPGRADES } from './upgrades';
 import { VEHICLES } from './vehicles';
 
@@ -14,4 +15,5 @@ export const GAME_CONTENT: GameContent = {
   missions: MISSIONS,
   maps: MAPS,
   upgrades: UPGRADES,
+  trafficVehicles: TRAFFIC_VEHICLES,
 };
