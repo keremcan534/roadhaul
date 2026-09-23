@@ -170,6 +170,12 @@ NPC traffic (roadmap step 22, spec §19) is waypoint-based and kinematic: vehicl
 - **`TrafficService`** (`src/systems/traffic`) keeps one simulation per drive and steps it in `fixedUpdate` *before* `DrivingService.step()`, so the truck collides with the traffic where it is now. It hands the simulation to `DrivingService` as its moving obstacles. Traffic also runs behind the menus, and stops when the game is paused.
 - **`TrafficView`** draws each kind of vehicle as one `InstancedMesh`, interpolated between fixed steps like the truck.
 
+### Navigation
+
+- **`RoadNetwork.trace`** (`src/domain/world`) lists the route by road from one point to another sample by sample, with its length and how long it takes at a pace per road. It reuses a trace allocated once per map.
+- **`nextManoeuvre`** (`src/domain/navigation`) reads a trace: turn round (the truck faces away from the route on the road), turn left or right onto another road, or arrive. Carrying on where roads bend or meet is not a manoeuvre.
+- **`NavigationService`** (`src/systems/navigation`) routes to the contract's next bay ten times a second, from `fixedUpdate` after `MissionService.update()`. The HUD reads the distance, the arrival time, the next turn and a point ahead for its arrow; `GpsRouteView` redraws its band on the road only when the route has changed.
+
 ### The mission loop
 
 Roadmap steps 09–13 turn driving into a job (spec §9, §12, §50):
@@ -230,7 +236,7 @@ The spec's ScriptableObjects become **definition interfaces** (`src/data/definit
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
 
 ## 10. Save data
 

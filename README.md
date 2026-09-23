@@ -11,12 +11,12 @@ Mobile-first logistics and truck simulation game: take a contract, load the carg
 - **Upkeep:** watch the fuel and the truck's damage; refuel and repair at a depot or the rest area, or call a fuel truck when stranded.
 - **Saving:** the game saves itself; Continue picks up where you left off.
 
-It plays in a region of three cities joined by a highway, a ring road and country roads, with a rest area to refuel and repair on the way, in Turkish or English. Cars, vans, lorries and buses share the roads: they keep right, take turns at junctions and overtake on the highway, and crashing into one damages the truck. Navigation and weather come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+It plays in a region of three cities joined by a highway, a ring road and country roads, with a rest area to refuel and repair on the way, in Turkish or English. Cars, vans, lorries and buses share the roads: they keep right, take turns at junctions and overtake on the highway, and crashing into one damages the truck. A GPS line marks the route on the road, and the HUD shows the next turn and the arrival time. Weather comes next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
 
 **Controls:**
 - **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button top right switches between the chase and cabin cameras; the one top left pauses.
 - **Keyboard:** arrow keys or WASD, Space to brake, C to switch camera, Escape or P to pause.
-- **Loading and unloading:** follow the arrow and the light pillar to the depot, then stop with the whole truck inside the yellow bay for 3 seconds.
+- **Loading and unloading:** follow the blue line on the road and the turns on the HUD to the depot's light pillar, then stop with the whole truck inside the yellow bay for 3 seconds.
 
 Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the browser and targets Android first ([why not Unity](docs/adr/0001-web-stack-typescript-threejs.md)).
 

@@ -60,7 +60,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | DepotView | presentation | `src/presentation/world/DepotView.ts` | Concrete yards, bay lines, the beacon over the next bay | three | none |
 | MainMenu | ui | `src/ui/menus/MainMenu.ts` | Title screen and language switch | Strings | none |
 | CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, blocked ones say what unlocks them | MissionService offers, Strings | none |
-| MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30) | MissionService, DrivingService | none |
+| MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, next turn, arrival time, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30, §63) | MissionService, NavigationService, DrivingService | none |
 | PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ); the itemised result or the failure reason | Strings | none |
 | String tables | ui | `src/ui/i18n/` | Turkish and English text, number, money, distance and time formats; language choice | none | none |
 
@@ -116,6 +116,15 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | TrafficService | systems | `src/systems/traffic/TrafficService.ts` | Lanes per map, one simulation per drive, stepped before the truck; makes it the truck's moving obstacles | DrivingService, ContentCatalog | none (crashes emit `VehicleCollided` through DrivingService) |
 | TrafficView | presentation | `src/presentation/traffic/TrafficView.ts` | Low-poly car, van, lorry and bus shapes, one instanced mesh per kind, painted per vehicle, interpolated between steps | TrafficSimulation (read only), three | none |
 
+### Navigation (Phase 4, roadmap step 23)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Route trace | domain | `RoadNetwork.trace`, `createRouteTrace` | The route by road as samples, its length and how long it takes at each road's pace; allocation-free | RoadNetwork | none |
+| Manoeuvres | domain | `src/domain/navigation/manoeuvre.ts` | The next thing to do along a route: turn left or right onto another road, turn round, arrive | RouteTrace | none |
+| NavigationService | systems | `src/systems/navigation/NavigationService.ts` | GPS (spec §62–63): route to the contract's next bay ten times a second; distance, arrival time, next turn, a point ahead for the arrow | DrivingService, MissionService, GameConfig.navigation | none |
+| GpsRouteView | presentation | `src/presentation/navigation/GpsRouteView.ts` | The route as a translucent band in the right-hand lane, 700 m ahead and into the yard; one draw call, buffers allocated once | NavigationService (read only), three | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -123,7 +132,6 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 | System | Layer(s) | Step | Responsibility |
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
-| NavigationService | systems, presentation | ⬜ 23 | Waypoint graph routing, GPS arrow, distance, ETA (spec §62–63) |
 | WeatherService | systems, presentation | ⬜ 24 | Clear / Cloudy / Rain / Night with small gameplay modifiers (spec §38) |
 | EventService (+ road events) | data, domain, systems | ⬜ 25 | Data-driven timed events: requirements, objectives, rewards, modifiers (spec §22–24, §53) |
 | TutorialService | systems, ui | ⬜ 26 | Learn-by-playing first 10 minutes (spec §41) |

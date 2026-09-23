@@ -36,8 +36,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 20 | Upgrade | 3/5 | ✅ | Five upgrades of three levels (spec §16): engine, brakes, tyres, suspension, fuel tank; per truck |
 | 21 | 3-city prototype | 4 | ✅ | The north_valley region: three cities, four road kinds, a rest area; routes across junctions; service only at depots and rest areas |
 | 22 | Traffic | 4 | ✅ | Cars, vans, lorries and buses on lanes: they follow, overtake on the highway, go round a standing truck, take turns at junctions and U-turn at dead ends; the truck crashes into them |
-| 23 | Navigation | 4 | ⬜ **next** | Route, GPS arrow, ETA |
-| 24 | Weather | 4 | ⬜ | Clear, cloudy, rain, night |
+| 23 | Navigation | 4 | ✅ | The route drawn on the road; the next turn, the distance by road and the arrival time on the HUD |
+| 24 | Weather | 4 | ⬜ **next** | Clear, cloudy, rain, night |
 | 25 | Events | 6 | ⬜ | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
 | 26 | Tutorial | 7 | ⬜ | First 10 minutes, taught by playing |
 | 27 | Optimization | 7 | ⬜ | Hit the device budgets (ARCHITECTURE.md §11) |
@@ -101,12 +101,14 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Junctions have no traffic lights yet: conflicting turns go one at a time, first come first served. Vehicles keep their distance, so they never run into each other; they stop for the truck and drive round it once it has stood a few seconds, if the other lane is clear.
 - The truck is to blame only when it drives into a vehicle: that damages it like any crash, and the vehicle stops for a while. A vehicle driving into a standing truck only shoves it.
 - Dead ends got paved turning circles, where traffic turns round (and the truck can too). The truck now starts in the right-hand lane, and "recover" puts it back in one.
+- Navigation (step 23): NavigationService traces the route by road to the contract's next bay ten times a second. The HUD shows the next turn ("Turn left in 200 m"; "Turn round" when the truck faces away on the road), the distance by road and the arrival time, in red when it would be late. A translucent band marks the route in the right-hand lane for 700 m ahead and into the yard. Carrying on where roads bend or meet is not announced.
+- The arrival time assumes each road driven at 80% of its speed limit (or of the truck's top speed, if lower): `GameConfig.navigation.etaPaceFactor`.
 
-## Next step: 23 Navigation
+## Next step: 24 Weather
 
 Suggested request:
 
-> Implement roadmap step 23 only. Navigation and GPS (spec §62–63): route the truck to the mission's next target over the road network (RoadNetwork already routes across junctions), draw the route on the road ahead as a GPS line, and show the next turn, the distance by road and an ETA on the HUD. Keep it allocation-free per frame and cheap to draw.
+> Implement roadmap step 24 only. Weather (spec §38): clear, cloudy, rain and night, changed by a WeatherService on a seeded schedule. Each changes the look (sky, fog, light, rain drawn cheaply for phones, headlights at night) and a little of the play: grip in the rain, how far the driver can see, traffic a touch slower. Keep it data-driven and inside the mobile budget.
 
 ## Infrastructure track
 
