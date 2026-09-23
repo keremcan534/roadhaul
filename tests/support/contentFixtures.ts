@@ -1,5 +1,6 @@
 import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition';
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
+import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
 import type { GameContent } from '../../src/data/GameContent';
@@ -40,6 +41,7 @@ export function vehicleFixture(overrides: Partial<VehicleDefinition> = {}): Vehi
       steerSpeedDegreesPerSecond: 80,
       brakeForceNewtons: 70000,
       tireGrip: 0.85,
+      maxLateralAccelerationG: 0.4,
       maxReverseSpeedKmh: 12,
     },
     ...overrides,
@@ -77,12 +79,39 @@ export function missionFixture(overrides: Partial<MissionDefinition> = {}): Miss
   };
 }
 
+/**
+ * A straight, open 300 m road along the X axis (z = 0, 10 m wide), a building
+ * north of its middle, and the truck spawning at the origin facing +X.
+ */
+export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinition {
+  return {
+    id: 'test_map',
+    halfSizeMeters: 200,
+    roads: [
+      {
+        id: 'test_road',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-150, 0],
+          [150, 0],
+        ],
+      },
+    ],
+    buildings: [{ x: 0, z: 40, widthMeters: 20, depthMeters: 10, heightMeters: 5 }],
+    spawn: { x: 0, z: 0, headingDegrees: 90 },
+    scenery: { seed: 1, treesPerKilometer: 0 },
+    ...overrides,
+  };
+}
+
 export function contentFixture(overrides: Partial<GameContent> = {}): GameContent {
   return {
     vehicles: [vehicleFixture()],
     cargo: [cargoFixture()],
     cities: [cityFixture(), cityFixture({ id: 'test_destination', specialization: 'industrial' })],
     missions: [missionFixture()],
+    maps: [mapFixture()],
     ...overrides,
   };
 }

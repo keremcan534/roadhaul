@@ -2,6 +2,7 @@ import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
 import { validateCityDefinition, type CityDefinition } from './definitions/CityDefinition';
+import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
 import { validateMissionDefinition, type MissionDefinition } from './definitions/MissionDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import type { GameContent } from './GameContent';
@@ -50,12 +51,14 @@ export class ContentCatalog {
   readonly cargo: DefinitionTable<CargoDefinition>;
   readonly cities: DefinitionTable<CityDefinition>;
   readonly missions: DefinitionTable<MissionDefinition>;
+  readonly maps: DefinitionTable<MapDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
     this.cargo = new DefinitionTable('cargo', content.cargo);
     this.cities = new DefinitionTable('city', content.cities);
     this.missions = new DefinitionTable('mission', content.missions);
+    this.maps = new DefinitionTable('map', content.maps);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -75,6 +78,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'cargo', content.cargo, validateCargoDefinition);
   validateTable(validator, 'cities', content.cities, validateCityDefinition);
   validateTable(validator, 'missions', content.missions, validateMissionDefinition);
+  validateTable(validator, 'maps', content.maps, validateMapDefinition);
   validateMissionReferences(validator, content);
   return validator.issues;
 }

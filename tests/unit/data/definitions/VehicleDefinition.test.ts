@@ -53,15 +53,28 @@ describe('validateVehicleDefinition', () => {
     ]);
   });
 
+  it('rejects gear steps so wide that the gearbox would hunt', () => {
+    const fixture = vehicleFixture();
+    const vehicle = vehicleFixture({ powertrain: { ...fixture.powertrain, gearRatios: [7, 2, 1] } });
+
+    expect(issues(vehicle)).toEqual([
+      {
+        path: 'vehicle.powertrain.gearRatios',
+        message: 'steps are too wide for shiftUpRpm/shiftDownRpm (the gearbox would hunt)',
+      },
+    ]);
+  });
+
   it('keeps steering and grip within physical ranges', () => {
     const fixture = vehicleFixture();
     const vehicle = vehicleFixture({
-      handling: { ...fixture.handling, maxSteerAngleDegrees: 75, tireGrip: 3 },
+      handling: { ...fixture.handling, maxSteerAngleDegrees: 75, tireGrip: 3, maxLateralAccelerationG: 0 },
     });
 
     expect(issues(vehicle).map((issue) => issue.path)).toEqual([
       'vehicle.handling.maxSteerAngleDegrees',
       'vehicle.handling.tireGrip',
+      'vehicle.handling.maxLateralAccelerationG',
     ]);
   });
 });

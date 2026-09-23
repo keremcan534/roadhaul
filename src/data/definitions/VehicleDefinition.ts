@@ -66,8 +66,13 @@ export interface VehicleHandling {
   readonly steerSpeedDegreesPerSecond: number;
   /** Total brake force at full pedal (also limited by tyre grip). */
   readonly brakeForceNewtons: number;
-  /** Tyre-road friction coefficient on dry asphalt; limits traction, braking and cornering. */
+  /** Tyre-road friction coefficient on dry asphalt; limits traction and braking. */
   readonly tireGrip: number;
+  /**
+   * Cornering limit in g. A tall truck would tip over long before its tyres
+   * slide (roughly 0.35 g heavy, 0.45 g light), so turns are capped here.
+   */
+  readonly maxLateralAccelerationG: number;
   readonly maxReverseSpeedKmh: number;
 }
 
@@ -110,22 +115,29 @@ function validatePowertrain(powertrain: VehiclePowertrain, path: string, validat
   validator.positiveNumber(powertrain.maxPowerKw, `${path}.maxPowerKw`);
   const rpms = [powertrain.idleRpm, powertrain.shiftDownRpm, powertrain.shiftUpRpm, powertrain.maxRpm];
   const rpmNames = ['idleRpm', 'shiftDownRpm', 'shiftUpRpm', 'maxRpm'];
-  const rpmsValid = rpms.every((rpm, index) => validator.positiveNumber(rpm, `${path}.${rpmNames[index]}`));
-  if (rpmsValid) {
+  const rpmsPositive = rpms.every((rpm, index) => validator.positiveNumber(rpm, `${path}.${rpmNames[index]}`));
+  const rpmsValid =
+    rpmsPositive &&
     validator.check(
       rpms.every((rpm, index) => index === 0 || rpm > (rpms[index - 1] ?? 0)),
       `${path}.shiftUpRpm`,
       'engine speeds must rise: idleRpm < shiftDownRpm < shiftUpRpm < maxRpm',
     );
-  }
   const gears = powertrain.gearRatios;
   if (validator.check(Array.isArray(gears) && gears.length > 0, `${path}.gearRatios`, 'must list at least one gear')) {
     gears.forEach((ratio, index) => validator.positiveNumber(ratio, `${path}.gearRatios[${index}]`));
-    validator.check(
+    const decreasing = validator.check(
       gears.every((ratio, index) => index === 0 || ratio < (gears[index - 1] ?? 0)),
       `${path}.gearRatios`,
       'must be strictly decreasing (first gear first)',
     );
+    // After an up-shift the engine must stay above shiftDownRpm, or the gearbox would hunt between two gears.
+    if (decreasing && rpmsValid) {
+      const hunts = gears.some(
+        (ratio, index) => index > 0 && powertrain.shiftUpRpm * (ratio / (gears[index - 1] ?? ratio)) <= powertrain.shiftDownRpm,
+      );
+      validator.check(!hunts, `${path}.gearRatios`, 'steps are too wide for shiftUpRpm/shiftDownRpm (the gearbox would hunt)');
+    }
   }
   validator.positiveNumber(powertrain.reverseGearRatio, `${path}.reverseGearRatio`);
   validator.positiveNumber(powertrain.finalDriveRatio, `${path}.finalDriveRatio`);
@@ -152,6 +164,13 @@ function validateHandling(handling: VehicleHandling, path: string, validator: Va
   validator.check(
     Number.isFinite(handling.tireGrip) && handling.tireGrip > 0 && handling.tireGrip <= 1.5,
     `${path}.tireGrip`,
+    'must be greater than 0 and at most 1.5',
+  );
+  validator.check(
+    Number.isFinite(handling.maxLateralAccelerationG) &&
+      handling.maxLateralAccelerationG > 0 &&
+      handling.maxLateralAccelerationG <= 1.5,
+    `${path}.maxLateralAccelerationG`,
     'must be greater than 0 and at most 1.5',
   );
   validator.positiveNumber(handling.maxReverseSpeedKmh, `${path}.maxReverseSpeedKmh`);
