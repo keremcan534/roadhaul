@@ -23,7 +23,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | SaveGameData 🧩 | domain | `src/domain/save/` | Versioned save schema (v1) + new-game state | Definitions | none |
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
-| RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio | three | none |
+| RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio, tone mapping, software-rendering fallback | three | none |
 | PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
 | Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags, fatal error screen | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services, starts driving, attaches rendering, input and the loop | everything | listens `GameStateChanged` |
@@ -39,11 +39,13 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | RoadPath | domain | `src/domain/world/RoadPath.ts` | Catmull-Rom centreline shared by driving and rendering | MapDefinition | none |
 | DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces, seeded trees, buildings, collisions, map edge | RoadPath, SeededRandom | none |
 | DrivingService | systems | `src/systems/driving/DrivingService.ts` | Owns the driven truck and world; steps them every fixed step | ContentCatalog, EventBus | emits `VehicleCollided` |
-| TrackView | presentation | `src/presentation/world/TrackView.ts` | Ground, road, markings, instanced trees and buildings (7 draw calls) | DrivingWorld, three | none |
-| TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Truck mesh from body data; steering and rolling wheels; pitch and roll | VehicleDefinition, three | none |
+| EnvironmentView | presentation | `src/presentation/world/EnvironmentView.ts`, `world/lighting.ts` | Gradient sky with sun glow, clouds and horizon hills that follow the camera; fog; sun and sky lights | three | none |
+| Procedural textures | presentation | `src/presentation/textures/` | Grass, asphalt, gravel, facades, livery, rims and soft shadows drawn in code (tileable noise, stroke font): no image files | three | none |
+| TrackView | presentation | `src/presentation/world/TrackView.ts` | Pre-lit textured ground and roads with shoulders, markings, two tree species, buildings with facades and roofs, soft shadow decals (about 14 draw calls) | DrivingWorld, three | none |
+| TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Detailed cab-over truck from body data (windows, grille, lights, mirrors, livery, rims), merged per material; steering and rolling wheels; pitch and roll; cabin dashboard | VehicleDefinition, three | none |
 | CameraRig | presentation | `src/presentation/cameras/CameraRig.ts` | Chase and cabin cameras (spec §31) | three | none |
 | KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera) → `VehicleInput` | VehicleInput | none |
-| TouchControls | ui | `src/ui/controls/TouchControls.ts` | Steering wheel, gas, brake, camera button, speed and gear readout | VehicleInput | none |
+| TouchControls | ui | `src/ui/controls/TouchControls.ts` | SVG steering wheel, gas and brake pedals, camera button, speed dial and gear readout | VehicleInput | none |
 
 ## Planned for the MVP
 

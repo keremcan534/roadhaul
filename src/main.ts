@@ -15,6 +15,7 @@ import { KeyboardInput } from './platform/input/KeyboardInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
+import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
 import { TouchControls } from './ui/controls/TouchControls';
@@ -51,7 +52,9 @@ async function start(): Promise<void> {
   driving.start(config.newGame.startingVehicleId, config.newGame.startingMapId);
 
   const renderHost = new RenderHost(canvas, config.rendering);
-  new TrackView(renderHost.scene, driving.world); // Adds itself to the scene for the page's lifetime.
+  // Both add themselves to the scene for the page's lifetime.
+  const environment = new EnvironmentView(renderHost.scene);
+  new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
   const truck = new TruckView(renderHost.scene, driving.definition);
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
   const toggleCamera = (): void => {
@@ -92,6 +95,7 @@ async function start(): Promise<void> {
         interpolatePose(pose, driving.previousPose, vehicle, alpha);
         truck.update(pose, vehicle, deltaSeconds);
         cameraRig.update(pose, vehicle.speed, deltaSeconds);
+        environment.update(renderHost.camera.position);
         renderHost.render();
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
         perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);

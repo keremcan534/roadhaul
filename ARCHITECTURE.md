@@ -77,7 +77,7 @@ flowchart TD
    4. creates the `EventBus`, the `GameStateService` and the `DrivingService`;
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
-3. `src/main.ts` starts driving the starting truck on the starting map (the prototype has no menus yet). It creates the `RenderHost` (WebGL), `TrackView`, `TruckView`, `CameraRig`, keyboard and touch input and, with `?debug`, the performance overlay. It moves the game state to `driving` and starts the `GameLoop`.
+3. `src/main.ts` starts driving the starting truck on the starting map (the prototype has no menus yet). It creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `TruckView`, `CameraRig`, keyboard and touch input and, with `?debug`, the performance overlay. It moves the game state to `driving` and starts the `GameLoop`.
 4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event. The e2e tests wait for both.
 
 Any failure shows the fatal error screen and sets `data-boot-state="error"`. A failed boot disposes every service it had already created.
@@ -172,9 +172,20 @@ Central tuning values (fixed step, pixel-ratio cap, starting credits, later fuel
 
 ## 11. Rendering and the mobile performance budget
 
-- `RenderHost` owns the `WebGLRenderer`, the scene and the camera. Views add objects to the scene and dispose everything they create.
-- **Defaults for low/mid Android:** pixel ratio capped at 1.5, MSAA off, Lambert (or unlit) materials, no real-time shadows (bake lighting into vertex colours or textures instead), fog to hide the far plane.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. At the spawn point the test track and truck cost 16 draw calls and about 14.5k triangles in the chase view (11 draw calls from the cabin), as the `?debug` overlay shows.
+- `RenderHost` owns the `WebGLRenderer`, the scene and the camera. Views add objects to the scene and dispose everything they create. It uses filmic (ACES) tone mapping.
+- **Look:** stylised low-poly with textures.
+  - `EnvironmentView` draws a gradient sky dome with a sun glow, clouds and a ring of hazy hills. They all follow the camera. It also owns the fog and the sun and sky lights (`world/lighting.ts`).
+  - `TrackView` draws textured grass, asphalt with gravel shoulders, two tree species, buildings with facades, and soft shadow decals.
+  - `TruckView` builds a detailed cab-over truck carrying the RoadHaul livery.
+- **Procedural textures, no image files** (`presentation/textures`). Grass, asphalt, facades, livery, rims and shadows are drawn in plain TypeScript: tileable noise and a small stroke font. They cost nothing to download and are original by construction. The same code runs in Node, so it is unit-tested.
+- **Defaults for low/mid Android:**
+  - pixel ratio capped at 1.5, MSAA off;
+  - Lambert or Phong materials;
+  - no real-time shadows (shadows are soft decals);
+  - fog to hide the far plane.
+- **Pre-lit flat surfaces.** The ground and road always face up under a fixed sun. They are unlit materials tinted with exactly what Lambert shading would give them (`flatGroundLight()`), so the pixels that cover most of the screen skip lighting.
+- **Software rendering** (no GPU: headless CI browsers, some virtual machines) is detected from the WebGL renderer name. The host then renders at one pixel per CSS pixel without anisotropic filtering, so the simulation still runs in real time.
+- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. At the spawn point the test track and truck cost 30 draw calls and about 60k triangles in the chase view, as the `?debug` overlay shows.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
 
@@ -197,7 +208,7 @@ src/
   domain/          company/ save/ vehicles/ world/        (later: missions/ economy/ ...)
   systems/         driving/ gameState/ GameEvents.ts      (later: missions/ economy/ save/ ...)
   app/             GameBootstrapper.ts ServiceKeys.ts
-  presentation/    RenderHost.ts cameras/ vehicles/ world/ (later: effects/)
+  presentation/    RenderHost.ts cameras/ textures/ vehicles/ world/ (later: effects/)
   ui/              controls/ debug/ styles.css            (later: hud/ menus/ i18n/)
   platform/        browser/ input/                        (later: storage/)
   main.ts
