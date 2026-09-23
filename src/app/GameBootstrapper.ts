@@ -6,6 +6,7 @@ import { ValidationError } from '../core/validation/Validator';
 import { validateGameConfig, type GameConfig } from '../data/config/GameConfig';
 import { ContentCatalog } from '../data/ContentCatalog';
 import type { GameContent } from '../data/GameContent';
+import { DrivingService } from '../systems/driving/DrivingService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
 import { ServiceKeys } from './ServiceKeys';
@@ -77,6 +78,7 @@ export class GameBootstrapper {
         ServiceKeys.gameState,
         new GameStateService(events, logger.withCategory('GameState')),
       );
+      container.register(ServiceKeys.driving, new DrivingService(catalog, events, logger.withCategory('Driving')));
 
       await container.initializeAll();
       gameState.transitionTo('mainMenu');
@@ -103,5 +105,6 @@ function describeContent(catalog: ContentCatalog): string {
     `cargo types ${catalog.cargo.size}`,
     `cities ${catalog.cities.size}`,
     `missions ${catalog.missions.size}`,
+    `maps ${catalog.maps.size}`,
   ].join(', ');
 }

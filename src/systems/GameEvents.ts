@@ -11,4 +11,9 @@ export interface GameEvents {
     readonly previous: GameState;
     readonly current: GameState;
   };
+  /** The truck hit a tree, building or the map edge. DamageService (roadmap step 16) will turn this into damage. */
+  VehicleCollided: {
+    /** Speed into the obstacle, m/s. */
+    readonly impactSpeedMetersPerSecond: number;
+  };
 }
