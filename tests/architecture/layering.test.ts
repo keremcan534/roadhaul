@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { importSpecifiers } from '../support/importSpecifiers';
 
 /**
  * Enforces the layer rules described in ARCHITECTURE.md
@@ -50,14 +51,15 @@ const ALLOWED_PACKAGES: Readonly<Record<Layer, readonly string[]>> = {
   entry: [],
 };
 
-const sources = import.meta.glob<string>('/src/**/*.ts', { query: '?raw', import: 'default', eager: true });
+const sources = import.meta.glob<string>('/src/**/*.{ts,mts,cts,tsx}', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+});
 const files = Object.keys(sources).sort();
 
-const IMPORT_PATTERN =
-  /\b(?:import|export)\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-function importsOf(source: string): string[] {
-  return [...source.matchAll(IMPORT_PATTERN)].map((match) => match[1] ?? match[2] ?? '');
+function isPath(specifier: string): boolean {
+  return specifier.startsWith('.') || specifier.startsWith('/');
 }
 
 function layerOf(path: string): Layer | undefined {
@@ -68,7 +70,10 @@ function layerOf(path: string): Layer | undefined {
   return LAYERS.find((layer) => layer === folder && layer !== 'entry');
 }
 
-function resolveRelative(fromFile: string, specifier: string): string {
+function resolvePath(fromFile: string, specifier: string): string {
+  if (specifier.startsWith('/')) {
+    return specifier; // Project-root path, as Vite resolves it.
+  }
   const parts = fromFile.split('/').slice(0, -1);
   for (const segment of specifier.split('/')) {
     if (segment === '..') {
@@ -102,11 +107,11 @@ describe('architecture', () => {
       if (from === undefined) {
         continue;
       }
-      for (const specifier of importsOf(sources[file] ?? '')) {
-        if (!specifier.startsWith('.')) {
+      for (const specifier of importSpecifiers(sources[file] ?? '')) {
+        if (!isPath(specifier)) {
           continue;
         }
-        const to = layerOf(resolveRelative(file, specifier));
+        const to = layerOf(resolvePath(file, specifier));
         if (to === undefined) {
           violations.push(`${file} imports "${specifier}", which is outside the layer folders`);
         } else if (to !== from && !ALLOWED_LAYER_IMPORTS[from].includes(to)) {
@@ -124,8 +129,8 @@ describe('architecture', () => {
       if (from === undefined) {
         continue;
       }
-      for (const specifier of importsOf(sources[file] ?? '')) {
-        if (!specifier.startsWith('.') && !ALLOWED_PACKAGES[from].includes(packageName(specifier))) {
+      for (const specifier of importSpecifiers(sources[file] ?? '')) {
+        if (!isPath(specifier) && !ALLOWED_PACKAGES[from].includes(packageName(specifier))) {
           violations.push(`${file} (${from}) must not import package "${specifier}"`);
         }
       }
