@@ -1,0 +1,10 @@
+{
+  // Tooling that runs in Node: build/test configuration and Playwright end-to-end tests.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "tests/e2e"]
+}
