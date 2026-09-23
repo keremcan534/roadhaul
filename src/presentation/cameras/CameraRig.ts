@@ -5,13 +5,13 @@ import type { VehiclePose } from '../../systems/driving/DrivingService';
 
 export type CameraMode = 'chase' | 'cabin';
 
-const CHASE_DISTANCE_METERS = 12;
+const CHASE_DISTANCE_METERS = 10.5;
 /** Extra distance per m/s of speed, so the truck does not fill the screen at speed. */
-const CHASE_DISTANCE_PER_SPEED = 0.12;
+const CHASE_DISTANCE_PER_SPEED = 0.1;
 /** High enough to see the road over the cargo box. */
-const CHASE_HEIGHT_METERS = 5.6;
-const CHASE_LOOK_AHEAD_METERS = 12;
-const CHASE_LOOK_HEIGHT_METERS = 2.2;
+const CHASE_HEIGHT_METERS = 4.8;
+const CHASE_LOOK_AHEAD_METERS = 10;
+const CHASE_LOOK_HEIGHT_METERS = 2.6;
 const CHASE_FOLLOW_RATE = 6;
 const CHASE_FOV = 60;
 const CABIN_FOV = 72;
