@@ -65,23 +65,24 @@ export class GameLoop {
 
   // Bound once so scheduling the next frame does not create a new closure.
   private readonly onFrame = (timestampMs: number): void => {
-    if (this.handle === null) {
+    const frameHandle = this.handle;
+    if (frameHandle === null) {
       return;
     }
     try {
-      this.tick(timestampMs);
+      this.tick(timestampMs, frameHandle);
     } catch (error) {
       this.stop();
       this.handlers.onError(error);
       return;
     }
-    // A handler may have stopped the loop during this frame.
-    if (this.handle !== null) {
+    // Continue only if no handler stopped or restarted the loop: a restart has already requested its own frame.
+    if (this.handle === frameHandle) {
       this.handle = this.scheduler.request(this.onFrame);
     }
   };
 
-  private tick(timestampMs: number): void {
+  private tick(timestampMs: number, frameHandle: number): void {
     const elapsedSeconds =
       this.previousTimestampMs === null ? 0 : (timestampMs - this.previousTimestampMs) / 1000;
     this.previousTimestampMs = timestampMs;
@@ -90,6 +91,9 @@ export class GameLoop {
     const steps = this.timestep.advance(deltaSeconds);
     for (let i = 0; i < steps; i++) {
       this.handlers.fixedUpdate(this.timestep.stepSeconds);
+      if (this.handle !== frameHandle) {
+        return; // Stopped or restarted by the handler: abandon the rest of this frame.
+      }
     }
     this.handlers.frameUpdate(deltaSeconds, this.timestep.alpha);
   }

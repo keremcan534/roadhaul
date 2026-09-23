@@ -2,37 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { FixedTimestep } from '../../../../src/core/time/FixedTimestep';
 import { GameLoop, type FrameScheduler, type GameLoopHandlers } from '../../../../src/core/time/GameLoop';
 
-/** Hand-cranked stand-in for requestAnimationFrame. */
+/** Hand-cranked stand-in for requestAnimationFrame. Like the real one, it can hold several requests. */
 class FakeScheduler implements FrameScheduler {
   private nextHandle = 1;
-  private pending: { handle: number; callback: (timestampMs: number) => void } | null = null;
-  readonly cancelled: number[] = [];
+  private readonly pending = new Map<number, (timestampMs: number) => void>();
 
-  get hasPendingFrame(): boolean {
-    return this.pending !== null;
+  get pendingCount(): number {
+    return this.pending.size;
   }
 
   request(callback: (timestampMs: number) => void): number {
     const handle = this.nextHandle++;
-    this.pending = { handle, callback };
+    this.pending.set(handle, callback);
     return handle;
   }
 
   cancel(handle: number): void {
-    this.cancelled.push(handle);
-    if (this.pending?.handle === handle) {
-      this.pending = null;
-    }
+    this.pending.delete(handle);
   }
 
-  /** Runs the requested frame callback at `timestampMs`. */
+  /** Runs every callback requested before this frame, at `timestampMs`. */
   frame(timestampMs: number): void {
-    const pending = this.pending;
-    if (pending === null) {
+    if (this.pending.size === 0) {
       throw new Error('No frame was requested.');
     }
-    this.pending = null;
-    pending.callback(timestampMs);
+    const callbacks = [...this.pending.values()];
+    this.pending.clear();
+    for (const callback of callbacks) {
+      callback(timestampMs);
+    }
   }
 }
 
@@ -56,10 +54,10 @@ describe('GameLoop', () => {
 
     loop.start();
     expect(loop.isRunning).toBe(true);
-    expect(scheduler.hasPendingFrame).toBe(true);
+    expect(scheduler.pendingCount).toBe(1);
 
     scheduler.frame(0);
-    expect(scheduler.hasPendingFrame).toBe(true);
+    expect(scheduler.pendingCount).toBe(1);
   });
 
   it('starting twice does not request a second frame', () => {
@@ -67,9 +65,7 @@ describe('GameLoop', () => {
     loop.start();
     loop.start();
 
-    scheduler.frame(0);
-
-    expect(scheduler.hasPendingFrame).toBe(true);
+    expect(scheduler.pendingCount).toBe(1);
   });
 
   it('treats the first frame after start as zero elapsed time', () => {
@@ -111,7 +107,7 @@ describe('GameLoop', () => {
 
     loop.stop();
     expect(loop.isRunning).toBe(false);
-    expect(scheduler.hasPendingFrame).toBe(false);
+    expect(scheduler.pendingCount).toBe(0);
 
     calls.length = 0;
     loop.start();
@@ -128,7 +124,50 @@ describe('GameLoop', () => {
     created.scheduler.frame(0);
 
     expect(loop.isRunning).toBe(false);
-    expect(created.scheduler.hasPendingFrame).toBe(false);
+    expect(created.scheduler.pendingCount).toBe(0);
+  });
+
+  it('keeps a single frame chain when a handler restarts the loop', () => {
+    let loop: GameLoop | undefined;
+    let frames = 0;
+    const created = createLoop({
+      frameUpdate: () => {
+        frames++;
+        if (frames === 1) {
+          loop?.stop();
+          loop?.start();
+        }
+      },
+    });
+    loop = created.loop;
+    loop.start();
+
+    created.scheduler.frame(0);
+    expect(created.scheduler.pendingCount).toBe(1);
+
+    created.scheduler.frame(16);
+    created.scheduler.frame(32);
+    expect(frames).toBe(3);
+  });
+
+  it('abandons the rest of the frame when fixedUpdate stops the loop', () => {
+    let loop: GameLoop | undefined;
+    const created = createLoop({
+      fixedUpdate: () => {
+        created.calls.push('fixed');
+        loop?.stop();
+      },
+    });
+    loop = created.loop;
+    loop.start();
+    created.scheduler.frame(1000);
+    created.calls.length = 0;
+
+    // 30 ms at a 10 ms step would normally run three fixed steps and a frame update.
+    created.scheduler.frame(1030);
+
+    expect(created.calls).toEqual(['fixed']);
+    expect(created.scheduler.pendingCount).toBe(0);
   });
 
   it('stops and reports the error when a handler throws', () => {
@@ -145,6 +184,6 @@ describe('GameLoop', () => {
 
     expect(errors).toEqual([failure]);
     expect(loop.isRunning).toBe(false);
-    expect(scheduler.hasPendingFrame).toBe(false);
+    expect(scheduler.pendingCount).toBe(0);
   });
 });
