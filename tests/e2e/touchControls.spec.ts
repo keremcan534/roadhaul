@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openGame, watchForProblems } from './support';
+import { centreOf, openGame, shownSpeed, watchForProblems } from './support';
 
 const CONTROLS = ['.steering-wheel', '.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button'] as const;
 
@@ -35,3 +35,39 @@ for (const orientation of ['landscape', 'portrait'] as const) {
     expect(problems).toEqual([]);
   });
 }
+
+test('keeps a pedal pressed until the last finger on it lifts', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page);
+  const gas = page.locator('.pedal--gas');
+  const centre = await centreOf(page, '.pedal--gas');
+  // Count lifted fingers, so the test cannot pass without actually lifting one.
+  await gas.evaluate((pedal) =>
+    pedal.addEventListener('pointerup', () =>
+      pedal.setAttribute('data-test-lifts', String(Number(pedal.getAttribute('data-test-lifts') ?? 0) + 1)),
+    ),
+  );
+  // Real multi-touch through the DevTools protocol. In Chromium, touchStart adds the new points
+  // and touchEnd lifts exactly the points it lists (all of them when it lists none).
+  const cdp = await page.context().newCDPSession(page);
+  const thumb = { x: centre.x, y: centre.y - 15, id: 1 };
+  const finger = { x: centre.x, y: centre.y + 15, id: 2 };
+  const touch = (type: 'touchStart' | 'touchEnd', touchPoints: (typeof thumb)[]) =>
+    cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+
+  await touch('touchStart', [thumb]);
+  await touch('touchStart', [thumb, finger]);
+  await expect(gas).toHaveClass(/is-pressed/);
+  await touch('touchEnd', [finger]);
+  await expect(gas).toHaveAttribute('data-test-lifts', '1');
+
+  // The thumb is still down: the pedal stays pressed and the truck keeps accelerating.
+  await expect(gas).toHaveClass(/is-pressed/);
+  await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(10);
+  await expect(gas).toHaveClass(/is-pressed/);
+
+  await touch('touchEnd', []);
+  await expect(gas).toHaveAttribute('data-test-lifts', '2');
+  await expect(gas).not.toHaveClass(/is-pressed/);
+  expect(problems).toEqual([]);
+});
