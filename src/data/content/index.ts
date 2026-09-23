@@ -6,6 +6,7 @@ import { MISSIONS } from './missions';
 import { TRAFFIC_VEHICLES } from './trafficVehicles';
 import { UPGRADES } from './upgrades';
 import { VEHICLES } from './vehicles';
+import { WEATHER } from './weather';
 
 /** The built-in content shipped with the game. Validated at boot by ContentCatalog.create(). */
 export const GAME_CONTENT: GameContent = {
@@ -16,4 +17,5 @@ export const GAME_CONTENT: GameContent = {
   maps: MAPS,
   upgrades: UPGRADES,
   trafficVehicles: TRAFFIC_VEHICLES,
+  weather: WEATHER,
 };

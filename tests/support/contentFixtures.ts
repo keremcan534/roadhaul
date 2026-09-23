@@ -5,6 +5,7 @@ import type { MissionDefinition } from '../../src/data/definitions/MissionDefini
 import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from '../../src/data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
+import type { WeatherDefinition } from '../../src/data/definitions/WeatherDefinition';
 import type { GameContent } from '../../src/data/GameContent';
 
 /** Small, valid definitions for tests. Override only the fields a test is about. */
@@ -137,6 +138,15 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     maps: [mapFixture()],
     upgrades: [upgradeFixture()],
     trafficVehicles: [trafficVehicleFixture()],
+    weather: [
+      weatherFixture(),
+      weatherFixture({
+        id: 'test_rain',
+        gripFactor: 0.8,
+        trafficSpeedFactor: 0.8,
+        look: { ...weatherFixture().look, fogDensity: 0.005, sunlight: 0.1, skylight: 0.6, rain: 1, lamps: 0.4 },
+      }),
+    ],
     ...overrides,
   };
 }
@@ -164,6 +174,30 @@ export function upgradeFixture(overrides: Partial<UpgradeDefinition> = {}): Upgr
       { cost: 1000, modifiers: [{ stat: 'enginePower', bonus: 0.1 }] },
       { cost: 2000, requiredCompanyLevel: 2, modifiers: [{ stat: 'enginePower', bonus: 0.2 }] },
     ],
+    ...overrides,
+  };
+}
+
+export function weatherFixture(overrides: Partial<WeatherDefinition> = {}): WeatherDefinition {
+  return {
+    id: 'test_clear',
+    weight: 1,
+    minSeconds: 60,
+    maxSeconds: 120,
+    gripFactor: 1,
+    trafficSpeedFactor: 1,
+    look: {
+      zenithColor: 0x3f7fc7,
+      horizonColor: 0xc4dcef,
+      fogDensity: 0.0023,
+      sunlight: 1,
+      skylight: 1,
+      lightColor: 0xffffff,
+      cloudCover: 0.5,
+      cloudBrightness: 1,
+      rain: 0,
+      lamps: 0,
+    },
     ...overrides,
   };
 }

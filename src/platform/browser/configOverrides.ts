@@ -15,6 +15,8 @@ export interface QueryParameters {
  *   per map meter (a positive number; tests use it to empty a tank quickly).
  * - `?traffic=0` sets how many NPC vehicles drive around (0 turns traffic
  *   off; a whole number up to MAX_TRAFFIC_VEHICLES).
+ * - `?weather=rain` starts in that weather and keeps it (the config check
+ *   rejects ids that do not exist).
  */
 export function applyConfigOverrides(config: GameConfig, query: QueryParameters): GameConfig {
   const debug = query.has('debug');
@@ -22,6 +24,7 @@ export function applyConfigOverrides(config: GameConfig, query: QueryParameters)
   const logLevel =
     requestedLevel !== null && isLogLevel(requestedLevel) ? requestedLevel : debug ? 'debug' : config.debug.logLevel;
   const fuelScale = Number(query.get('fuelScale') ?? Number.NaN);
+  const weatherId = query.get('weather')?.trim() ?? '';
   const trafficText = query.get('traffic')?.trim() ?? '';
   const traffic = trafficText === '' ? Number.NaN : Number(trafficText);
 
@@ -36,6 +39,7 @@ export function applyConfigOverrides(config: GameConfig, query: QueryParameters)
       maxVehicles:
         Number.isInteger(traffic) && traffic >= 0 && traffic <= MAX_TRAFFIC_VEHICLES ? traffic : config.traffic.maxVehicles,
     },
+    weather: weatherId === '' ? config.weather : { ...config.weather, initialWeatherId: weatherId, changes: false },
     debug: {
       logLevel,
       showPerfOverlay: debug || config.debug.showPerfOverlay,

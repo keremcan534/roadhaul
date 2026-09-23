@@ -93,6 +93,17 @@ describe('TrafficSimulation', () => {
     expect(sim.behaviourOf(car)).toBe('cruise');
   });
 
+  it('drives slower when the weather says so', () => {
+    const graph = laneGraphOf(straightStreet());
+    const sim = scene(graph);
+    const car = sim.addVehicle(CAR_TYPE, laneAt(graph, 0, 0, 0), 20, 0, 0.9);
+
+    sim.setSpeedFactor(0.6);
+    run(sim, parkedAway(), 14);
+
+    expect(sim.speed[car]).toBeCloseTo(TEST_SPEED_LIMITS.street * 0.9 * 0.6, 0);
+  });
+
   it('follows a slower vehicle at a safe gap without touching it', () => {
     const graph = laneGraphOf(straightStreet());
     const sim = scene(graph);

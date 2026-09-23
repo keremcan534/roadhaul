@@ -165,6 +165,8 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly leaderSpeed: Float64Array;
   private readonly leaderKind: Uint8Array;
   private activeCount = 0;
+  /** Everyone drives at this share of their usual speed (the weather). */
+  private speedFactor = 1;
   /** Vehicles holding each turn (they may drive it; conflicting turns wait). */
   private readonly holders: Int32Array;
   /**
@@ -293,6 +295,11 @@ export class TrafficSimulation implements MovingObstacles {
 
   behaviourOf(index: number): TrafficBehaviour {
     return TRAFFIC_BEHAVIOURS[this.behaviour[index]!]!;
+  }
+
+  /** Slows all traffic to `factor` of its usual cruising speed (rain, night). */
+  setSpeedFactor(factor: number): void {
+    this.speedFactor = Math.max(0.1, Math.min(1, factor));
   }
 
   /** Removes every vehicle; the roads fill again on the next update. */
@@ -639,14 +646,14 @@ export class TrafficSimulation implements MovingObstacles {
 
   /** Cruising speed on the current link, m/s. */
   private cruiseSpeed(i: number): number {
-    return this.graph.speedLimit[this.link[i]!]! * this.cruiseFactor[i]!;
+    return this.graph.speedLimit[this.link[i]!]! * this.cruiseFactor[i]! * this.speedFactor;
   }
 
   /** How fast the vehicle wants to go: its cruise speed, slowed for bends and turns ahead. */
   private desiredSpeed(i: number): number {
     const graph = this.graph;
     const link = this.link[i]!;
-    const factor = this.cruiseFactor[i]!;
+    const factor = this.cruiseFactor[i]! * this.speedFactor;
     let desired = Math.min(this.cruiseSpeed(i), graph.advisorySpeed[graph.pointStart[link]! + this.segment[i]! + 1]!);
     const next = this.next[i]!;
     const toEnd = Math.max(0, graph.length[link]! - this.s[i]!);

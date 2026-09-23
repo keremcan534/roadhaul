@@ -23,6 +23,7 @@ export class TrafficService {
   private readonly graphs = new Map<string, LaneGraph>();
   private readonly speedLimits: Readonly<Record<RoadKind, number>>;
   private drives = 0;
+  private speedFactor = 1;
 
   constructor(
     private readonly driving: DrivingService,
@@ -54,6 +55,12 @@ export class TrafficService {
     this.current!.update(dt, this.driving.vehicle, this.driving.footprint);
   }
 
+  /** Slows all traffic to `factor` of its usual speed, in this drive and later ones (WeatherService). */
+  setSpeedFactor(factor: number): void {
+    this.speedFactor = factor;
+    this.current?.setSpeedFactor(factor);
+  }
+
   dispose(): void {
     this.driving.setMovingObstacles(null);
     this.current = null;
@@ -81,6 +88,7 @@ export class TrafficService {
       },
       FIRST_SEED + this.drives++,
     );
+    this.current.setSpeedFactor(this.speedFactor);
     this.driving.setMovingObstacles(this.current);
   }
 }

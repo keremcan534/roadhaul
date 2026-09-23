@@ -43,4 +43,13 @@ describe('applyConfigOverrides', () => {
       );
     }
   });
+
+  it('starts in the weather ?weather names and keeps it', () => {
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?weather=rain')).weather).toEqual({
+      ...DEFAULT_GAME_CONFIG.weather,
+      initialWeatherId: 'rain',
+      changes: false,
+    });
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?weather=')).weather).toEqual(DEFAULT_GAME_CONFIG.weather);
+  });
 });

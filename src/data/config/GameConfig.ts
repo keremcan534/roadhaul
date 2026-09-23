@@ -67,6 +67,14 @@ export interface GameConfig {
      */
     readonly etaPaceFactor: Fraction;
   };
+  readonly weather: {
+    /** WeatherDefinition id the game starts with. */
+    readonly initialWeatherId: string;
+    /** False keeps the initial weather for good (tests, screenshots). */
+    readonly changes: boolean;
+    /** One weather turns into the next over this long, seconds. */
+    readonly transitionSeconds: number;
+  };
   readonly company: {
     /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
     readonly levelXp: readonly number[];
@@ -119,6 +127,11 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   navigation: {
     etaPaceFactor: 0.8,
   },
+  weather: {
+    initialWeatherId: 'clear',
+    changes: true,
+    transitionSeconds: 25,
+  },
   company: {
     levelXp: [0, 1000, 3000, 6500, 12000],
   },
@@ -136,7 +149,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, economy, fuel, traffic, navigation, company, newGame, debug } = config;
+  const { simulation, rendering, missions, economy, fuel, traffic, navigation, weather, company, newGame, debug } =
+    config;
 
   validator.check(
     Number.isFinite(simulation.fixedStepSeconds) &&
@@ -186,6 +200,13 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'navigation.etaPaceFactor',
     'must be greater than 0 and at most 1',
   );
+  validator.check(
+    content.weather.has(weather.initialWeatherId),
+    'weather.initialWeatherId',
+    `unknown weather "${weather.initialWeatherId}"`,
+  );
+  validator.boolean(weather.changes, 'weather.changes');
+  validator.positiveNumber(weather.transitionSeconds, 'weather.transitionSeconds');
   const levels = company.levelXp;
   validator.check(
     Array.isArray(levels) &&

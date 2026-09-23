@@ -80,6 +80,22 @@ describe('TrafficService', () => {
     expect(logger.entries.filter((entry) => entry.message.startsWith('Traffic lanes for test_map'))).toHaveLength(1);
   });
 
+  it('slows the traffic of this drive and of later ones', () => {
+    const { driving, service } = setup({ maxVehicles: 1 });
+    driving.start('test_truck', 'test_map');
+    service.update(STEP_SECONDS);
+    service.setSpeedFactor(0.5);
+    driving.start('test_truck', 'test_map');
+    service.update(STEP_SECONDS);
+    const simulation = service.simulation!;
+    const cruising = (): number => Math.max(...simulation.speed);
+
+    for (let step = 0; step < 15 / STEP_SECONDS; step++) service.update(STEP_SECONDS);
+
+    // The fixture street's limit is 45 km/h (12.5 m/s); the fixture car cruises at 92–106% of it.
+    expect(cruising()).toBeLessThan(12.5 * 1.06 * 0.5 + 0.3);
+  });
+
   it('keeps the roads empty when traffic is turned off', () => {
     const { driving, service } = setup({ maxVehicles: 0 });
     driving.start('test_truck', 'test_map');

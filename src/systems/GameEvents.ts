@@ -102,4 +102,9 @@ export interface GameEvents {
   CompanyLevelUp: {
     readonly level: number;
   };
+  /** The weather is turning (spec §38): from `previousId` to `weatherId`, over the transition. */
+  WeatherChanged: {
+    readonly weatherId: string;
+    readonly previousId: string;
+  };
 }
