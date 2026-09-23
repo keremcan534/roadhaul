@@ -15,8 +15,13 @@ const ENGINE_BRAKE_DECELERATION = 0.25;
 const STANDSTILL_SPEED = 0.3;
 /** How long a pedal must be held at a standstill to switch between forward and reverse. */
 const DIRECTION_CHANGE_DELAY_SECONDS = 0.3;
-/** Pedal travel that counts as "pressed". */
-const PEDAL_THRESHOLD = 0.1;
+/**
+ * Pedal travel up to this counts as released (a dead zone for analog input);
+ * the rest of the travel is rescaled to 0..1. Everything below sees only the
+ * rescaled value, so drive force, gear changes and engine braking agree on
+ * whether a pedal is pressed.
+ */
+const PEDAL_DEAD_ZONE = 0.1;
 /** Down-shifts take this fraction of an up-shift's time. */
 const DOWNSHIFT_TIME_SHARE = 0.5;
 /**
@@ -102,8 +107,8 @@ export class VehicleDynamics {
       return;
     }
     const steerInput = clamp(finiteOr(input.steer, 0), -1, 1);
-    const throttle = clamp01(finiteOr(input.throttle, 0));
-    const brake = clamp01(finiteOr(input.brake, 0));
+    const throttle = pedalTravel(input.throttle);
+    const brake = pedalTravel(input.brake);
 
     this.updateDirection(state, throttle, brake, dt);
     const reversing = state.gear < 0;
@@ -119,8 +124,8 @@ export class VehicleDynamics {
 
   private updateDirection(state: VehicleRuntimeState, throttle: number, brake: number, dt: number): void {
     const standing = Math.abs(state.speed) < STANDSTILL_SPEED;
-    const wantsReverse = state.gear > 0 && brake > PEDAL_THRESHOLD && throttle < PEDAL_THRESHOLD;
-    const wantsForward = state.gear < 0 && throttle > PEDAL_THRESHOLD && brake < PEDAL_THRESHOLD;
+    const wantsReverse = state.gear > 0 && brake > 0 && throttle === 0;
+    const wantsForward = state.gear < 0 && throttle > 0 && brake === 0;
     if (!standing || !(wantsReverse || wantsForward)) {
       state.directionChangeTimer = 0;
       return;
@@ -159,7 +164,7 @@ export class VehicleDynamics {
       return;
     }
     const { shiftUpRpm, shiftDownRpm, shiftTimeSeconds } = this.definition.powertrain;
-    if (state.engineRpm > shiftUpRpm && state.gear < this.gearRatios.length && drivePedal > PEDAL_THRESHOLD) {
+    if (state.engineRpm > shiftUpRpm && state.gear < this.gearRatios.length && drivePedal > 0) {
       state.gear++;
       state.shiftTimer = shiftTimeSeconds;
       state.timeInGear = 0;
@@ -200,8 +205,7 @@ export class VehicleDynamics {
     const speedMagnitude = Math.abs(state.speed);
     const drag = 0.5 * AIR_DENSITY * this.dragArea * speedMagnitude * speedMagnitude;
     const rolling = surface.rollingResistance * weight;
-    const engineBrake =
-      drivePedal < PEDAL_THRESHOLD && speedMagnitude > STANDSTILL_SPEED ? ENGINE_BRAKE_DECELERATION * mass : 0;
+    const engineBrake = drivePedal === 0 && speedMagnitude > STANDSTILL_SPEED ? ENGINE_BRAKE_DECELERATION * mass : 0;
     const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons, grip * weight);
     const resistance = drag + rolling + engineBrake + braking;
 
@@ -241,6 +245,11 @@ export class VehicleDynamics {
     const gearRatio = gear < 0 ? reverseGearRatio : (this.gearRatios[gear - 1] ?? 1);
     return gearRatio * finalDriveRatio;
   }
+}
+
+/** Pedal input past the dead zone, 0..1. Anything unusable counts as released. */
+function pedalTravel(value: number): number {
+  return clamp01((clamp01(finiteOr(value, 0)) - PEDAL_DEAD_ZONE) / (1 - PEDAL_DEAD_ZONE));
 }
 
 /** Negative, NaN or infinite cargo counts as none, so a bad value cannot turn the truck's state into NaN. */
