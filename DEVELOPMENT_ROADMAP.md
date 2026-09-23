@@ -35,8 +35,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 19 | Garage | 5 | ✅ | H2 and H3 trucks; buy them at company levels 2 and 3; switch trucks in place; ten contracts that need them; save v3 |
 | 20 | Upgrade | 3/5 | ✅ | Five upgrades of three levels (spec §16): engine, brakes, tyres, suspension, fuel tank; per truck |
 | 21 | 3-city prototype | 4 | ✅ | The north_valley region: three cities, four road kinds, a rest area; routes across junctions; service only at depots and rest areas |
-| 22 | Traffic | 4 | ⬜ **next** | Waypoint NPC traffic |
-| 23 | Navigation | 4 | ⬜ | Route, GPS arrow, ETA |
+| 22 | Traffic | 4 | ✅ | Cars, vans, lorries and buses on lanes: they follow, overtake on the highway, go round a standing truck, take turns at junctions and U-turn at dead ends; the truck crashes into them |
+| 23 | Navigation | 4 | ⬜ **next** | Route, GPS arrow, ETA |
 | 24 | Weather | 4 | ⬜ | Clear, cloudy, rain, night |
 | 25 | Events | 6 | ⬜ | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
 | 26 | Tutorial | 7 | ⬜ | First 10 minutes, taught by playing |
@@ -97,12 +97,16 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - The test track is retired. Save v4 moves saves on it to the region's spawn.
 - One region, loaded whole: at the spawn about 45 draw calls and 90k triangles are in view, because the forest is tiled and culled. Streaming regions (spec §21) waits until the world has more than one.
 - Debug: `?debug` adds Y (park at the rest area) to T; `?fuelScale=N` burns fuel faster for tests.
+- Traffic (step 22): 16 vehicles live within 700 m of the truck; new ones appear out of sight (behind the truck, or 350 m or more away) and far ones are recycled. Right-hand traffic, two lanes each way on the highway. All of it costs one draw call per kind of vehicle and well under a millisecond per second of simulation. `?traffic=N` sets how many (0 turns it off).
+- Junctions have no traffic lights yet: conflicting turns go one at a time, first come first served. Vehicles keep their distance, so they never run into each other; they stop for the truck and drive round it once it has stood a few seconds, if the other lane is clear.
+- The truck is to blame only when it drives into a vehicle: that damages it like any crash, and the vehicle stops for a while. A vehicle driving into a standing truck only shoves it.
+- Dead ends got paved turning circles, where traffic turns round (and the truck can too). The truck now starts in the right-hand lane, and "recover" puts it back in one.
 
-## Next step: 22 Traffic
+## Next step: 23 Navigation
 
 Suggested request:
 
-> Implement roadmap step 22 only. Add waypoint-based NPC traffic (spec §19) on the region's roads: pooled, kinematic cars and vans that follow lanes, keep their distance, stop behind the truck and at junctions, and never block a depot yard. The truck collides with them. Keep mobile performance in mind (instancing, a cap on vehicles near the camera).
+> Implement roadmap step 23 only. Navigation and GPS (spec §62–63): route the truck to the mission's next target over the road network (RoadNetwork already routes across junctions), draw the route on the road ahead as a GPS line, and show the next turn, the distance by road and an ETA on the HUD. Keep it allocation-free per frame and cheap to draw.
 
 ## Infrastructure track
 

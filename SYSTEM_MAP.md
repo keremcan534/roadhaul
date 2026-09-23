@@ -103,6 +103,19 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | RestAreaView | presentation | `src/presentation/world/RestAreaView.ts`, `groundDecals.ts` | Concrete lot, parking stalls, fuel canopy, pumps and price sign (three draw calls) | DrivingWorld, three | none |
 | RestAreaPanel | ui | `src/ui/hud/RestAreaPanel.ts` | The counter (spec §25): fuel, repair, continue, while the truck stands on the lot | DrivingService, FuelService, DamageService (read only) | none |
 
+### Traffic (Phase 4, roadmap step 22)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| TrafficVehicleDefinition, trafficVehicles | data | `src/data/definitions/TrafficVehicleDefinition.ts`, `src/data/content/trafficVehicles.ts` | Kinds of NPC vehicle (spec §19: car, minibus, lorry, bus): size, share of the speed limit, pull-away, how common, paint colours | Validator | none |
+| GameConfig.traffic | data | `src/data/config/GameConfig.ts` | How many vehicles, how far round the truck, speed limits by road kind | ROAD_KINDS | none |
+| Lanes, turning circles | domain | `src/domain/world/lanes.ts`, `DrivingWorld.turningCircles`, `RoadNetwork.junctions` / `deadEnds` | Right-hand lanes by road kind; a paved circle at every dead end; which roads meet at each junction | RoadPath | none |
+| LaneGraph | domain | `src/domain/traffic/LaneGraph.ts` | Waypoint links: lanes between junctions, turns across junctions (which conflict), U-turns round turning circles; advisory speeds for bends | DrivingWorld, RoadNetwork | none |
+| TrafficSimulation | domain | `src/domain/traffic/TrafficSimulation.ts` | The vehicles (flat arrays, seeded): cruise, follow (IDM), stop, avoid, change lane, turn, emergency stop; spawning out of sight and recycling; collision circles | LaneGraph, TrafficVehicleDefinition | none (DrivingWorld reports hits to it) |
+| Moving obstacles | domain | `DrivingWorld.resolveCollisions(…, obstacles)` | The truck against traffic: pushed out, carried along by a vehicle it rear-ends, impact only when it drives into one | MovingObstacles | none |
+| TrafficService | systems | `src/systems/traffic/TrafficService.ts` | Lanes per map, one simulation per drive, stepped before the truck; makes it the truck's moving obstacles | DrivingService, ContentCatalog | none (crashes emit `VehicleCollided` through DrivingService) |
+| TrafficView | presentation | `src/presentation/traffic/TrafficView.ts` | Low-poly car, van, lorry and bus shapes, one instanced mesh per kind, painted per vehicle, interpolated between steps | TrafficSimulation (read only), three | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -110,7 +123,6 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 | System | Layer(s) | Step | Responsibility |
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
-| TrafficService | domain, systems, presentation | ⬜ 22 | Waypoint-based, pooled, kinematic NPC vehicles (spec §19) |
 | NavigationService | systems, presentation | ⬜ 23 | Waypoint graph routing, GPS arrow, distance, ETA (spec §62–63) |
 | WeatherService | systems, presentation | ⬜ 24 | Clear / Cloudy / Rain / Night with small gameplay modifiers (spec §38) |
 | EventService (+ road events) | data, domain, systems | ⬜ 25 | Data-driven timed events: requirements, objectives, rewards, modifiers (spec §22–24, §53) |

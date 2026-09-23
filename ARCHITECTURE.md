@@ -152,14 +152,23 @@ touch controls (ui) ───────┘                              │
 - **`DrivingWorld`** (`src/domain/world`) is built from a `MapDefinition`:
   - road centrelines, sampled from a Catmull-Rom curve (`RoadPath`), each of a spec §20 kind (street, ring road, highway, country road);
   - the road network (`RoadNetwork`): roads meet where they share a control point, and routes follow the roads across those junctions;
-  - asphalt (roads, depot yards, rest area lots) or grass under the truck;
+  - asphalt (roads, turning circles at dead ends, depot yards, rest area lots) or grass under the truck;
   - service points: the depot yards and rest area lots, the only places with a pump and a workshop;
   - trees scattered from a seed, kept clear of roads, yards, lots and buildings;
   - buildings and the map edge.
 
-  Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two.
-- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. It also sets the cargo mass (a loaded truck is slower), parks the truck at a pose, and recovers a stuck truck onto the nearest road. Presentation reads its state and never writes it.
+  Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two. Traffic counts too (moving obstacles): the truck takes an impact only when it drives into a vehicle, and one it rear-ends carries it along at its speed.
+- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. It also sets the cargo mass (a loaded truck is slower), parks the truck at a pose, and recovers a stuck truck into the right-hand lane of the nearest road. Presentation reads its state and never writes it.
 - **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C) and touch controls (steering wheel, gas, brake, camera button) are merged every fixed step.
+
+### Traffic
+
+NPC traffic (roadmap step 22, spec §19) is waypoint-based and kinematic: vehicles move along paths and are never pushed.
+
+- **`LaneGraph`** (`src/domain/traffic`) turns a `DrivingWorld` into links of waypoints: a right-hand lane each way along every stretch of road between junctions (two each way on the highway), a turn across each junction from every lane in to the rightmost lane of every road out, and a U-turn round the paved turning circle at each dead end. Turns that cross or merge conflict. Every waypoint carries an advisory speed for the bends and turns ahead.
+- **`TrafficSimulation`** keeps a fixed pool of vehicles in flat arrays and steps them without allocating. Each follows the vehicle ahead with the Intelligent Driver Model and slows for bends; it takes a conflicting turn only when no other vehicle holds one (first come, first served), stops for the truck, goes round it through the other lane once it has stood a few seconds, overtakes on the highway, and brakes hard when something appears close ahead. New vehicles appear out of sight around the truck; far ones are recycled. Randomness is seeded.
+- **`TrafficService`** (`src/systems/traffic`) keeps one simulation per drive and steps it in `fixedUpdate` *before* `DrivingService.step()`, so the truck collides with the traffic where it is now. It hands the simulation to `DrivingService` as its moving obstacles. Traffic also runs behind the menus, and stops when the game is paused.
+- **`TrafficView`** draws each kind of vehicle as one `InstancedMesh`, interpolated between fixed steps like the truck.
 
 ### The mission loop
 
@@ -221,7 +230,7 @@ The spec's ScriptableObjects become **definition interfaces** (`src/data/definit
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
 
 ## 10. Save data
 
@@ -263,7 +272,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - fog to hide the far plane.
 - **Pre-lit flat surfaces.** The ground and road always face up under a fixed sun. They are unlit materials tinted with exactly what Lambert shading would give them (`flatGroundLight()`), so the pixels that cover most of the screen skip lighting.
 - **Software rendering** (no GPU: headless CI browsers, some virtual machines) is detected from the WebGL renderer name. The host then renders at one pixel per CSS pixel without anisotropic filtering, so the simulation still runs in real time.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 45 draw calls and 90k triangles are in view, as the `?debug` overlay shows.
+- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 45 draw calls and 90k triangles are in view, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle.
 - **Bundle:** three.js ships in its own chunk (about 540 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 100 kB.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
