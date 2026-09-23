@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import {
   centreOf,
+  headingChange,
   openGame,
   sceneScreenshot,
   shownHeading,
@@ -11,7 +12,7 @@ import {
   wheelRotation,
 } from './support';
 
-test('boots straight into driving with the touch controls on screen', async ({ page }) => {
+test('drives off from the HQ with the touch controls on screen', async ({ page }) => {
   const problems = watchForProblems(page);
 
   await openGame(page);
@@ -76,26 +77,29 @@ test('drives with the on-screen gas pedal and steering wheel', async ({ page }) 
   expect(problems).toEqual([]);
 });
 
-test('steers with the arrow keys: right turns clockwise, left anticlockwise', async ({ page }) => {
-  const problems = watchForProblems(page);
-  await openGame(page, '?debug');
-  await page.keyboard.down('ArrowUp');
-  await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
-
-  // Seen from above, turning right lowers the heading and turning left raises it.
-  for (const [key, direction] of [
-    ['ArrowRight', -1],
-    ['ArrowLeft', 1],
-  ] as const) {
+// Seen from above, turning right lowers the heading and turning left raises it. Each direction starts
+// fresh from the spawn: the truck turns 15° within a second there, long before it could reach a tree.
+for (const [key, direction, name] of [
+  ['ArrowRight', -1, 'right (clockwise)'],
+  ['ArrowLeft', 1, 'left (anticlockwise)'],
+] as const) {
+  test(`steers ${name} with the ${key} key`, async ({ page }) => {
+    const problems = watchForProblems(page);
+    await openGame(page, '?debug');
+    await page.keyboard.down('ArrowUp');
+    await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
     const before = await shownHeading(page);
-    await page.keyboard.down(key);
-    await expect.poll(async () => direction * ((await shownHeading(page)) - before), { timeout: 10_000 }).toBeGreaterThan(15);
-    await page.keyboard.up(key);
-  }
 
-  await page.keyboard.up('ArrowUp');
-  expect(problems).toEqual([]);
-});
+    await page.keyboard.down(key);
+    await expect
+      .poll(async () => direction * headingChange(before, await shownHeading(page)), { timeout: 10_000 })
+      .toBeGreaterThan(15);
+
+    await page.keyboard.up(key);
+    await page.keyboard.up('ArrowUp');
+    expect(problems).toEqual([]);
+  });
+}
 
 test('turns the truck right when the on-screen wheel turns clockwise', async ({ page }) => {
   const problems = watchForProblems(page);
@@ -105,7 +109,7 @@ test('turns the truck right when the on-screen wheel turns clockwise', async ({ 
   const before = await shownHeading(page);
 
   await turnWheel(page, Math.PI / 2);
-  await expect.poll(async () => before - (await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(15);
+  await expect.poll(async () => -headingChange(before, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(15);
 
   await page.mouse.up();
   await page.keyboard.up('ArrowUp');

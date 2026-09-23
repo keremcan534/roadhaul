@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { degreesToRadians } from '../../../../src/core/math/scalar';
-import { isInsideBay, isParkedInBay } from '../../../../src/domain/missions/loadingBay';
+import { bayParkingPose, isInsideBay, isParkedInBay } from '../../../../src/domain/missions/loadingBay';
 import { vehicleFixture } from '../../../support/contentFixtures';
 
 // A 16 × 4.6 m bay centred on the origin, running along X.
@@ -50,3 +50,16 @@ describe('isParkedInBay', () => {
     expect(isParkedInBay(bay, truck(10, 0, 90), body)).toBe(false);
   });
 });
+
+describe('bayParkingPose', () => {
+  it('parks the truck in the middle of the bay, facing along it', () => {
+    const pose = bayParkingPose(bay, body);
+
+    expect(isParkedInBay(bay, { ...pose, speed: 0 }, body)).toBe(true);
+    expect(pose.heading).toBeCloseTo(Math.PI / 2, 12);
+    // The body centre (half the wheelbase ahead of the rear axle) is the bay centre.
+    expect(pose.x + Math.sin(pose.heading) * 2.5).toBeCloseTo(0, 9);
+    expect(pose.z + Math.cos(pose.heading) * 2.5).toBeCloseTo(0, 9);
+  });
+});
+

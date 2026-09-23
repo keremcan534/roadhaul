@@ -44,3 +44,10 @@ export function isParkedInBay(
 ): boolean {
   return Math.abs(truck.speed) < STOPPED_SPEED_METERS_PER_SECOND && isInsideBay(bay, truck, body);
 }
+
+/** The rear-axle pose that parks the truck squarely in the middle of the bay, facing along its heading. */
+export function bayParkingPose(bay: RectangleDefinition, body: VehicleBody): TruckPose {
+  const heading = (bay.headingDegrees * Math.PI) / 180;
+  const back = body.wheelbaseMeters / 2;
+  return { x: bay.x - Math.sin(heading) * back, z: bay.z - Math.cos(heading) * back, heading };
+}

@@ -5,11 +5,18 @@ const STEER_RIGHT = new Set(['ArrowRight', 'KeyD']);
 const THROTTLE = new Set(['ArrowUp', 'KeyW']);
 const BRAKE = new Set(['ArrowDown', 'KeyS', 'Space']);
 const CAMERA_TOGGLE = 'KeyC';
+const PAUSE = new Set(['Escape', 'KeyP']);
+
+export interface KeyboardActions {
+  readonly onToggleCamera: () => void;
+  readonly onPause: () => void;
+}
 
 /**
- * Desktop driving controls: arrows or WASD, Space brakes, C switches camera.
- * Uses physical key codes, so it works the same on Turkish Q/F and other
- * layouts. The truck's steering rate smooths the digital steering.
+ * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
+ * Escape or P pauses. Uses physical key codes, so it works the same on
+ * Turkish Q/F and other layouts. The truck's steering rate smooths the
+ * digital steering.
  */
 export class KeyboardInput {
   /** Current driver input from the keyboard; read it every fixed step. */
@@ -18,7 +25,7 @@ export class KeyboardInput {
 
   constructor(
     private readonly target: Window,
-    private readonly onToggleCamera: () => void,
+    private readonly actions: KeyboardActions,
   ) {
     target.addEventListener('keydown', this.onKeyDown);
     target.addEventListener('keyup', this.onKeyUp);
@@ -32,9 +39,13 @@ export class KeyboardInput {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === CAMERA_TOGGLE) {
+    if (event.code === CAMERA_TOGGLE || PAUSE.has(event.code)) {
       if (!event.repeat) {
-        this.onToggleCamera();
+        if (event.code === CAMERA_TOGGLE) {
+          this.actions.onToggleCamera();
+        } else {
+          this.actions.onPause();
+        }
       }
       return;
     }

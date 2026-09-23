@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { centreOf, openGame, shownSpeed, watchForProblems } from './support';
 
-const CONTROLS = ['.steering-wheel', '.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button'] as const;
+const CONTROLS = ['.steering-wheel', '.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button', '.pause-button'] as const;
 
 for (const orientation of ['landscape', 'portrait'] as const) {
   test(`lays out the touch controls without overlaps in ${orientation}`, async ({ page }) => {

@@ -4,7 +4,7 @@ import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import type { GameContent } from '../../../../src/data/GameContent';
 import type { RectangleDefinition } from '../../../../src/data/definitions/MapDefinition';
-import { degreesToRadians } from '../../../../src/core/math/scalar';
+import { bayParkingPose } from '../../../../src/domain/missions/loadingBay';
 import { createRouteGuidance } from '../../../../src/domain/world/roadRoute';
 import { DrivingService } from '../../../../src/systems/driving/DrivingService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
@@ -43,9 +43,8 @@ function setup(overrides: Partial<GameContent> = {}) {
 
 /** Parks the truck with its body centred in `bay`, facing along it. */
 function parkIn(driving: DrivingService, bay: RectangleDefinition): void {
-  const heading = degreesToRadians(bay.headingDegrees);
-  const back = driving.definition.body.wheelbaseMeters / 2;
-  driving.placeTruck(bay.x - Math.sin(heading) * back, bay.z - Math.cos(heading) * back, heading);
+  const pose = bayParkingPose(bay, driving.definition.body);
+  driving.placeTruck(pose.x, pose.z, pose.heading);
 }
 
 /** Runs fixed steps: the truck first, then the missions, like the game loop. */

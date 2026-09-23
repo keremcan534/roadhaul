@@ -2,7 +2,12 @@
   color-scheme: dark;
   --rh-bg: #1b2430;
   --rh-fg: #e8edf2;
+  --rh-muted: #a9b4c0;
   --rh-overlay-bg: rgb(0 0 0 / 55%);
+  --rh-panel-bg: linear-gradient(180deg, rgb(30 38 48 / 94%), rgb(14 18 24 / 94%));
+  --rh-accent: #f2b233;
+  --rh-accent-dark: #d9901b;
+  --rh-good: #5fd38a;
   --rh-danger: #ff8a7a;
 }
 
@@ -33,7 +38,8 @@ body {
 
 .perf-overlay {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  /* Below the pause button. */
+  top: calc(env(safe-area-inset-top, 0px) + 68px);
   left: calc(env(safe-area-inset-left, 0px) + 8px);
   padding: 4px 8px;
   border-radius: 4px;
@@ -275,3 +281,550 @@ body {
   border-radius: 50%;
   background: var(--rh-control-bg);
 }
+
+/* ---- Shared screen pieces: overlays, panels, buttons, badges ---- */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 16px)
+    calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px);
+  box-sizing: border-box;
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 380px);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 18px 20px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: var(--rh-panel-bg);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 10%),
+    0 16px 40px rgb(0 0 0 / 45%);
+}
+
+.panel__title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 80ms ease-out, filter 80ms ease-out;
+}
+
+.button:active {
+  transform: scale(0.97);
+  filter: brightness(1.1);
+}
+
+.button[hidden] {
+  display: none;
+}
+
+.button--primary {
+  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
+  color: #1b1e22;
+  box-shadow: 0 4px 12px rgb(242 178 51 / 30%);
+}
+
+.button--secondary {
+  background: linear-gradient(180deg, rgb(70 80 94 / 95%), rgb(40 47 56 / 95%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%);
+}
+
+.button--ghost {
+  background: rgb(0 0 0 / 25%);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 35%);
+}
+
+.button--danger {
+  background: linear-gradient(180deg, #d9543f, #a8392a);
+}
+
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #10151b;
+}
+
+.badge--easy {
+  background: #7fdc9b;
+}
+
+.badge--normal {
+  background: #8cc4f2;
+}
+
+.badge--hard {
+  background: #f5b56a;
+}
+
+.badge--expert {
+  background: #f08a7c;
+}
+
+/* ---- Main menu (src/ui/menus/MainMenu.ts) ---- */
+
+.main-menu {
+  background:
+    radial-gradient(ellipse at 50% 45%, rgb(10 14 20 / 10%), rgb(10 14 20 / 70%) 75%),
+    linear-gradient(180deg, rgb(10 14 20 / 20%), rgb(10 14 20 / 55%));
+}
+
+.main-menu__logo {
+  margin: 0;
+  font-size: clamp(40px, 11vmin, 76px);
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-shadow: 0 4px 18px rgb(0 0 0 / 55%);
+}
+
+.main-menu__logo-accent {
+  color: var(--rh-accent);
+}
+
+.main-menu__tagline {
+  margin: 0 0 8px;
+  color: var(--rh-fg);
+  font-size: clamp(13px, 3.4vmin, 17px);
+  text-align: center;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.main-menu__play {
+  min-width: 200px;
+  min-height: 52px;
+  font-size: 20px;
+}
+
+.main-menu__language {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+
+/* ---- Company HQ and job board (src/ui/hq/CompanyHq.ts) ---- */
+
+.hq {
+  justify-content: flex-start;
+  align-items: stretch;
+  background: linear-gradient(180deg, rgb(12 16 22 / 88%), rgb(12 16 22 / 94%));
+}
+
+.hq__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.hq__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.hq__subtitle {
+  margin: 0;
+  color: var(--rh-accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hq__tools {
+  display: flex;
+  gap: 8px;
+}
+
+.hq__jobs {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
+}
+
+.hq__empty {
+  color: var(--rh-muted);
+}
+
+.job-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.job-card__top,
+.job-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.job-card__route {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.job-card__cargo {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+}
+
+.job-card__facts {
+  display: flex;
+  gap: 16px;
+  margin: 2px 0 4px;
+  font-size: 13px;
+}
+
+.job-card__fact {
+  display: flex;
+  gap: 5px;
+}
+
+.job-card__fact dt {
+  color: var(--rh-muted);
+}
+
+.job-card__fact dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-card__pay {
+  color: var(--rh-accent);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-card__accept {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+/* ---- Mission HUD (src/ui/hud/MissionHud.ts) ---- */
+
+.mission-hud {
+  --rh-target: #ffa726;
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(440px, calc(100vw - 2 * (env(safe-area-inset-left, 0px) + 76px)));
+  padding: 6px 12px 6px 8px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgb(28 34 42 / 86%), rgb(10 13 17 / 86%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 14%),
+    inset 3px 0 0 var(--rh-target),
+    0 6px 16px rgb(0 0 0 / 35%);
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission-hud[hidden] {
+  display: none;
+}
+
+.mission-hud.is-delivery {
+  --rh-target: #3ddc84;
+}
+
+.mission-hud__direction {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+}
+
+.mission-hud__arrow {
+  width: 34px;
+  height: 34px;
+}
+
+.mission-hud__arrow circle {
+  fill: rgb(255 255 255 / 8%);
+  stroke: rgb(255 255 255 / 25%);
+  stroke-width: 1.5;
+}
+
+.mission-hud__arrow path {
+  fill: var(--rh-target);
+}
+
+.mission-hud__distance {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mission-hud__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mission-hud__objective,
+.mission-hud__hint {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mission-hud__objective {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mission-hud__hint {
+  color: var(--rh-target);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.mission-hud__hint[hidden],
+.mission-hud__progress[hidden],
+.mission-hud__timer[hidden],
+.mission-hud__cargo[hidden] {
+  display: none;
+}
+
+.mission-hud__progress {
+  width: 100%;
+  min-width: 120px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 15%);
+}
+
+.mission-hud__progress-fill {
+  height: 100%;
+  background: var(--rh-target);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.mission-hud__stats {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mission-hud__timer {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.mission-hud__timer.is-late {
+  color: var(--rh-danger);
+}
+
+.mission-hud.is-damaged .mission-hud__cargo {
+  color: var(--rh-danger);
+  animation: rh-flash 0.3s ease-in-out 4;
+}
+
+@keyframes rh-flash {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- Pause button and menu (src/ui/menus/PauseMenu.ts) ---- */
+
+.pause-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  padding: 0;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  touch-action: manipulation;
+}
+
+/* Two bars. */
+.pause-button::before,
+.pause-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 16px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 85%);
+  transform: translateY(-50%);
+}
+
+.pause-button::before {
+  left: calc(50% - 7px);
+}
+
+.pause-button::after {
+  left: calc(50% + 2px);
+}
+
+.pause-menu,
+.result-dialog {
+  background: rgb(8 11 15 / 55%);
+}
+
+.pause-menu__panel {
+  width: min(100%, 320px);
+}
+
+/* ---- Contract result (src/ui/menus/ResultDialog.ts) ---- */
+
+.result-dialog__panel.is-success .panel__title {
+  color: var(--rh-good);
+}
+
+.result-dialog__panel.is-failure .panel__title {
+  color: var(--rh-danger);
+}
+
+.result-dialog__mission,
+.result-dialog__facts,
+.result-dialog__reason {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.result-dialog__reason {
+  color: var(--rh-fg);
+  font-size: 16px;
+}
+
+.result-dialog__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-dialog__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.result-dialog__line dt,
+.result-dialog__line dd {
+  margin: 0;
+}
+
+.result-dialog__line.is-bonus dd {
+  color: var(--rh-good);
+}
+
+.result-dialog__line.is-penalty dd {
+  color: var(--rh-danger);
+}
+
+.result-dialog__line.is-total {
+  padding-top: 8px;
+  border-top: 1px solid rgb(255 255 255 / 15%);
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.result-dialog__line.is-total dd {
+  color: var(--rh-accent);
+}
+
+/* Short landscape phones: tighter panels. */
+@media (max-height: 420px) {
+  .panel {
+    gap: 7px;
+    padding: 12px 16px;
+  }
+
+  .panel__title {
+    font-size: 19px;
+  }
+
+  .button {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 15px;
+  }
+
+  .result-dialog__lines {
+    gap: 3px;
+  }
+}
+
