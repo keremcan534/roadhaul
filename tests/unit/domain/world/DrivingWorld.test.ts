@@ -8,10 +8,15 @@ import { mapFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const truck = vehicleFixture();
 const footprint = createVehicleFootprint(truck.body);
+/** Centres of the front and rear footprint circles, meters ahead of the rear axle. */
+const front = Math.max(...footprint.offsets);
+const rear = Math.min(...footprint.offsets);
+
+const degrees = (value: number): number => (value * Math.PI) / 180;
 
 /** A truck whose rear axle is at (x, z), facing `headingDegrees`, rolling at `speed` m/s. */
 function truckAt(x: number, z: number, headingDegrees: number, speed: number) {
-  const state = new VehicleDynamics(truck).createState(x, z, (headingDegrees * Math.PI) / 180);
+  const state = new VehicleDynamics(truck).createState(x, z, degrees(headingDegrees));
   state.speed = speed;
   return state;
 }
@@ -48,14 +53,54 @@ describe('DrivingWorld', () => {
     expect(noseZ).toBeLessThanOrEqual(35 + 1e-9);
   });
 
-  it('only slows a truck that scrapes along a wall', () => {
+  it('turns a truck that glances off a wall along it, keeping its speed along the wall', () => {
     // Driving east, 15° toward the building's south wall (z = 35); two circles touch it.
     const state = truckAt(-5, 33, 75, 10);
 
     const impact = world.resolveCollisions(state, footprint);
 
-    expect(impact).toBeCloseTo(10 * Math.cos((75 * Math.PI) / 180), 6);
-    expect(state.speed).toBeCloseTo(10 * (1 - Math.cos((75 * Math.PI) / 180) ** 2), 6);
+    expect(impact).toBeCloseTo(10 * Math.sin(degrees(15)), 6);
+    expect(state.heading).toBeCloseTo(degrees(90), 9);
+    expect(state.speed).toBeCloseTo(10 * Math.cos(degrees(15)), 6);
+    // Flush against the wall, not bounced off it: every circle touches, none is inside.
+    for (const z of circleZs(state)) {
+      expect(z + footprint.radius).toBeCloseTo(35, 6);
+    }
+  });
+
+  it('turns a truck part of the way when it hits a wall at a medium angle', () => {
+    // 30° to the south wall; only the front circle is 0.3 m inside it.
+    const state = truckAt(-front * Math.sin(degrees(60)), 34.05 - front * Math.cos(degrees(60)), 60, 10);
+
+    world.resolveCollisions(state, footprint);
+
+    const turned = state.heading - degrees(60);
+    expect(turned).toBeGreaterThan(degrees(5));
+    expect(turned).toBeLessThan(degrees(30));
+    expect(state.speed).toBeLessThan(10 * Math.cos(degrees(30)));
+    expect(state.speed).toBeGreaterThan(10 * Math.cos(degrees(30)) ** 2);
+  });
+
+  it('stops without turning when it hits a wall at a steep angle', () => {
+    // 60° to the south wall; only the front circle is 0.3 m inside it.
+    const state = truckAt(-front * Math.sin(degrees(30)), 34.05 - front * Math.cos(degrees(30)), 30, 10);
+
+    world.resolveCollisions(state, footprint);
+
+    expect(state.heading).toBe(degrees(30));
+    expect(state.speed).toBeCloseTo(10 * Math.cos(degrees(60)) ** 2, 6);
+  });
+
+  it('turns a truck that reverses into a wall at a shallow angle along it', () => {
+    // Facing 75° (east-north-east) above the building, backing south-west into its north wall (z = 45);
+    // only the rear circle is 0.3 m inside it.
+    const state = truckAt(-rear * Math.sin(degrees(75)), 45.95 - rear * Math.cos(degrees(75)), 75, -3);
+
+    const impact = world.resolveCollisions(state, footprint);
+
+    expect(impact).toBeCloseTo(3 * Math.sin(degrees(15)), 6);
+    expect(state.heading).toBeCloseTo(degrees(90), 9);
+    expect(state.speed).toBeCloseTo(-3 * Math.cos(degrees(15)), 6);
   });
 
   it('ignores obstacles the truck is already moving away from', () => {

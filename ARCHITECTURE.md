@@ -145,8 +145,8 @@ touch controls (ui) ───────┘                              │
   - trees scattered from a seed;
   - buildings and the map edge.
 
-  Collisions correct the position per contact. Speed changes once per step, using the hardest contact.
-- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits `VehicleCollided` for impacts of 1.5 m/s or more. Presentation reads its state and never writes it.
+  Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two.
+- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. Presentation reads its state and never writes it.
 - **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C) and touch controls (steering wheel, gas, brake, camera button) are merged every fixed step.
 
 ## 9. Data and content

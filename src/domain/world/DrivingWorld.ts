@@ -1,4 +1,4 @@
-import { clamp, degreesToRadians } from '../../core/math/scalar';
+import { clamp, clamp01, degreesToRadians } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { MapDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
@@ -34,6 +34,14 @@ const TREE_BOUNDARY_MARGIN = 8;
 /** Size of the lookup grid for trees, meters. */
 const GRID_CELL_METERS = 20;
 const GRID_OFFSET = 4096;
+/**
+ * Contact angles (between the direction of travel and the obstacle's surface)
+ * up to this one turn the truck fully along the obstacle: it glances off and
+ * carries on…
+ */
+const FULL_DEFLECTION_ANGLE = degreesToRadians(20);
+/** …from this one on it is stopped like in a head-on crash. In between, the two blend. */
+const NO_DEFLECTION_ANGLE = degreesToRadians(45);
 
 /**
  * Everything the truck can drive on or into, built from a MapDefinition:
@@ -49,9 +57,15 @@ export class DrivingWorld {
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
   private readonly treeGrid = new Map<number, number[]>();
-  /** Hardest contact of the current resolveCollisions() call (scratch fields, so nothing allocates). */
+  /**
+   * Hardest contact of the current resolveCollisions() call: impact speed,
+   * contact normal and which footprint circle touched (scratch fields, so
+   * nothing allocates).
+   */
   private worstImpact = 0;
-  private worstAlignment = 0;
+  private worstNormalX = 0;
+  private worstNormalZ = 0;
+  private worstOffset = 0;
 
   constructor(map: MapDefinition) {
     this.id = map.id;
@@ -88,21 +102,21 @@ export class DrivingWorld {
   }
 
   /**
-   * Pushes the truck out of trees, buildings and the map boundary, and removes
-   * the part of its speed that drove into them (a head-on hit stops it, a
-   * glancing one only slows it). Returns the hardest impact speed in m/s, or 0.
-   * Allocation-free: it runs every fixed step.
+   * Pushes the truck out of trees, buildings and the map boundary, then
+   * responds to the hardest contact: a head-on hit stops the truck, a
+   * glancing one turns it along the obstacle and it carries on with the speed
+   * it had along the surface. Returns the hardest impact speed (m/s into the
+   * obstacle), or 0. Allocation-free: it runs every fixed step.
    */
   resolveCollisions(state: VehicleRuntimeState, footprint: VehicleFootprint): number {
     this.worstImpact = 0;
-    this.worstAlignment = 0;
     for (let i = 0; i < footprint.offsets.length; i++) {
       this.collideCircle(state, footprint.offsets[i]!, footprint.radius);
     }
-    // One speed response per step, from the hardest contact. Several circles touching
+    // One response per step, from the hardest contact. Several circles touching
     // the same wall must not brake the truck several times over.
     if (this.worstImpact > 0) {
-      state.speed *= 1 - this.worstAlignment * this.worstAlignment;
+      this.deflect(state, this.worstNormalX, this.worstNormalZ, this.worstOffset);
     }
     return this.worstImpact;
   }
@@ -131,7 +145,7 @@ export class DrivingWorld {
             continue;
           }
           const distance = Math.sqrt(distanceSquared);
-          this.pushOut(state, dx / distance, dz / distance, minDistance - distance);
+          this.pushOut(state, offset, dx / distance, dz / distance, minDistance - distance);
           cx = state.x + Math.sin(state.heading) * offset;
           cz = state.z + Math.cos(state.heading) * offset;
         }
@@ -150,7 +164,7 @@ export class DrivingWorld {
       }
       if (distanceSquared > 1e-12) {
         const distance = Math.sqrt(distanceSquared);
-        this.pushOut(state, dx / distance, dz / distance, radius - distance);
+        this.pushOut(state, offset, dx / distance, dz / distance, radius - distance);
       } else {
         // The circle's centre is inside the box: leave through the closest side.
         const toLeft = cx - box.minX;
@@ -160,33 +174,67 @@ export class DrivingWorld {
         const closest = Math.min(toLeft, toRight, toBottom, toTop);
         const nx = closest === toLeft ? -1 : closest === toRight ? 1 : 0;
         const nz = nx !== 0 ? 0 : closest === toBottom ? -1 : 1;
-        this.pushOut(state, nx, nz, closest + radius);
+        this.pushOut(state, offset, nx, nz, closest + radius);
       }
       cx = state.x + Math.sin(state.heading) * offset;
       cz = state.z + Math.cos(state.heading) * offset;
     }
 
     const edge = this.halfSizeMeters - radius;
-    if (cx < -edge) this.pushOut(state, 1, 0, -edge - cx);
-    if (cx > edge) this.pushOut(state, -1, 0, cx - edge);
-    if (cz < -edge) this.pushOut(state, 0, 1, -edge - cz);
-    if (cz > edge) this.pushOut(state, 0, -1, cz - edge);
+    if (cx < -edge) this.pushOut(state, offset, 1, 0, -edge - cx);
+    if (cx > edge) this.pushOut(state, offset, -1, 0, cx - edge);
+    if (cz < -edge) this.pushOut(state, offset, 0, 1, -edge - cz);
+    if (cz > edge) this.pushOut(state, offset, 0, -1, cz - edge);
   }
 
   /**
    * Moves the truck out of an obstacle along the contact normal (nx, nz) and
    * remembers the contact if it is the hardest so far this step (the truck
-   * moving into the obstacle, not away from it).
+   * moving into the obstacle, not away from it). `offset` says which
+   * footprint circle touched.
    */
-  private pushOut(state: VehicleRuntimeState, nx: number, nz: number, depth: number): void {
+  private pushOut(state: VehicleRuntimeState, offset: number, nx: number, nz: number, depth: number): void {
     state.x += nx * depth;
     state.z += nz * depth;
-    const alignment = Math.sin(state.heading) * nx + Math.cos(state.heading) * nz;
-    const normalSpeed = state.speed * alignment;
-    if (-normalSpeed > this.worstImpact) {
+    const normalSpeed = state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
+    // Ties are circles on the same surface. A later push-out there means that circle was still inside
+    // after the earlier ones were resolved, so it was the deepest: it is the one left touching.
+    if (-normalSpeed >= this.worstImpact) {
       this.worstImpact = -normalSpeed;
-      this.worstAlignment = alignment;
+      this.worstNormalX = nx;
+      this.worstNormalZ = nz;
+      this.worstOffset = offset;
     }
+  }
+
+  /**
+   * The truck can only move where it points (no sideways sliding), so it keeps
+   * the part of its velocity along the obstacle's surface only if it also
+   * turns that way. Without the turn, the next step would drive it into the
+   * obstacle again and a light scrape would pin it to the wall. It turns
+   * about the touching circle (`pivotOffset` ahead of the rear axle), so it
+   * stays against the obstacle and slides along it. Steep hits turn less and
+   * lose the rest of their speed.
+   */
+  private deflect(state: VehicleRuntimeState, nx: number, nz: number, pivotOffset: number): void {
+    const sin = Math.sin(state.heading);
+    const cos = Math.cos(state.heading);
+    // Heading · normal: the sine of the angle between the truck and the surface
+    // (negative when driving forwards into it, positive when reversing into it).
+    const alignment = sin * nx + cos * nz;
+    const angle = Math.asin(Math.min(1, Math.abs(alignment)));
+    const turn = clamp01((NO_DEFLECTION_ANGLE - angle) / (NO_DEFLECTION_ANGLE - FULL_DEFLECTION_ANGLE));
+    // Speed along the surface, projected onto the new heading (a head-on hit keeps nothing).
+    state.speed *= Math.cos(angle) * Math.cos(angle * (1 - turn));
+    if (turn === 0) {
+      return;
+    }
+    // Turning the heading by +1 rad moves it along (cos, -sin); pick the direction that brings alignment to 0.
+    const sideways = cos * nx - sin * nz;
+    state.heading += Math.sign(-alignment * sideways) * angle * turn;
+    // Keep the touching circle where it is: the rear of the truck swings in instead of the nose bouncing off.
+    state.x += pivotOffset * (sin - Math.sin(state.heading));
+    state.z += pivotOffset * (cos - Math.cos(state.heading));
   }
 
   /** Scatters trees beside the roads. The same seed always gives the same forest. */

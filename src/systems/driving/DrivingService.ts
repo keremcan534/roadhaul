@@ -33,7 +33,12 @@ export function interpolatePose(
   return out;
 }
 
-/** Impacts slower than this (m/s, about 5 km/h) are scrapes, not collisions. */
+/**
+ * Impacts slower than this (m/s into the obstacle, about 5 km/h) are scrapes,
+ * not collisions. While the truck is still touching what it hit, only an
+ * impact this much harder than the previous step's counts, so one crash is
+ * one event.
+ */
 export const COLLISION_EVENT_MIN_SPEED = 1.5;
 
 interface DrivingSession {
@@ -43,6 +48,8 @@ interface DrivingSession {
   readonly world: DrivingWorld;
   readonly state: VehicleRuntimeState;
   readonly previousPose: VehiclePose;
+  /** Impact speed of the previous step, 0 when the truck was not driving into anything. */
+  lastImpactSpeed: number;
 }
 
 /**
@@ -95,6 +102,7 @@ export class DrivingService {
       world,
       state,
       previousPose: { x: state.x, z: state.z, heading: state.heading },
+      lastImpactSpeed: 0,
     };
     this.logger.info(`Driving ${vehicleId} on ${mapId}: ${world.trees.length} trees, ${world.buildings.length} buildings.`);
   }
@@ -123,9 +131,10 @@ export class DrivingService {
     session.dynamics.step(state, input, surface, dt);
 
     const impact = world.resolveCollisions(state, session.footprint);
-    if (impact >= COLLISION_EVENT_MIN_SPEED) {
+    if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }
+    session.lastImpactSpeed = impact;
   }
 
   dispose(): void {
