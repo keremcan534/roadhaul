@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { GAME_CONTENT } from '../../../../src/data/content';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
+import { CARGO_CATEGORIES } from '../../../../src/data/definitions/CargoDefinition';
 import { MISSION_DIFFICULTIES } from '../../../../src/data/definitions/MissionDefinition';
 import { VEHICLE_STATS } from '../../../../src/data/definitions/UpgradeDefinition';
 import { VEHICLE_CLASSES } from '../../../../src/data/definitions/VehicleDefinition';
@@ -19,7 +20,7 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, truck, upgrade, weather, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, cargo, mission, truck, upgrade, weather, event, cargo category, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
@@ -27,6 +28,8 @@ describe('string tables', () => {
       ...GAME_CONTENT.vehicles.map((vehicle) => `vehicle.${vehicle.id}.name`),
       ...GAME_CONTENT.upgrades.map((upgrade) => `upgrade.${upgrade.id}.name`),
       ...GAME_CONTENT.weather.map((weather) => `weather.${weather.id}.message`),
+      ...GAME_CONTENT.events.flatMap((event) => [`event.${event.id}.name`, `event.${event.id}.description`]),
+      ...CARGO_CATEGORIES.map((category) => `cargoCategory.${category}`),
       ...VEHICLE_STATS.map((stat) => `stat.${stat}`),
       ...VEHICLE_CLASSES.map((vehicleClass) => `vehicleClass.${vehicleClass}`),
       ...BODY_TYPES.map((body) => `body.${body}`),
@@ -74,6 +77,13 @@ describe('Strings', () => {
     expect(en.signedMoney(-900)).toBe('−900 credits');
     expect(en.signedMoney(0)).toBe('0 credits');
     expect(en.signedMoney(-0)).toBe('0 credits');
+  });
+
+  it('shows time spans in days and hours, or hours and minutes, rounded up', () => {
+    const minute = 60_000;
+    expect(en.timeSpan(3 * 24 * 60 * minute + 4 * 60 * minute + 10 * minute)).toBe('3 d 4 h');
+    expect(tr.timeSpan(5 * 60 * minute + 19.5 * minute)).toBe('5 sa 20 dk');
+    expect(en.timeSpan(0)).toBe('0 h 0 min');
   });
 
   it('shows short distances in meters and long ones in kilometres', () => {

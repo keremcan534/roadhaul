@@ -2,6 +2,7 @@ import type { ServicePoint } from '../../domain/world/DrivingWorld';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
+import type { EventService } from '../../systems/events/EventService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
@@ -9,6 +10,8 @@ import type { GarageService } from '../../systems/vehicles/GarageService';
 import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { eventCard } from './eventCards';
+import { sortEvents } from './eventText';
 import { truckCard } from './garageCards';
 import { HQ_TABS, type HqTab } from './hqTabs';
 import { jobCard } from './jobCards';
@@ -25,6 +28,7 @@ export interface CompanyHqServices {
   readonly damage: DamageService;
   readonly garage: GarageService;
   readonly upgrades: UpgradeService;
+  readonly specialEvents: EventService;
 }
 
 export interface CompanyHqActions {
@@ -41,9 +45,11 @@ export interface CompanyHqActions {
 /**
  * The company HQ (spec §26): the company's name, level, XP, reputation and
  * credits; the truck being driven, with its fuel and damage, refuelling and
- * repairs; and three tabs: the job board (spec §28), where each blocked
- * contract says what unlocks it; the garage (spec §15), to buy and switch
- * trucks; and the upgrade shop for the truck being driven (spec §16).
+ * repairs; and four tabs: the job board (spec §28), where each blocked
+ * contract says what unlocks it and each one an event rewards says so; the
+ * special events (spec §22) with their progress; the garage (spec §15), to
+ * buy and switch trucks; and the upgrade shop for the truck being driven
+ * (spec §16).
  */
 export class CompanyHq {
   private readonly root: HTMLDivElement;
@@ -232,12 +238,25 @@ export class CompanyHq {
   private tabContent(): HTMLElement[] {
     const document = this.root.ownerDocument;
     const { strings, actions } = this;
-    const { missions, economy, garage, upgrades } = this.services;
+    const { missions, economy, garage, upgrades, specialEvents } = this.services;
     switch (this.tab) {
       case 'jobs': {
-        const cards = sortJobOffers(missions.jobBoard()).map((offer) => jobCard(document, strings, offer, actions.onAccept));
+        const cards = sortJobOffers(missions.jobBoard()).map((offer) =>
+          jobCard(
+            document,
+            strings,
+            offer,
+            actions.onAccept,
+            offer.blockedBy === null ? specialEvents.eventsForContract(offer.mission.id) : [],
+          ),
+        );
         return cards.length > 0 ? cards : [element(document, 'p', 'hq__empty', strings.t('hq.noJobs'))];
       }
+      case 'events':
+        return [
+          element(document, 'p', 'hq__note', strings.t('hq.events.note')),
+          ...sortEvents(specialEvents.statuses()).map((status) => eventCard(document, strings, status)),
+        ];
       case 'garage': {
         const owned = garage.trucks;
         const busy = missions.active !== null;

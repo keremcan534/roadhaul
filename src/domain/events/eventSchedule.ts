@@ -32,7 +32,7 @@ export function eventRunAt(schedule: EventSchedule, nowMs: number): EventRun | n
 }
 
 /** Whether `run` is going on at `nowMs`. */
-export function isRunning(run: EventRun | null, nowMs: number): run is EventRun {
+export function isRunning(run: EventRun | null, nowMs: number): boolean {
   return run !== null && run.startMs <= nowMs && nowMs < run.endMs;
 }
 

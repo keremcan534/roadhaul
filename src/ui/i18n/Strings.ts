@@ -63,6 +63,10 @@ export class Strings {
     return this.t(`upgrade.${upgradeId}.name`);
   }
 
+  eventName(eventId: string): string {
+    return this.t(`event.${eventId}.name`);
+  }
+
   /** A whole number with the language's grouping: "12.000", "12,000". */
   number(value: number): string {
     return this.integer.format(value);
@@ -93,6 +97,15 @@ export class Strings {
   duration(seconds: number): string {
     const whole = Math.max(0, Math.ceil(seconds));
     return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+  }
+
+  /** A span of days and hours, or else hours and minutes, rounded up: "3 g 4 sa", "5 h 20 min". */
+  timeSpan(ms: number): string {
+    const minutes = Math.max(0, Math.ceil(ms / 60_000));
+    const days = Math.floor(minutes / (24 * 60));
+    return days > 0
+      ? this.t('format.daysHours', { days, hours: Math.floor((minutes % (24 * 60)) / 60) })
+      : this.t('format.hoursMinutes', { hours: Math.floor(minutes / 60), minutes: minutes % 60 });
   }
 
   /** "%92" in Turkish, "92%" in English. */

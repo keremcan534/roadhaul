@@ -1,10 +1,21 @@
+import type { EventDefinition } from '../../data/definitions/EventDefinition';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { JobOffer } from '../../systems/missions/MissionService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 
-/** A contract on the job board (spec §28): route, cargo, distance, time and pay; what blocks it, or the button to take it. */
-export function jobCard(document: Document, strings: Strings, offer: JobOffer, onAccept: (missionId: string) => void): HTMLElement {
+/**
+ * A contract on the job board (spec §28): route, cargo, distance, time and
+ * pay; the running `events` it counts toward, with their bonus; what blocks
+ * it, or the button to take it.
+ */
+export function jobCard(
+  document: Document,
+  strings: Strings,
+  offer: JobOffer,
+  onAccept: (missionId: string) => void,
+  events: readonly EventDefinition[] = [],
+): HTMLElement {
   const { mission, cargo } = offer;
   const card = element(document, 'article', offer.blockedBy === null ? 'job-card' : 'job-card is-locked');
   card.dataset.missionId = mission.id;
@@ -30,6 +41,14 @@ export function jobCard(document: Document, strings: Strings, offer: JobOffer, o
     fact.append(element(document, 'dt', '', label), element(document, 'dd', '', value));
     facts.append(fact);
   }
+  const bonuses = events.map((event) =>
+    element(
+      document,
+      'span',
+      'job-card__event',
+      strings.t('hq.eventBonus', { event: strings.eventName(event.id), percent: strings.percent(event.payBonus) }),
+    ),
+  );
   const bottom = element(document, 'div', 'job-card__bottom');
   bottom.append(element(document, 'span', 'job-card__pay', strings.money(offer.basePay)));
   if (offer.blockedBy !== null) {
@@ -39,7 +58,13 @@ export function jobCard(document: Document, strings: Strings, offer: JobOffer, o
       button(document, 'button--primary job-card__accept', strings.t('hq.accept'), 'accept', () => onAccept(mission.id)),
     );
   }
-  card.append(top, route, load, facts, bottom);
+  card.append(top, route, load, facts);
+  if (bonuses.length > 0) {
+    const row = element(document, 'div', 'job-card__events');
+    row.append(...bonuses);
+    card.append(row);
+  }
+  card.append(bottom);
   return card;
 }
 

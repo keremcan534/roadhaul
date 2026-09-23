@@ -30,6 +30,7 @@ import type { GameState } from './systems/gameState/GameState';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { CompanyHq } from './ui/hq/CompanyHq';
+import { objectiveText } from './ui/hq/eventText';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
@@ -85,6 +86,7 @@ async function start(): Promise<void> {
   const weather = services.resolve(ServiceKeys.weather);
   const missions = services.resolve(ServiceKeys.missions);
   const navigation = services.resolve(ServiceKeys.navigation);
+  const specialEvents = services.resolve(ServiceKeys.specialEvents);
   const economy = services.resolve(ServiceKeys.economy);
   const company = services.resolve(ServiceKeys.company);
   const fuel = services.resolve(ServiceKeys.fuel);
@@ -258,7 +260,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { driving, missions, economy, company, fuel, damage, garage, upgrades },
+    { driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -335,6 +337,15 @@ async function start(): Promise<void> {
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
     result.showFailed(content.missions.get(missionId), reason, reputationLost);
+  });
+  events.on('EventProgressed', ({ eventId, bonus, progress, reward }) => {
+    const name = strings.eventName(eventId);
+    const objective = objectiveText(strings, content.events.get(eventId).objective, progress);
+    if (result.isOpen) {
+      result.showEventProgress(name, bonus, objective, reward);
+    } else {
+      toasts.show(reward === null ? `${name}: ${objective}` : strings.t('toast.eventCompleted', { event: name }), 'success');
+    }
   });
   events.on('CompanyLevelUp', ({ level }) => {
     const name = strings.t(`company.levelName.${level}`);

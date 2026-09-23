@@ -22,6 +22,8 @@ export interface EventStatus {
   readonly progress: number;
   /** The objective of `run` is met, and its reward paid. */
   readonly completed: boolean;
+  /** Until `run` ends when it is running, or starts when it is not; 0 when the event is over. */
+  readonly remainingMs: number;
 }
 
 /** Progress in one run of an event. */
@@ -109,7 +111,12 @@ export class EventService {
     };
     for (const definition of this.content.events.all) {
       const run = eventRunAt(definition.schedule, now);
-      if (!isRunning(run, now) || !this.mayTakePart(definition) || !deliveryQualifies(definition.qualifyingDelivery, facts)) {
+      if (
+        run === null ||
+        !isRunning(run, now) ||
+        !this.mayTakePart(definition) ||
+        !deliveryQualifies(definition.qualifyingDelivery, facts)
+      ) {
         continue;
       }
       const record = this.recordFor(definition.id, run.edition);
@@ -147,13 +154,15 @@ export class EventService {
     const run = eventRunAt(definition.schedule, now);
     const record = this.records.get(definition.id);
     const current = run !== null && record !== undefined && record.edition === run.edition ? record : null;
+    const running = isRunning(run, now);
     return {
       definition,
       run,
-      running: isRunning(run, now),
+      running,
       locked: !this.mayTakePart(definition),
       progress: current?.progress ?? 0,
       completed: current?.rewarded ?? false,
+      remainingMs: run === null ? 0 : running ? run.endMs - now : run.startMs - now,
     };
   }
 }

@@ -1,3 +1,4 @@
+import type { EventReward } from '../../data/definitions/EventDefinition';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { Credits } from '../../data/units';
 import type { MissionFailureReason } from '../../domain/missions/MissionInstance';
@@ -88,6 +89,34 @@ export class ResultDialog {
       this.strings.t('result.levelUp', { level, name: this.strings.t(`company.levelName.${level}`) }),
     );
     this.panel.insertBefore(banner, this.panel.lastElementChild);
+  }
+
+  /**
+   * Adds what the delivery did for the special event `name` to the open
+   * result: its bonus, and `progress` toward the objective, or the `reward`
+   * this delivery earned by meeting it.
+   */
+  showEventProgress(name: string, bonus: Credits, progress: string, reward: EventReward | null): void {
+    const { strings } = this;
+    const document = this.overlay.ownerDocument;
+    const block = element(document, 'div', reward === null ? 'result-dialog__event' : 'result-dialog__event is-completed');
+    const title = element(document, 'p', 'result-dialog__event-title');
+    title.append(
+      element(document, 'span', '', strings.t('result.eventBonus', { event: name })),
+      element(document, 'span', 'result-dialog__event-bonus', strings.signedMoney(bonus)),
+    );
+    block.append(
+      title,
+      element(
+        document,
+        'p',
+        'result-dialog__event-progress',
+        reward === null
+          ? progress
+          : strings.t('result.eventCompleted', { credits: strings.money(reward.credits), xp: strings.number(reward.xp) }),
+      ),
+    );
+    this.panel.insertBefore(block, this.panel.lastElementChild);
   }
 
   hide(): void {

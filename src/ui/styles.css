@@ -971,6 +971,127 @@ body {
   background: #f08a7c;
 }
 
+/* ---- Special events (src/ui/hq/eventCards.ts) and their marks on the job board ---- */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.event-card.is-running {
+  background: linear-gradient(180deg, rgb(58 50 30 / 96%), rgb(30 30 34 / 96%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    inset 0 0 0 2px rgb(242 178 51 / 55%);
+}
+
+.event-card.is-completed {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    inset 0 0 0 2px rgb(95 211 138 / 55%);
+}
+
+.event-card.is-upcoming,
+.event-card.is-over,
+.event-card.is-locked {
+  opacity: 0.6;
+}
+
+.event-card__top,
+.event-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-card__bottom {
+  margin-top: 2px;
+}
+
+.event-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.event-card__when {
+  flex: none;
+  color: var(--rh-accent);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.event-card__description,
+.event-card__terms {
+  margin: 0;
+  font-size: 13px;
+}
+
+.event-card__description {
+  color: var(--rh-muted);
+}
+
+.event-card__terms {
+  font-weight: 600;
+}
+
+.event-card__bonus {
+  margin: 0;
+  color: var(--rh-good);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.event-card__objective {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.meter--event .meter__fill {
+  background: var(--rh-accent);
+}
+
+.event-card__reward {
+  color: var(--rh-accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.event-card__status {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.event-card.is-completed .event-card__status {
+  color: var(--rh-good);
+}
+
+.job-card__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.job-card__event {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(242 178 51 / 18%);
+  color: var(--rh-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 /* ---- Rest area counter (src/ui/hud/RestAreaPanel.ts): under the mission HUD, clear of the truck ---- */
 
 .rest-area-panel {
@@ -1482,6 +1603,41 @@ html[data-game-state='companyHq'] .toasts {
   color: var(--rh-accent);
   font-weight: 800;
   text-align: center;
+}
+
+.result-dialog__event {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgb(242 178 51 / 10%);
+}
+
+.result-dialog__event.is-completed {
+  background: linear-gradient(90deg, rgb(95 211 138 / 25%), rgb(95 211 138 / 8%));
+}
+
+.result-dialog__event-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-weight: 700;
+}
+
+.result-dialog__event-bonus {
+  color: var(--rh-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.result-dialog__event-progress {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.result-dialog__event.is-completed .result-dialog__event-progress {
+  color: var(--rh-good);
+  font-weight: 800;
 }
 
 /* Short landscape phones: tighter panels. */
