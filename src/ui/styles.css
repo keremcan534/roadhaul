@@ -39,7 +39,7 @@ body {
   border-radius: 4px;
   background: var(--rh-overlay-bg);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: nowrap;
+  white-space: pre;
   pointer-events: none;
 }
 

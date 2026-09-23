@@ -24,7 +24,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio | three | none |
-| PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio | none | none |
+| PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
 | Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags, fatal error screen | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services, starts driving, attaches rendering, input and the loop | everything | listens `GameStateChanged` |
 

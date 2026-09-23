@@ -176,7 +176,7 @@ Central tuning values (fixed step, pixel-ratio cap, starting credits, later fuel
 - **Defaults for low/mid Android:** pixel ratio capped at 1.5, MSAA off, Lambert (or unlit) materials, no real-time shadows (bake lighting into vertex colours or textures instead), fog to hide the far plane.
 - **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. The test track with the truck costs about 12–15 draw calls and 15k triangles.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
-- The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio.
+- The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
 
 ## 12. Testing
 
