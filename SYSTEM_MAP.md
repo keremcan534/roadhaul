@@ -25,8 +25,8 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio, tone mapping, software-rendering fallback | three | none |
 | PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
-| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
-| Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result) and pausing; rebuilds the truck view when the player drives another truck | everything | listens `GameStateChanged`, the mission events and `ActiveVehicleChanged` |
+| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
+| Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result) and pausing; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
 
 ### Driving prototype (Phase 1, roadmap steps 04–08)
 
@@ -80,7 +80,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | GameSessionService | systems | `src/systems/session/GameSessionService.ts` | New game or continue; hands each save section to its owner; autosaves | every Phase 3 service, DrivingService, MissionService, GarageService | listens to the mission, purchase, truck and state events to save |
 | NewCompanyDialog | ui | `src/ui/menus/NewCompanyDialog.ts` | Name the company (spec §41) | Strings | none |
 | Company HQ (finances, truck) | ui | `src/ui/hq/CompanyHq.ts` | Company card, truck card (refuel, repair), level-locked job board | Phase 3 services (read only) | none |
-| Toasts | ui | `src/ui/hud/Toasts.ts` | Short notices (level-up, fuel, damage, purchases) | none | none |
+| Toasts | ui | `src/ui/hud/Toasts.ts` | Short notices (level-up, fuel, damage, purchases, the weather turning) | none | none |
 
 ### Garage and upgrades (Phase 5, roadmap steps 19–20)
 
@@ -114,7 +114,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | TrafficSimulation | domain | `src/domain/traffic/TrafficSimulation.ts` | The vehicles (flat arrays, seeded): cruise, follow (IDM), stop, avoid, change lane, turn, emergency stop; spawning out of sight and recycling; collision circles | LaneGraph, TrafficVehicleDefinition | none (DrivingWorld reports hits to it) |
 | Moving obstacles | domain | `DrivingWorld.resolveCollisions(…, obstacles)` | The truck against traffic: pushed out, carried along by a vehicle it rear-ends, impact only when it drives into one | MovingObstacles | none |
 | TrafficService | systems | `src/systems/traffic/TrafficService.ts` | Lanes per map, one simulation per drive, stepped before the truck; makes it the truck's moving obstacles | DrivingService, ContentCatalog | none (crashes emit `VehicleCollided` through DrivingService) |
-| TrafficView | presentation | `src/presentation/traffic/TrafficView.ts` | Low-poly car, van, lorry and bus shapes, one instanced mesh per kind, painted per vehicle, interpolated between steps | TrafficSimulation (read only), three | none |
+| TrafficView | presentation | `src/presentation/traffic/TrafficView.ts` | Low-poly car, van, lorry and bus shapes, one instanced mesh per kind, painted per vehicle, interpolated between steps; all their lamps in one more, glowing at night | TrafficSimulation (read only), three | none |
 
 ### Navigation (Phase 4, roadmap step 23)
 
@@ -125,6 +125,17 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | NavigationService | systems | `src/systems/navigation/NavigationService.ts` | GPS (spec §62–63): route to the contract's next bay ten times a second; distance, arrival time, next turn, a point ahead for the arrow | DrivingService, MissionService, GameConfig.navigation | none |
 | GpsRouteView | presentation | `src/presentation/navigation/GpsRouteView.ts` | The route as a translucent band in the right-hand lane, 700 m ahead and into the yard; one draw call, buffers allocated once | NavigationService (read only), three | none |
 
+### Weather (Phase 4, roadmap step 24)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| WeatherDefinition, weather | data | `src/data/definitions/WeatherDefinition.ts`, `src/data/content/weather.ts` | Clear, cloudy, rain, night (spec §38): how likely and how long, grip, traffic speed, and the look (sky, haze, light, clouds, rain, lamps) | Validator | none |
+| GameConfig.weather | data | `src/data/config/GameConfig.ts` | The first weather, whether it changes, how long a change takes; `?weather=id` fixes it | ContentCatalog | none |
+| WeatherService | systems | `src/systems/weather/WeatherService.ts` | Seeded schedule of weathers, blended changes; the truck's grip (a DrivingService performance modifier) and traffic speed; blended rain and lamps for the views | DrivingService, TrafficService, ContentCatalog | emits `WeatherChanged` |
+| Weather look | presentation | `EnvironmentView.applyWeather`, `world/lighting.ts` (`PrelitMaterials`) | Sky, haze, sun and sky light, clouds; relights the pre-lit ground and fades baked shadows | three | none |
+| RainView | presentation | `src/presentation/weather/RainView.ts` | Rain streaks round the camera, animated on the GPU, one draw call; more of them the harder it rains | three | none |
+| Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows | three | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -132,7 +143,6 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 | System | Layer(s) | Step | Responsibility |
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
-| WeatherService | systems, presentation | ⬜ 24 | Clear / Cloudy / Rain / Night with small gameplay modifiers (spec §38) |
 | EventService (+ road events) | data, domain, systems | ⬜ 25 | Data-driven timed events: requirements, objectives, rewards, modifiers (spec §22–24, §53) |
 | TutorialService | systems, ui | ⬜ 26 | Learn-by-playing first 10 minutes (spec §41) |
 | AudioService | presentation | ⬜ Phase 7 | Engine, brake, horn, ambience, UI sounds (spec §37) |

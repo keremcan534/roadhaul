@@ -37,8 +37,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 21 | 3-city prototype | 4 | ✅ | The north_valley region: three cities, four road kinds, a rest area; routes across junctions; service only at depots and rest areas |
 | 22 | Traffic | 4 | ✅ | Cars, vans, lorries and buses on lanes: they follow, overtake on the highway, go round a standing truck, take turns at junctions and U-turn at dead ends; the truck crashes into them |
 | 23 | Navigation | 4 | ✅ | The route drawn on the road; the next turn, the distance by road and the arrival time on the HUD |
-| 24 | Weather | 4 | ⬜ **next** | Clear, cloudy, rain, night |
-| 25 | Events | 6 | ⬜ | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
+| 24 | Weather | 4 | ✅ | Clear, cloudy, rain and night on a seeded schedule: sky, haze, light, clouds and rain change with it; lit windows, glowing lamps and headlights at night; wet roads grip less and traffic slows |
+| 25 | Events | 6 | ⬜ **next** | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
 | 26 | Tutorial | 7 | ⬜ | First 10 minutes, taught by playing |
 | 27 | Optimization | 7 | ⬜ | Hit the device budgets (ARCHITECTURE.md §11) |
 | 28 | Android build | 8 | ⬜ | Capacitor app built in CI |
@@ -103,12 +103,15 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Dead ends got paved turning circles, where traffic turns round (and the truck can too). The truck now starts in the right-hand lane, and "recover" puts it back in one.
 - Navigation (step 23): NavigationService traces the route by road to the contract's next bay ten times a second. The HUD shows the next turn ("Turn left in 200 m"; "Turn round" when the truck faces away on the road), the distance by road and the arrival time, in red when it would be late. A translucent band marks the route in the right-hand lane for 700 m ahead and into the yard. Carrying on where roads bend or meet is not announced.
 - The arrival time assumes each road driven at 80% of its speed limit (or of the truck's top speed, if lower): `GameConfig.navigation.etaPaceFactor`.
+- Weather (step 24): WeatherService runs a seeded schedule. A clear day is the likeliest; each weather lasts 2½ to 7 minutes and turns into the next over 25 s, and a toast says so while driving. Rain cuts the truck's grip to 78% and traffic to 85% of its speed; at night traffic drives at 90%. Haze thickens in rain, so the driver sees less far.
+- The look follows the weather through the change: sky, haze, sun and sky light, clouds, and the pre-lit ground with its baked shadows (`PrelitMaterials`). Rain is one draw call of streaks animated on the GPU. At night about half the windows light up, the lamps glow (one draw call for all traffic) and the truck's headlights light the road ahead. In rain the lamps are on at a third.
+- The weather is not saved: each session starts clear. `?weather=clear|cloudy|rain|night` fixes the weather for testing.
 
-## Next step: 24 Weather
+## Next step: 25 Events
 
 Suggested request:
 
-> Implement roadmap step 24 only. Weather (spec §38): clear, cloudy, rain and night, changed by a WeatherService on a seeded schedule. Each changes the look (sky, fog, light, rain drawn cheaply for phones, headlights at night) and a little of the play: grip in the rain, how far the driver can see, traffic a touch slower. Keep it data-driven and inside the mobile budget.
+> Implement roadmap step 25 only. Events (spec §22–23): data-driven EventDefinitions (title, description, duration, requirements, objectives, rewards, modifiers) run by an EventService kept apart from missions: events reuse MissionService's contracts and pay their bonuses through EconomyService. Ship three (for example: three deliveries within 30 minutes, a delivery without damage, a bonus on flatbed loads), show the running ones and their progress in the HQ and on the HUD, and save their state (bump the save version, with a migration and a test).
 
 ## Infrastructure track
 

@@ -69,16 +69,16 @@ flowchart TD
 
 ## 4. Boot sequence
 
-1. `src/main.ts` reads URL flags (`?debug`, `?log=`) into the config and creates a `ConsoleLogger`.
+1. `src/main.ts` reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config and creates a `ConsoleLogger`.
 2. `GameBootstrapper.boot()`:
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
    3. validates the config against the content (for example, that the starting truck exists);
-   4. creates the `EventBus` and the services in dependency order: game state, driving, economy, company, missions, damage, fuel, the garage and the upgrade shop, saves and the game session (which subscribes last, so it saves state the others have already updated);
+   4. creates the `EventBus` and the services in dependency order: game state, driving, traffic, weather, economy, company, missions, navigation, damage, fuel, the garage and the upgrade shop, saves and the game session (which subscribes last, so it saves state the others have already updated);
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
-3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `RestAreaView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
-4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event, `data-mission-state` every `MissionStateChanged` and `data-vehicle` the truck being driven. The e2e tests wait for them.
+3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `RestAreaView`, `TrafficView`, `GpsRouteView`, `RainView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
+4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event, `data-mission-state` every `MissionStateChanged`, `data-vehicle` the truck being driven, `data-traffic` the vehicles on the road and `data-weather` every `WeatherChanged`. The e2e tests wait for them.
 
 Any failure shows the fatal error screen and sets `data-boot-state="error"`. A failed boot disposes every service it had already created.
 
@@ -102,7 +102,8 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 - missions: `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed`;
 - money and the truck: `MoneyChanged`, `FuelChanged`, `Refuelled`, `VehicleDamaged`, `VehicleRepaired`;
 - the garage: `VehiclePurchased`, `ActiveVehicleChanged`, `UpgradePurchased`;
-- the company: `CompanyProgressed`, `CompanyLevelUp`.
+- the company: `CompanyProgressed`, `CompanyLevelUp`;
+- the weather: `WeatherChanged`.
 
 Events join as their systems arrive.
 
@@ -176,6 +177,13 @@ NPC traffic (roadmap step 22, spec §19) is waypoint-based and kinematic: vehicl
 - **`nextManoeuvre`** (`src/domain/navigation`) reads a trace: turn round (the truck faces away from the route on the road), turn left or right onto another road, or arrive. Carrying on where roads bend or meet is not a manoeuvre.
 - **`NavigationService`** (`src/systems/navigation`) routes to the contract's next bay ten times a second, from `fixedUpdate` after `MissionService.update()`. The HUD reads the distance, the arrival time, the next turn and a point ahead for its arrow; `GpsRouteView` redraws its band on the road only when the route has changed.
 
+### Weather
+
+Weather (roadmap step 24, spec §38) is data: each `WeatherDefinition` says how likely and how long it is, what it does to play, and how it looks.
+
+- **`WeatherService`** (`src/systems/weather`) runs a seeded schedule and blends each change over `GameConfig.weather.transitionSeconds`. It hands the effects to the services that own them: the truck's grip as a `DrivingService` performance modifier (like damage and upgrades), and traffic's speed to `TrafficService`. It steps in `fixedUpdate` after traffic, behind the menus too, and emits `WeatherChanged` when a change begins.
+- **The look** is presentation's, read every frame from `previous`, `current` and `blend`. `EnvironmentView.applyWeather()` blends the sky, the haze, the lights and the clouds, and relights the pre-lit ground through `PrelitMaterials`, which rescales every unlit ground material and fades the baked shadows with the sun. `RainView` draws the rain round the camera in one draw call, animated in its vertex shader. `setLamps()` on `TruckView`, `TrafficView` and `TrackView` brightens the lamps, adds their glows (`LampGlows`, one `Points` draw call per set), the truck's headlight pool on the road, and lit windows.
+
 ### The mission loop
 
 Roadmap steps 09–13 turn driving into a job (spec §9, §12, §50):
@@ -236,7 +244,7 @@ The spec's ScriptableObjects become **definition interfaces** (`src/data/definit
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, the weather's start and changes, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
 
 ## 10. Save data
 
@@ -278,7 +286,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - fog to hide the far plane.
 - **Pre-lit flat surfaces.** The ground and road always face up under a fixed sun. They are unlit materials tinted with exactly what Lambert shading would give them (`flatGroundLight()`), so the pixels that cover most of the screen skip lighting.
 - **Software rendering** (no GPU: headless CI browsers, some virtual machines) is detected from the WebGL renderer name. The host then renders at one pixel per CSS pixel without anisotropic filtering, so the simulation still runs in real time.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 45 draw calls and 90k triangles are in view, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle.
+- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 45 draw calls and 90k triangles are in view, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle and one for their lamps. Weather adds at most a few: rain one, and at night the glows (two) and the headlight pool (one).
 - **Bundle:** three.js ships in its own chunk (about 540 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 100 kB.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
