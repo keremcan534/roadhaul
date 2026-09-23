@@ -5,16 +5,19 @@ import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
-import { DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
+import { applyQualityPreset, DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { combineVehicleInputs, createVehicleInput } from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
 import { browserStorage } from './platform/browser/browserStorage';
 import { applyConfigOverrides, requestedDateMs } from './platform/browser/configOverrides';
+import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
+import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
+import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
 import { DepotView } from './presentation/world/DepotView';
@@ -40,6 +43,7 @@ import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import { ResultDialog } from './ui/menus/ResultDialog';
+import { SettingsDialog } from './ui/menus/SettingsDialog';
 import './ui/styles.css';
 
 /**
@@ -62,9 +66,13 @@ async function start(): Promise<void> {
   }
 
   const query = new URLSearchParams(window.location.search);
-  const config = applyConfigOverrides(DEFAULT_GAME_CONFIG, query);
-  const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
   const { storage, persistent } = browserStorage(window);
+  // Graphics: `?quality=`, else the player's setting, else what the device can carry. URL flags win over the preset.
+  const settings = loadSettings(storage);
+  const qualityChoice = qualitySetting(query.get('quality'), settings.quality, persistent);
+  const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(deviceHints(navigator)));
+  const config = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
+  const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
   if (!persistent) {
     logger.warn('Storage is unavailable: this game will not be saved after the page closes.');
   }
@@ -113,13 +121,17 @@ async function start(): Promise<void> {
   const track = new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
-  const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles);
+  const lampGlows = config.rendering.lampGlows;
+  const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
+    lampGlows,
+  });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
-  const rain = new RainView(renderHost.scene);
+  const rain = new RainView(renderHost.scene, config.rendering.rainDensity);
+  const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
-  let truck = new TruckView(renderHost.scene, driving.definition);
+  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
 
   /** The simulation stands still while a menu or the result is open over the road. */
@@ -221,7 +233,7 @@ async function start(): Promise<void> {
   const showActiveTruck = (): void => {
     if (truck.definition.id !== driving.definition.id) {
       truck.dispose();
-      truck = new TruckView(renderHost.scene, driving.definition);
+      truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
       cameraRig.setBody(driving.definition.body);
       truck.setCabinView(isDriving() && cameraRig.currentMode === 'cabin');
     }
@@ -260,6 +272,20 @@ async function start(): Promise<void> {
       query.set('lang', language === 'tr' ? 'en' : 'tr');
       window.location.search = query.toString();
     },
+    onSettings: () => settingsDialog.open(),
+  });
+  const settingsDialog = new SettingsDialog(ui, strings, qualityChoice, quality, {
+    onQuality: (choice) => {
+      // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
+      // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
+      if (saveSettings(storage, { ...settings, quality: choice }) && persistent) {
+        query.delete('quality');
+      } else {
+        query.set('quality', choice);
+      }
+      window.location.search = query.toString();
+    },
+    onClose: () => settingsDialog.close(),
   });
   const hq = new CompanyHq(
     ui,
@@ -431,12 +457,16 @@ async function start(): Promise<void> {
   root.dataset.missionState = 'none';
   root.dataset.vehicle = driving.definition.id;
   root.dataset.weather = weather.current.id;
+  root.dataset.quality = quality;
+  logger.info(`Graphics: ${quality}.`);
   showState(gameState.current);
 
   // Closing or hiding the tab keeps the latest state.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       session.save();
+    } else {
+      adaptiveResolution.restart();
     }
   });
   window.addEventListener('pagehide', () => session.save());
@@ -457,14 +487,18 @@ async function start(): Promise<void> {
     });
   }
 
+  const fitRain = (): void => {
+    rain.setViewport(canvas.clientWidth * renderHost.pixelRatio, canvas.clientHeight * renderHost.pixelRatio);
+  };
   const resize = (): void => {
     renderHost.setSize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio);
-    rain.setViewport(canvas.clientWidth * renderHost.pixelRatio, canvas.clientHeight * renderHost.pixelRatio);
+    fitRain();
   };
   resize();
   new ResizeObserver(resize).observe(canvas);
 
   const driverInput = createVehicleInput();
+  let menuFrames = 0;
   const pose = { x: 0, z: 0, heading: 0 };
   const loop = new GameLoop(
     animationFrameScheduler,
@@ -519,7 +553,17 @@ async function start(): Promise<void> {
         restArea.visible = simulating;
         restArea.update();
         toasts.update(deltaSeconds);
-        renderHost.render();
+        // Slow frames on the road: fewer pixels (the rain's streaks keep their width in pixels). The menus,
+        // drawn at half rate, are no measure.
+        if (simulating && adaptiveResolution.frame(deltaSeconds)) {
+          renderHost.setResolutionScale(adaptiveResolution.scale);
+          fitRain();
+        }
+        // Behind the menus the scene is a backdrop: every other frame is enough, and saves the battery.
+        menuFrames = isDriving() ? 0 : menuFrames + 1;
+        if ((menuFrames & 1) === 0) {
+          renderHost.render();
+        }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
         perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);

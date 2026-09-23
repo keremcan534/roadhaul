@@ -6,11 +6,12 @@ export interface MainMenuActions {
   readonly onNewCompany: () => void;
   /** Switches between Turkish and English. */
   readonly onSwitchLanguage: () => void;
+  readonly onSettings: () => void;
 }
 
 /**
  * The title screen over the slowly circling camera: logo, tagline, Continue
- * (with a saved game), New company and a language switch.
+ * (with a saved game), New company, a language switch and the settings.
  */
 export class MainMenu {
   private readonly root: HTMLDivElement;
@@ -49,7 +50,16 @@ export class MainMenu {
       'switch-language',
       actions.onSwitchLanguage,
     );
-    this.root.append(logo, tagline, this.continueButton, this.newCompanyButton, this.message, language);
+    const settings = button(
+      document,
+      'button--ghost main-menu__language',
+      strings.t('menu.settings'),
+      'settings',
+      actions.onSettings,
+    );
+    const small = element(document, 'div', 'main-menu__small');
+    small.append(language, settings);
+    this.root.append(logo, tagline, this.continueButton, this.newCompanyButton, this.message, small);
     parent.append(this.root);
   }
 

@@ -24,10 +24,17 @@ export interface OpenOptions {
   readonly date?: string;
 }
 
-/** Opens the game and waits until it has booted into the main menu. */
+/**
+ * Opens the game and waits until it has booted into the main menu. The
+ * graphics preset is high unless the query picks one, so what the tests
+ * count (traffic, draw calls) does not depend on the machine running them.
+ */
 export async function openMainMenu(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
   const parameters = new URLSearchParams(query);
   parameters.set('date', options.date ?? QUIET_DATE);
+  if (!parameters.has('quality')) {
+    parameters.set('quality', 'high');
+  }
   await page.goto(`/?${parameters.toString()}`);
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-boot-state', 'ready');

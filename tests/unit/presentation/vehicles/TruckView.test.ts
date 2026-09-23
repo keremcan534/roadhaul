@@ -258,6 +258,16 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(lamps.color.r).toBe(dayBrightness);
   });
 
+  it('keeps the headlights on the road but leaves out the glows on weaker devices', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck, { lampGlows: false });
+
+    view.setLamps(1);
+
+    expect((scene.getObjectByName('headlight-pool') as Mesh).visible).toBe(true);
+    expect(glowsOf(scene).visible).toBe(false);
+  });
+
   it('releases every GPU resource on dispose', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);

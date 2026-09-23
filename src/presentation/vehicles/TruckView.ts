@@ -119,9 +119,11 @@ export class TruckView {
   private readonly euler = new Euler(0, 0, 0, 'YXZ');
   private readonly unitScale = new Vector3(1, 1, 1);
 
+  /** `lampGlows: false` leaves the lamps without their glow at night (weaker devices). */
   constructor(
     private readonly scene: Scene,
     readonly definition: VehicleDefinition,
+    private readonly options: { readonly lampGlows?: boolean } = {},
   ) {
     const { lengthMeters: L, widthMeters: W, heightMeters: H, wheelbaseMeters: B, wheelRadiusMeters: R } = definition.body;
     const paint = CLASS_PAINT[definition.vehicleClass];
@@ -393,7 +395,7 @@ export class TruckView {
     }
     this.lamps = level;
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
-    this.glows.setLevel(level);
+    this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
     this.poolIntensity.value = level * POOL_STRENGTH;
     this.headlightPool.visible = level > 0.01;
   }

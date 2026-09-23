@@ -212,6 +212,17 @@ export const EN: StringTable = {
   'tutorial.finished': 'Well done! The company is yours to run now.',
   'tutorial.skip': 'Skip',
 
+  'menu.settings': 'Settings',
+  'settings.title': 'Settings',
+  'settings.quality': 'Graphics',
+  'settings.quality.auto': 'Auto',
+  'settings.quality.low': 'Low',
+  'settings.quality.medium': 'Medium',
+  'settings.quality.high': 'High',
+  'settings.inUse': 'In use: {quality}.',
+  'settings.restart': 'The game restarts to apply a new setting.',
+  'settings.close': 'Close',
+
   'vehicle.rh_h1.name': 'RoadHaul H1',
   'vehicle.rh_h2.name': 'RoadHaul H2',
   'vehicle.rh_h3.name': 'RoadHaul H3',

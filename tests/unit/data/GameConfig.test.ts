@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_GAME_CONFIG, validateGameConfig, type GameConfig } from '../../../src/data/config/GameConfig';
+import {
+  applyQualityPreset,
+  DEFAULT_GAME_CONFIG,
+  QUALITY_LEVELS,
+  QUALITY_PRESETS,
+  validateGameConfig,
+  type GameConfig,
+} from '../../../src/data/config/GameConfig';
 import { ContentCatalog } from '../../../src/data/ContentCatalog';
 import { GAME_CONTENT } from '../../../src/data/content';
 
@@ -132,6 +139,46 @@ describe('GameConfig', () => {
       { path: 'weather.initialWeatherId', message: 'unknown weather "hurricane"' },
       { path: 'weather.changes', message: expect.any(String) },
       { path: 'weather.transitionSeconds', message: expect.any(String) },
+    ]);
+  });
+
+  it('ships the high graphics preset by default, and a valid config for every preset', () => {
+    expect(applyQualityPreset(DEFAULT_GAME_CONFIG, 'high')).toEqual(DEFAULT_GAME_CONFIG);
+    for (const level of QUALITY_LEVELS) {
+      expect(validateGameConfig(applyQualityPreset(DEFAULT_GAME_CONFIG, level), catalog), level).toEqual([]);
+    }
+  });
+
+  it('asks less of weaker devices: fewer pixels, less rain and traffic, no glows on low', () => {
+    const [low, medium, high] = QUALITY_LEVELS.map((level) => QUALITY_PRESETS[level]);
+
+    expect(low!.maxPixelRatio).toBeLessThan(medium!.maxPixelRatio);
+    expect(medium!.maxPixelRatio).toBeLessThan(high!.maxPixelRatio);
+    expect(low!.trafficVehicles).toBeLessThan(high!.trafficVehicles);
+    expect(low!.rainDensity).toBeLessThan(high!.rainDensity);
+    expect(low!.lampGlows).toBe(false);
+    const applied = applyQualityPreset(DEFAULT_GAME_CONFIG, 'low');
+    expect(applied.rendering).toMatchObject({ quality: 'low', maxPixelRatio: low!.maxPixelRatio, lampGlows: false });
+    expect(applied.traffic.maxVehicles).toBe(low!.trafficVehicles);
+  });
+
+  it('checks the graphics values', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      rendering: {
+        ...DEFAULT_GAME_CONFIG.rendering,
+        quality: 'ultra' as never,
+        minResolutionScale: 0,
+        rainDensity: 1.5,
+        lampGlows: 'yes' as never,
+      },
+    };
+
+    expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
+      'rendering.quality',
+      'rendering.minResolutionScale',
+      'rendering.rainDensity',
+      'rendering.lampGlows',
     ]);
   });
 

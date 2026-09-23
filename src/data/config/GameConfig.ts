@@ -19,12 +19,20 @@ export interface GameConfig {
     readonly maxFrameDeltaSeconds: number;
   };
   readonly rendering: {
+    /** The graphics preset these values come from (applyQualityPreset). */
+    readonly quality: QualityLevel;
     /**
      * Upper bound for the device pixel ratio. Phones report 2.5 to 4, and
      * rendering at that resolution costs more fill rate than low/mid devices have.
      */
     readonly maxPixelRatio: number;
     readonly antialias: boolean;
+    /** The adaptive resolution lowers the pixel ratio to no less than this share of maxPixelRatio. */
+    readonly minResolutionScale: Fraction;
+    /** Share of the rain's streaks drawn. */
+    readonly rainDensity: Fraction;
+    /** Glows round lit lamps at night. */
+    readonly lampGlows: boolean;
   };
   readonly missions: {
     /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
@@ -96,15 +104,58 @@ export interface GameConfig {
 /** More NPC vehicles than this would cost too much on low-end phones. */
 export const MAX_TRAFFIC_VEHICLES = 48;
 
+/** Graphics presets, from weak phones to desktops. */
+export const QUALITY_LEVELS = ['low', 'medium', 'high'] as const;
+export type QualityLevel = (typeof QUALITY_LEVELS)[number];
+
+/** The player's graphics setting: a preset, or `auto` to let the device decide. */
+export const QUALITY_CHOICES = ['auto', ...QUALITY_LEVELS] as const;
+export type QualityChoice = (typeof QUALITY_CHOICES)[number];
+
+export function isQualityChoice(value: unknown): value is QualityChoice {
+  return (QUALITY_CHOICES as readonly unknown[]).includes(value);
+}
+
+/** What a graphics preset sets (applyQualityPreset). */
+export interface QualityPreset {
+  readonly maxPixelRatio: number;
+  readonly minResolutionScale: Fraction;
+  readonly rainDensity: Fraction;
+  readonly lampGlows: boolean;
+  /** NPC vehicles around the truck. */
+  readonly trafficVehicles: number;
+}
+
+export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = frozenCopy({
+  low: { maxPixelRatio: 1, minResolutionScale: 0.7, rainDensity: 0.5, lampGlows: false, trafficVehicles: 8 },
+  medium: { maxPixelRatio: 1.25, minResolutionScale: 0.6, rainDensity: 0.75, lampGlows: true, trafficVehicles: 12 },
+  high: { maxPixelRatio: 1.5, minResolutionScale: 0.6, rainDensity: 1, lampGlows: true, trafficVehicles: 16 },
+});
+
+/** `config` with the graphics preset `level`: resolution, rain, glows and how much traffic. */
+export function applyQualityPreset(config: GameConfig, level: QualityLevel): GameConfig {
+  const { trafficVehicles, ...rendering } = QUALITY_PRESETS[level];
+  return {
+    ...config,
+    rendering: { ...config.rendering, ...rendering, quality: level },
+    traffic: { ...config.traffic, maxVehicles: trafficVehicles },
+  };
+}
+
 export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   simulation: {
     fixedStepSeconds: 1 / 60,
     maxStepsPerFrame: 5,
     maxFrameDeltaSeconds: 0.25,
   },
+  // The high preset (QUALITY_PRESETS); the browser entry picks the preset for the device.
   rendering: {
+    quality: 'high',
     maxPixelRatio: 1.5,
     antialias: false,
+    minResolutionScale: 0.6,
+    rainDensity: 1,
+    lampGlows: true,
   },
   missions: {
     loadingSeconds: 3,
@@ -165,8 +216,16 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'simulation.maxFrameDeltaSeconds',
     'must be at least fixedStepSeconds',
   );
+  validator.oneOf(rendering.quality, QUALITY_LEVELS, 'rendering.quality');
   validator.positiveNumber(rendering.maxPixelRatio, 'rendering.maxPixelRatio');
   validator.boolean(rendering.antialias, 'rendering.antialias');
+  validator.check(
+    Number.isFinite(rendering.minResolutionScale) && rendering.minResolutionScale > 0 && rendering.minResolutionScale <= 1,
+    'rendering.minResolutionScale',
+    'must be greater than 0 and at most 1',
+  );
+  validator.fraction(rendering.rainDensity, 'rendering.rainDensity');
+  validator.boolean(rendering.lampGlows, 'rendering.lampGlows');
   validator.check(
     Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,
     'missions.loadingSeconds',

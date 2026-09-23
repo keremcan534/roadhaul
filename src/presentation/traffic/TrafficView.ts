@@ -63,10 +63,12 @@ export class TrafficView {
   private readonly lampMatrix = new Matrix4();
   private readonly paint = new Color();
 
+  /** `lampGlows: false` leaves the lamps without their glow at night (weaker devices). */
   constructor(
     private readonly scene: Scene,
     types: readonly TrafficVehicleDefinition[],
     capacity: number,
+    private readonly options: { readonly lampGlows?: boolean } = {},
   ) {
     const instances = Math.max(1, capacity);
     const shapes = types.map(shapeOf);
@@ -105,7 +107,7 @@ export class TrafficView {
   /** How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night). Cheap to call every frame. */
   setLamps(level: number): void {
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
-    this.glows.setLevel(level);
+    this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
   }
 
   /**

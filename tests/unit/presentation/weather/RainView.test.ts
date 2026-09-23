@@ -40,6 +40,18 @@ describe('RainView', () => {
     expect(rain.geometry.index!.count).toBe(heavy * 6);
   });
 
+  it('draws a share of its streaks on weaker devices', () => {
+    const full = setup();
+    const scene = new Scene();
+    const light = new RainView(scene, 0.5);
+    const rain = scene.getObjectByName('rain') as Mesh;
+
+    full.view.update(1 / 60, 0, 0, 1);
+    light.update(1 / 60, 0, 0, 1);
+
+    expect(rain.geometry.drawRange.count).toBe(full.rain.geometry.drawRange.count / 2);
+  });
+
   it('follows the camera, and lets the drops fall and drift with the wind while it runs', () => {
     const { view, uniforms } = setup();
     const fall = (): number => uniforms.fall!.value as number;

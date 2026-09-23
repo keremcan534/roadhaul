@@ -41,14 +41,22 @@ export class RainView {
   private driftX = 0;
   private driftZ = 0;
 
-  constructor(private readonly scene: Scene) {
+  /** The heaviest rain draws `density` (0..1) of MAX_DROPS: fewer on weaker devices. */
+  private readonly maxDrops: number;
+
+  constructor(
+    private readonly scene: Scene,
+    density = 1,
+  ) {
+    this.maxDrops = Math.round(MAX_DROPS * Math.min(1, Math.max(0, density)));
     // Four corners per streak. `position` holds the drop's random place in the box (0..1 on each axis),
     // the same at all four corners; `corner` says which end (0: the drop, 1: its tail) and side (-1, 1).
     const random = new SeededRandom(SEED);
-    const seeds = new Float32Array(MAX_DROPS * 4 * 3);
-    const corners = new Float32Array(MAX_DROPS * 4 * 2);
-    const indices = new Uint16Array(MAX_DROPS * 6);
-    for (let drop = 0; drop < MAX_DROPS; drop++) {
+    const drops = Math.max(1, this.maxDrops);
+    const seeds = new Float32Array(drops * 4 * 3);
+    const corners = new Float32Array(drops * 4 * 2);
+    const indices = new Uint16Array(drops * 6);
+    for (let drop = 0; drop < drops; drop++) {
       const x = random.next();
       const y = random.next();
       const z = random.next();
@@ -159,7 +167,7 @@ export class RainView {
    * Allocation-free.
    */
   update(deltaSeconds: number, cameraX: number, cameraZ: number, rain: number): void {
-    const drops = Math.round(MAX_DROPS * Math.min(1, Math.max(0, rain)));
+    const drops = Math.round(this.maxDrops * Math.min(1, Math.max(0, rain)));
     this.mesh.visible = drops > 0;
     if (drops === 0) {
       return;

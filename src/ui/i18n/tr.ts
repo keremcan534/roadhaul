@@ -212,6 +212,17 @@ export const TR: StringTable = {
   'tutorial.finished': 'Harika! Artık şirketin senin ellerinde.',
   'tutorial.skip': 'Geç',
 
+  'menu.settings': 'Ayarlar',
+  'settings.title': 'Ayarlar',
+  'settings.quality': 'Grafik',
+  'settings.quality.auto': 'Otomatik',
+  'settings.quality.low': 'Düşük',
+  'settings.quality.medium': 'Orta',
+  'settings.quality.high': 'Yüksek',
+  'settings.inUse': 'Kullanılan: {quality}.',
+  'settings.restart': 'Yeni ayar için oyun yeniden başlar.',
+  'settings.close': 'Kapat',
+
   'vehicle.rh_h1.name': 'RoadHaul H1',
   'vehicle.rh_h2.name': 'RoadHaul H2',
   'vehicle.rh_h3.name': 'RoadHaul H3',

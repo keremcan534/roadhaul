@@ -165,6 +165,20 @@ describe('TrafficView', () => {
     expect(material.color.r).toBe(dayBrightness);
   });
 
+  it('lights the lamps without glows on weaker devices', () => {
+    const scene = new Scene();
+    const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8, { lampGlows: false });
+    const sim = traffic();
+    sim.addVehicle(0, north, 50, 10);
+    sim.update(1 / 60, truck, footprint);
+
+    view.setLamps(1);
+    view.update(sim, 1);
+
+    expect(lampsOf(scene).count).toBe(4);
+    expect(glowsOf(scene).visible).toBe(false);
+  });
+
   it('releases every GPU resource on dispose', () => {
     const scene = new Scene();
     const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8);

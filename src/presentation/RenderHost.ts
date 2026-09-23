@@ -24,6 +24,15 @@ export class RenderHost {
    * one pixel per CSS pixel and turns off anisotropic filtering.
    */
   readonly softwareRendering: boolean;
+  /** Share of the capped pixel ratio drawn at (AdaptiveResolution), and the size last asked for. */
+  private resolutionScale = 1;
+  private cssWidth = 0;
+  private cssHeight = 0;
+  private devicePixelRatio = 1;
+  /** The drawing buffer's size and pixel ratio as last set, to skip resizing it to the same again. */
+  private appliedWidth = 0;
+  private appliedHeight = 0;
+  private appliedPixelRatio = 0;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -56,15 +65,45 @@ export class RenderHost {
     if (cssWidth <= 0 || cssHeight <= 0) {
       return; // Not laid out yet (hidden tab, zero-size container).
     }
-    const cap = this.softwareRendering ? Math.min(1, this.settings.maxPixelRatio) : this.settings.maxPixelRatio;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, cap));
-    this.renderer.setSize(cssWidth, cssHeight, false);
-    this.camera.aspect = cssWidth / cssHeight;
-    this.camera.updateProjectionMatrix();
+    this.cssWidth = cssWidth;
+    this.cssHeight = cssHeight;
+    this.devicePixelRatio = devicePixelRatio;
+    this.applySize();
+  }
+
+  /** Draws at `scale` (0..1) of the capped pixel ratio from now on: fewer pixels for slow devices. */
+  setResolutionScale(scale: number): void {
+    this.resolutionScale = scale;
+    if (this.cssWidth > 0) {
+      this.applySize();
+    }
   }
 
   render(): void {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Resizes the drawing buffer, once: setPixelRatio() and setSize() would do
+   * it twice. A resize waits for the GPU to finish what it was drawing (a
+   * hitch), even to the same size, so an unchanged size is left alone.
+   */
+  private applySize(): void {
+    const cap = this.softwareRendering ? Math.min(1, this.settings.maxPixelRatio) : this.settings.maxPixelRatio;
+    const pixelRatio = Math.min(this.devicePixelRatio, cap) * this.resolutionScale;
+    if (
+      this.cssWidth === this.appliedWidth &&
+      this.cssHeight === this.appliedHeight &&
+      pixelRatio === this.appliedPixelRatio
+    ) {
+      return;
+    }
+    this.appliedWidth = this.cssWidth;
+    this.appliedHeight = this.cssHeight;
+    this.appliedPixelRatio = pixelRatio;
+    this.renderer.setDrawingBufferSize(this.cssWidth, this.cssHeight, pixelRatio);
+    this.camera.aspect = this.cssWidth / this.cssHeight;
+    this.camera.updateProjectionMatrix();
   }
 
   dispose(): void {
