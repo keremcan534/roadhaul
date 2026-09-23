@@ -30,6 +30,12 @@ const WHEEL_ART = `
   <rect x="93" y="5" width="14" height="20" rx="4" fill="#f2b233"/>
 `;
 
+/** Small gauge icons: a fuel pump and a wrench. */
+const FUEL_ICON =
+  '<path d="M3 2h7v12H3z M10 5l3 2v5a1 1 0 0 0 2 0V6l-2-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5 4h3v3H5z" fill="currentColor"/>';
+const WRENCH_ICON =
+  '<path d="M11.5 2.5a3.5 3.5 0 0 0-3.3 4.6L2.5 12.8l1.7 1.7 5.7-5.7a3.5 3.5 0 0 0 4.6-3.3l-2 1-1.6-1.6z" fill="currentColor"/>';
+
 /** The speed dial: a half-circle track and the arc that fills with speed. */
 const DIAL_ART = `
   <defs>
@@ -60,6 +66,13 @@ export class TouchControls {
   private readonly dialFill: SVGPathElement;
   private readonly speedLabel: HTMLSpanElement;
   private readonly gearLabel: HTMLSpanElement;
+  private readonly fuelGauge: HTMLDivElement;
+  private readonly fuelFill: HTMLDivElement;
+  private readonly damageGauge: HTMLDivElement;
+  private readonly damageFill: HTMLDivElement;
+  private shownFuelPercent = -1;
+  private shownFuelLow = false;
+  private shownDamagePercent = -1;
   private wheelAngle = 0;
   private wheelPointer: number | null = null;
   private lastPointerAngle = 0;
@@ -109,7 +122,19 @@ export class TouchControls {
     unit.textContent = 'km/h';
     dial.append(dialArt, this.speedLabel, unit);
     this.gearLabel = element('span', 'dashboard__gear');
-    dashboard.append(dial, this.gearLabel);
+    const gauge = (className: string, icon: string): [HTMLDivElement, HTMLDivElement] => {
+      const row = element('div', `dashboard__gauge ${className}`);
+      const bar = element('div', 'dashboard__gauge-bar');
+      const fill = element('div', 'dashboard__gauge-fill');
+      bar.append(fill);
+      row.append(art('dashboard__gauge-icon', '0 0 16 16', icon), bar);
+      return [row, fill];
+    };
+    [this.fuelGauge, this.fuelFill] = gauge('dashboard__gauge--fuel', FUEL_ICON);
+    [this.damageGauge, this.damageFill] = gauge('dashboard__gauge--damage', WRENCH_ICON);
+    const gauges = element('div', 'dashboard__gauges');
+    gauges.append(this.fuelGauge, this.damageGauge);
+    dashboard.append(dial, this.gearLabel, gauges);
 
     const camera = element('button', 'camera-button');
     camera.type = 'button';
@@ -166,6 +191,30 @@ export class TouchControls {
     if (gear !== this.shownGear) {
       this.shownGear = gear;
       this.gearLabel.textContent = gear < 0 ? 'R' : `D${gear}`;
+    }
+  }
+
+  /**
+   * Shows the fuel level and the truck's damage as small bars. `fuelLow`
+   * turns the fuel bar red. The DOM changes only when a whole percent does.
+   */
+  showCondition(fuelFraction: number, fuelLow: boolean, damage: number): void {
+    const fuel = Math.round(Math.min(1, Math.max(0, fuelFraction)) * 100);
+    if (fuel !== this.shownFuelPercent) {
+      this.shownFuelPercent = fuel;
+      this.fuelFill.style.transform = `scaleX(${fuel / 100})`;
+      this.fuelGauge.dataset.percent = String(fuel);
+    }
+    if (fuelLow !== this.shownFuelLow) {
+      this.shownFuelLow = fuelLow;
+      this.fuelGauge.classList.toggle('is-low', fuelLow);
+    }
+    const worn = Math.round(Math.min(1, Math.max(0, damage)) * 100);
+    if (worn !== this.shownDamagePercent) {
+      this.shownDamagePercent = worn;
+      this.damageFill.style.transform = `scaleX(${worn / 100})`;
+      this.damageGauge.dataset.percent = String(worn);
+      this.damageGauge.classList.toggle('is-high', worn > 50);
     }
   }
 

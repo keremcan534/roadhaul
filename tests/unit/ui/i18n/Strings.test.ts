@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { GAME_CONTENT } from '../../../../src/data/content';
+import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import { MISSION_DIFFICULTIES } from '../../../../src/data/definitions/MissionDefinition';
+import { DAMAGE_BANDS } from '../../../../src/domain/vehicles/vehicleDamage';
 import { EN } from '../../../../src/ui/i18n/en';
 import { chooseLanguage, stringsFor } from '../../../../src/ui/i18n';
 import { TR } from '../../../../src/ui/i18n/tr';
@@ -13,12 +15,16 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission and difficulty in both languages', () => {
+  it('name every city, cargo, mission, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
       ...GAME_CONTENT.missions.map((mission) => `mission.${mission.id}.title`),
       ...MISSION_DIFFICULTIES.map((difficulty) => `difficulty.${difficulty}`),
+      ...DEFAULT_GAME_CONFIG.company.levelXp.map((_, index) => `company.levelName.${index + 1}`),
+      ...DAMAGE_BANDS.map((band) => `damage.${band}`),
+      ...['tooShort', 'tooLong', 'invalidCharacters'].map((error) => `newCompany.error.${error}`),
+      ...['missing', 'corrupted', 'tooNew'].map((problem) => `menu.problem.${problem}`),
     ];
     for (const strings of [tr, en]) {
       for (const key of keys) {

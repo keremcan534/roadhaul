@@ -39,6 +39,9 @@ export class KeyboardInput {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (isTyping(event)) {
+      return; // Letters typed into a form (the company name) are not driving.
+    }
     if (event.code === CAMERA_TOGGLE || PAUSE.has(event.code)) {
       if (!event.repeat) {
         if (event.code === CAMERA_TOGGLE) {
@@ -78,4 +81,10 @@ export class KeyboardInput {
 
 function isDrivingKey(code: string): boolean {
   return STEER_LEFT.has(code) || STEER_RIGHT.has(code) || THROTTLE.has(code) || BRAKE.has(code);
+}
+
+/** True while the player types into a text field. */
+export function isTyping(event: Event): boolean {
+  const target = event.target as { tagName?: string; isContentEditable?: boolean } | null;
+  return target !== null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable === true);
 }

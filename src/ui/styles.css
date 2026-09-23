@@ -246,6 +246,58 @@ body {
   text-align: center;
 }
 
+/* Fuel and damage: two small bars beside the gear badge. */
+.dashboard__gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard__gauge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: rgb(255 255 255 / 75%);
+}
+
+.dashboard__gauge-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.dashboard__gauge-bar {
+  width: 46px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 15%);
+}
+
+.dashboard__gauge-fill {
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms linear;
+}
+
+.dashboard__gauge--fuel .dashboard__gauge-fill {
+  background: #5fd38a;
+}
+
+.dashboard__gauge--damage .dashboard__gauge-fill {
+  background: #f2b233;
+}
+
+.dashboard__gauge--fuel.is-low {
+  color: var(--rh-danger);
+  animation: rh-flash 0.8s ease-in-out infinite;
+}
+
+.dashboard__gauge--fuel.is-low .dashboard__gauge-fill,
+.dashboard__gauge--damage.is-high .dashboard__gauge-fill {
+  background: var(--rh-danger);
+}
+
 .camera-button {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 12px);
