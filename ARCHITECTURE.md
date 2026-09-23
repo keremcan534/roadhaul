@@ -69,12 +69,12 @@ flowchart TD
 
 ## 4. Boot sequence
 
-1. `src/main.ts` reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config and creates a `ConsoleLogger`.
+1. `src/main.ts` reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar) and creates a `ConsoleLogger`.
 2. `GameBootstrapper.boot()`:
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
    3. validates the config against the content (for example, that the starting truck exists);
-   4. creates the `EventBus` and the services in dependency order: game state, driving, traffic, weather, economy, company, missions, navigation, damage, fuel, the garage and the upgrade shop, saves and the game session (which subscribes last, so it saves state the others have already updated);
+   4. creates the `EventBus` and the services in dependency order: game state, driving, traffic, weather, economy, company, missions, navigation, damage, fuel, the garage and the upgrade shop, special events, saves and the game session (which subscribes last, so it saves state the others have already updated);
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
 3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `RestAreaView`, `TrafficView`, `GpsRouteView`, `RainView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
@@ -103,7 +103,8 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 - money and the truck: `MoneyChanged`, `FuelChanged`, `Refuelled`, `VehicleDamaged`, `VehicleRepaired`;
 - the garage: `VehiclePurchased`, `ActiveVehicleChanged`, `UpgradePurchased`;
 - the company: `CompanyProgressed`, `CompanyLevelUp`;
-- the weather: `WeatherChanged`.
+- the weather: `WeatherChanged`;
+- special events: `EventProgressed`.
 
 Events join as their systems arrive.
 
@@ -176,6 +177,14 @@ NPC traffic (roadmap step 22, spec §19) is waypoint-based and kinematic: vehicl
 - **`RoadNetwork.trace`** (`src/domain/world`) lists the route by road from one point to another sample by sample, with its length and how long it takes at a pace per road. It reuses a trace allocated once per map.
 - **`nextManoeuvre`** (`src/domain/navigation`) reads a trace: turn round (the truck faces away from the route on the road), turn left or right onto another road, or arrive. Carrying on where roads bend or meet is not a manoeuvre.
 - **`NavigationService`** (`src/systems/navigation`) routes to the contract's next bay ten times a second, from `fixedUpdate` after `MissionService.update()`. The HUD reads the distance, the arrival time, the next turn and a point ahead for its arrow; `GpsRouteView` redraws its band on the road only when the route has changed.
+
+### Special events
+
+Events (roadmap step 25, spec §22–23, §53) are data too, and reuse the contracts: an event says which deliveries count, not how to play them.
+
+- **`eventRunAt`** (`src/domain/events`) finds the run of an event going on at a time, or the next one, from its schedule of whole UTC days. **`deliveryQualifies`** checks a delivery against the event's terms.
+- **`EventService`** (`src/systems/events`) listens to `MissionCompleted` after `EconomyService` and `CompanyService`: for every running event the company may join and the delivery qualifies for, it pays the bonus, advances the objective and, the first time the objective is met in a run, pays the reward (credits, and XP through `CompanyService.award`). It emits `EventProgressed`, which the result screen shows. Time comes from the injected `Clock`.
+- Progress belongs to a run: the save keeps each event's latest run, and a new run starts from nothing.
 
 ### Weather
 
@@ -254,11 +263,12 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - profile, company, economy and garage;
 - since v2: the world (where the truck is parked), the contract under way, and statistics;
 - since v3: the upgrades fitted to each truck;
-- v4 has the same shape: the test track is retired, and saves on it move to the region's spawn.
+- v4 has the same shape: the test track is retired, and saves on it move to the region's spawn;
+- since v5: the progress in each special event's latest run.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (4) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (5) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser (`platform/browser/browserStorage.ts`), memory in tests or when the browser forbids storage.
@@ -267,7 +277,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - **Corruption:** unreadable data is set aside and reported.
   - **Storage errors** (a full quota, private mode) come back as Results: the game never crashes because of a save.
 - **`GameSessionService`** (`src/systems/session`) is the company being played.
-  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, missions, the truck's position).
+  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, missions, events, the truck's position).
   - It saves after every delivery and failure; after each purchase and truck change, once what was bought is in place (`Refuelled`, `VehicleRepaired`, `VehiclePurchased`, `UpgradePurchased`, `ActiveVehicleChanged`, never on `MoneyChanged`); when the player leaves the road for a menu; and every 20 s of driving. The browser entry also saves when the tab hides or closes.
 
 ## 11. Rendering and the mobile performance budget

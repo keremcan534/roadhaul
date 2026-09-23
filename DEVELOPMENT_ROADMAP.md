@@ -38,8 +38,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 22 | Traffic | 4 | ✅ | Cars, vans, lorries and buses on lanes: they follow, overtake on the highway, go round a standing truck, take turns at junctions and U-turn at dead ends; the truck crashes into them |
 | 23 | Navigation | 4 | ✅ | The route drawn on the road; the next turn, the distance by road and the arrival time on the HUD |
 | 24 | Weather | 4 | ✅ | Clear, cloudy, rain and night on a seeded schedule: sky, haze, light, clouds and rain change with it; lit windows, glowing lamps and headlights at night; wet roads grip less and traffic slows |
-| 25 | Events | 6 | ⬜ **next** | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
-| 26 | Tutorial | 7 | ⬜ | First 10 minutes, taught by playing |
+| 25 | Events | 6 | ✅ | Express Week, Safe Driver and Heavy Cargo as data: a week every other week, a bonus on qualifying deliveries, a reward for the objective; an HQ tab; save v5 |
+| 26 | Tutorial | 7 | ⬜ **next** | First 10 minutes, taught by playing |
 | 27 | Optimization | 7 | ⬜ | Hit the device budgets (ARCHITECTURE.md §11) |
 | 28 | Android build | 8 | ⬜ | Capacitor app built in CI |
 | 29 | Device testing | 8 | ⬜ | Real low/mid Android phones |
@@ -107,11 +107,18 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - The look follows the weather through the change: sky, haze, sun and sky light, clouds, and the pre-lit ground with its baked shadows (`PrelitMaterials`). Rain is one draw call of streaks animated on the GPU. At night about half the windows light up, the lamps glow (one draw call for all traffic) and the truck's headlights light the road ahead. In rain the lamps are on at a third.
 - The weather is not saved: each session starts clear. `?weather=clear|cloudy|rain|night` fixes the weather for testing.
 
-## Next step: 25 Events
+### Phase 6 notes
+- Events (step 25) are data (`EventDefinition`): a schedule of whole UTC days that repeats, a company level to take part, the deliveries that qualify (time to spare, cargo damage, cargo weight or category), an objective (deliveries, or credits earned), a reward and a pay bonus. A new event needs no code.
+- Express Week (a quarter of the time to spare) and Safe Driver (no cargo damage) take turns, week by week, so one of them always runs; Heavy Cargo (8 t or more, from level 2) runs a week every other week from Thursdays. EventService pays the bonus on each qualifying delivery and the reward once per run, and the result screen shows both. The HQ's Events tab lists them with their progress and time left; job cards mark contracts whose cargo counts.
+- The calendar is the device's clock. `?date=2026-09-30` starts it on another day (the e2e tests play before the first event, so bonuses never change what they check).
+- Save v5 keeps the progress of each event's latest run; a new run starts from nothing.
+- The spec's random road events (§24: road works, traffic jams and the like) are not in yet.
+
+## Next step: 26 Tutorial
 
 Suggested request:
 
-> Implement roadmap step 25 only. Events (spec §22–23): data-driven EventDefinitions (title, description, duration, requirements, objectives, rewards, modifiers) run by an EventService kept apart from missions: events reuse MissionService's contracts and pay their bonuses through EconomyService. Ship three (for example: three deliveries within 30 minutes, a delivery without damage, a bonus on flatbed loads), show the running ones and their progress in the HQ and on the HUD, and save their state (bump the save version, with a migration and a test).
+> Implement roadmap step 26 only. The first ten minutes (spec §41), taught by playing, with short hints instead of long texts: a new company is walked through its first contract (take it on the job board, drive to the pickup bay, load, deliver, get paid) and then to its first upgrade. A TutorialService in systems follows the game's events and knows the next step; the UI shows one short hint at a time and can be skipped. It runs once per company (saved, with a save version bump, migration and test) and never blocks the controls.
 
 ## Infrastructure track
 

@@ -20,12 +20,12 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | ContentCatalog | data | `src/data/ContentCatalog.ts` | Validates content and cross-references; frozen id lookups | Definitions | none |
 | GameConfig | data | `src/data/config/GameConfig.ts` | Central tuning values + validation against content | ContentCatalog | none |
 | Company name rules | domain | `src/domain/company/companyName.ts` | Normalise and validate the player's company name | none | none |
-| SaveGameData | domain | `src/domain/save/` | Versioned save schema (v4), new-game state, migrations, validation of loaded saves | Definitions | none |
+| SaveGameData | domain | `src/domain/save/` | Versioned save schema (v5), new-game state, migrations, validation of loaded saves | Definitions | none |
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio, tone mapping, software-rendering fallback | three | none |
 | PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
-| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
+| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`, `?date`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result) and pausing; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
 
 ### Driving prototype (Phase 1, roadmap steps 04–08)
@@ -71,16 +71,16 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | CurrencyWallet, costs | domain | `src/domain/economy/` | Whole, non-negative credits; spending returns a Result; fuel and repair prices rounded up | none | none |
 | Fuel and damage rules | domain | `src/domain/vehicles/fuelConsumption.ts`, `vehicleDamage.ts` | Spec §17 fuel formula; spec §18 damage bands, impact damage, weakened engine and brakes | VehicleDefinition | none |
 | Company progression, delivery XP | domain | `src/domain/company/companyProgress.ts`, `src/domain/missions/missionProgress.ts` | Levels from XP (spec §14); XP and reputation for a delivery, reputation lost on failure | GameConfig | none |
-| Save migrations and validation | domain | `src/domain/save/saveMigrations.ts`, `validateSaveGameData.ts` | Upgrade old saves (v1 → v2 → v3), refuse newer ones, check every field and reference | ContentCatalog | none |
+| Save migrations and validation | domain | `src/domain/save/saveMigrations.ts`, `validateSaveGameData.ts` | Upgrade old saves (v1 → … → v5), refuse newer ones, check every field and reference | ContentCatalog | none |
 | EconomyService | systems | `src/systems/economy/EconomyService.ts` | The only owner of money (spec §13, §51): pays deliveries, spends, prices fuel and repairs | EventBus | listens `MissionCompleted`; emits `MoneyChanged` |
 | FuelService | systems | `src/systems/vehicles/FuelService.ts` | Burns fuel per fixed step; stalls an empty engine; refuels at the pump or on the road; emergency fuel; tank and consumption upgrades | DrivingService, DamageService, EconomyService | emits `FuelChanged`, `Refuelled` |
 | DamageService | systems | `src/systems/vehicles/DamageService.ts` | Truck damage from collisions (spec §18), performance penalty, paid repairs | DrivingService, EconomyService | listens `VehicleCollided`; emits `VehicleDamaged`, `VehicleRepaired` |
 | CompanyService | systems | `src/systems/company/CompanyService.ts` | Name, XP, level, reputation, statistics | EventBus, GameConfig | listens `MissionCompleted`, `MissionFailed`; emits `CompanyProgressed`, `CompanyLevelUp` |
 | SaveService | systems | `src/systems/save/SaveService.ts` | Versioned JSON saves (spec §32, §52): atomic write, backup, corruption handling, migrations | KeyValueStorage, ContentCatalog | none |
-| GameSessionService | systems | `src/systems/session/GameSessionService.ts` | New game or continue; hands each save section to its owner; autosaves | every Phase 3 service, DrivingService, MissionService, GarageService | listens to the mission, purchase, truck and state events to save |
+| GameSessionService | systems | `src/systems/session/GameSessionService.ts` | New game or continue; hands each save section to its owner; autosaves | every Phase 3 service, DrivingService, MissionService, GarageService, EventService | listens to the mission, purchase, truck and state events to save |
 | NewCompanyDialog | ui | `src/ui/menus/NewCompanyDialog.ts` | Name the company (spec §41) | Strings | none |
 | Company HQ (finances, truck) | ui | `src/ui/hq/CompanyHq.ts` | Company card, truck card (refuel, repair), level-locked job board | Phase 3 services (read only) | none |
-| Toasts | ui | `src/ui/hud/Toasts.ts` | Short notices (level-up, fuel, damage, purchases, the weather turning) | none | none |
+| Toasts | ui | `src/ui/hud/Toasts.ts` | Short notices (level-up, fuel, damage, purchases, the weather turning, events) | none | none |
 
 ### Garage and upgrades (Phase 5, roadmap steps 19–20)
 
@@ -136,6 +136,15 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | RainView | presentation | `src/presentation/weather/RainView.ts` | Rain streaks round the camera, animated on the GPU, one draw call; more of them the harder it rains | three | none |
 | Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows | three | none |
 
+### Special events (Phase 6, roadmap step 25)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| EventDefinition, events | data | `src/data/definitions/EventDefinition.ts`, `src/data/content/events.ts` | Express Week, Safe Driver, Heavy Cargo (spec §78): schedule, company level, qualifying deliveries, objective, reward, pay bonus | Validator | none |
+| Event rules | domain | `src/domain/events/eventSchedule.ts`, `eventRules.ts` | Which run of an event is on (or next); whether a delivery qualifies; bonus and progress | EventDefinition | none |
+| EventService | systems | `src/systems/events/EventService.ts` | Counts deliveries toward the running events, pays bonuses and rewards (spec §22–23, §53); the save's event progress | ContentCatalog, CompanyService, EconomyService, Clock | listens `MissionCompleted`; emits `EventProgressed` |
+| HQ events tab | ui | `src/ui/hq/eventCards.ts`, `eventText.ts` | The events with their terms, bonus, progress, reward and time left; job cards mark contracts whose cargo counts | EventService (read only) | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -143,7 +152,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 | System | Layer(s) | Step | Responsibility |
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
-| EventService (+ road events) | data, domain, systems | ⬜ 25 | Data-driven timed events: requirements, objectives, rewards, modifiers (spec §22–24, §53) |
+| Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
 | TutorialService | systems, ui | ⬜ 26 | Learn-by-playing first 10 minutes (spec §41) |
 | AudioService | presentation | ⬜ Phase 7 | Engine, brake, horn, ambience, UI sounds (spec §37) |
 | Settings, more languages | ui | ⬜ Phase 7 | A settings screen (language, sound, quality); more string tables |
