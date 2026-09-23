@@ -47,6 +47,26 @@ describe('RoadPath', () => {
     expect(path.contains(0, -5.1)).toBe(false);
   });
 
+  it('measures the distance to each straight piece of the centreline, the last one of a loop joining up', () => {
+    const path = new RoadPath(straight);
+    const closed = new RoadPath(loop);
+    const last = closed.segmentCount - 1;
+    const midX = (closed.x(last) + closed.x(0)) / 2;
+    const midZ = (closed.z(last) + closed.z(0)) / 2;
+
+    // The first piece runs from x = -150 a few meters on: beside it, and past its end.
+    expect(path.segmentDistance(0, -149, 3)).toBeCloseTo(3, 9);
+    expect(path.segmentDistance(0, -150, -4)).toBeCloseTo(4, 9);
+    expect(path.segmentDistance(0, 0, 0)).toBeGreaterThan(100);
+    expect(closed.segmentDistance(last, midX, midZ)).toBeCloseTo(0, 9);
+    // The closest piece is the distance to the road.
+    let closest = Infinity;
+    for (let segment = 0; segment < closed.segmentCount; segment++) {
+      closest = Math.min(closest, closed.segmentDistance(segment, 37, -93));
+    }
+    expect(closest).toBe(closed.distanceTo(37, -93));
+  });
+
   it('passes through every control point of a closed loop and joins up', () => {
     const path = new RoadPath(loop);
 

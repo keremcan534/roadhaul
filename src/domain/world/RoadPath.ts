@@ -57,15 +57,19 @@ export class RoadPath {
     return this.points[index * 2 + 1] ?? 0;
   }
 
-  /** Shortest distance from (x, z) to the centreline. Allocation-free. */
+  /** Shortest distance from (x, z) to the centreline. Allocation-free, but it visits every sample: see RoadGrid. */
   distanceTo(x: number, z: number): number {
-    const count = this.pointCount;
     let best = Infinity;
     for (let i = 0; i < this.segmentCount; i++) {
-      const next = (i + 1) % count;
-      best = Math.min(best, distanceToSegment(x, z, this.x(i), this.z(i), this.x(next), this.z(next)));
+      best = Math.min(best, this.segmentDistance(i, x, z));
     }
     return best;
+  }
+
+  /** Distance from (x, z) to the straight piece of centreline from sample `segment` to the next. Allocation-free. */
+  segmentDistance(segment: number, x: number, z: number): number {
+    const next = (segment + 1) % this.pointCount;
+    return distanceToSegment(x, z, this.x(segment), this.z(segment), this.x(next), this.z(next));
   }
 
   /** True when (x, z) is on the paved surface. */

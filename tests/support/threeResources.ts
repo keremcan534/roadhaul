@@ -1,4 +1,4 @@
-import { BufferGeometry, InstancedMesh, Line, Material, Mesh, Points, Texture, type Object3D } from 'three';
+import { BufferGeometry, DoubleSide, InstancedMesh, Line, Material, Mesh, Points, Texture, type Object3D } from 'three';
 
 type GpuResource = BufferGeometry | Material | InstancedMesh | Texture;
 
@@ -38,12 +38,18 @@ export function watchDisposal(resources: Iterable<GpuResource>): Set<GpuResource
   return disposed;
 }
 
-/** Number of draw calls a subtree costs with everything shown: one per mesh (instanced or not), points or lines. */
+/**
+ * Number of draw calls a subtree costs with everything shown: one per mesh
+ * (instanced or not), points or lines; two for a translucent two-sided
+ * material, which three.js draws back side first, then front side, unless
+ * it is forced into a single pass.
+ */
 export function drawCallCount(root: Object3D): number {
   let count = 0;
   root.traverse((object) => {
     if (isDrawn(object)) {
-      count++;
+      const material = object.material as Material;
+      count += material.transparent && material.side === DoubleSide && !material.forceSinglePass ? 2 : 1;
     }
   });
   return count;

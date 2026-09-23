@@ -255,7 +255,14 @@ function fadingColumnGeometry(geometry: BufferGeometry, height: number): BufferG
   return geometry;
 }
 
-/** Translucent, unlit, tinted by setTarget(); vertex alpha fades it. The pillar ignores fog so it shows from afar. */
+/**
+ * Translucent, unlit, tinted by setTarget(); vertex alpha fades it. The
+ * pillar ignores fog so it shows from afar. Both sides in one pass: three.js
+ * would draw a translucent two-sided mesh twice, back then front, and set
+ * its shader up afresh for each (two draw calls and a program lookup every
+ * frame). One colour over itself blends the same in either order, so a
+ * single pass looks the same.
+ */
 function beaconMaterial(fog: boolean): MeshBasicMaterial {
   return new MeshBasicMaterial({
     vertexColors: true,
@@ -263,6 +270,7 @@ function beaconMaterial(fog: boolean): MeshBasicMaterial {
     opacity: 0.8,
     depthWrite: false,
     side: DoubleSide,
+    forceSinglePass: true,
     fog,
   });
 }

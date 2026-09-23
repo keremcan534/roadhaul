@@ -8,6 +8,8 @@ import {
 } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
+import { cellKey, cellOf } from './gridCells';
+import { RoadGrid } from './RoadGrid';
 import { RoadNetwork } from './RoadNetwork';
 import { RoadPath } from './RoadPath';
 import { ASPHALT, GRASS, type Surface } from './Surface';
@@ -81,9 +83,6 @@ const TREE_BUILDING_CLEARANCE = 4;
 const TREE_YARD_CLEARANCE = 6;
 const TREE_SPAWN_CLEARANCE = 20;
 const TREE_BOUNDARY_MARGIN = 8;
-/** Size of the lookup grid for trees, meters. */
-const GRID_CELL_METERS = 20;
-const GRID_OFFSET = 4096;
 /**
  * Contact angles (between the direction of travel and the obstacle's surface)
  * up to this one turn the truck fully along the obstacle: it glances off and
@@ -125,6 +124,8 @@ export class DrivingWorld {
   /** One at each dead end. */
   readonly turningCircles: readonly TurningCircle[];
   private readonly treeGrid = new Map<number, number[]>();
+  /** The road pieces by where they are: which ground a point is on, without visiting every road. */
+  private readonly roadGrid: RoadGrid;
   /**
    * Hardest contact of the current resolveCollisions() call: impact speed,
    * contact normal and which footprint circle touched (scratch fields, so
@@ -141,6 +142,7 @@ export class DrivingWorld {
     this.id = map.id;
     this.halfSizeMeters = map.halfSizeMeters;
     this.roads = map.roads.map((road) => new RoadPath(road));
+    this.roadGrid = new RoadGrid(this.roads, TREE_ROAD_CLEARANCE);
     this.network = new RoadNetwork(this.roads);
     this.buildings = map.buildings.map((building) => ({
       minX: building.x - building.widthMeters / 2,
@@ -182,12 +184,14 @@ export class DrivingWorld {
     });
   }
 
-  /** The ground under a point: asphalt on any road, turning circle, depot yard or rest area lot, grass everywhere else. */
+  /**
+   * The ground under a point: asphalt on any road, turning circle, depot yard
+   * or rest area lot, grass everywhere else. Allocation-free: the truck asks
+   * every fixed step.
+   */
   surfaceAt(x: number, z: number): Surface {
-    for (let i = 0; i < this.roads.length; i++) {
-      if (this.roads[i]!.contains(x, z)) {
-        return ASPHALT;
-      }
+    if (this.roadGrid.onRoad(x, z)) {
+      return ASPHALT;
     }
     for (let i = 0; i < this.turningCircles.length; i++) {
       const circle = this.turningCircles[i]!;
@@ -454,10 +458,8 @@ export class DrivingWorld {
     if (Math.hypot(x - this.spawn.x, z - this.spawn.z) < TREE_SPAWN_CLEARANCE) {
       return false;
     }
-    for (const road of this.roads) {
-      if (road.distanceTo(x, z) < road.widthMeters / 2 + TREE_ROAD_CLEARANCE - 0.5) {
-        return false; // Another stretch of road passes close by.
-      }
+    if (this.roadGrid.nearRoad(x, z, TREE_ROAD_CLEARANCE - 0.5)) {
+      return false; // Another stretch of road passes close by.
     }
     if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE))) {
       return false;
@@ -477,12 +479,4 @@ export class DrivingWorld {
         Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= TREE_BUILDING_CLEARANCE,
     );
   }
-}
-
-function cellOf(coordinate: number): number {
-  return Math.floor(coordinate / GRID_CELL_METERS);
-}
-
-function cellKey(cellX: number, cellZ: number): number {
-  return (cellX + GRID_OFFSET) * GRID_OFFSET * 2 + (cellZ + GRID_OFFSET);
 }

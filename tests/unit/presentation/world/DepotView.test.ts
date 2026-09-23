@@ -58,6 +58,8 @@ describe('DepotView', () => {
     for (const mesh of beacon) {
       expect((mesh.material as MeshBasicMaterial).color.getHex()).toBe(BEACON_COLORS.pickup);
     }
+    // See-through from both sides, in one draw call each: not back, then front, with the shader set up for each.
+    expect(beacon.map((mesh) => drawCallCount(mesh))).toEqual([1, 1]);
     // The beacon stands over the origin bay.
     const walls = new Box3().setFromObject(beacon[0]!);
     expect((walls.min.x + walls.max.x) / 2).toBeCloseTo(-100, 6);
