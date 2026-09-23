@@ -1,5 +1,6 @@
 {
-  // Unit and architecture tests (Vitest, Node). They exercise the pure layers only.
+  // Unit and architecture tests (Vitest, Node): the pure layers, plus presentation
+  // code that runs without WebGL (three.js scene graphs work headless).
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",

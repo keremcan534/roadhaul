@@ -50,6 +50,8 @@ export class PlaceholderWorldView {
   private readonly root = new Group();
   private readonly geometries: BufferGeometry[] = [];
   private readonly materials: Material[] = [];
+  /** Instanced meshes own GPU buffers for their per-instance matrices. */
+  private readonly instancedMeshes: InstancedMesh[] = [];
   private readonly orbitCenter = new Vector3(TRUCK_LANE_OFFSET_METERS, 1.8, 0);
   private orbitAngle = Math.PI * 0.2;
 
@@ -85,6 +87,9 @@ export class PlaceholderWorldView {
     for (const material of this.materials) {
       material.dispose();
     }
+    for (const instancedMesh of this.instancedMeshes) {
+      instancedMesh.dispose();
+    }
   }
 
   private createGround(): Mesh {
@@ -108,10 +113,9 @@ export class PlaceholderWorldView {
   /** One draw call for every dash on the centre line. */
   private createLaneMarkings(): InstancedMesh {
     const count = Math.floor(ROAD_LENGTH_METERS / LANE_MARK_SPACING_METERS);
-    const markings = new InstancedMesh(
-      this.track(this.geometries, new BoxGeometry(0.2, 0.02, 3)),
-      this.lambert(MARKING_COLOR),
-      count,
+    const markings = this.track(
+      this.instancedMeshes,
+      new InstancedMesh(this.track(this.geometries, new BoxGeometry(0.2, 0.02, 3)), this.lambert(MARKING_COLOR), count),
     );
     const placement = new Matrix4();
     for (let i = 0; i < count; i++) {
@@ -141,7 +145,10 @@ export class PlaceholderWorldView {
     const sidesX = [-1.05, 1.05];
     const tire = this.track(this.geometries, new CylinderGeometry(0.5, 0.5, 0.35, 16));
     tire.rotateZ(Math.PI / 2); // Axle along X.
-    const wheels = new InstancedMesh(tire, this.lambert(TIRE_COLOR), axlesZ.length * sidesX.length);
+    const wheels = this.track(
+      this.instancedMeshes,
+      new InstancedMesh(tire, this.lambert(TIRE_COLOR), axlesZ.length * sidesX.length),
+    );
     const placement = new Matrix4();
     let index = 0;
     for (const z of axlesZ) {
