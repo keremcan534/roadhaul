@@ -42,7 +42,7 @@ export function savedCompany(
   const xp = overrides.xp ?? 1000;
   const trucks = overrides.trucks ?? [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150 }];
   return JSON.stringify({
-    version: 3,
+    version: 4,
     createdAtMs: 1_700_000_000_000,
     updatedAtMs: 1_700_000_000_000,
     profile: { companyName: 'Kuzey Lojistik' },
@@ -52,7 +52,7 @@ export function savedCompany(
       activeVehicleInstanceId: overrides.activeTruck ?? trucks[0]!.instanceId,
       vehicles: trucks.map((truck) => ({ ...truck, damage: 0, upgrades: {} })),
     },
-    world: { mapId: 'test_track', truck: null },
+    world: { mapId: 'north_valley', truck: null },
     missions: { active: null },
     stats: { deliveriesCompleted: 9, deliveriesFailed: 0, creditsEarned: 12_000, distanceDrivenMeters: 9_000 },
   });

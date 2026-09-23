@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CURRENT_SAVE_VERSION } from '../../../../src/domain/save/SaveGameData';
 import { migrateSave, SAVE_MIGRATIONS, type SaveMigration } from '../../../../src/domain/save/saveMigrations';
 
-const context = { defaultMapId: 'test_track' };
+const context = { defaultMapId: 'north_valley' };
 
 /** A save as build v1 wrote it. */
 const V1_SAVE = {
@@ -31,12 +31,12 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 3,
+        version: 4,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {} }],
         },
-        world: { mapId: 'test_track', truck: null },
+        world: { mapId: 'north_valley', truck: null },
         missions: { active: null },
         stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
       },
@@ -54,7 +54,7 @@ describe('save migrations', () => {
           { instanceId: 'truck_002', definitionId: 'rh_h2', fuelLiters: 200, damage: 0 },
         ],
       },
-      world: { mapId: 'test_track', truck: { x: 1, z: 2, headingRadians: 3 } },
+      world: { mapId: 'north_valley', truck: { x: 1, z: 2, headingRadians: 3 } },
       missions: { active: null },
       stats: { deliveriesCompleted: 4, deliveriesFailed: 1, creditsEarned: 5200, distanceDrivenMeters: 9000 },
     };
@@ -71,10 +71,40 @@ describe('save migrations', () => {
     expect(migrated.ok && migrated.value['stats']).toEqual(v2.stats);
   });
 
+  it('moves a save from the retired test track to the start of the region, keeping the rest', () => {
+    const v3 = {
+      ...V1_SAVE,
+      version: 3,
+      garage: {
+        activeVehicleInstanceId: 'truck_001',
+        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: { engine: 1 } }],
+      },
+      world: { mapId: 'test_track', truck: { x: 55, z: -330, headingRadians: 1.8 } },
+      missions: {
+        active: {
+          missionId: 'first_package',
+          state: 'delivering',
+          handlingSeconds: 0,
+          deliverySeconds: 12,
+          cargoDamage: 0,
+          failureReason: null,
+        },
+      },
+      stats: { deliveriesCompleted: 4, deliveriesFailed: 1, creditsEarned: 5200, distanceDrivenMeters: 9000 },
+    };
+    const elsewhere = { ...v3, world: { mapId: 'north_valley', truck: { x: 1, z: 2, headingRadians: 3 } } };
+
+    const moved = migrateSave(v3, { defaultMapId: 'north_valley' });
+    const kept = migrateSave(elsewhere, { defaultMapId: 'north_valley' });
+
+    expect(moved).toEqual({ ok: true, value: { ...v3, version: 4, world: { mapId: 'north_valley', truck: null } } });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 4 } });
+  });
+
   it('migrates odd data without throwing, leaving it to validation', () => {
     for (const garage of [undefined, null, 'garage', { vehicles: 'none' }, { vehicles: [null, 7] }]) {
       const migrated = migrateSave({ ...V1_SAVE, version: 2, garage }, context);
-      expect(migrated.ok && migrated.value['version'], JSON.stringify(garage)).toBe(3);
+      expect(migrated.ok && migrated.value['version'], JSON.stringify(garage)).toBe(CURRENT_SAVE_VERSION);
     }
   });
 

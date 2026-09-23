@@ -37,6 +37,8 @@ export class RoadNetwork {
   private readonly neighbours: Int32Array;
   private readonly edgeLengths: Float64Array;
   private readonly fields = new Map<number, RouteField>();
+  /** Where two roads meet (one entry per junction). */
+  readonly junctions: readonly { readonly x: number; readonly z: number }[];
 
   constructor(roads: readonly RoadPath[]) {
     const count = roads.reduce((sum, road) => sum + road.pointCount, 0);
@@ -64,7 +66,16 @@ export class RoadNetwork {
       }
       base += road.pointCount;
     });
-    this.linkJunctions(link);
+    const junctions: { x: number; z: number }[] = [];
+    this.linkJunctions((a, b) => {
+      link(a, b);
+      const x = (this.nodeX[a]! + this.nodeX[b]!) / 2;
+      const z = (this.nodeZ[a]! + this.nodeZ[b]!) / 2;
+      if (!junctions.some((junction) => Math.hypot(junction.x - x, junction.z - z) < 1)) {
+        junctions.push({ x, z });
+      }
+    });
+    this.junctions = junctions;
 
     this.firstNeighbour = new Int32Array(count + 1);
     let edgeCount = 0;

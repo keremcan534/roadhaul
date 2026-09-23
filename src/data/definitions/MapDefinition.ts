@@ -59,8 +59,19 @@ export interface DepotDefinition {
 }
 
 /**
- * A drivable area: roads, buildings, depots, the truck's start and scenery.
- * The 3-city map of roadmap step 21 extends it with regions and a road graph.
+ * A rest area beside a road (spec §25): a paved lot where a truck that stops
+ * can refuel and be repaired before it continues.
+ */
+export interface RestAreaDefinition {
+  /** Stable snake_case id. */
+  readonly id: string;
+  /** The paved lot: drives like asphalt. One long side should open onto a road. */
+  readonly lot: RectangleDefinition;
+}
+
+/**
+ * A drivable area (spec §20, one region of the world): roads, buildings,
+ * depots, rest areas, the truck's start and scenery.
  */
 export interface MapDefinition {
   /** Stable snake_case id. */
@@ -70,6 +81,7 @@ export interface MapDefinition {
   readonly roads: readonly RoadDefinition[];
   readonly buildings: readonly BuildingDefinition[];
   readonly depots: readonly DepotDefinition[];
+  readonly restAreas: readonly RestAreaDefinition[];
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
@@ -99,6 +111,20 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
   }
   if (validator.check(Array.isArray(map.depots), `${path}.depots`, 'must be a list')) {
     map.depots.forEach((depot, index) => validateDepot(depot, `${path}.depots[${index}]`, validator, inside));
+  }
+  if (validator.check(Array.isArray(map.restAreas), `${path}.restAreas`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.restAreas.forEach((restArea, index) => {
+      const restAreaPath = `${path}.restAreas[${index}]`;
+      if (!validator.check(typeof restArea === 'object' && restArea !== null, restAreaPath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(restArea.id, `${restAreaPath}.id`)) {
+        validator.check(!seen.has(restArea.id), `${restAreaPath}.id`, `duplicate rest area id "${restArea.id}"`);
+        seen.add(restArea.id);
+      }
+      validateRectangle(restArea.lot, `${restAreaPath}.lot`, validator, inside);
+    });
   }
   const spawn = map.spawn;
   if (validator.check(typeof spawn === 'object' && spawn !== null, `${path}.spawn`, 'must be an object')) {

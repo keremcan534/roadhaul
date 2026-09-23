@@ -1,77 +1,201 @@
 import type { MapDefinition } from '../definitions/MapDefinition';
 
 /**
- * The first drivable map (roadmap step 08): a ~2.4 km closed test road with
- * long sweepers, a chicane and a tight hairpin that needs braking. Three
- * depots sit beside it: the company's home depot near the start (city A),
- * an industrial yard in the east (city B) and a farm yard in the west
- * (city C). The 3-city map arrives in step 21.
+ * The MVP's region (spec §20, roadmap step 21): three original cities joined
+ * by the four kinds of road.
+ *
+ * - City A, Yeniliman (west): the starting town, where the high street
+ *   crosses the harbour road. The company's home depot is on the high street.
+ * - City B, Demirkent (east): an industrial estate inside a ring road.
+ * - City C, Başakova (north): a farm village on one street.
+ * - The highway joins A's harbour road to B's ring road, with a rest area
+ *   half way (spec §25). Country roads join A to C and C to B.
+ *
+ * Roads meet where they share a control point. The map is a miniature of
+ * spec §76's 35 km prototype: routes between depots are 3 to 4 km, a few
+ * minutes' driving on a phone.
  */
 export const MAPS: readonly MapDefinition[] = [
   {
-    id: 'test_track',
-    halfSizeMeters: 520,
+    id: 'north_valley',
+    halfSizeMeters: 2400,
     roads: [
       {
-        id: 'test_loop',
-        kind: 'rural',
+        id: 'a_high_street',
+        kind: 'street',
         widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-1700, -760],
+          [-1700, -500],
+          [-1700, -250],
+          [-1700, 0],
+          [-1700, 200],
+        ],
+      },
+      {
+        id: 'a_harbour_road',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-2100, -250],
+          [-1900, -250],
+          [-1700, -250],
+          [-1550, -250],
+          [-1400, -250],
+        ],
+      },
+      {
+        id: 'highway_a_b',
+        kind: 'highway',
+        widthMeters: 14,
+        closed: false,
+        controlPoints: [
+          [-1400, -250],
+          [-1100, -330],
+          [-700, -520],
+          [-300, -640],
+          [100, -660],
+          [500, -620],
+          [900, -560],
+          [1250, -520],
+          [1550, -500],
+        ],
+      },
+      {
+        id: 'b_ring_road',
+        kind: 'ringRoad',
+        widthMeters: 11,
         closed: true,
         controlPoints: [
-          [0, -300],
-          [150, -320],
-          [300, -250],
-          [380, -100],
-          [360, 60],
-          [260, 160],
-          [120, 140],
-          [40, 220],
-          [60, 340],
-          [-60, 400],
-          [-220, 360],
-          [-330, 250],
-          [-360, 80],
-          [-300, -80],
-          [-200, -200],
-          [-100, -290],
+          [1550, -600],
+          [1600, -690],
+          [1800, -730],
+          [2000, -690],
+          [2060, -600],
+          [2060, -550],
+          [2060, -450],
+          [2060, -400],
+          [2000, -310],
+          [1800, -280],
+          [1600, -310],
+          [1550, -400],
+          [1550, -450],
+          [1550, -500],
+          [1550, -550],
+        ],
+      },
+      {
+        id: 'rural_a_c',
+        kind: 'rural',
+        widthMeters: 8,
+        closed: false,
+        controlPoints: [
+          [-1700, 200],
+          [-1660, 450],
+          [-1470, 700],
+          [-1170, 860],
+          [-860, 1010],
+          [-600, 1210],
+          [-350, 1410],
+          [-100, 1500],
+        ],
+      },
+      {
+        id: 'c_village_street',
+        kind: 'street',
+        widthMeters: 9,
+        closed: false,
+        controlPoints: [
+          [-100, 1500],
+          [100, 1500],
+          [300, 1500],
+          [500, 1500],
+          [700, 1500],
+        ],
+      },
+      {
+        id: 'rural_c_b',
+        kind: 'rural',
+        widthMeters: 8,
+        closed: false,
+        controlPoints: [
+          [700, 1500],
+          [1000, 1350],
+          [1250, 1100],
+          [1450, 800],
+          [1600, 450],
+          [1720, 100],
+          [1800, -280],
         ],
       },
     ],
     buildings: [
-      { x: -20, z: -350, widthMeters: 32, depthMeters: 16, heightMeters: 9 },
-      { x: 30, z: -356, widthMeters: 18, depthMeters: 12, heightMeters: 6 },
-      { x: 64, z: -352, widthMeters: 14, depthMeters: 10, heightMeters: 5 },
-      { x: 180, z: 60, widthMeters: 40, depthMeters: 26, heightMeters: 14 },
-      { x: -170, z: 250, widthMeters: 24, depthMeters: 24, heightMeters: 10 },
-      // City B's warehouses, east of its yard.
-      { x: 432, z: -58, widthMeters: 24, depthMeters: 40, heightMeters: 12 },
-      { x: 432, z: -12, widthMeters: 24, depthMeters: 26, heightMeters: 9 },
-      // City C's barn and store, west of its yard.
-      { x: -408, z: 96, widthMeters: 16, depthMeters: 26, heightMeters: 8 },
-      { x: -404, z: 124, widthMeters: 8, depthMeters: 8, heightMeters: 14 },
+      // City A: shops and offices along the high street and the harbour road…
+      { x: -1665, z: -440, widthMeters: 22, depthMeters: 36, heightMeters: 10 },
+      { x: -1665, z: -370, widthMeters: 22, depthMeters: 28, heightMeters: 14 },
+      { x: -1665, z: -310, widthMeters: 22, depthMeters: 24, heightMeters: 8 },
+      { x: -1650, z: -205, widthMeters: 30, depthMeters: 20, heightMeters: 12 },
+      { x: -1600, z: -205, widthMeters: 26, depthMeters: 20, heightMeters: 9 },
+      { x: -1560, z: -300, widthMeters: 30, depthMeters: 26, heightMeters: 11 },
+      { x: -1760, z: -190, widthMeters: 30, depthMeters: 24, heightMeters: 16 },
+      { x: -1760, z: -120, widthMeters: 28, depthMeters: 26, heightMeters: 10 },
+      { x: -1665, z: 60, widthMeters: 22, depthMeters: 30, heightMeters: 9 },
+      // …the home depot's office and warehouse…
+      { x: -1745, z: -450, widthMeters: 12, depthMeters: 20, heightMeters: 6 },
+      { x: -1790, z: -440, widthMeters: 30, depthMeters: 40, heightMeters: 11 },
+      // …and the harbour sheds.
+      { x: -2020, z: -300, widthMeters: 40, depthMeters: 30, heightMeters: 13 },
+      { x: -2040, z: -200, widthMeters: 36, depthMeters: 26, heightMeters: 9 },
+      // City B: warehouses inside the ring road, a chimney, and the depot's office and sheds outside it.
+      { x: 1700, z: -600, widthMeters: 60, depthMeters: 40, heightMeters: 14 },
+      { x: 1880, z: -600, widthMeters: 70, depthMeters: 44, heightMeters: 16 },
+      { x: 1700, z: -420, widthMeters: 56, depthMeters: 36, heightMeters: 12 },
+      { x: 1890, z: -420, widthMeters: 64, depthMeters: 40, heightMeters: 18 },
+      { x: 1985, z: -650, widthMeters: 8, depthMeters: 8, heightMeters: 30 },
+      { x: 2105, z: -500, widthMeters: 10, depthMeters: 24, heightMeters: 7 },
+      { x: 2150, z: -560, widthMeters: 40, depthMeters: 50, heightMeters: 12 },
+      { x: 2150, z: -440, widthMeters: 40, depthMeters: 50, heightMeters: 10 },
+      // City C: barns, a silo and farmhouses along the village street.
+      { x: 300, z: 1440, widthMeters: 30, depthMeters: 20, heightMeters: 9 },
+      { x: 345, z: 1450, widthMeters: 8, depthMeters: 8, heightMeters: 16 },
+      { x: 150, z: 1540, widthMeters: 18, depthMeters: 14, heightMeters: 7 },
+      { x: 420, z: 1545, widthMeters: 26, depthMeters: 18, heightMeters: 8 },
+      { x: 560, z: 1455, widthMeters: 34, depthMeters: 22, heightMeters: 9 },
+      { x: 40, z: 1455, widthMeters: 20, depthMeters: 16, heightMeters: 6 },
+      // The rest area's shop, behind its lot.
+      { x: 100, z: -603, widthMeters: 26, depthMeters: 14, heightMeters: 6 },
     ],
-    // Each yard's near edge overlaps the road, so the truck can drive straight in.
+    // Each yard's near long side overlaps its road by 2 m, so the truck can drive straight in.
     depots: [
       {
         id: 'city_a_depot',
         cityId: 'city_a',
-        yard: { x: 55.8, z: -328.9, headingDegrees: 103, lengthMeters: 44, widthMeters: 26 },
-        bay: { x: 55.8, z: -328.9, headingDegrees: 103, lengthMeters: 16, widthMeters: 4.6 },
+        yard: { x: -1716, z: -450, headingDegrees: 0, lengthMeters: 44, widthMeters: 26 },
+        bay: { x: -1716, z: -450, headingDegrees: 0, lengthMeters: 16, widthMeters: 4.6 },
       },
       {
         id: 'city_b_depot',
         cityId: 'city_b',
-        yard: { x: 400.8, z: -47.3, headingDegrees: -2, lengthMeters: 44, widthMeters: 26 },
-        bay: { x: 400.8, z: -47.3, headingDegrees: -2, lengthMeters: 16, widthMeters: 4.6 },
+        yard: { x: 2076.5, z: -500, headingDegrees: 0, lengthMeters: 44, widthMeters: 26 },
+        bay: { x: 2076.5, z: -500, headingDegrees: 0, lengthMeters: 16, widthMeters: 4.6 },
       },
       {
         id: 'city_c_depot',
         cityId: 'city_c',
-        yard: { x: -378.1, z: 107.1, headingDegrees: 180, lengthMeters: 44, widthMeters: 26 },
-        bay: { x: -378.1, z: 107.1, headingDegrees: 180, lengthMeters: 16, widthMeters: 4.6 },
+        yard: { x: 300, z: 1484.5, headingDegrees: 90, lengthMeters: 44, widthMeters: 26 },
+        bay: { x: 300, z: 1484.5, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
       },
     ],
-    spawn: { x: 0, z: -300, headingDegrees: 97 },
-    scenery: { seed: 20260923, treesPerKilometer: 90 },
+    restAreas: [
+      {
+        id: 'valley_rest_area',
+        lot: { x: 100, z: -638, headingDegrees: 90, lengthMeters: 90, widthMeters: 34 },
+      },
+    ],
+    // On A's high street, heading north past the home depot.
+    spawn: { x: -1700, z: -600, headingDegrees: 0 },
+    scenery: { seed: 20260923, treesPerKilometer: 70 },
   },
 ];

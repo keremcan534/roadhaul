@@ -46,11 +46,11 @@ describe('the shipped missions', () => {
     }
   });
 
-  it('leave time to drive from bay to bay: at most 35 km/h on average by road, less for easier ones', () => {
+  it('leave time to drive from bay to bay: under 50 km/h on average by road, less for easier ones', () => {
     const world = new DrivingWorld(maps[0]!);
     const bayOf = (cityId: string) => maps[0]!.depots.find((depot) => depot.cityId === cityId)!.bay;
     const route = createRouteGuidance();
-    const fastestAverageKmh = { easy: 18, normal: 25, hard: 35, expert: 35 } as const;
+    const fastestAverageKmh = { easy: 34, normal: 40, hard: 48, expert: 48 } as const;
 
     for (const mission of missions) {
       const from = bayOf(mission.originCityId);

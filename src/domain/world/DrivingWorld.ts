@@ -4,6 +4,7 @@ import {
   rectangleContains,
   type DepotDefinition,
   type MapDefinition,
+  type RestAreaDefinition,
 } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
@@ -34,7 +35,7 @@ const TREE_ROAD_CLEARANCE = 4;
 /** …and are scattered up to this far beyond it. */
 const TREE_SCATTER_METERS = 45;
 const TREE_BUILDING_CLEARANCE = 4;
-/** Trees keep this far from depot yards, so trucks can manoeuvre. */
+/** Trees keep this far from depot yards and rest area lots, so trucks can manoeuvre. */
 const TREE_YARD_CLEARANCE = 6;
 const TREE_SPAWN_CLEARANCE = 20;
 const TREE_BOUNDARY_MARGIN = 8;
@@ -65,6 +66,8 @@ export class DrivingWorld {
   readonly trees: readonly TreeObstacle[];
   /** City depots: paved yards (driven like asphalt) with a loading bay each. */
   readonly depots: readonly DepotDefinition[];
+  /** Paved lots beside the road where the truck can refuel and be repaired. */
+  readonly restAreas: readonly RestAreaDefinition[];
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
   private readonly treeGrid = new Map<number, number[]>();
@@ -91,6 +94,7 @@ export class DrivingWorld {
       heightMeters: building.heightMeters,
     }));
     this.depots = map.depots;
+    this.restAreas = map.restAreas;
     this.spawn = { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.trees.forEach((tree, index) => {
@@ -104,7 +108,7 @@ export class DrivingWorld {
     });
   }
 
-  /** The ground under a point: asphalt on any road or depot yard, grass everywhere else. */
+  /** The ground under a point: asphalt on any road, depot yard or rest area lot, grass everywhere else. */
   surfaceAt(x: number, z: number): Surface {
     for (let i = 0; i < this.roads.length; i++) {
       if (this.roads[i]!.contains(x, z)) {
@@ -113,6 +117,11 @@ export class DrivingWorld {
     }
     for (let i = 0; i < this.depots.length; i++) {
       if (rectangleContains(this.depots[i]!.yard, x, z)) {
+        return ASPHALT;
+      }
+    }
+    for (let i = 0; i < this.restAreas.length; i++) {
+      if (rectangleContains(this.restAreas[i]!.lot, x, z)) {
         return ASPHALT;
       }
     }
@@ -304,6 +313,9 @@ export class DrivingWorld {
       }
     }
     if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, TREE_YARD_CLEARANCE))) {
       return false;
     }
     return this.buildings.every(

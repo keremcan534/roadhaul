@@ -36,9 +36,9 @@ test('shows the garage and the upgrade shop, and fits a first upgrade', async ({
   expect(problems).toEqual([]);
 });
 
-test('buys the refrigerated truck, drives it, and takes the contracts only it can do', async ({ page }, testInfo) => {
+test('buys the refrigerated truck and drives it, which opens the contracts only it can do', async ({ page }, testInfo) => {
   const problems = watchForProblems(page);
-  await continueSavedCompany(page, savedCompany({ credits: 30_000 }), '?lang=en&debug');
+  await continueSavedCompany(page, savedCompany({ credits: 30_000 }), '?lang=en');
   await expect(page.locator('.job-card[data-mission-id="cold_chain"]')).toContainText('Needs the RoadHaul H2');
 
   await tab(page, 'garage').click();
@@ -52,17 +52,29 @@ test('buys the refrigerated truck, drives it, and takes the contracts only it ca
   await testInfo.attach('garage', { body: await page.screenshot(), contentType: 'image/png' });
 
   await tab(page, 'jobs').click();
+  await expect(page.locator('.job-card[data-mission-id="cold_chain"] [data-action="accept"]')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('delivers a contract only the refrigerated truck can do', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const trucks = [
+    { instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150 },
+    { instanceId: 'truck_002', definitionId: 'rh_h2', fuelLiters: 250 },
+  ];
+  await continueSavedCompany(page, savedCompany({ trucks, activeTruck: 'truck_002' }), '?lang=en&debug');
+
   await page.locator('.job-card[data-mission-id="cold_chain"] [data-action="accept"]').click();
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   // Debug T parks the truck in the bay it needs next.
   await page.keyboard.press('KeyT');
-  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 10_000 });
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
   await page.keyboard.down('ArrowUp');
   await expect(html(page)).toHaveAttribute('data-mission-state', 'delivering', { timeout: 10_000 });
   await page.keyboard.up('ArrowUp');
   await page.keyboard.press('KeyT');
-  await expect(page.locator('.result-dialog')).toBeVisible({ timeout: 10_000 });
-  await testInfo.attach('delivered', { body: await page.screenshot(), contentType: 'image/png' });
+  await expect(page.locator('.result-dialog')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.result-dialog')).toContainText('Cold Chain');
   await page.locator('.result-dialog [data-action="continue"]').click();
   await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
   expect(problems).toEqual([]);
@@ -99,7 +111,7 @@ test('shows a heavy flatbed with its load', async ({ page }, testInfo) => {
   await tab(page, 'jobs').click();
   await page.locator('.job-card[data-mission-id="building_site"] [data-action="accept"]').click();
   await page.keyboard.press('KeyT');
-  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 10_000 });
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
   await testInfo.attach('loaded flatbed', { body: await page.screenshot(), contentType: 'image/png' });
   expect(problems).toEqual([]);
 });

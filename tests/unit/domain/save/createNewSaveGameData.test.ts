@@ -14,7 +14,7 @@ function params(overrides: Partial<NewGameParams> = {}): NewGameParams {
     companyName: '  Kuzey Lojistik ',
     startingCredits: 5000,
     startingVehicle: vehicleFixture({ id: 'rh_h1', fuelCapacityLiters: 150 }),
-    startingMapId: 'test_track',
+    startingMapId: 'north_valley',
     nowMs: NOW_MS,
     ...overrides,
   };
@@ -33,7 +33,7 @@ describe('createNewSaveGameData', () => {
         activeVehicleInstanceId: 'truck_001',
         vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150, damage: 0, upgrades: {} }],
       },
-      world: { mapId: 'test_track', truck: null },
+      world: { mapId: 'north_valley', truck: null },
       missions: { active: null },
       stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
     });

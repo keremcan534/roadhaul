@@ -43,15 +43,23 @@ const BUILDING_TINTS = [0xf2ede2, 0xdfe6ec, 0xe9dcc6, 0xd9e2d3, 0xf0e4dc] as con
 const PINE_COLORS = [0x2f5e34, 0x355f2e, 0x2a5233, 0x3b6a37] as const;
 const BROADLEAF_COLORS = [0x4f8a3c, 0x5c9442, 0x44803e, 0x6b9a3f, 0x7f9b3a] as const;
 
-/** Layers lie flat on the ground; each sits a little higher and is pulled a little further toward the camera. */
+/**
+ * Layers lie flat on the ground; each sits a little higher and is pulled a
+ * little further toward the camera. Where roads overlap at a junction, each
+ * road's surface sits ROAD_STACK above the one before, so they never fight
+ * over the same depth; the markings stay above them all.
+ */
 const SHOULDER_Y = 0.01;
 const ROAD_Y = 0.03;
-const MARKING_Y = 0.06;
+const ROAD_STACK = 0.004;
+const MARKING_GAP = 0.02;
 const SHOULDER_WIDTH = 1.4;
-const EDGE_LINE_WIDTH = 0.2;
+const LINE_WIDTH = 0.2;
 const EDGE_LINE_INSET = 0.6;
 const DASH_LENGTH = 3;
 const DASH_SPACING = 12;
+/** Markings stop this far short of a junction, measured past the widest road's edge. */
+const JUNCTION_MARKING_GAP = 2;
 /** One grass texture tile covers this many meters; the road textures repeat along the road. */
 const GRASS_TILE_METERS = 14;
 const ASPHALT_TILE_METERS = 10;
@@ -63,6 +71,8 @@ const FACADE_TILE_HEIGHT = 7;
 const WAREHOUSE_MIN_AREA = 350;
 /** The ground reaches this far past the map edge, so it fades into the haze instead of ending. */
 const GROUND_MARGIN = 1000;
+/** Side of the square tiles the forest is cut into, so trees out of view are not drawn. */
+const TREE_TILE_METERS = 600;
 
 const UP = new Vector3(0, 1, 0);
 
@@ -93,18 +103,14 @@ export class TrackView {
   ) {
     const anisotropy = options.anisotropy ?? 1;
     this.root.add(this.createGround(world.halfSizeMeters, anisotropy));
-    const asphalt = this.texture(toTexture(asphaltImage(), { repeat: true, anisotropy }));
-    const gravel = this.texture(toTexture(gravelImage(), { repeat: true, anisotropy }));
-    for (const road of world.roads) {
-      this.root.add(
-        this.createShoulders(road, gravel),
-        this.createRoadSurface(road, asphalt),
-        this.createEdgeLines(road),
-        this.createCentreDashes(road),
-      );
+    if (world.roads.length > 0) {
+      this.root.add(...this.createRoads(world, anisotropy));
     }
     if (world.trees.length > 0) {
-      this.root.add(...this.createTrees(world.trees));
+      const forest = new Group();
+      forest.name = 'forest';
+      forest.add(...this.createTrees(world.trees));
+      this.root.add(forest);
     }
     if (world.buildings.length > 0) {
       this.root.add(...this.createBuildings(world.buildings));
@@ -142,91 +148,179 @@ export class TrackView {
     return new Mesh(geometry, this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight })));
   }
 
-  private createShoulders(road: RoadPath, gravel: Texture): Mesh {
-    const offset = road.widthMeters / 2 + SHOULDER_WIDTH / 2 - 0.2;
-    const geometry = this.track(
-      stripGeometry(
-        road,
-        [
-          { offset: -offset, width: SHOULDER_WIDTH },
-          { offset, width: SHOULDER_WIDTH },
-        ],
-        SHOULDER_Y,
-        GRAVEL_TILE_METERS,
-      ),
-    );
-    return new Mesh(geometry, this.overlayMaterial({ map: gravel }, 1));
+  /**
+   * Every road in four draw calls: gravel shoulders, asphalt, painted lines
+   * and instanced dashes. The markings follow each road's kind (see
+   * roadMarkings) and stop short of junctions, where another road crosses.
+   */
+  private createRoads(world: DrivingWorld, anisotropy: number): (Mesh | InstancedMesh)[] {
+    const { roads, network } = world;
+    const asphalt = this.texture(toTexture(asphaltImage(), { repeat: true, anisotropy }));
+    const gravel = this.texture(toTexture(gravelImage(), { repeat: true, anisotropy }));
+    const markingY = ROAD_Y + roads.length * ROAD_STACK + MARKING_GAP;
+    const junctionReach = Math.max(...roads.map((road) => road.widthMeters)) / 2 + JUNCTION_MARKING_GAP;
+    const clearOfJunctions = (x: number, z: number): boolean =>
+      network.junctions.every((junction) => Math.hypot(junction.x - x, junction.z - z) > junctionReach);
+
+    const shoulders: BufferGeometry[] = [];
+    const surfaces: BufferGeometry[] = [];
+    const lines: BufferGeometry[] = [];
+    const dashes: { road: RoadPath; offset: number }[] = [];
+    roads.forEach((road, index) => {
+      const shoulder = road.widthMeters / 2 + SHOULDER_WIDTH / 2 - 0.2;
+      shoulders.push(
+        stripGeometry(
+          road,
+          [
+            { offset: -shoulder, width: SHOULDER_WIDTH },
+            { offset: shoulder, width: SHOULDER_WIDTH },
+          ],
+          SHOULDER_Y,
+          GRAVEL_TILE_METERS,
+        ),
+      );
+      surfaces.push(
+        stripGeometry(road, [{ offset: 0, width: road.widthMeters }], ROAD_Y + index * ROAD_STACK, ASPHALT_TILE_METERS),
+      );
+      const markings = roadMarkings(road);
+      if (markings.solid.length > 0) {
+        const keep = (i: number): boolean => clearOfJunctions(road.x(i), road.z(i));
+        lines.push(
+          stripGeometry(
+            road,
+            markings.solid.map((offset) => ({ offset, width: LINE_WIDTH })),
+            markingY,
+            1,
+            keep,
+          ),
+        );
+      }
+      for (const offset of markings.dashed) {
+        dashes.push({ road, offset });
+      }
+    });
+
+    const meshes: (Mesh | InstancedMesh)[] = [
+      new Mesh(this.merged(shoulders), this.overlayMaterial({ map: gravel }, 1)),
+      new Mesh(this.merged(surfaces), this.overlayMaterial({ map: asphalt }, 2)),
+    ];
+    if (lines.length > 0) {
+      meshes.push(new Mesh(this.merged(lines), this.overlayMaterial({ color: MARKING_COLOR }, 3)));
+    }
+    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions);
+    if (dashMesh !== null) {
+      meshes.push(dashMesh);
+    }
+    return meshes;
   }
 
-  private createRoadSurface(road: RoadPath, asphalt: Texture): Mesh {
-    const geometry = this.track(stripGeometry(road, [{ offset: 0, width: road.widthMeters }], ROAD_Y, ASPHALT_TILE_METERS));
-    return new Mesh(geometry, this.overlayMaterial({ map: asphalt }, 2));
-  }
-
-  private createEdgeLines(road: RoadPath): Mesh {
-    const edge = road.widthMeters / 2 - EDGE_LINE_INSET;
-    const geometry = this.track(
-      stripGeometry(
-        road,
-        [
-          { offset: -edge, width: EDGE_LINE_WIDTH },
-          { offset: edge, width: EDGE_LINE_WIDTH },
-        ],
-        MARKING_Y,
-        1,
-      ),
-    );
-    return new Mesh(geometry, this.overlayMaterial({ color: MARKING_COLOR }, 3));
-  }
-
-  private createCentreDashes(road: RoadPath): InstancedMesh {
-    const count = Math.max(1, Math.floor(road.lengthMeters / DASH_SPACING));
+  /** Dashed lines as one instanced mesh: a dash every DASH_SPACING meters along each line, clear of junctions. */
+  private createDashes(
+    lines: readonly { road: RoadPath; offset: number }[],
+    y: number,
+    clearOfJunctions: (x: number, z: number) => boolean,
+  ): InstancedMesh | null {
+    const position = new Vector3();
+    const rotation = new Quaternion();
+    const scale = new Vector3(1, 1, 1);
+    const matrices: Matrix4[] = [];
+    for (const { road, offset } of lines) {
+      const count = Math.floor(road.lengthMeters / DASH_SPACING);
+      for (let i = 0; i < count; i++) {
+        const heading = pointAlong(road, (i + 0.5) * DASH_SPACING, position);
+        // Right of the direction of travel: the tangent turned 90° clockwise seen from above.
+        position.x -= Math.cos(heading) * offset;
+        position.z += Math.sin(heading) * offset;
+        if (!clearOfJunctions(position.x, position.z)) {
+          continue;
+        }
+        position.y = y;
+        rotation.setFromAxisAngle(UP, heading);
+        matrices.push(new Matrix4().compose(position, rotation, scale));
+      }
+    }
+    if (matrices.length === 0) {
+      return null;
+    }
     const dashes = this.track(
       new InstancedMesh(
         this.track(new BoxGeometry(0.18, 0.01, DASH_LENGTH)),
         this.overlayMaterial({ color: MARKING_COLOR }, 3),
-        count,
+        matrices.length,
       ),
     );
-    const position = new Vector3();
-    const rotation = new Quaternion();
-    const scale = new Vector3(1, 1, 1);
-    const matrix = new Matrix4();
-    for (let i = 0; i < count; i++) {
-      const heading = pointAlong(road, (i + 0.5) * DASH_SPACING, position);
-      position.y = MARKING_Y;
-      rotation.setFromAxisAngle(UP, heading);
-      dashes.setMatrixAt(i, matrix.compose(position, rotation, scale));
-    }
+    matrices.forEach((matrix, index) => dashes.setMatrixAt(index, matrix));
     dashes.instanceMatrix.needsUpdate = true;
     return dashes;
+  }
+
+  /** Merges `parts` into one tracked geometry and releases the parts. */
+  private merged(parts: BufferGeometry[]): BufferGeometry {
+    const geometry = this.track(mergeGeometries(parts));
+    for (const part of parts) {
+      part.dispose();
+    }
+    return geometry;
   }
 
   /**
    * Pines and broadleaf trees, picked per tree from its position so the forest
    * is the same every time. Trunks share one instanced mesh; each species has
    * its own crowns, tinted per tree. Shadows are soft decals on the ground.
+   *
+   * The forest is cut into square tiles of TREE_TILE_METERS, each with its own
+   * instanced meshes, so tiles out of view (behind the camera or past the far
+   * plane) are culled instead of drawn: on a map kilometres wide, most trees
+   * are out of sight.
    */
-  private createTrees(trees: readonly TreeObstacle[]): (InstancedMesh | Mesh)[] {
-    const isPine = trees.map((tree) => fractalNoise(tree.x / 700, tree.z / 700, 4, 2, 5) + (hash(tree.x, tree.z) - 0.5) * 0.5 > 0.5);
-    const pineCount = isPine.filter(Boolean).length;
-    const trunks = this.track(
-      new InstancedMesh(
-        this.track(new CylinderGeometry(0.2, 0.3, 1, 6).translate(0, 0.5, 0)),
-        this.track(new MeshLambertMaterial({ color: TRUNK_COLOR })),
-        trees.length,
-      ),
-    );
-    const crownMaterial = this.track(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }));
-    const pines = this.track(new InstancedMesh(this.track(pineCrownGeometry()), crownMaterial, Math.max(1, pineCount)));
+  private createTrees(trees: readonly TreeObstacle[]): InstancedMesh[] {
+    const parts = {
+      trunk: this.track(new CylinderGeometry(0.2, 0.3, 1, 6).translate(0, 0.5, 0)),
+      trunkMaterial: this.track(new MeshLambertMaterial({ color: TRUNK_COLOR })),
+      pine: this.track(pineCrownGeometry()),
+      broadleaf: this.track(broadleafCrownGeometry()),
+      crownMaterial: this.track(new MeshLambertMaterial({ color: 0xffffff, flatShading: true })),
+      shadow: this.track(flatQuad()),
+      shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42),
+    };
+    const tiles = new Map<string, number[]>();
+    trees.forEach((tree, index) => {
+      const key = `${Math.floor(tree.x / TREE_TILE_METERS)},${Math.floor(tree.z / TREE_TILE_METERS)}`;
+      const tile = tiles.get(key);
+      if (tile === undefined) {
+        tiles.set(key, [index]);
+      } else {
+        tile.push(index);
+      }
+    });
+    return [...tiles.values()].flatMap((indices) => this.createTreeTile(trees, indices, parts));
+  }
+
+  /** One tile of the forest: `indices` into `trees`. The tree's index picks its spin and tint, so tiling changes nothing. */
+  private createTreeTile(
+    trees: readonly TreeObstacle[],
+    indices: readonly number[],
+    parts: {
+      readonly trunk: BufferGeometry;
+      readonly trunkMaterial: Material;
+      readonly pine: BufferGeometry;
+      readonly broadleaf: BufferGeometry;
+      readonly crownMaterial: Material;
+      readonly shadow: BufferGeometry;
+      readonly shadowMaterial: Material;
+    },
+  ): InstancedMesh[] {
+    const isPine = (tree: TreeObstacle): boolean =>
+      fractalNoise(tree.x / 700, tree.z / 700, 4, 2, 5) + (hash(tree.x, tree.z) - 0.5) * 0.5 > 0.5;
+    const pineCount = indices.filter((index) => isPine(trees[index]!)).length;
+    const trunks = this.track(new InstancedMesh(parts.trunk, parts.trunkMaterial, indices.length));
+    const pines = this.track(new InstancedMesh(parts.pine, parts.crownMaterial, Math.max(1, pineCount)));
     const broadleaves = this.track(
-      new InstancedMesh(this.track(broadleafCrownGeometry()), crownMaterial, Math.max(1, trees.length - pineCount)),
+      new InstancedMesh(parts.broadleaf, parts.crownMaterial, Math.max(1, indices.length - pineCount)),
     );
     pines.count = pineCount;
-    broadleaves.count = trees.length - pineCount;
-    const shadows = this.track(
-      new InstancedMesh(this.track(flatQuad()), this.shadowMaterial(softShadowImage(), 0.42), trees.length),
-    );
+    broadleaves.count = indices.length - pineCount;
+    const shadows = this.track(new InstancedMesh(parts.shadow, parts.shadowMaterial, indices.length));
 
     const matrix = new Matrix4();
     const position = new Vector3();
@@ -235,12 +329,13 @@ export class TrackView {
     const color = new Color();
     let pineIndex = 0;
     let broadleafIndex = 0;
-    trees.forEach((tree, index) => {
-      const pine = isPine[index]!;
+    indices.forEach((index, slot) => {
+      const tree = trees[index]!;
+      const pine = isPine(tree);
       const s = tree.scale;
       const trunkHeight = (pine ? 2.2 : 2.8) * s;
       rotation.setFromAxisAngle(UP, index * 2.399); // Golden-angle spin so neighbours differ.
-      trunks.setMatrixAt(index, matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s, trunkHeight, s)));
+      trunks.setMatrixAt(slot, matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s, trunkHeight, s)));
       position.set(tree.x, trunkHeight, tree.z);
       scale.setScalar(s);
       const shade = 0.88 + 0.24 * hash(tree.z, tree.x);
@@ -261,18 +356,19 @@ export class TrackView {
         SHOULDER_Y / 2,
         tree.z + SHADOW_OFFSET_PER_METER.z * crownHeight * 0.5,
       );
-      shadows.setMatrixAt(index, matrix.compose(position, rotation.identity(), scale.set(5.5 * s, 1, 5.5 * s)));
+      shadows.setMatrixAt(slot, matrix.compose(position, rotation.identity(), scale.set(5.5 * s, 1, 5.5 * s)));
     });
-    for (const mesh of [trunks, pines, broadleaves, shadows]) {
+    const meshes = [shadows, trunks, pines, broadleaves].filter((mesh) => mesh.count > 0);
+    for (const mesh of meshes) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor !== null) {
         mesh.instanceColor.needsUpdate = true;
       }
+      mesh.computeBoundingSphere();
     }
-    return [shadows, trunks, pines, broadleaves];
+    return meshes;
   }
 
-  /** Walls (office and warehouse facades), roofs and ground shadows, each merged into one mesh. */
   private createBuildings(buildings: readonly BuildingObstacle[]): Mesh[] {
     const offices: BufferGeometry[] = [];
     const warehouses: BufferGeometry[] = [];
@@ -461,13 +557,15 @@ function wallsGeometry(box: BuildingObstacle, tint: Color): BufferGeometry {
  * Builds flat ribbons that follow the road, one per band. `offset` is the
  * band's centre measured sideways from the centreline (positive to the right
  * of the direction of travel). Texture u runs across each band and v along
- * the road, one unit per `tileMeters`.
+ * the road, one unit per `tileMeters`. Pieces between samples that `keep`
+ * rejects are left out.
  */
 function stripGeometry(
   road: RoadPath,
   bands: readonly { offset: number; width: number }[],
   y: number,
   tileMeters: number,
+  keep: (sampleIndex: number) => boolean = () => true,
 ): BufferGeometry {
   const count = road.pointCount;
   // A closed road repeats its first point at the end, so v keeps growing across the seam.
@@ -498,6 +596,9 @@ function stripGeometry(
       uvs.set([0, along, 1, along], (base + row * 2) * 2);
     }
     for (let row = 0; row + 1 < rows; row++) {
+      if (!keep(row % count) || !keep((row + 1) % count)) {
+        continue;
+      }
       const leftI = base + row * 2;
       const rightI = leftI + 1;
       const leftJ = leftI + 2;
@@ -512,6 +613,27 @@ function stripGeometry(
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   return geometry;
+}
+
+/**
+ * Where a road's lines are painted, meters from its centreline (positive to
+ * the right). Streets and the ring road have edge lines and a dashed centre
+ * line; the highway has two lanes each way, a double centre line and dashed
+ * lane lines; country roads only a dashed centre line.
+ */
+function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; readonly dashed: readonly number[] } {
+  const edge = road.widthMeters / 2 - EDGE_LINE_INSET;
+  switch (road.kind) {
+    case 'street':
+    case 'ringRoad':
+      return { solid: [-edge, edge], dashed: [0] };
+    case 'highway': {
+      const lane = road.widthMeters / 4;
+      return { solid: [-edge, -0.15, 0.15, edge], dashed: [-lane, lane] };
+    }
+    case 'rural':
+      return { solid: [], dashed: [0] };
+  }
 }
 
 /** Writes the centreline point `distance` meters along the road into `out`; returns the heading there. */

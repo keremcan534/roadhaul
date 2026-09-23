@@ -1,4 +1,4 @@
-import { InstancedMesh, Mesh, Scene, Vector3 } from 'three';
+import { Frustum, InstancedMesh, Matrix4, Mesh, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
@@ -8,32 +8,69 @@ import { drawCallCount, gpuResources, watchDisposal } from '../../../support/thr
 const world = new DrivingWorld(MAPS[0]!);
 
 describe('TrackView', () => {
-  it('draws the whole track in a handful of draw calls', () => {
+  it('draws the ground, roads and buildings in a handful of draw calls, and the forest in a few per tile', () => {
     const scene = new Scene();
     new TrackView(scene, world);
+    const forest = scene.getObjectByName('forest')!;
+    const tiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 600)},${Math.floor(tree.z / 600)}`));
 
-    expect(drawCallCount(scene)).toBeLessThanOrEqual(16);
+    expect(drawCallCount(scene) - drawCallCount(forest)).toBeLessThanOrEqual(12);
+    // Trunks, two crown species and shadows per tile.
+    expect(drawCallCount(forest)).toBeLessThanOrEqual(4 * tiles.size);
+  });
+
+  it('keeps what the chase camera sees at the spawn well inside the mobile budget', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    scene.updateMatrixWorld(true);
+    const { x, z, heading } = world.spawn;
+    const camera = new PerspectiveCamera(60, 2.2, 0.5, 1000);
+    camera.position.set(x - Math.sin(heading) * 8, 5, z - Math.cos(heading) * 8);
+    camera.lookAt(x + Math.sin(heading) * 30, 2, z + Math.cos(heading) * 30);
+    camera.updateMatrixWorld(true);
+    const frustum = new Frustum().setFromProjectionMatrix(
+      new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+    );
+    let drawCalls = 0;
+    let triangles = 0;
+    scene.traverse((object) => {
+      if (object instanceof Mesh && frustum.intersectsObject(object)) {
+        const geometry = object.geometry;
+        const perCopy = (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
+        drawCalls++;
+        triangles += perCopy * (object instanceof InstancedMesh ? object.count : 1);
+      }
+    });
+
+    // ARCHITECTURE.md §11: at most ~150 draw calls and ~300k triangles in view, with room for the truck and traffic.
+    expect(drawCalls).toBeLessThanOrEqual(60);
+    expect(triangles).toBeLessThan(150_000);
   });
 
   it('instances every tree, with its trunk and its shadow', () => {
     const scene = new Scene();
     new TrackView(scene, world);
-    const instanceCounts: number[] = [];
     let crowns = 0;
+    let trunks = 0;
+    let shadows = 0;
     scene.traverse((object) => {
-      if (object instanceof InstancedMesh) {
-        instanceCounts.push(object.count);
+      if (!(object instanceof InstancedMesh)) {
+        return;
       }
-    });
-    scene.traverse((object) => {
-      // Crowns are the flat-shaded, low-poly instanced meshes.
-      if (object instanceof InstancedMesh && (object.material as { flatShading?: boolean }).flatShading === true) {
+      const material = object.material as { flatShading?: boolean; transparent?: boolean };
+      // Crowns are flat-shaded and low-poly; shadows are see-through decals; trunks are 6-sided cylinders.
+      if (material.flatShading === true) {
         crowns += object.count;
+      } else if (material.transparent === true) {
+        shadows += object.count;
+      } else if (object.geometry.getAttribute('position').count > 30) {
+        trunks += object.count;
       }
     });
 
-    expect(instanceCounts.filter((count) => count === world.trees.length)).toHaveLength(2); // Trunks and shadows.
     expect(crowns).toBe(world.trees.length); // Pines and broadleaves together.
+    expect(trunks).toBe(world.trees.length);
+    expect(shadows).toBe(world.trees.length);
   });
 
   it('draws four textured walls and a roof for every building', () => {

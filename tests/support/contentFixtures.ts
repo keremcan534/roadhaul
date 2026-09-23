@@ -120,6 +120,7 @@ export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinitio
         bay: { x: 100, z: -17, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
       },
     ],
+    restAreas: [],
     spawn: { x: 0, z: 0, headingDegrees: 90 },
     scenery: { seed: 1, treesPerKilometer: 0 },
     ...overrides,

@@ -1,4 +1,4 @@
-import type { Point2, RoadDefinition } from '../../data/definitions/MapDefinition';
+import type { Point2, RoadDefinition, RoadKind } from '../../data/definitions/MapDefinition';
 
 /** Target distance between centreline samples, meters. */
 const DEFAULT_SPACING_METERS = 4;
@@ -11,6 +11,7 @@ const DEFAULT_SPACING_METERS = 4;
  */
 export class RoadPath {
   readonly id: string;
+  readonly kind: RoadKind;
   readonly widthMeters: number;
   readonly closed: boolean;
   /** Sample positions, x and z interleaved: [x0, z0, x1, z1, …]. */
@@ -21,6 +22,7 @@ export class RoadPath {
 
   constructor(road: RoadDefinition, spacingMeters = DEFAULT_SPACING_METERS) {
     this.id = road.id;
+    this.kind = road.kind;
     this.widthMeters = road.widthMeters;
     this.closed = road.closed;
     this.points = sampleCatmullRom(road.controlPoints, road.closed, spacingMeters);

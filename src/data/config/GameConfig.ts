@@ -92,7 +92,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   newGame: {
     startingCredits: 5000, // Placeholder until the economy step (roadmap step 14).
     startingVehicleId: 'rh_h1',
-    startingMapId: 'test_track',
+    startingMapId: 'north_valley',
   },
   debug: {
     logLevel: 'info',

@@ -3,9 +3,12 @@ import { CURRENT_SAVE_VERSION } from './SaveGameData';
 
 /** Facts a migration may need that old saves did not record. */
 export interface SaveMigrationContext {
-  /** The map saves were played on before they recorded one (v1 knew a single map). */
+  /** Where saves go that name no map (v1 knew a single one) or a retired map: the game's starting map. */
   readonly defaultMapId: string;
 }
+
+/** The miniature test track of roadmap step 08, replaced by the 3-city region in step 21. */
+export const RETIRED_TEST_TRACK_ID = 'test_track';
 
 /** Plain parsed JSON of some save version. */
 export type SaveJson = Readonly<Record<string, unknown>>;
@@ -45,6 +48,18 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
         isJsonObject(vehicle) ? { ...vehicle, upgrades: {} } : vehicle,
       );
       return { ...save, version: 3, garage: { ...garage, vehicles } };
+    },
+  },
+  {
+    // v4 retires the test track: a truck parked on it starts again at the region's spawn,
+    // with its company, garage and any contract under way.
+    from: 3,
+    migrate: (save, context) => {
+      const world = save['world'];
+      const onTestTrack = isJsonObject(world) && world['mapId'] === RETIRED_TEST_TRACK_ID;
+      return onTestTrack
+        ? { ...save, version: 4, world: { mapId: context.defaultMapId, truck: null } }
+        : { ...save, version: 4 };
     },
   },
 ];

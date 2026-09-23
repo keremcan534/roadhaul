@@ -11,8 +11,10 @@ import type { MissionFailureReason, MissionState } from '../missions/MissionInst
  * - v2: adds world (where the truck is parked), missions (the contract under
  *   way) and stats.
  * - v3: adds the upgrades fitted to each truck.
+ * - v4: same shape; the test track is retired, and saves on it move to the
+ *   start of the 3-city region.
  */
-export const CURRENT_SAVE_VERSION = 3;
+export const CURRENT_SAVE_VERSION = 4;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
