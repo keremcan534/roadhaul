@@ -77,6 +77,7 @@ export class TruckView {
       WINDSHIELD_COLOR,
     );
     // A dashboard along the bottom of the windscreen, seen only in cabin view (see CameraRig's eye position).
+    // It does not lean with the body: neither does the driver's eye, and it would bob up and down the screen.
     this.dashboard = this.box(
       [widthMeters * 0.9, 0.3, 0.7],
       [0, heightMeters * 0.72 - 0.45, frontZ - 0.45],
@@ -89,7 +90,6 @@ export class TruckView {
       this.box([widthMeters * 0.85, 0.3, lengthMeters * 0.96], [0, frameY, centreZ], CHASSIS_COLOR),
       this.box([widthMeters, cabHeight, CAB_LENGTH_METERS], [0, deckY + cabHeight / 2, frontZ - CAB_LENGTH_METERS / 2], CAB_COLOR),
       this.windshield,
-      this.dashboard,
       this.box(
         [widthMeters + 0.04, heightMeters - deckY, boxLength],
         [0, deckY + (heightMeters - deckY) / 2, frontZ - CAB_LENGTH_METERS - 0.25 - boxLength / 2],
@@ -114,7 +114,7 @@ export class TruckView {
     this.wheels = this.track(new InstancedMesh(tire, this.material(TIRE_COLOR), this.wheelPositions.length));
     this.updateWheels(0);
 
-    this.root.add(this.body, this.wheels);
+    this.root.add(this.body, this.dashboard, this.wheels);
     scene.add(this.root);
   }
 
