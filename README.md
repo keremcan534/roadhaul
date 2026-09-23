@@ -2,7 +2,11 @@
 
 Mobile-first logistics and truck simulation game: take a contract, load the cargo, drive, deliver, earn credits, upgrade your truck and grow your company.
 
-**Status:** Phase 0 (foundation). The project skeleton, core architecture and a placeholder 3D scene are in place. Driving comes next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+**Status:** Phase 1 (driving prototype). You can drive the first truck around a 2.6 km test track, on a phone or a desktop. Cargo and missions come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+
+**Controls:**
+- **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button switches between the chase and cabin cameras.
+- **Keyboard:** arrow keys or WASD, Space to brake, C to switch camera.
 
 Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the browser and targets Android first ([why not Unity](docs/adr/0001-web-stack-typescript-threejs.md)).
 

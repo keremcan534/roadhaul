@@ -15,7 +15,6 @@ const LAYERS = [
   'domain',
   'systems',
   'app',
-  'simulation',
   'presentation',
   'ui',
   'platform',
@@ -30,11 +29,10 @@ const ALLOWED_LAYER_IMPORTS: Readonly<Record<Layer, readonly Layer[]>> = {
   domain: ['core', 'data'],
   systems: ['core', 'data', 'domain'],
   app: ['core', 'data', 'domain', 'systems'],
-  simulation: ['core', 'data', 'domain', 'systems'],
-  presentation: ['core', 'data', 'domain', 'systems', 'simulation'],
+  presentation: ['core', 'data', 'domain', 'systems'],
   ui: ['core', 'data', 'domain', 'systems'],
   platform: ['core', 'data', 'domain', 'systems'],
-  entry: ['core', 'data', 'domain', 'systems', 'app', 'simulation', 'presentation', 'ui', 'platform'],
+  entry: ['core', 'data', 'domain', 'systems', 'app', 'presentation', 'ui', 'platform'],
 };
 
 /** npm packages each layer may import. The engine-agnostic layers may import none. */
@@ -44,7 +42,6 @@ const ALLOWED_PACKAGES: Readonly<Record<Layer, readonly string[]>> = {
   domain: [],
   systems: [],
   app: [],
-  simulation: ['@dimforge/rapier3d-compat'],
   presentation: ['three'],
   ui: [],
   platform: [],

@@ -29,6 +29,8 @@ export interface GameConfig {
     readonly startingCredits: Credits;
     /** VehicleDefinition id of the truck every new company starts with. */
     readonly startingVehicleId: string;
+    /** MapDefinition id the driving starts on. */
+    readonly startingMapId: string;
   };
   readonly debug: {
     readonly logLevel: LogLevel;
@@ -50,6 +52,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   newGame: {
     startingCredits: 5000, // Placeholder until the economy step (roadmap step 14).
     startingVehicleId: 'rh_h1',
+    startingMapId: 'test_track',
   },
   debug: {
     logLevel: 'info',
@@ -82,6 +85,11 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     content.vehicles.has(newGame.startingVehicleId),
     'newGame.startingVehicleId',
     `unknown vehicle "${newGame.startingVehicleId}"`,
+  );
+  validator.check(
+    content.maps.has(newGame.startingMapId),
+    'newGame.startingMapId',
+    `unknown map "${newGame.startingMapId}"`,
   );
   validator.check(isLogLevel(debug.logLevel), 'debug.logLevel', `unknown log level "${debug.logLevel}"`);
   validator.boolean(debug.showPerfOverlay, 'debug.showPerfOverlay');

@@ -1,6 +1,7 @@
 import type { GameContent } from '../GameContent';
 import { CARGO } from './cargo';
 import { CITIES } from './cities';
+import { MAPS } from './maps';
 import { MISSIONS } from './missions';
 import { VEHICLES } from './vehicles';
 
@@ -10,4 +11,5 @@ export const GAME_CONTENT: GameContent = {
   cargo: CARGO,
   cities: CITIES,
   missions: MISSIONS,
+  maps: MAPS,
 };

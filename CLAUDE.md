@@ -3,7 +3,7 @@
 RoadHaul is a mobile-first logistics and truck simulation game: take a contract, load cargo, drive, deliver, earn, upgrade, grow the company.
 
 - **Requirements:** `docs/ROADHAUL_Game_Design_Technical_Spec.md` (Turkish, written for Unity; see "Translating the spec" below)
-- **Stack:** TypeScript + three.js + Vite, tested with Vitest and Playwright. Why not Unity: `docs/adr/0001-web-stack-typescript-threejs.md`
+- **Stack:** TypeScript + three.js + Vite, tested with Vitest and Playwright. Why not Unity: `docs/adr/0001-web-stack-typescript-threejs.md`. Why no physics engine: `docs/adr/0002-custom-vehicle-model.md`
 - **Architecture:** `ARCHITECTURE.md` · **Systems and owners:** `SYSTEM_MAP.md` · **Plan and status:** `DEVELOPMENT_ROADMAP.md`
 
 ## Commands
@@ -18,7 +18,7 @@ npm run test:e2e    # Playwright smoke tests against dist/ (run build first)
 npm run check       # everything above, in order
 ```
 
-Append `?debug` to the game URL for the FPS / draw-call overlay and debug logs.
+Append `?debug` to the game URL for the FPS / draw-call overlay and debug logs. Desktop driving: arrows/WASD, Space brakes (hold at a standstill to reverse), C switches camera.
 
 ## Architecture
 
@@ -31,8 +31,7 @@ Use: **Data -> Domain -> Systems -> Presentation -> UI**
 | domain | `src/domain` | core, data |
 | systems | `src/systems` | core, data, domain |
 | app | `src/app` | core, data, domain, systems |
-| simulation (planned) | `src/simulation` | core … systems, Rapier |
-| presentation | `src/presentation` | core … systems, simulation, three.js |
+| presentation | `src/presentation` | core … systems, three.js |
 | ui | `src/ui` | core … systems |
 | platform | `src/platform` | core … systems |
 | entry | `src/main.ts` | everything |
@@ -98,8 +97,9 @@ Commits are small and conventional: `feat:`, `fix:`, `test:`, `docs:`, `chore:`,
 | EditMode tests | Vitest in `tests/unit` |
 | PlayMode tests | Playwright in `tests/e2e` |
 | Update / FixedUpdate | `GameLoop` `frameUpdate` / `fixedUpdate` (fixed 60 Hz step) |
+| Rigidbody / WheelCollider | `VehicleDynamics` (domain) + `DrivingWorld` collisions, no physics engine (ADR 0002) |
 | Addressables / region streaming | dynamic `import()` + asset manifests per region |
-| Input System | input adapters in `src/platform` producing plain input state (step 07) |
+| Input System | `KeyboardInput` (`src/platform/input`) and `TouchControls` (`src/ui/controls`) write a device-independent `VehicleInput` |
 | TextMeshPro / uGUI | HTML/CSS overlay in `src/ui` |
 | Unity Localization | string tables (Phase 7); keys derived from definition ids |
 | Unity Profiler | `?debug` overlay, Chrome DevTools remote debugging |

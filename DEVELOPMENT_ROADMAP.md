@@ -17,12 +17,12 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 01 | Project foundation | 0 | ✅ | Vite + TypeScript + three.js; tsconfig projects; Vitest; Playwright; CI |
 | 02 | Git + CLAUDE.md | 0 | ✅ | Project rules, spec in `docs/`, ADR 0001 (web stack) |
 | 03 | Bootstrap architecture | 0 | ✅ | Service container, event bus, logging, config, game loop, GameBootstrapper, GameStateService, placeholder definitions, SaveGameData v1, layering test |
-| 04 | Vehicle data | 1 | ⬜ **next** | Physics tuning in VehicleDefinition; VehicleRuntimeState |
-| 05 | Vehicle controller | 1 | ⬜ | Rapier raycast vehicle: accelerate, brake, steer, reverse, speed limit |
-| 06 | Camera | 1 | ⬜ | Third-person + cabin |
-| 07 | Mobile controls | 1 | ⬜ | Steering wheel, gas, brake (touch) + keyboard |
-| 08 | Small test road | 1 | ⬜ | Drivable road built from data |
-| 09 | Cargo data | 2 | ⬜ | 6–8 cargo types |
+| 04 | Vehicle data | 1 | ✅ | Body, powertrain and handling data, validated; VehicleRuntimeState |
+| 05 | Vehicle controller | 1 | ✅ | Deterministic truck model (ADR 0002): gearbox, governor, brakes, brake-to-reverse, understeer; keyboard |
+| 06 | Camera | 1 | ✅ | Chase + cabin cameras |
+| 07 | Mobile controls | 1 | ✅ | On-screen steering wheel, gas, brake, camera button, speed/gear readout |
+| 08 | Small test road | 1 | ✅ | 2.6 km data-driven loop: asphalt/grass, seeded trees, depot buildings, collisions |
+| 09 | Cargo data | 2 | ⬜ **next** | 6–8 cargo types |
 | 10 | Pickup zone | 2 | ⬜ | "Stop to load" |
 | 11 | Delivery zone | 2 | ⬜ | "Stop to unload" |
 | 12 | Mission state machine | 2 | ⬜ | Available → … → Completed / Failed |
@@ -40,7 +40,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 24 | Weather | 4 | ⬜ | Clear, cloudy, rain, night |
 | 25 | Events | 6 | ⬜ | Data-driven events (Express Week, Safe Driver, Heavy Cargo) |
 | 26 | Tutorial | 7 | ⬜ | First 10 minutes, taught by playing |
-| 27 | Optimization | 7 | ⬜ | Hit the device budgets (ARCHITECTURE.md §10) |
+| 27 | Optimization | 7 | ⬜ | Hit the device budgets (ARCHITECTURE.md §11) |
 | 28 | Android build | 8 | ⬜ | Capacitor app built in CI |
 | 29 | Device testing | 8 | ⬜ | Real low/mid Android phones |
 | 30 | MVP release candidate | 8 | ⬜ | Save migration check, crash handling, store assets |
@@ -49,21 +49,26 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 
 - [x] Project (web instead of Unity; see ADR 0001)
 - [x] Git and conventional commits
-- [x] Folder structure (layer folders; see ARCHITECTURE.md §12)
-- [x] Scene (placeholder world, WebGL render host)
-- [ ] Input: moved to steps 05/07, where the vehicle input abstraction is designed (spec §49)
+- [x] Folder structure (layer folders; see ARCHITECTURE.md §13)
+- [x] Scene (WebGL render host; the placeholder world became the test track in step 08)
+- [x] Input: done in steps 05/07 with the vehicle input abstraction (spec §49)
 - [x] Bootstrap (`GameBootstrapper`, `src/main.ts`)
 - [x] Service container
 - [x] Logging
 - [x] Config (`GameConfig` + URL debug flags)
 
-## Next step: 04 Vehicle data
+### Phase 1 notes
 
-Suggested request (adapted from spec §49):
+- The driving prototype starts straight on the test track: there are no menus yet (they come with the company HQ and the mission loop).
+- The speed and gear readout on the touch controls is part of step 07. Step 13 builds the rest of the HUD around it.
+- Collisions already emit `VehicleCollided`; damage (step 16) will consume it.
+- Feel needs a real phone: see "Tested on a phone" in the Definition of Done.
 
-> Implement roadmap step 04 only. Extend `VehicleDefinition` with the physics tuning the driving prototype needs (mass, centre of mass, engine torque, gear ratios, brake force, maximum steering angle, wheel radius and positions, suspension) with validation and unit tests. Add `VehicleRuntimeState` in `src/domain/vehicles` (fuel, damage, odometer), created from a definition. Do not implement physics, missions, economy or UI. A second truck model must be addable as data only.
+## Next step: 09 Cargo data
 
-Step 05 then adds Rapier (`src/simulation`), `VehicleController`, a `VehicleView` and keyboard input for testing on a desktop browser.
+Suggested request:
+
+> Implement roadmap step 09 only. Replace the placeholder cargo with the MVP set of 6–8 cargo types (spec §11), including trailer/body requirements, with validation and tests. Keep missions valid. Do not implement pickup/delivery zones, missions, economy or UI.
 
 ## Infrastructure track
 
@@ -72,7 +77,7 @@ These are not gameplay features, so they sit outside the numbered order. They ma
 | Item | Status | Notes |
 |---|---|---|
 | CI: typecheck, unit tests, build, e2e | ✅ | `.github/workflows/ci.yml` on every pull request |
-| Phone preview link | ✅ | GitHub Pages: `.github/workflows/deploy-pages.yml` publishes every push to `main` at https://keremcan534.github.io/roadhaul/ (the repository is public; Pages source is "GitHub Actions") |
+| Phone preview link | ✅ | GitHub Pages: `.github/workflows/deploy-pages.yml` publishes every push to `main` at https://keremcan534.github.io/roadhaul/ (needs the repository to be public and Pages source set to "GitHub Actions") |
 | Android APK from CI | ⬜ | Spec step 28. Pulling it forward for device testing is optional; it is the owner's call. |
 
 ## MVP scope (spec §43)
