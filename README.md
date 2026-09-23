@@ -2,7 +2,14 @@
 
 Mobile-first logistics and truck simulation game: take a contract, load the cargo, drive, deliver, earn credits, upgrade your truck and grow your company.
 
-**Status:** Phase 2 (mission loop). Take a contract from the company HQ's job board, drive to the pickup depot and stop in the yellow bay to load, then deliver to the destination depot and see your pay: on-time and careful-driving bonuses, late penalties, and failed contracts when the cargo breaks. It runs on a 2.4 km test track with three depots, in Turkish or English. The wallet, fuel, damage and saving come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+**Status:** Phase 3 (economy). Found your company and take contracts from the HQ's job board. Drive to the pickup depot and stop in the yellow bay to load, then deliver to the destination depot.
+
+- **Pay:** credits with on-time and careful-driving bonuses, or a late penalty; the contract fails if the cargo breaks.
+- **Progress:** XP, company levels that unlock better contracts, and reputation.
+- **Upkeep:** watch the fuel and the truck's damage; refuel and repair at the HQ, or call a fuel truck when stranded.
+- **Saving:** the game saves itself; Continue picks up where you left off.
+
+It runs on a 2.4 km test track with three depots, in Turkish or English. Trucks to buy and upgrades come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
 
 **Controls:**
 - **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button top right switches between the chase and cabin cameras; the one top left pauses.

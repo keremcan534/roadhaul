@@ -20,12 +20,12 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | ContentCatalog | data | `src/data/ContentCatalog.ts` | Validates content and cross-references; frozen id lookups | Definitions | none |
 | GameConfig | data | `src/data/config/GameConfig.ts` | Central tuning values + validation against content | ContentCatalog | none |
 | Company name rules | domain | `src/domain/company/companyName.ts` | Normalise and validate the player's company name | none | none |
-| SaveGameData 🧩 | domain | `src/domain/save/` | Versioned save schema (v1) + new-game state | Definitions | none |
+| SaveGameData | domain | `src/domain/save/` | Versioned save schema (v2), new-game state, migrations, validation of loaded saves | Definitions | none |
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio, tone mapping, software-rendering fallback | three | none |
 | PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
-| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags, fatal error screen | core, data | none |
+| Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags, fatal error screen, localStorage (or memory when forbidden) | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result) and pausing | everything | listens `GameStateChanged` and the mission events |
 
 ### Driving prototype (Phase 1, roadmap steps 04–08)
@@ -64,18 +64,30 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ); the itemised result or the failure reason | Strings | none |
 | String tables | ui | `src/ui/i18n/` | Turkish and English text, number, money, distance and time formats; language choice | none | none |
 
+### Economy, upkeep, progression and saving (Phase 3, roadmap steps 14–18)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| CurrencyWallet, costs | domain | `src/domain/economy/` | Whole, non-negative credits; spending returns a Result; fuel and repair prices rounded up | none | none |
+| Fuel and damage rules | domain | `src/domain/vehicles/fuelConsumption.ts`, `vehicleDamage.ts` | Spec §17 fuel formula; spec §18 damage bands, impact damage, weakened engine and brakes | VehicleDefinition | none |
+| Company progression, delivery XP | domain | `src/domain/company/companyProgress.ts`, `src/domain/missions/missionProgress.ts` | Levels from XP (spec §14); XP and reputation for a delivery, reputation lost on failure | GameConfig | none |
+| Save migrations and validation | domain | `src/domain/save/saveMigrations.ts`, `validateSaveGameData.ts` | Upgrade old saves (v1 → v2), refuse newer ones, check every field and reference | ContentCatalog | none |
+| EconomyService | systems | `src/systems/economy/EconomyService.ts` | The only owner of money (spec §13, §51): pays deliveries, spends, prices fuel and repairs | EventBus | listens `MissionCompleted`; emits `MoneyChanged` |
+| FuelService | systems | `src/systems/vehicles/FuelService.ts` | Burns fuel per fixed step; stalls an empty engine; refuels at the pump or on the road; emergency fuel | DrivingService, DamageService, EconomyService | emits `FuelChanged` |
+| DamageService | systems | `src/systems/vehicles/DamageService.ts` | Truck damage from collisions (spec §18), performance penalty, paid repairs | DrivingService, EconomyService | listens `VehicleCollided`; emits `VehicleDamaged`, `VehicleRepaired` |
+| CompanyService | systems | `src/systems/company/CompanyService.ts` | Name, XP, level, reputation, statistics | EventBus, GameConfig | listens `MissionCompleted`, `MissionFailed`; emits `CompanyProgressed`, `CompanyLevelUp` |
+| SaveService | systems | `src/systems/save/SaveService.ts` | Versioned JSON saves (spec §32, §52): atomic write, backup, corruption handling, migrations | KeyValueStorage, ContentCatalog | none |
+| GameSessionService | systems | `src/systems/session/GameSessionService.ts` | New game or continue; hands each save section to its owner; autosaves | every Phase 3 service, DrivingService, MissionService | listens mission, money and state events to save |
+| NewCompanyDialog | ui | `src/ui/menus/NewCompanyDialog.ts` | Name the company (spec §41) | Strings | none |
+| Company HQ (finances, truck) | ui | `src/ui/hq/CompanyHq.ts` | Company card, truck card (refuel, repair), level-locked job board | Phase 3 services (read only) | none |
+| Toasts | ui | `src/ui/hud/Toasts.ts` | Short notices (level-up, fuel, damage, purchases) | none | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 
 | System | Layer(s) | Step | Responsibility |
 |---|---|---|---|
-| EconomyService, CurrencyWallet, RewardCalculator, CostCalculator | domain, systems | ⬜ 14 | Credits, rewards, fuel/repair/upgrade costs; UI never edits money (spec §13, §51) |
-| CompanyService | systems | ⬜ 14–17 | XP, reputation, company level (spec §14) |
-| FuelService | systems | ⬜ 15 | Consumption formula (spec §17), refuelling |
-| DamageService | systems | ⬜ 16 | Turns `VehicleCollided` into damage bands and effects; repair (spec §18) |
-| Reward screen | ui | ⬜ 17 | Delivery result: base pay, bonuses, penalties, XP, reputation |
-| SaveService, storage adapter | systems, platform | ⬜ 18 | Versioned JSON, atomic write, backup, corruption handling, migrations (spec §52) |
 | GarageService | systems | ⬜ 19 | Owned trucks, active truck, purchases |
 | UpgradeService, UpgradeDefinition | data, systems | ⬜ 20 | Upgrade levels, costs, stat modifiers, level requirements (spec §16) |
 | City/world data, region loading | data, systems, presentation | ⬜ 21 | 3-city map, depots, rest areas (fuel / repair / continue) |

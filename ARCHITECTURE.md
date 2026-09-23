@@ -44,12 +44,12 @@ flowchart TD
 |---|---|---|---|---|
 | core | `src/core` | Engine-agnostic infrastructure: service container, event bus, logging, clock, game loop, validation, `Result` | nothing | anywhere |
 | data | `src/data` | Static definitions (the spec's ScriptableObjects), built-in content, central config | core | anywhere |
-| domain | `src/domain` | Runtime state and pure rules: truck dynamics, road geometry and guidance, surfaces and collisions, mission rules (bays, stages, cargo damage, pay), save data, company name rules; later economy formulas | core, data | anywhere |
-| systems | `src/systems` | Services that own runtime state, apply domain rules and publish `GameEvents` (`GameStateService`, `DrivingService`, `MissionService`) | core, data, domain | anywhere |
+| domain | `src/domain` | Runtime state and pure rules: truck dynamics, road geometry and guidance, surfaces and collisions, mission rules (bays, stages, cargo damage, pay, XP), the wallet and costs, fuel and damage formulas, company levels, save data with migrations and validation, company name rules | core, data | anywhere |
+| systems | `src/systems` | Services that own runtime state, apply domain rules and publish `GameEvents` (game state, driving, missions, economy, fuel, damage, company, saves, the game session) | core, data, domain | anywhere |
 | app | `src/app` | Headless composition root: `GameBootstrapper`, `ServiceKeys` | core … systems | anywhere |
 | presentation | `src/presentation` | three.js renderer, environment, track, depot and truck views, cameras, visual effects | core … systems, `three` | browser |
 | ui | `src/ui` | DOM overlay: main menu, company HQ job board, mission HUD, touch driving controls, pause and result screens, string tables, debug overlay, styles | core … systems | browser |
-| platform | `src/platform` | Browser/device adapters: frame scheduler, keyboard input, URL flags, fatal error screen; later storage | core … systems | browser |
+| platform | `src/platform` | Browser/device adapters: frame scheduler, keyboard input, URL flags, fatal error screen, localStorage | core … systems | browser |
 | entry | `src/main.ts` | Browser composition root | everything | browser |
 
 "Anywhere" means browser, Node (tests) or a future server.
@@ -74,10 +74,10 @@ flowchart TD
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
    3. validates the config against the content (for example, that the starting truck exists);
-   4. creates the `EventBus`, the `GameStateService`, the `DrivingService` and the `MissionService`;
+   4. creates the `EventBus` and the services in dependency order: game state, driving, economy, company, missions, damage, fuel, saves and the game session (which subscribes last, so it saves state the others have already updated);
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
-3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu.
+3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
 4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event and `data-mission-state` every `MissionStateChanged`. The e2e tests wait for them.
 
 Any failure shows the fatal error screen and sets `data-boot-state="error"`. A failed boot disposes every service it had already created.
@@ -96,7 +96,14 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 
 ## 6. Events
 
-`EventBus<GameEvents>` (`src/core/events`) is a synchronous, typed publish/subscribe channel (spec §57). All cross-system events are declared in one map, `src/systems/GameEvents.ts`. Today it holds `GameStateChanged`, `VehicleCollided`, `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed`. `MoneyChanged`, `FuelChanged`, `VehicleDamaged` and the others join it as their systems arrive.
+`EventBus<GameEvents>` (`src/core/events`) is a synchronous, typed publish/subscribe channel (spec §57). All cross-system events are declared in one map, `src/systems/GameEvents.ts`. Today it holds:
+
+- game flow and driving: `GameStateChanged`, `VehicleCollided`;
+- missions: `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed`;
+- money and the truck: `MoneyChanged`, `FuelChanged`, `VehicleDamaged`, `VehicleRepaired`;
+- the company: `CompanyProgressed`, `CompanyLevelUp`.
+
+Events join as their systems arrive.
 
 - Systems emit. Presentation and UI subscribe.
 - Events emitted by a handler are queued and delivered right after the current event, so every handler sees events in the order they happened. Otherwise delivery is synchronous.
@@ -172,6 +179,20 @@ main menu ─► company HQ (job board) ─► accept ─► drive to the pickup
 - **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the job board, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open, and the truck stays parked where it was left between contracts.
 - **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`). A unit test keeps both languages complete.
 
+### Economy, the truck's upkeep and the company
+
+Roadmap steps 14–17 give deliveries consequences (spec §13–18):
+
+- **`EconomyService`** is the only owner of money. It pays each delivery's reward (`MissionCompleted`), spends through a `Result` (not enough credits is an expected outcome) and announces `MoneyChanged`. Prices live in `GameConfig.economy`.
+- **`FuelService`** burns fuel every fixed step for the distance driven:
+  - the formula is spec §17's `fuelUsedLiters`: distance × base consumption × load × terrain × speed × condition;
+  - `fuel.consumptionScale` makes up for the miniature map;
+  - an empty tank stalls the engine;
+  - refuelling costs money at the pump (the HQ) or, dearer, from a fuel truck on the road;
+  - a stranded company that cannot pay gets a little emergency fuel for free, so it can never get stuck.
+- **`DamageService`** turns collisions into truck damage in the spec §18 bands. Damage weakens the engine and brakes through `DrivingService.setPerformanceModifier` (upgrades will add their own modifiers), never to nothing. Repairs cost money.
+- **`CompanyService`** keeps the company's name, XP, the five levels (`GameConfig.company.levelXp`), reputation and statistics. Deliveries add XP and reputation (computed with the reward in `missionProgress.ts`); failures cost reputation. Contracts can require a company level, and the job board shows what unlocks them.
+
 ## 9. Data and content
 
 The spec's ScriptableObjects become **definition interfaces** (`src/data/definitions`) plus **content** (`src/data/content`):
@@ -183,15 +204,29 @@ The spec's ScriptableObjects become **definition interfaces** (`src/data/definit
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, starting credits, later fuel prices) live in `GameConfig` (`src/data/config`). The config is validated at boot.
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (a contract cannot require a level that does not exist).
 
 ## 10. Save data
 
-`SaveGameData` (`src/domain/save`) is the root of the persisted state (spec §32): version, timestamps, profile, company, economy and garage. It is plain JSON with no classes, Maps or Dates. `createNewSaveGameData()` builds the state for a new company.
+`SaveGameData` (`src/domain/save`) is the root of the persisted state (spec §32). It is plain JSON with no classes, Maps or Dates. It holds:
 
-- `CURRENT_SAVE_VERSION` is stamped into every save. **Any schema change bumps it and ships a migration with a test.**
+- version and timestamps;
+- profile, company, economy and garage;
+- since v2: the world (where the truck is parked), the contract under way, and statistics.
+
+`createNewSaveGameData()` builds the state for a new company.
+
+- `CURRENT_SAVE_VERSION` (2) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later.
-- **Planned (step 18):** `SaveService` in systems, backed by a storage adapter in platform (IndexedDB/localStorage). It uses an atomic write (write a temp slot, verify, then swap), keeps a backup slot, falls back to the backup or a new game when data is corrupt, and runs a chain of migrations from each old version.
+- **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser (`platform/browser/browserStorage.ts`), memory in tests or when the browser forbids storage.
+  - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
+  - **Backup:** loading falls back to it when the latest save is unreadable.
+  - **Corruption:** unreadable data is set aside and reported.
+  - **Storage errors** (a full quota, private mode) come back as Results: the game never crashes because of a save.
+- **`GameSessionService`** (`src/systems/session`) is the company being played.
+  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, fuel, damage, missions, the truck's position).
+  - It saves after every delivery, failure and purchase, when the player leaves the road for a menu, and every 20 s of driving. The browser entry also saves when the tab hides or closes.
 
 ## 11. Rendering and the mobile performance budget
 
@@ -228,14 +263,14 @@ Test helpers live in `tests/support`: `MemoryLogger`, the content fixtures, the 
 
 ```text
 src/
-  core/            events/ logging/ math/ objects/ random/ services/ time/ validation/ Result.ts
+  core/            events/ logging/ math/ objects/ random/ services/ storage/ time/ validation/ Result.ts
   data/            config/ content/ definitions/ ContentCatalog.ts GameContent.ts units.ts
-  domain/          company/ missions/ save/ vehicles/ world/   (later: economy/ ...)
-  systems/         driving/ gameState/ missions/ GameEvents.ts  (later: economy/ save/ ...)
+  domain/          company/ economy/ missions/ save/ vehicles/ world/
+  systems/         company/ driving/ economy/ gameState/ missions/ save/ session/ vehicles/ GameEvents.ts
   app/             GameBootstrapper.ts ServiceKeys.ts
   presentation/    RenderHost.ts cameras/ textures/ vehicles/ world/ (later: effects/)
   ui/              controls/ debug/ hq/ hud/ i18n/ menus/ dom.ts styles.css
-  platform/        browser/ input/                        (later: storage/)
+  platform/        browser/ input/
   main.ts
 tests/
   unit/ architecture/ e2e/ support/

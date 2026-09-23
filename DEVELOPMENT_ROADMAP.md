@@ -27,12 +27,12 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 11 | Delivery zone | 2 | ✅ | "Stop in the bay to unload"; itemised pay |
 | 12 | Mission state machine | 2 | ✅ | MissionService: accepted → travellingToPickup → loaded → delivering → completed / failed; cargo damage |
 | 13 | HUD | 2 | ✅ | Objective, direction and road distance, loading bar, delivery clock, cargo condition; main menu, job board, pause and result screens in Turkish and English |
-| 14 | Economy | 3 | ⬜ **next** | Credits, rewards, costs (EconomyService) |
-| 15 | Fuel | 3 | ⬜ | Consumption + refuelling |
-| 16 | Damage | 3 | ⬜ | Damage bands, effects, repair |
-| 17 | Reward screen | 3 | ⬜ | Delivery result, XP, reputation |
-| 18 | Save/load | 3 | ⬜ | SaveService: versioned, atomic, backup, migrations |
-| 19 | Garage | 5 | ⬜ | Owned trucks, active truck |
+| 14 | Economy | 3 | ✅ | EconomyService: wallet, delivery pay, prices; HQ shows the credits |
+| 15 | Fuel | 3 | ✅ | Spec §17 consumption, an empty tank stalls; refuel at the HQ or by fuel truck; emergency fuel |
+| 16 | Damage | 3 | ✅ | Spec §18 bands; weaker engine and brakes; paid repairs |
+| 17 | Reward screen | 3 | ✅ | XP, reputation, balance, level-up; five company levels unlock contracts |
+| 18 | Save/load | 3 | ✅ | Save v2 with migration; atomic write, backup, corruption handling; continue or found a company; autosave |
+| 19 | Garage | 5 | ⬜ **next** | Owned trucks, active truck |
 | 20 | Upgrade | 3/5 | ⬜ | Upgrade definitions, costs, stat modifiers |
 | 21 | 3-city prototype | 4 | ⬜ | City A (starter), B (industrial), C (agricultural), rest area |
 | 22 | Traffic | 4 | ⬜ | Waypoint NPC traffic |
@@ -72,11 +72,18 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Player-facing text lives in Turkish and English string tables, pulled forward from Phase 7 so the menus never hard-code text.
 - `?debug` adds a T key that parks the truck in the bay the mission needs next, for testing (the e2e tests use it).
 
-## Next step: 14 Economy
+### Phase 3 notes
+
+- The test track is a miniature, so `GameConfig.fuel.consumptionScale` (60) stretches every metre driven. A full tank lasts roughly eight to ten contracts. Prices and XP are first guesses to tune on phones.
+- Four contracts are open at level 1; levels 2 to 4 unlock the rest.
+- Saves live in the browser (localStorage); an Android build (step 28) keeps them in the app's storage. There is one save slot.
+- The HQ refuels and repairs by phone: the truck does not need to drive there. Rest areas with pumps come with the 3-city map (step 21).
+
+## Next step: 19 Garage
 
 Suggested request:
 
-> Implement roadmap step 14 only. Add EconomyService with a wallet (add, spend, affordability), pay the mission reward on delivery and show the balance at the HQ, with MoneyChanged events and tests (spec §13, §51). Fuel, repair and upgrade costs come with steps 15, 16 and 20; saving with step 18.
+> Implement roadmap step 19 only. Add the H2 (medium) and H3 (heavy) trucks as data, a GarageService that owns the company's trucks and the active one, buying a truck with credits at the HQ, and switching trucks; missions that need their bodies or payloads become available. Keep the save schema versioned (v3 + migration).
 
 ## Infrastructure track
 
