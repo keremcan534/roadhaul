@@ -36,6 +36,12 @@ export const EN: StringTable = {
   'hud.cargo': 'Cargo',
   'hud.cargoDamaged': 'Cargo damaged!',
   'hud.freeDrive': 'Free drive',
+  'hud.eta': 'ETA {time}',
+  'nav.left': 'Turn left in {distance}',
+  'nav.right': 'Turn right in {distance}',
+  'nav.leftNow': 'Turn left',
+  'nav.rightNow': 'Turn right',
+  'nav.turnAround': 'Turn round',
 
   'pause.title': 'Paused',
   'pause.open': 'Pause',

@@ -1111,6 +1111,47 @@ body {
   letter-spacing: 0.02em;
 }
 
+/* The next turn: an arrow bent right (mirrored for left, a U to turn round) and when to take it. */
+.mission-hud__turn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mission-hud__turn[hidden] {
+  display: none;
+}
+
+.mission-hud__turn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mission-hud__turn-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: var(--rh-target);
+}
+
+.mission-hud__turn[data-turn='left'] .mission-hud__turn-icon {
+  transform: scaleX(-1);
+}
+
+.mission-hud__turn .mission-hud__turn-back,
+.mission-hud__turn[data-turn='turnAround'] .mission-hud__turn-bend {
+  display: none;
+}
+
+.mission-hud__turn[data-turn='turnAround'] .mission-hud__turn-back {
+  display: inline;
+}
+
 .mission-hud__hint[hidden],
 .mission-hud__progress[hidden],
 .mission-hud__timer[hidden],
@@ -1153,6 +1194,16 @@ body {
   color: var(--rh-danger);
 }
 
+.mission-hud__eta {
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+}
+
+/* Arriving at this pace would be late. */
+.mission-hud__eta.is-late {
+  color: var(--rh-danger);
+}
+
 .mission-hud.is-damaged .mission-hud__cargo {
   color: var(--rh-danger);
   animation: rh-flash 0.3s ease-in-out 4;
@@ -1174,7 +1225,8 @@ body {
 
   /* Narrow: wrap instead of cutting words off. */
   .mission-hud__objective,
-  .mission-hud__hint {
+  .mission-hud__hint,
+  .mission-hud__turn {
     white-space: normal;
   }
 }

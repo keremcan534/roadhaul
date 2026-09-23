@@ -1,13 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { foundCompany, openCompanyHq, openGame, openMainMenu, watchForProblems } from './support';
+import { foundCompany, openCompanyHq, openGame, openMainMenu, takeContract, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
-
-/** Takes a contract from the job board by its mission id. */
-async function takeContract(page: Page, missionId: string): Promise<void> {
-  await page.locator(`.job-card[data-mission-id="${missionId}"] [data-action="accept"]`).click();
-  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
-}
 
 /** Drives forward briefly, like pulling out of a bay. */
 async function pullAway(page: Page): Promise<void> {

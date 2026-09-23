@@ -84,6 +84,12 @@ export async function openGame(page: Page, query = ''): Promise<void> {
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
 }
 
+/** Takes a contract from the job board by its mission id. */
+export async function takeContract(page: Page, missionId: string): Promise<void> {
+  await page.locator(`.job-card[data-mission-id="${missionId}"] [data-action="accept"]`).click();
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
+}
+
 /** Resolves after the browser has produced `count` more animation frames. */
 export async function waitForFrames(page: Page, count: number): Promise<void> {
   await page.evaluate(

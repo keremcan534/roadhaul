@@ -36,6 +36,12 @@ export const TR: StringTable = {
   'hud.cargo': 'Yük',
   'hud.cargoDamaged': 'Yük hasar aldı!',
   'hud.freeDrive': 'Serbest sürüş',
+  'hud.eta': 'Varış {time}',
+  'nav.left': '{distance} sonra sola dönün',
+  'nav.right': '{distance} sonra sağa dönün',
+  'nav.leftNow': 'Sola dönün',
+  'nav.rightNow': 'Sağa dönün',
+  'nav.turnAround': 'Geri dönün',
 
   'pause.title': 'Duraklatıldı',
   'pause.open': 'Duraklat',

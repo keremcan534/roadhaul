@@ -19,6 +19,7 @@ import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
+import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { TrackView } from './presentation/world/TrackView';
@@ -77,6 +78,7 @@ async function start(): Promise<void> {
   const driving = services.resolve(ServiceKeys.driving);
   const traffic = services.resolve(ServiceKeys.traffic);
   const missions = services.resolve(ServiceKeys.missions);
+  const navigation = services.resolve(ServiceKeys.navigation);
   const economy = services.resolve(ServiceKeys.economy);
   const company = services.resolve(ServiceKeys.company);
   const fuel = services.resolve(ServiceKeys.fuel);
@@ -101,6 +103,7 @@ async function start(): Promise<void> {
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy });
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles);
+  const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
@@ -118,7 +121,7 @@ async function start(): Promise<void> {
     }
   };
   const touch = new TouchControls(ui, { onToggleCamera: toggleCamera });
-  const hud = new MissionHud(ui, strings, missions, driving);
+  const hud = new MissionHud(ui, strings, missions, navigation, driving);
   const toasts = new Toasts(ui);
   const result = new ResultDialog(ui, strings, () => {
     paused = false;
@@ -441,6 +444,7 @@ async function start(): Promise<void> {
         combineVehicleInputs(driverInput, keyboard.state, touch.state);
         driving.step(stepSeconds, driverInput);
         missions.update(stepSeconds);
+        navigation.update(stepSeconds);
         fuel.update();
         session.update(stepSeconds);
       },
@@ -452,6 +456,7 @@ async function start(): Promise<void> {
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
         trafficView.update(traffic.simulation, paused ? 1 : alpha);
+        gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
         const vehicles = traffic.simulation?.vehicleCount ?? 0;
         if (vehicles !== shownTraffic) {
           shownTraffic = vehicles;
