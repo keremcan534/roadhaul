@@ -6,6 +6,11 @@ Mobile-first logistics and truck simulation game: take a contract, load the carg
 
 Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the browser and targets Android first ([why not Unity](docs/adr/0001-web-stack-typescript-threejs.md)).
 
+## Play
+
+**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops, and `?debug` at the end of the URL shows FPS.
+Every push to `main` redeploys it through [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). This needs one-time repository settings: public visibility (or a paid plan) and *Settings → Pages → Source: GitHub Actions*.
+
 ## Quick start
 
 Requires Node.js 22.12 or newer.

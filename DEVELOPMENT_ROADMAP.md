@@ -72,7 +72,7 @@ These are not gameplay features, so they sit outside the numbered order. They ma
 | Item | Status | Notes |
 |---|---|---|
 | CI: typecheck, unit tests, build, e2e | ✅ | `.github/workflows/ci.yml` on every pull request |
-| Phone preview link | ⬜ | Wanted before steps 05–07, so driving can be felt on a real phone. The repository is private, so GitHub Pages needs a paid plan or a public repository; Cloudflare Pages / Netlify also work. The owner decides. |
+| Phone preview link | ✅ | GitHub Pages: `.github/workflows/deploy-pages.yml` publishes every push to `main` at https://keremcan534.github.io/roadhaul/ (the repository is public; Pages source is "GitHub Actions") |
 | Android APK from CI | ⬜ | Spec step 28. Pulling it forward for device testing is optional; it is the owner's call. |
 
 ## MVP scope (spec §43)
