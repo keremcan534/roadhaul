@@ -16,6 +16,11 @@ function truckAt(x: number, z: number, headingDegrees: number, speed: number) {
   return state;
 }
 
+/** Centres of the footprint circles along the Z axis. */
+function circleZs(state: { z: number; heading: number }): number[] {
+  return footprint.offsets.map((offset) => state.z + Math.cos(state.heading) * offset);
+}
+
 describe('DrivingWorld', () => {
   const world = new DrivingWorld(mapFixture());
 
@@ -54,10 +59,13 @@ describe('DrivingWorld', () => {
   });
 
   it('ignores obstacles the truck is already moving away from', () => {
-    const state = truckAt(0, 25, 180, 10);
+    // Facing the building with the nose 0.1 m inside it, but reversing away.
+    const state = truckAt(0, 28.1, 0, -3);
 
     expect(world.resolveCollisions(state, footprint)).toBe(0);
-    expect(state.speed).toBe(10);
+    expect(state.speed).toBe(-3);
+    expect(state.heading).toBe(0);
+    expect(Math.max(...circleZs(state)) + footprint.radius).toBeCloseTo(35, 9);
   });
 
   it('stops a reversing truck that backs into a building', () => {
