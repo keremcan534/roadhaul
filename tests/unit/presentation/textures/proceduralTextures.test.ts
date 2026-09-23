@@ -3,6 +3,7 @@ import { fractalNoise, grain, tileableNoise } from '../../../../src/presentation
 import { createImage, type PixelImage } from '../../../../src/presentation/textures/pixelImage';
 import {
   asphaltImage,
+  concreteImage,
   grassImage,
   liveryImage,
   officeFacadeImage,
@@ -111,6 +112,17 @@ describe('procedural images', () => {
       expect(accentPixels).toBeGreaterThan(image.width * image.height * 0.03);
       expect(logoPixels).toBeGreaterThan(200);
     }
+  });
+
+  it('lay pale concrete slabs with darker joints', () => {
+    const concrete = concreteImage(64);
+    const slab = pixel(concrete, 16, 16);
+    const joint = pixel(concrete, 0, 16);
+
+    expect(slab[0]!).toBeGreaterThan(120);
+    expect(joint[0]!).toBeLessThan(slab[0]! * 0.8);
+    // Neutral grey: no channel far from the others.
+    expect(Math.abs(slab[0]! - slab[2]!)).toBeLessThan(20);
   });
 
   it('draw window glass on the office facade', () => {

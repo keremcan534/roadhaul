@@ -72,6 +72,26 @@ export function gravelImage(size = 128, seed = 31): PixelImage {
 }
 
 /**
+ * Concrete yard slabs, 2 × 2 slabs per tile: pale, mottled, with a few oil
+ * stains and dark joints between the slabs.
+ */
+export function concreteImage(size = 256, seed = 37): PixelImage {
+  const image = createImage(size, size, [172, 170, 164]);
+  const half = size / 2;
+  shade(image, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    const mottling = 0.9 + 0.16 * fractalNoise(u, v, 6, 3, seed);
+    const stain = 1 - 0.22 * smoothstep(0.62, 0.8, fractalNoise(u, v, 3, 2, seed + 5));
+    const fine = 0.95 + 0.1 * grain(x, y, seed + 1);
+    // Joints on the tile edges and through the middle, 2 px wide.
+    const joint = x % half < 2 || y % half < 2 ? 0.62 : 1;
+    return mottling * stain * fine * joint;
+  });
+  return image;
+}
+
+/**
  * Office facade, 2 bays × 2 floors (8 m × 7 m of wall): plaster with window
  * rows and floor bands. Light, so vertex colours can tint the wall.
  */
