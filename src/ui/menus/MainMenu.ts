@@ -1,15 +1,22 @@
-import { button, element } from '../dom';
+import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 
 export interface MainMenuActions {
-  readonly onPlay: () => void;
+  readonly onContinue: () => void;
+  readonly onNewCompany: () => void;
   /** Switches between Turkish and English. */
   readonly onSwitchLanguage: () => void;
 }
 
-/** The title screen over the slowly circling camera: logo, tagline, Play and a language switch. */
+/**
+ * The title screen over the slowly circling camera: logo, tagline, Continue
+ * (with a saved game), New company and a language switch.
+ */
 export class MainMenu {
   private readonly root: HTMLDivElement;
+  private readonly continueButton: HTMLButtonElement;
+  private readonly newCompanyButton: HTMLButtonElement;
+  private readonly message: HTMLParagraphElement;
 
   constructor(parent: HTMLElement, strings: Strings, actions: MainMenuActions) {
     const document = parent.ownerDocument;
@@ -20,7 +27,21 @@ export class MainMenu {
     const logo = element(document, 'h1', 'main-menu__logo', 'ROAD');
     logo.append(element(document, 'span', 'main-menu__logo-accent', 'HAUL'));
     const tagline = element(document, 'p', 'main-menu__tagline', strings.t('menu.tagline'));
-    const play = button(document, 'button--primary main-menu__play', strings.t('menu.play'), 'play', actions.onPlay);
+    this.continueButton = button(
+      document,
+      'button--primary main-menu__play',
+      strings.t('menu.continue'),
+      'continue-game',
+      actions.onContinue,
+    );
+    this.newCompanyButton = button(
+      document,
+      'button--primary main-menu__play',
+      strings.t('menu.newCompany'),
+      'new-company',
+      actions.onNewCompany,
+    );
+    this.message = element(document, 'p', 'main-menu__message');
     const language = button(
       document,
       'button--ghost main-menu__language',
@@ -28,12 +49,24 @@ export class MainMenu {
       'switch-language',
       actions.onSwitchLanguage,
     );
-    this.root.append(logo, tagline, play, language);
+    this.root.append(logo, tagline, this.continueButton, this.newCompanyButton, this.message, language);
     parent.append(this.root);
   }
 
   set visible(visible: boolean) {
     this.root.hidden = !visible;
+  }
+
+  /**
+   * Offers Continue only with a saved game (New company is then secondary),
+   * and shows `message` (a load problem, saving being off) when there is one.
+   */
+  update(hasSave: boolean, message: string | null): void {
+    this.continueButton.hidden = !hasSave;
+    this.newCompanyButton.classList.toggle('button--primary', !hasSave);
+    this.newCompanyButton.classList.toggle('button--secondary', hasSave);
+    setText(this.message, message ?? '');
+    this.message.hidden = message === null;
   }
 
   dispose(): void {

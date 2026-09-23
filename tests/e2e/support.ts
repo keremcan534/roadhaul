@@ -20,11 +20,18 @@ export async function openMainMenu(page: Page, query = ''): Promise<void> {
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
 }
 
-/** Opens the company HQ from the main menu. */
+/** Founds a company from the main menu, which opens its HQ. */
+export async function foundCompany(page: Page, name = 'Test Lojistik'): Promise<void> {
+  await page.locator('[data-action="new-company"]').click();
+  await page.locator('.new-company__input').fill(name);
+  await page.locator('[data-action="start-company"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
+}
+
+/** Opens the game and founds a new company: its HQ. */
 export async function openCompanyHq(page: Page, query = ''): Promise<void> {
   await openMainMenu(page, query);
-  await page.locator('[data-action="play"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
+  await foundCompany(page);
 }
 
 /** Opens the game and drives off without a contract: Play, then Free drive. */

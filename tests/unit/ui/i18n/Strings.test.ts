@@ -51,6 +51,11 @@ describe('Strings', () => {
     expect(en.t('no.such.key')).toBe('no.such.key');
   });
 
+  it('groups whole numbers the way each language does', () => {
+    expect(tr.number(12000)).toBe('12.000');
+    expect(en.number(12000)).toBe('12,000');
+  });
+
   it('formats money with each language’s grouping', () => {
     expect(tr.money(4200)).toBe('4.200 kredi');
     expect(en.money(4200)).toBe('4,200 credits');

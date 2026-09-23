@@ -480,6 +480,21 @@ body {
   font-size: 20px;
 }
 
+.main-menu__message {
+  max-width: 420px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 45%);
+  color: var(--rh-fg);
+  font-size: 14px;
+  text-align: center;
+}
+
+.main-menu__message[hidden] {
+  display: none;
+}
+
 .main-menu__language {
   min-height: 36px;
   padding: 6px 14px;
@@ -489,37 +504,206 @@ body {
 /* ---- Company HQ and job board (src/ui/hq/CompanyHq.ts) ---- */
 
 .hq {
-  justify-content: flex-start;
+  display: grid;
+  grid-template-columns: minmax(210px, 260px) 1fr;
   align-items: stretch;
+  justify-content: stretch;
+  gap: 12px;
   background: linear-gradient(180deg, rgb(12 16 22 / 88%), rgb(12 16 22 / 94%));
 }
 
-.hq__header {
+.hq[hidden] {
+  display: none;
+}
+
+.hq__side {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 16px;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.hq__title {
+.hq__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.hq__company-name {
   margin: 0;
-  font-size: 22px;
+  overflow: hidden;
+  font-size: 18px;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.hq__subtitle {
+.hq__level {
   margin: 0;
   color: var(--rh-accent);
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+}
+
+.hq__xp {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hq__figures {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.hq__credits {
+  color: var(--rh-accent);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hq__reputation {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hq__card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  color: var(--rh-muted);
+}
+
+.hq__gauge {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 13px;
+}
+
+.hq__gauge-title {
+  font-weight: 700;
+}
+
+.hq__gauge-value {
+  justify-self: end;
+  color: var(--rh-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hq__gauge .meter {
+  grid-column: 1 / -1;
+}
+
+.hq__service {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.hq__board-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
 }
 
 .hq__tools {
   display: flex;
   gap: 8px;
+}
+
+.hq__tools .button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.hq__board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.hq__board-title {
+  margin: 0;
+  color: var(--rh-accent);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Upright phones: one column; the whole HQ scrolls. */
+@media (orientation: portrait) {
+  .hq {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow-y: auto;
+  }
+
+  /* Full height, no shrinking: otherwise the board would cover the side column's buttons. */
+  .hq__side,
+  .hq__board {
+    flex-shrink: 0;
+  }
+
+  .hq__side,
+  .hq__jobs {
+    overflow: visible;
+  }
+}
+
+/* A thin bar: XP, fuel, damage. */
+.meter {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.meter__fill {
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 250ms ease-out;
+}
+
+.meter--xp .meter__fill {
+  background: var(--rh-accent);
+}
+
+.meter--fuel .meter__fill {
+  background: var(--rh-good);
+}
+
+.meter--fuel.is-low .meter__fill {
+  background: var(--rh-danger);
+}
+
+.meter--damage .meter__fill {
+  background: #f0a04b;
 }
 
 .hq__jobs {
@@ -601,12 +785,24 @@ body {
   font-size: 18px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .job-card__accept {
   min-height: 40px;
   padding: 8px 14px;
   font-size: 15px;
+}
+
+.job-card.is-locked {
+  opacity: 0.55;
+}
+
+.job-card__locked {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
 }
 
 /* ---- Mission HUD (src/ui/hud/MissionHud.ts) ---- */
@@ -829,6 +1025,112 @@ body {
   width: min(100%, 320px);
 }
 
+/* ---- New company (src/ui/menus/NewCompanyDialog.ts) ---- */
+
+.new-company {
+  /* A dialog over the main menu, which is a screen too. */
+  z-index: 12;
+  background: rgb(8 11 15 / 70%);
+}
+
+.new-company__label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.new-company__input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 2px solid rgb(255 255 255 / 25%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 35%);
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 17px;
+  /* The page blocks selection for gameplay; typing needs it back. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.new-company__input:focus {
+  border-color: var(--rh-accent);
+  outline: none;
+}
+
+.new-company__error {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--rh-danger);
+  font-size: 13px;
+}
+
+.new-company__warning {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.new-company__warning[hidden] {
+  display: none;
+}
+
+.new-company__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.new-company__buttons .button {
+  flex: 1;
+}
+
+/* ---- Notices (src/ui/hud/Toasts.ts) ---- */
+
+.toasts {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 84px);
+  left: 50%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(90vw, 420px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+@media (orientation: portrait) {
+  .toasts {
+    top: calc(env(safe-area-inset-top, 0px) + 150px);
+  }
+}
+
+.toast {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgb(14 18 24 / 90%);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  transition: opacity 0.5s ease-in;
+}
+
+.toast--success {
+  box-shadow: inset 0 0 0 2px var(--rh-good), 0 6px 16px rgb(0 0 0 / 35%);
+}
+
+.toast--warning {
+  box-shadow: inset 0 0 0 2px var(--rh-danger), 0 6px 16px rgb(0 0 0 / 35%);
+}
+
+.toast.is-leaving {
+  opacity: 0;
+}
+
 /* ---- Contract result (src/ui/menus/ResultDialog.ts) ---- */
 
 .result-dialog__panel.is-success .panel__title {
@@ -889,6 +1191,20 @@ body {
 
 .result-dialog__line.is-total dd {
   color: var(--rh-accent);
+}
+
+.result-dialog__line.is-progress dd {
+  color: #8cc4f2;
+}
+
+.result-dialog__level-up {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgb(242 178 51 / 25%), rgb(242 178 51 / 8%));
+  color: var(--rh-accent);
+  font-weight: 800;
+  text-align: center;
 }
 
 /* Short landscape phones: tighter panels. */

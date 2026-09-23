@@ -1,4 +1,5 @@
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { Credits } from '../../data/units';
 import type { MissionFailureReason } from '../../domain/missions/MissionInstance';
 import type { GameEvents } from '../../systems/GameEvents';
 import { button, element } from '../dom';
@@ -31,7 +32,8 @@ export class ResultDialog {
     return !this.overlay.hidden;
   }
 
-  showCompleted(definition: MissionDefinition, delivery: GameEvents['MissionCompleted']): void {
+  /** The delivery's pay, XP, reputation and the new balance. */
+  showCompleted(definition: MissionDefinition, delivery: GameEvents['MissionCompleted'], balance: Credits): void {
     const { strings } = this;
     const document = this.overlay.ownerDocument;
     const { reward } = delivery;
@@ -53,6 +55,9 @@ export class ResultDialog {
     }
     line(strings.t('result.conditionBonus'), strings.signedMoney(reward.conditionBonus), 'is-bonus');
     line(strings.t('result.total'), strings.money(reward.total), 'is-total');
+    line(strings.t('result.xp'), `+${strings.t('format.xp', { value: delivery.xp })}`, 'is-progress');
+    line(strings.t('result.reputation'), `+${delivery.reputation}`, 'is-progress');
+    line(strings.t('result.balance'), strings.money(balance));
 
     const facts = element(
       document,
@@ -64,10 +69,25 @@ export class ResultDialog {
     this.show('is-success', strings.t('result.completed'), definition, [lines, facts]);
   }
 
-  showFailed(definition: MissionDefinition, reason: MissionFailureReason): void {
+  showFailed(definition: MissionDefinition, reason: MissionFailureReason, reputationLost: number): void {
     const document = this.overlay.ownerDocument;
     const why = element(document, 'p', 'result-dialog__reason', this.strings.t(`result.reason.${reason}`));
-    this.show('is-failure', this.strings.t('result.failed'), definition, [why]);
+    const lines = element(document, 'dl', 'result-dialog__lines');
+    const row = element(document, 'div', 'result-dialog__line is-penalty');
+    row.append(element(document, 'dt', '', this.strings.t('result.reputation')), element(document, 'dd', '', `−${reputationLost}`));
+    lines.append(row);
+    this.show('is-failure', this.strings.t('result.failed'), definition, [why, lines]);
+  }
+
+  /** Adds the level-up banner to the open result. */
+  showLevelUp(level: number): void {
+    const banner = element(
+      this.overlay.ownerDocument,
+      'p',
+      'result-dialog__level-up',
+      this.strings.t('result.levelUp', { level, name: this.strings.t(`company.levelName.${level}`) }),
+    );
+    this.panel.insertBefore(banner, this.panel.lastElementChild);
   }
 
   hide(): void {

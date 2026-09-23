@@ -55,6 +55,11 @@ export class Strings {
     return this.t(`mission.${missionId}.title`);
   }
 
+  /** A whole number with the language's grouping: "12.000", "12,000". */
+  number(value: number): string {
+    return this.integer.format(value);
+  }
+
   /** Whole credits with grouping: "4.200 kredi", "4,200 credits". */
   money(credits: Credits): string {
     return this.t('format.money', { amount: this.integer.format(credits) });

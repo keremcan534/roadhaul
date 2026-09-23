@@ -6,9 +6,13 @@ export interface PauseMenuActions {
   readonly onPauseRequested: () => void;
   readonly onResume: () => void;
   readonly onRecover: () => void;
+  readonly onRoadsideFuel: () => void;
   readonly onAbandon: () => void;
   readonly onCompanyHq: () => void;
 }
+
+/** The roadside fuel offer: its price, or free emergency fuel for a stranded, broke company. */
+export type RoadsideFuelOffer = { readonly cost: string } | 'emergency' | null;
 
 /**
  * The pause button shown while driving, and the menu it opens: resume, put a
@@ -20,8 +24,13 @@ export class PauseMenu {
   private readonly overlay: HTMLDivElement;
   private readonly abandonButton: HTMLButtonElement;
   private readonly hqButton: HTMLButtonElement;
+  private readonly fuelButton: HTMLButtonElement;
 
-  constructor(parent: HTMLElement, strings: Strings, actions: PauseMenuActions) {
+  constructor(
+    parent: HTMLElement,
+    private readonly strings: Strings,
+    actions: PauseMenuActions,
+  ) {
     const document = parent.ownerDocument;
     this.pauseButton = button(document, 'pause-button', '', 'pause', actions.onPauseRequested);
     this.pauseButton.setAttribute('aria-label', strings.t('pause.open'));
@@ -43,10 +52,12 @@ export class PauseMenu {
       closeThen(actions.onAbandon),
     );
     this.hqButton = button(document, 'button--secondary', strings.t('pause.hq'), 'company-hq', closeThen(actions.onCompanyHq));
+    this.fuelButton = button(document, 'button--secondary', '', 'roadside-fuel', closeThen(actions.onRoadsideFuel));
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('pause.title')),
       button(document, 'button--primary', strings.t('pause.resume'), 'resume', closeThen(actions.onResume)),
       button(document, 'button--secondary', strings.t('pause.recover'), 'recover', closeThen(actions.onRecover)),
+      this.fuelButton,
       this.abandonButton,
       this.hqButton,
     );
@@ -63,10 +74,18 @@ export class PauseMenu {
     this.pauseButton.hidden = !visible;
   }
 
-  /** Shows the menu. With a contract running, it offers abandoning it instead of going back to the HQ. */
-  open(hasContract: boolean): void {
+  /**
+   * Shows the menu. With a contract running, it offers abandoning it instead
+   * of going back to the HQ. `fuel` offers a fuel truck when the tank is not full.
+   */
+  open(hasContract: boolean, fuel: RoadsideFuelOffer): void {
     this.abandonButton.hidden = !hasContract;
     this.hqButton.hidden = hasContract;
+    this.fuelButton.hidden = fuel === null;
+    if (fuel !== null) {
+      this.fuelButton.textContent =
+        fuel === 'emergency' ? this.strings.t('pause.emergencyFuel') : this.strings.t('pause.roadsideFuel', fuel);
+    }
     this.overlay.hidden = false;
   }
 

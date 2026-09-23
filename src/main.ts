@@ -26,9 +26,11 @@ import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { CompanyHq } from './ui/hq/CompanyHq';
 import { MissionHud } from './ui/hud/MissionHud';
+import { Toasts } from './ui/hud/Toasts';
 import { chooseLanguage, stringsFor } from './ui/i18n';
 import { MainMenu } from './ui/menus/MainMenu';
-import { PauseMenu } from './ui/menus/PauseMenu';
+import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
+import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import './ui/styles.css';
 
@@ -36,7 +38,8 @@ import './ui/styles.css';
  * Browser entry point and composition root. It boots the headless game
  * services, then adds rendering, input, the menus, the HUD, the frame loop
  * and debug tooling, and wires the game flow: main menu → company HQ (job
- * board) → driving the contract → result → HQ.
+ * board, fuel, repairs) → driving the contract → result → HQ. A company is
+ * started or continued from the main menu and saves itself as it goes.
  *
  * `<html data-boot-state>` (booting | ready | error), `data-game-state` and
  * `data-mission-state` let the end-to-end tests follow progress.
@@ -68,13 +71,19 @@ async function start(): Promise<void> {
   const gameState = services.resolve(ServiceKeys.gameState);
   const driving = services.resolve(ServiceKeys.driving);
   const missions = services.resolve(ServiceKeys.missions);
+  const economy = services.resolve(ServiceKeys.economy);
+  const company = services.resolve(ServiceKeys.company);
+  const fuel = services.resolve(ServiceKeys.fuel);
+  const damage = services.resolve(ServiceKeys.damage);
+  const session = services.resolve(ServiceKeys.session);
 
   // Older WebViews may only have navigator.language.
   const language = chooseLanguage(query.get('lang'), navigator.languages ?? [navigator.language]);
   root.lang = language;
   const strings = stringsFor(language);
 
-  // The company's truck waits at the start of the map; the menus show it from a circling camera.
+  // Behind the main menu the starting truck waits at the start of the map, seen from a circling camera.
+  // Starting or continuing a company puts its own truck where it was left.
   driving.start(config.newGame.startingVehicleId, config.newGame.startingMapId);
 
   const renderHost = new RenderHost(canvas, config.rendering);
@@ -97,14 +106,38 @@ async function start(): Promise<void> {
   };
   const touch = new TouchControls(ui, { onToggleCamera: toggleCamera });
   const hud = new MissionHud(ui, strings, missions, driving);
+  const toasts = new Toasts(ui);
   const result = new ResultDialog(ui, strings, () => {
     paused = false;
     gameState.transitionTo('companyHq');
   });
+  const refuel = (roadside: boolean): void => {
+    const filled = fuel.refuel(roadside);
+    if (filled.ok) {
+      const liters = strings.t('format.liters', { value: Math.round(filled.value.liters) });
+      toasts.show(
+        filled.value.cost === 0
+          ? strings.t('toast.emergencyFuel', { liters })
+          : strings.t('toast.refuelled', { liters, cost: strings.money(filled.value.cost) }),
+        'success',
+      );
+    } else if (filled.error === 'insufficientFunds') {
+      toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+    }
+  };
+  const roadsideFuelOffer = (): RoadsideFuelOffer => {
+    if (fuel.missingLiters < 0.5) {
+      return null;
+    }
+    if (fuel.isEmpty && economy.litersAffordable(economy.credits, true) === 0) {
+      return 'emergency';
+    }
+    return { cost: strings.money(Math.min(fuel.fillUpCost(true), economy.credits)) };
+  };
   const pause = (): void => {
     if (isDriving() && !paused && !result.isOpen) {
       paused = true;
-      pauseMenu.open(missions.active !== null);
+      pauseMenu.open(missions.active !== null, roadsideFuelOffer());
     }
   };
   const pauseMenu = new PauseMenu(ui, strings, {
@@ -114,6 +147,10 @@ async function start(): Promise<void> {
     },
     onRecover: () => {
       driving.recover();
+      paused = false;
+    },
+    onRoadsideFuel: () => {
+      refuel(true);
       paused = false;
     },
     onAbandon: () => {
@@ -136,30 +173,80 @@ async function start(): Promise<void> {
       }
     },
   });
+
+  const menuMessage = (): string | null => (persistent ? null : strings.t('menu.storageOff'));
+  const enterCompany = (): void => {
+    syncMissionView();
+    gameState.transitionTo('companyHq');
+  };
+  const newCompany = new NewCompanyDialog(ui, strings, {
+    onStart: (companyName) => {
+      const founded = session.startNewGame(companyName);
+      if (!founded.ok) {
+        return founded.error;
+      }
+      newCompany.close();
+      enterCompany();
+      return null;
+    },
+    onBack: () => newCompany.close(),
+  });
   const mainMenu = new MainMenu(ui, strings, {
-    onPlay: () => gameState.transitionTo('companyHq'),
+    onContinue: () => {
+      const continued = session.continueGame();
+      if (continued.ok) {
+        enterCompany();
+      } else {
+        mainMenu.update(session.hasSavedGame(), strings.t(`menu.problem.${continued.error}`));
+      }
+    },
+    onNewCompany: () => newCompany.open(session.hasSavedGame()),
     onSwitchLanguage: () => {
       query.set('lang', language === 'tr' ? 'en' : 'tr');
       window.location.search = query.toString();
     },
   });
-  const hq = new CompanyHq(ui, strings, {
-    onAccept: (missionId) => {
-      const accepted = missions.accept(missionId);
-      if (accepted.ok) {
-        gameState.transitionTo('driving');
-      } else {
-        logger.warn(`Could not take ${missionId}: ${accepted.error}.`);
-      }
+  const hq = new CompanyHq(
+    ui,
+    strings,
+    { missions, economy, company, fuel, damage },
+    {
+      onAccept: (missionId) => {
+        const accepted = missions.accept(missionId);
+        if (accepted.ok) {
+          gameState.transitionTo('driving');
+        } else {
+          logger.warn(`Could not take ${missionId}: ${accepted.error}.`);
+        }
+      },
+      onRefuel: () => refuel(false),
+      onRepair: () => {
+        const repaired = damage.repair();
+        if (repaired.ok) {
+          toasts.show(strings.t('toast.repaired', { cost: strings.money(repaired.value) }), 'success');
+        } else if (repaired.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        }
+      },
+      onFreeDrive: () => gameState.transitionTo('driving'),
+      onMainMenu: () => gameState.transitionTo('mainMenu'),
     },
-    onFreeDrive: () => gameState.transitionTo('driving'),
-    onMainMenu: () => gameState.transitionTo('mainMenu'),
-  });
+  );
   const perfOverlay = config.debug.showPerfOverlay ? new PerfOverlay(ui) : null;
 
-  events.on('MissionStateChanged', ({ current }) => {
+  /** Points the depot beacon and the test hook at the contract under way. */
+  const syncMissionView = (): void => {
     const target = missions.target;
     depots.setTarget(target?.depot.id ?? null, target?.kind);
+    root.dataset.missionState = missions.active?.state ?? 'none';
+  };
+  const refreshHq = (): void => {
+    if (hq.isOpen) {
+      hq.refresh();
+    }
+  };
+  events.on('MissionStateChanged', ({ current }) => {
+    syncMissionView();
     root.dataset.missionState = current;
   });
   events.on('CargoDamaged', () => hud.flashCargoDamage());
@@ -167,14 +254,42 @@ async function start(): Promise<void> {
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
-    result.showCompleted(content.missions.get(delivery.missionId), delivery);
+    result.showCompleted(content.missions.get(delivery.missionId), delivery, economy.credits);
   });
-  events.on('MissionFailed', ({ missionId, reason }) => {
+  events.on('MissionFailed', ({ missionId, reason, reputationLost }) => {
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
-    result.showFailed(content.missions.get(missionId), reason);
+    result.showFailed(content.missions.get(missionId), reason, reputationLost);
   });
+  events.on('CompanyLevelUp', ({ level }) => {
+    const name = strings.t(`company.levelName.${level}`);
+    if (result.isOpen) {
+      result.showLevelUp(level);
+    } else {
+      toasts.show(strings.t('toast.levelUp', { name }), 'success');
+    }
+  });
+  let warnedLowFuel = false;
+  events.on('FuelChanged', ({ liters }) => {
+    refreshHq();
+    if (!isDriving()) {
+      return;
+    }
+    if (liters <= 0) {
+      toasts.show(strings.t('toast.outOfFuel'), 'warning');
+    } else if (fuel.isLow && !warnedLowFuel) {
+      toasts.show(strings.t('toast.lowFuel'), 'warning');
+    }
+    warnedLowFuel = fuel.isLow;
+  });
+  events.on('VehicleDamaged', ({ damage: total, addedDamage }) => {
+    if (addedDamage >= 0.02) {
+      toasts.show(strings.t('toast.truckDamaged', { percent: strings.percent(total) }), 'warning');
+    }
+  });
+  events.on('MoneyChanged', refreshHq);
+  events.on('VehicleRepaired', refreshHq);
 
   const showState = (state: GameState): void => {
     root.dataset.gameState = state;
@@ -183,10 +298,16 @@ async function start(): Promise<void> {
     hud.visible = drivingNow;
     pauseMenu.buttonVisible = drivingNow;
     mainMenu.visible = state === 'mainMenu';
+    if (state === 'mainMenu') {
+      mainMenu.update(session.hasSavedGame(), menuMessage());
+    }
     if (state === 'companyHq') {
-      hq.show(missions.jobBoard());
+      hq.show();
     } else {
       hq.hide();
+    }
+    if (!drivingNow) {
+      toasts.clear();
     }
     cameraRig.showcase = !drivingNow;
     truck.setCabinView(drivingNow && cameraRig.currentMode === 'cabin');
@@ -201,6 +322,14 @@ async function start(): Promise<void> {
   });
   root.dataset.missionState = 'none';
   showState(gameState.current);
+
+  // Closing or hiding the tab keeps the latest state.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      session.save();
+    }
+  });
+  window.addEventListener('pagehide', () => session.save());
 
   if (config.debug.showPerfOverlay) {
     // Debug: T parks the truck in the bay the mission needs next.
@@ -232,6 +361,8 @@ async function start(): Promise<void> {
         combineVehicleInputs(driverInput, keyboard.state, touch.state);
         driving.step(stepSeconds, driverInput);
         missions.update(stepSeconds);
+        fuel.update();
+        session.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const simulating = isDriving() && !paused;
@@ -244,8 +375,10 @@ async function start(): Promise<void> {
         environment.update(renderHost.camera.position);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
+        toasts.update(deltaSeconds);
         renderHost.render();
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
+        touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
         perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
       },
       onError: (error) => {

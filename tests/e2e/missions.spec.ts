@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openCompanyHq, openMainMenu, watchForProblems } from './support';
+import { foundCompany, openCompanyHq, openMainMenu, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
 
@@ -22,10 +22,14 @@ test('boots into the main menu and opens the job board', async ({ page }) => {
 
   await expect(page.locator('.main-menu__logo')).toBeVisible();
   await expect(page.locator('.touch-controls')).toBeHidden();
-  await page.locator('[data-action="play"]').click();
+  await expect(page.locator('[data-action="continue-game"]')).toBeHidden(); // Nothing saved yet.
+  await foundCompany(page, 'Kuzey Lojistik');
 
-  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(page.locator('.hq__company-name')).toHaveText('Kuzey Lojistik');
+  await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
+  await expect(page.locator('.hq__level')).toHaveText('Level 1 · Rookie');
   await expect(page.locator('.job-card')).toHaveCount(10);
+  await expect(page.locator('.job-card.is-locked')).toHaveCount(6);
   const first = page.locator('.job-card').first();
   await expect(first.locator('.job-card__title')).toHaveText('First Package');
   await expect(first.locator('.job-card__route')).toHaveText('Yeniliman → Demirkent');
@@ -37,7 +41,7 @@ test('speaks Turkish when asked to', async ({ page }) => {
   await openMainMenu(page, '?lang=tr');
 
   await expect(html(page)).toHaveAttribute('lang', 'tr');
-  await expect(page.locator('[data-action="play"]')).toHaveText('Oyna');
+  await expect(page.locator('[data-action="new-company"]')).toHaveText('Yeni şirket');
 });
 
 test('delivers a contract from the pickup bay to the delivery bay', async ({ page }, testInfo) => {
@@ -67,11 +71,15 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(result).toBeVisible({ timeout: 15_000 });
   await expect(html(page)).toHaveAttribute('data-mission-state', 'completed');
   await expect(result.locator('.panel__title')).toHaveText('Delivered!');
-  await expect(result.locator('.result-dialog__line.is-total dd')).toContainText('credits');
+  const total = Number((await result.locator('.result-dialog__line.is-total dd').textContent())!.replace(/\D/g, ''));
+  expect(total).toBeGreaterThan(900);
+  await expect(result.locator('.result-dialog__line.is-progress').first()).toContainText('XP');
+  await expect(result.locator('.result-dialog__line').last()).toContainText(`${(5000 + total).toLocaleString('en-GB')} credits`);
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
 
   await result.locator('[data-action="continue"]').click();
   await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
   await expect(page.locator('.job-card')).toHaveCount(10);
   expect(problems).toEqual([]);
 });
@@ -149,3 +157,60 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
     expect(await truncated('.mission-hud__hint'), `${size.width}×${size.height}: stop hint`).toBe(false);
   }
 });
+
+test('continues the saved company after the page reloads', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openCompanyHq(page, '?lang=en');
+  await takeContract(page, 'first_package');
+  await page.locator('[data-action="pause"]').click();
+  await page.locator('.pause-menu [data-action="abandon"]').click();
+  await page.locator('.result-dialog [data-action="continue"]').click();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+
+  await page.reload();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
+  await page.locator('[data-action="continue-game"]').click();
+
+  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(page.locator('.hq__company-name')).toHaveText('Test Lojistik');
+  await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
+  expect(problems).toEqual([]);
+});
+
+test('checks the company name before founding it', async ({ page }) => {
+  await openMainMenu(page, '?lang=en');
+  await page.locator('[data-action="new-company"]').click();
+  await page.locator('.new-company__input').fill(' ');
+  await page.locator('[data-action="start-company"]').click();
+
+  await expect(page.locator('.new-company__error')).toHaveText('Use at least 2 characters.');
+  await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
+
+  // Typing W, A, S, D and spaces must not drive or pause anything.
+  await page.locator('.new-company__input').fill('');
+  await page.locator('.new-company__input').pressSequentially('Wasd Paws');
+  await expect(page.locator('.new-company__input')).toHaveValue('Wasd Paws');
+});
+
+test('burns fuel while driving and refuels at the HQ', async ({ page }) => {
+  await openCompanyHq(page, '?lang=en');
+  await expect(page.locator('[data-action="refuel"]')).toHaveText('Tank full');
+  await expect(page.locator('[data-action="refuel"]')).toBeDisabled();
+
+  await page.locator('[data-action="free-drive"]').click();
+  await page.keyboard.down('ArrowUp');
+  await expect
+    .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
+    .toBeLessThan(100);
+  await page.keyboard.up('ArrowUp');
+  await page.locator('[data-action="pause"]').click();
+  await page.locator('.pause-menu [data-action="company-hq"]').click();
+
+  const refuel = page.locator('[data-action="refuel"]');
+  await expect(refuel).toBeEnabled();
+  await expect(refuel).toContainText('Refuel');
+  await refuel.click();
+  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(refuel).toHaveText('Tank full');
+});
+
