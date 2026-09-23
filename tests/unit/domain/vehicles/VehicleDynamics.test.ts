@@ -150,6 +150,41 @@ describe('VehicleDynamics', () => {
     expect(loadedTime).toBeGreaterThan(emptyTime * 1.3);
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -500])('treats a cargo mass of %s kg as no cargo', (cargoMassKg) => {
+    const { dynamics, state } = setup(cargoMassKg);
+
+    drive(dynamics, state, input({ throttle: 1 }), 2);
+
+    expect(dynamics.totalMassKg).toBe(truck.body.massKg);
+    expect(Number.isFinite(state.x) && Number.isFinite(state.z) && Number.isFinite(state.speed)).toBe(true);
+    expect(state.speed).toBeGreaterThan(0);
+  });
+
+  it.each([0.02, 0.05, 0.08, 0.1, 0.12, 0.2, 0.5])(
+    'never sits on the rev limiter in first gear with the gas pedal %s of the way down',
+    (throttle) => {
+      const { dynamics, state } = setup();
+
+      drive(dynamics, state, input({ throttle }), 60);
+
+      expect(state.gear === 1 && state.engineRpm >= truck.powertrain.maxRpm).toBe(false);
+    },
+  );
+
+  it('treats light pedal pressure (up to 10%) as released: no creeping, full engine braking', () => {
+    const creeping = setup();
+    drive(creeping.dynamics, creeping.state, input({ throttle: 0.08 }), 10);
+    expect(creeping.state.speed).toBe(0);
+
+    const rolling = setup();
+    const coasting = setup();
+    drive(rolling.dynamics, rolling.state, input({ throttle: 1 }), 10);
+    drive(coasting.dynamics, coasting.state, input({ throttle: 1 }), 10);
+    drive(rolling.dynamics, rolling.state, input({ throttle: 0.08 }), 3);
+    drive(coasting.dynamics, coasting.state, input(), 3);
+    expect(rolling.state.speed).toBe(coasting.state.speed);
+  });
+
   it('is slower on grass than on asphalt', () => {
     const road = setup();
     const field = setup();

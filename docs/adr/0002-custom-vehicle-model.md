@@ -25,7 +25,7 @@ Implement the truck as a deterministic model in plain TypeScript, in the engine-
   - brakes and grip-limited traction;
   - brake-to-reverse;
   - understeer at the truck's cornering limit (`maxLateralAccelerationG`).
-- `src/domain/world/DrivingWorld.ts` handles surfaces (asphalt/grass) and collisions with trees, buildings and the map edge. It pushes the truck out of obstacles and removes speed into them.
+- `src/domain/world/DrivingWorld.ts` handles surfaces (asphalt/grass) and collisions with trees, buildings and the map edge. It pushes the truck out of obstacles and removes the speed that went into them. A glancing contact turns the truck along the obstacle, because a truck that can only move where it points would otherwise stick to the wall.
 - `src/systems/driving/DrivingService.ts` runs it at the fixed 60 Hz step and publishes `VehicleCollided`.
 
 ## Consequences

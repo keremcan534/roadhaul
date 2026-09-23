@@ -1,5 +1,15 @@
 import { expect, test } from '@playwright/test';
-import { centreOf, openGame, shownSpeed, waitForFrames, watchForProblems, wheelRotation } from './support';
+import {
+  centreOf,
+  openGame,
+  sceneScreenshot,
+  shownHeading,
+  shownSpeed,
+  turnWheel,
+  waitForFrames,
+  watchForProblems,
+  wheelRotation,
+} from './support';
 
 test('boots straight into driving with the touch controls on screen', async ({ page }) => {
   const problems = watchForProblems(page);
@@ -20,15 +30,14 @@ test('boots straight into driving with the touch controls on screen', async ({ p
 test('drives forward with the keyboard while the view follows the truck', async ({ page }, testInfo) => {
   const problems = watchForProblems(page);
   await openGame(page);
-  const canvas = page.locator('#game-canvas');
   await waitForFrames(page, 5);
-  const before = await canvas.screenshot();
+  const before = await sceneScreenshot(page);
 
   await page.keyboard.down('ArrowUp');
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(20);
   await page.keyboard.up('ArrowUp');
 
-  const after = await canvas.screenshot();
+  const after = await sceneScreenshot(page);
   expect(before.equals(after), 'the view did not change while driving').toBe(false);
   await testInfo.attach('driving', { body: after, contentType: 'image/png' });
   expect(problems).toEqual([]);
@@ -58,16 +67,8 @@ test('drives with the on-screen gas pedal and steering wheel', async ({ page }) 
   await page.mouse.up();
   await expect(page.locator('.pedal--gas')).not.toHaveClass(/is-pressed/);
 
-  // Drag the wheel a quarter turn clockwise, from the top of the rim to its right side.
-  const wheel = await centreOf(page, '.steering-wheel');
-  const box = await page.locator('.steering-wheel').boundingBox();
-  const radius = (box?.width ?? 100) * 0.42;
-  await page.mouse.move(wheel.x, wheel.y - radius);
-  await page.mouse.down();
-  for (let step = 1; step <= 10; step++) {
-    const angle = -Math.PI / 2 + (step / 10) * (Math.PI / 2);
-    await page.mouse.move(wheel.x + Math.cos(angle) * radius, wheel.y + Math.sin(angle) * radius);
-  }
+  // A quarter turn clockwise, from the top of the rim to its right side; the wheel re-centres when let go.
+  await turnWheel(page, Math.PI / 2);
   await expect.poll(() => wheelRotation(page)).toBeGreaterThan(1.4);
   await page.mouse.up();
   await expect.poll(() => wheelRotation(page), { timeout: 5_000 }).toBeLessThan(0.05);
@@ -75,16 +76,51 @@ test('drives with the on-screen gas pedal and steering wheel', async ({ page }) 
   expect(problems).toEqual([]);
 });
 
+test('steers with the arrow keys: right turns clockwise, left anticlockwise', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page, '?debug');
+  await page.keyboard.down('ArrowUp');
+  await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
+
+  // Seen from above, turning right lowers the heading and turning left raises it.
+  for (const [key, direction] of [
+    ['ArrowRight', -1],
+    ['ArrowLeft', 1],
+  ] as const) {
+    const before = await shownHeading(page);
+    await page.keyboard.down(key);
+    await expect.poll(async () => direction * ((await shownHeading(page)) - before), { timeout: 10_000 }).toBeGreaterThan(15);
+    await page.keyboard.up(key);
+  }
+
+  await page.keyboard.up('ArrowUp');
+  expect(problems).toEqual([]);
+});
+
+test('turns the truck right when the on-screen wheel turns clockwise', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page, '?debug');
+  await page.keyboard.down('ArrowUp'); // Gas from the keyboard, steering from the touch wheel.
+  await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
+  const before = await shownHeading(page);
+
+  await turnWheel(page, Math.PI / 2);
+  await expect.poll(async () => before - (await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(15);
+
+  await page.mouse.up();
+  await page.keyboard.up('ArrowUp');
+  expect(problems).toEqual([]);
+});
+
 test('switches between the chase and cabin cameras', async ({ page }) => {
   const problems = watchForProblems(page);
   await openGame(page);
-  const canvas = page.locator('#game-canvas');
   await waitForFrames(page, 5);
-  const chase = await canvas.screenshot();
+  const chase = await sceneScreenshot(page);
 
   await page.locator('.camera-button').click();
   await waitForFrames(page, 5);
-  const cabin = await canvas.screenshot();
+  const cabin = await sceneScreenshot(page);
   await page.locator('.camera-button').click();
 
   expect(chase.equals(cabin), 'the camera did not change').toBe(false);

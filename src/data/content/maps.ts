@@ -1,7 +1,7 @@
 import type { MapDefinition } from '../definitions/MapDefinition';
 
 /**
- * The first drivable map (roadmap step 08): a ~2.6 km closed test road with
+ * The first drivable map (roadmap step 08): a ~2.4 km closed test road with
  * long sweepers, a chicane and a tight hairpin that needs braking, plus a
  * small depot beside the start. The 3-city map arrives in step 21.
  */

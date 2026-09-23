@@ -53,6 +53,9 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
   if (validator.check(Array.isArray(map.buildings), `${path}.buildings`, 'must be a list')) {
     map.buildings.forEach((building, index) => {
       const buildingPath = `${path}.buildings[${index}]`;
+      if (!validator.check(typeof building === 'object' && building !== null, buildingPath, 'must be an object')) {
+        return;
+      }
       validator.positiveNumber(building.widthMeters, `${buildingPath}.widthMeters`);
       validator.positiveNumber(building.depthMeters, `${buildingPath}.depthMeters`);
       validator.positiveNumber(building.heightMeters, `${buildingPath}.heightMeters`);
@@ -81,6 +84,9 @@ function validateRoad(
   validator: Validator,
   inside: (x: number, z: number) => boolean,
 ): void {
+  if (!validator.check(typeof road === 'object' && road !== null, path, 'must be an object')) {
+    return;
+  }
   validator.id(road.id, `${path}.id`);
   validator.positiveNumber(road.widthMeters, `${path}.widthMeters`);
   validator.boolean(road.closed, `${path}.closed`);

@@ -35,6 +35,12 @@ describe('validateMapDefinition', () => {
     ).toEqual(['map.roads[0].controlPoints']);
   });
 
+  it('reports missing roads and buildings instead of crashing', () => {
+    const map = mapFixture({ roads: [null], buildings: [undefined] } as unknown as Partial<MapDefinition>);
+
+    expect(issuePaths(map)).toEqual(['map.roads[0]', 'map.buildings[0]']);
+  });
+
   it('keeps roads, buildings and the spawn inside the map', () => {
     const map = mapFixture({
       roads: [

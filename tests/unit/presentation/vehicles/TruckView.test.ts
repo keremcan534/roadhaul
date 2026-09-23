@@ -1,7 +1,8 @@
-import { InstancedMesh, Matrix4, Quaternion, Scene, Vector3 } from 'three';
+import { InstancedMesh, Matrix4, Mesh, PerspectiveCamera, Quaternion, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
+import { CameraRig } from '../../../../src/presentation/cameras/CameraRig';
 import { TruckView } from '../../../../src/presentation/vehicles/TruckView';
 import { gpuResources, watchDisposal } from '../../../support/threeResources';
 
@@ -91,6 +92,46 @@ describe('TruckView', () => {
 
     view.setCabinView(false);
     expect(visible()).toEqual(outside);
+  });
+
+  it('keeps the cabin dashboard steady in front of the driver while the body leans', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const chaseObjects = new Set<unknown>();
+    scene.traverseVisible((object) => chaseObjects.add(object));
+    view.setCabinView(true);
+    let dashboard: Mesh | undefined;
+    scene.traverseVisible((object) => {
+      if (!chaseObjects.has(object) && object instanceof Mesh) {
+        dashboard = object;
+      }
+    });
+    const camera = new PerspectiveCamera(72, 2, 0.1, 500);
+    const rig = new CameraRig(camera, truck.body);
+    rig.toggleMode();
+    const pose = { x: 0, z: 0, heading: 0 };
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    /** Screen height (-1 bottom … 1 top) of the dashboard's top front edge, as the driver sees it. */
+    const dashboardTop = (): number => {
+      rig.update(pose, state.speed, 1 / 60);
+      scene.updateMatrixWorld(true);
+      camera.updateMatrixWorld(true);
+      const geometry = dashboard!.geometry;
+      geometry.computeBoundingBox();
+      const edge = new Vector3(0, geometry.boundingBox!.max.y, geometry.boundingBox!.max.z);
+      return dashboard!.localToWorld(edge).project(camera).y;
+    };
+    view.update(pose, state, 1 / 60);
+    const atRest = dashboardTop();
+
+    // Full throttle, then full braking: the body pitches back and forth by several degrees.
+    for (const acceleration of [3, -6]) {
+      state.longitudinalAcceleration = acceleration;
+      for (let frame = 0; frame < 120; frame++) {
+        view.update(pose, state, 1 / 60);
+      }
+      expect(dashboardTop()).toBeCloseTo(atRest, 3);
+    }
   });
 
   it('releases every GPU resource on dispose', () => {

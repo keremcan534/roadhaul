@@ -2,7 +2,7 @@
 
 Mobile-first logistics and truck simulation game: take a contract, load the cargo, drive, deliver, earn credits, upgrade your truck and grow your company.
 
-**Status:** Phase 1 (driving prototype). You can drive the first truck around a 2.6 km test track, on a phone or a desktop. Cargo and missions come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+**Status:** Phase 1 (driving prototype). You can drive the first truck around a 2.4 km test track, on a phone or a desktop. Cargo and missions come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
 
 **Controls:**
 - **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button switches between the chase and cabin cameras.
@@ -24,7 +24,7 @@ npm ci
 npm run dev
 ```
 
-Open the printed URL. To try it on a phone on the same Wi-Fi, run `npm run dev -- --host` and open the "Network" URL on the phone. Append `?debug` to the URL to see FPS, draw calls and triangles.
+Open the printed URL. To try it on a phone on the same Wi-Fi, run `npm run dev -- --host` and open the "Network" URL on the phone. Append `?debug` to the URL to see FPS, draw calls, triangles and the truck's position and heading.
 
 ## Scripts
 

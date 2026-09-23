@@ -145,8 +145,8 @@ touch controls (ui) ───────┘                              │
   - trees scattered from a seed;
   - buildings and the map edge.
 
-  Collisions correct the position per contact. Speed changes once per step, using the hardest contact.
-- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits `VehicleCollided` for impacts of 1.5 m/s or more. Presentation reads its state and never writes it.
+  Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two.
+- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. Presentation reads its state and never writes it.
 - **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C) and touch controls (steering wheel, gas, brake, camera button) are merged every fixed step.
 
 ## 9. Data and content
@@ -174,9 +174,9 @@ Central tuning values (fixed step, pixel-ratio cap, starting credits, later fuel
 
 - `RenderHost` owns the `WebGLRenderer`, the scene and the camera. Views add objects to the scene and dispose everything they create.
 - **Defaults for low/mid Android:** pixel ratio capped at 1.5, MSAA off, Lambert (or unlit) materials, no real-time shadows (bake lighting into vertex colours or textures instead), fog to hide the far plane.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. The test track with the truck costs about 12–15 draw calls and 15k triangles.
+- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. At the spawn point the test track and truck cost 16 draw calls and about 14.5k triangles in the chase view (11 draw calls from the cabin), as the `?debug` overlay shows.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
-- The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio.
+- The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
 
 ## 12. Testing
 

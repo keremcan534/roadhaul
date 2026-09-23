@@ -14,7 +14,7 @@ export interface TouchControlsOptions {
  * On-screen driving controls for phones (spec §30: steering wheel, gas,
  * brake), plus a camera button and a speed/gear readout. It is input only:
  * it writes `state`, which the entry point merges with the keyboard every
- * fixed step. Each control tracks its own pointer, so steering and pedals
+ * fixed step. Each control tracks its own fingers, so steering and pedals
  * work at the same time with two thumbs.
  */
 export class TouchControls {
@@ -166,9 +166,10 @@ export class TouchControls {
   }
 
   private bindPedal(pedal: HTMLButtonElement, setPressed: (pressed: boolean) => void): void {
-    let pointer: number | null = null;
+    // Every finger on the pedal: it stays down until the last one lifts.
+    const pointers = new Set<number>();
     const release = (): void => {
-      pointer = null;
+      pointers.clear();
       pedal.classList.remove('is-pressed');
       setPressed(false);
     };
@@ -176,14 +177,14 @@ export class TouchControls {
 
     pedal.addEventListener('pointerdown', (event) => {
       event.preventDefault();
-      pointer = event.pointerId;
+      pointers.add(event.pointerId);
       pedal.classList.add('is-pressed');
       setPressed(true);
       capturePointer(pedal, event.pointerId);
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
       pedal.addEventListener(type, (event) => {
-        if (event.pointerId === pointer) {
+        if (pointers.delete(event.pointerId) && pointers.size === 0) {
           release();
         }
       });

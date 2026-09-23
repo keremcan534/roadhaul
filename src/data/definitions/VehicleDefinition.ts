@@ -115,7 +115,10 @@ function validatePowertrain(powertrain: VehiclePowertrain, path: string, validat
   validator.positiveNumber(powertrain.maxPowerKw, `${path}.maxPowerKw`);
   const rpms = [powertrain.idleRpm, powertrain.shiftDownRpm, powertrain.shiftUpRpm, powertrain.maxRpm];
   const rpmNames = ['idleRpm', 'shiftDownRpm', 'shiftUpRpm', 'maxRpm'];
-  const rpmsPositive = rpms.every((rpm, index) => validator.positiveNumber(rpm, `${path}.${rpmNames[index]}`));
+  // map() before every(): check all four, so every broken one is reported.
+  const rpmsPositive = rpms
+    .map((rpm, index) => validator.positiveNumber(rpm, `${path}.${rpmNames[index]}`))
+    .every(Boolean);
   const rpmsValid =
     rpmsPositive &&
     validator.check(

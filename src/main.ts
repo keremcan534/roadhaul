@@ -94,7 +94,7 @@ async function start(): Promise<void> {
         cameraRig.update(pose, vehicle.speed, deltaSeconds);
         renderHost.render();
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
-        perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio);
+        perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
       },
       onError: (error) => {
         logger.error('The game loop stopped.', error);

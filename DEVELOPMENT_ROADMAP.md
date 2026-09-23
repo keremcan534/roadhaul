@@ -21,7 +21,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 05 | Vehicle controller | 1 | ✅ | Deterministic truck model (ADR 0002): gearbox, governor, brakes, brake-to-reverse, understeer; keyboard |
 | 06 | Camera | 1 | ✅ | Chase + cabin cameras |
 | 07 | Mobile controls | 1 | ✅ | On-screen steering wheel, gas, brake, camera button, speed/gear readout |
-| 08 | Small test road | 1 | ✅ | 2.6 km data-driven loop: asphalt/grass, seeded trees, depot buildings, collisions |
+| 08 | Small test road | 1 | ✅ | 2.4 km data-driven loop: asphalt/grass, seeded trees, depot buildings, collisions |
 | 09 | Cargo data | 2 | ⬜ **next** | 6–8 cargo types |
 | 10 | Pickup zone | 2 | ⬜ | "Stop to load" |
 | 11 | Delivery zone | 2 | ⬜ | "Stop to unload" |

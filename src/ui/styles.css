@@ -39,7 +39,7 @@ body {
   border-radius: 4px;
   background: var(--rh-overlay-bg);
   font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: nowrap;
+  white-space: pre;
   pointer-events: none;
 }
 
@@ -163,6 +163,13 @@ body {
   transform: translateX(-50%);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+}
+
+/* Upright phones: the wheel and pedals fill the bottom row, so the readout sits above them. */
+@media (orientation: portrait) {
+  .dashboard {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + var(--rh-wheel-size) + 12px);
+  }
 }
 
 .dashboard__speed {
