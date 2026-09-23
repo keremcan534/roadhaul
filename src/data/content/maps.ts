@@ -14,6 +14,7 @@ export const MAPS: readonly MapDefinition[] = [
     roads: [
       {
         id: 'test_loop',
+        kind: 'rural',
         widthMeters: 10,
         closed: true,
         controlPoints: [

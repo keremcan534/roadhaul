@@ -3,9 +3,18 @@ import type { Validator } from '../../core/validation/Validator';
 /** A point on the ground plane: [x, z] in meters. */
 export type Point2 = readonly [x: number, z: number];
 
-/** A road: a smooth curve through its control points (spec §20 road types come later). */
+/** Spec §20's road types: city streets, a ring road, the highway and country roads. */
+export const ROAD_KINDS = ['street', 'ringRoad', 'highway', 'rural'] as const;
+export type RoadKind = (typeof ROAD_KINDS)[number];
+
+/**
+ * A road: a smooth curve through its control points. Roads meet where they
+ * share a control point (a junction); a road ending on another road's control
+ * point joins it there.
+ */
 export interface RoadDefinition {
   readonly id: string;
+  readonly kind: RoadKind;
   readonly widthMeters: number;
   /** A closed road loops back from the last point to the first. */
   readonly closed: boolean;
@@ -117,6 +126,7 @@ function validateRoad(
     return;
   }
   validator.id(road.id, `${path}.id`);
+  validator.oneOf(road.kind, ROAD_KINDS, `${path}.kind`);
   validator.positiveNumber(road.widthMeters, `${path}.widthMeters`);
   validator.boolean(road.closed, `${path}.closed`);
   const points = road.controlPoints;

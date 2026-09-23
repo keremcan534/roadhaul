@@ -25,7 +25,7 @@ import { deliveryReputation, deliveryXp, FAILURE_REPUTATION_LOSS } from '../../d
 import { calculateMissionReward, missionBasePay } from '../../domain/missions/missionReward';
 import type { ActiveMissionSaveData } from '../../domain/save/SaveGameData';
 import { MAX_SAVING } from '../../domain/vehicles/upgradeBonuses';
-import { createRouteGuidance, routeAlongRoads, type RouteGuidance } from '../../domain/world/roadRoute';
+import { createRouteGuidance, type RouteGuidance } from '../../domain/world/roadRoute';
 import type { DrivingService } from '../driving/DrivingService';
 import type { GameEvents } from '../GameEvents';
 
@@ -209,7 +209,7 @@ export class MissionService {
       return false;
     }
     const truck = this.driving.vehicle;
-    routeAlongRoads(this.driving.world.roads, truck.x, truck.z, target.depot.bay.x, target.depot.bay.z, out);
+    this.driving.world.network.guide(truck.x, truck.z, target.depot.bay.x, target.depot.bay.z, out);
     return true;
   }
 
@@ -266,8 +266,7 @@ export class MissionService {
     if (originDepot === undefined || destinationDepot === undefined) {
       return null;
     }
-    const route = routeAlongRoads(
-      world.roads,
+    const route = world.network.guide(
       originDepot.bay.x,
       originDepot.bay.z,
       destinationDepot.bay.x,

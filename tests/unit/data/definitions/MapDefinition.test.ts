@@ -6,6 +6,7 @@ import {
   validateMapDefinition,
   type DepotDefinition,
   type MapDefinition,
+  type RoadKind,
 } from '../../../../src/data/definitions/MapDefinition';
 import { mapFixture } from '../../../support/contentFixtures';
 
@@ -28,6 +29,7 @@ describe('validateMapDefinition', () => {
           roads: [
             {
               id: 'too_short',
+              kind: 'street',
               widthMeters: 8,
               closed: true,
               controlPoints: [
@@ -41,6 +43,12 @@ describe('validateMapDefinition', () => {
     ).toEqual(['map.roads[0].controlPoints']);
   });
 
+  it('requires every road to be one of the spec §20 kinds', () => {
+    const [road] = mapFixture().roads;
+
+    expect(issuePaths(mapFixture({ roads: [{ ...road!, kind: 'motorway' as RoadKind }] }))).toEqual(['map.roads[0].kind']);
+  });
+
   it('reports missing roads and buildings instead of crashing', () => {
     const map = mapFixture({ roads: [null], buildings: [undefined] } as unknown as Partial<MapDefinition>);
 
@@ -52,6 +60,7 @@ describe('validateMapDefinition', () => {
       roads: [
         {
           id: 'escape',
+          kind: 'street',
           widthMeters: 8,
           closed: false,
           controlPoints: [

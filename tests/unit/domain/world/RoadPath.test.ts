@@ -4,6 +4,7 @@ import { RoadPath } from '../../../../src/domain/world/RoadPath';
 
 const straight: RoadDefinition = {
   id: 'straight',
+  kind: 'street',
   widthMeters: 10,
   closed: false,
   controlPoints: [
@@ -14,6 +15,7 @@ const straight: RoadDefinition = {
 
 const loop: RoadDefinition = {
   id: 'loop',
+  kind: 'street',
   widthMeters: 8,
   closed: true,
   controlPoints: [

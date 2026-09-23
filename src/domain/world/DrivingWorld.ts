@@ -7,6 +7,7 @@ import {
 } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
+import { RoadNetwork } from './RoadNetwork';
 import { RoadPath } from './RoadPath';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 
@@ -58,6 +59,8 @@ export class DrivingWorld {
   readonly id: string;
   readonly halfSizeMeters: number;
   readonly roads: readonly RoadPath[];
+  /** The roads joined at their junctions, for routes by road. */
+  readonly network: RoadNetwork;
   readonly buildings: readonly BuildingObstacle[];
   readonly trees: readonly TreeObstacle[];
   /** City depots: paved yards (driven like asphalt) with a loading bay each. */
@@ -79,6 +82,7 @@ export class DrivingWorld {
     this.id = map.id;
     this.halfSizeMeters = map.halfSizeMeters;
     this.roads = map.roads.map((road) => new RoadPath(road));
+    this.network = new RoadNetwork(this.roads);
     this.buildings = map.buildings.map((building) => ({
       minX: building.x - building.widthMeters / 2,
       maxX: building.x + building.widthMeters / 2,

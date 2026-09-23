@@ -100,7 +100,7 @@ describe('DrivingService', () => {
   it.each([5, 10, 20, 35])('reports a %i° scrape along a wall once and lets the truck drive on', (angleDegrees) => {
     // Full throttle from x = 184, angled toward the map's east edge (x = 200), on a road that reaches the edge.
     const { driving, collisions } = setup({
-      roads: [{ id: 'edge_road', widthMeters: 20, closed: false, controlPoints: [[190, -195], [190, 195]] }],
+      roads: [{ id: 'edge_road', kind: 'street', widthMeters: 20, closed: false, controlPoints: [[190, -195], [190, 195]] }],
       spawn: { x: 184, z: -190, headingDegrees: angleDegrees },
     });
     driving.start('test_truck', 'test_map');

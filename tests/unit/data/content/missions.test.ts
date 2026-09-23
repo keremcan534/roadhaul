@@ -3,7 +3,7 @@ import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import { GAME_CONTENT } from '../../../../src/data/content';
 import { MISSION_DIFFICULTIES, vehicleCanHaul } from '../../../../src/data/definitions/MissionDefinition';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
-import { createRouteGuidance, routeAlongRoads } from '../../../../src/domain/world/roadRoute';
+import { createRouteGuidance } from '../../../../src/domain/world/roadRoute';
 
 const { missions, vehicles, cargo, maps } = GAME_CONTENT;
 const cargoOf = (cargoId: string) => cargo.find((candidate) => candidate.id === cargoId)!;
@@ -55,7 +55,7 @@ describe('the shipped missions', () => {
     for (const mission of missions) {
       const from = bayOf(mission.originCityId);
       const to = bayOf(mission.destinationCityId);
-      routeAlongRoads(world.roads, from.x, from.z, to.x, to.z, route);
+      world.network.guide(from.x, from.z, to.x, to.z, route);
       const averageKmh = (route.distanceMeters / mission.timeLimitSeconds) * 3.6;
 
       expect(averageKmh, mission.id).toBeLessThanOrEqual(fastestAverageKmh[mission.difficulty]);

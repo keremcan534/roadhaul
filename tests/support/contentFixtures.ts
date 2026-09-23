@@ -96,6 +96,7 @@ export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinitio
     roads: [
       {
         id: 'test_road',
+        kind: 'street',
         widthMeters: 10,
         closed: false,
         controlPoints: [
