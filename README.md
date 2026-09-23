@@ -2,7 +2,7 @@
 
 Mobile-first logistics and truck simulation game: take a contract, load the cargo, drive, deliver, earn credits, upgrade your truck and grow your company.
 
-**Status:** Phase 1 (driving prototype). You can drive the first truck around a 2.6 km test track, on a phone or a desktop. Cargo and missions come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
+**Status:** Phase 1 (driving prototype). You can drive the first truck around a 2.4 km test track, on a phone or a desktop. Cargo and missions come next (see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md)).
 
 **Controls:**
 - **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button switches between the chase and cabin cameras.

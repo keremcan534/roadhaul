@@ -33,13 +33,13 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | VehicleDefinition | data | `src/data/definitions/VehicleDefinition.ts` | Truck data: body, powertrain, handling; validated (no gearbox hunting) | Validator | none |
-| MapDefinition, test track | data | `src/data/definitions/MapDefinition.ts`, `src/data/content/maps.ts` | Roads, buildings, spawn, scenery seed; the 2.6 km `test_track` | Validator | none |
+| MapDefinition, test track | data | `src/data/definitions/MapDefinition.ts`, `src/data/content/maps.ts` | Roads, buildings, spawn, scenery seed; the 2.4 km `test_track` | Validator | none |
 | VehicleDynamics | domain | `src/domain/vehicles/VehicleDynamics.ts` | Deterministic truck model: drivetrain, gearbox, governor, brakes, reverse, understeer (ADR 0002) | VehicleDefinition | none |
 | VehicleInput, VehicleRuntimeState | domain | `src/domain/vehicles/` | Device-independent driver input; live truck state | none | none |
 | RoadPath | domain | `src/domain/world/RoadPath.ts` | Catmull-Rom centreline shared by driving and rendering | MapDefinition | none |
 | DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces, seeded trees, buildings, collisions, map edge | RoadPath, SeededRandom | none |
 | DrivingService | systems | `src/systems/driving/DrivingService.ts` | Owns the driven truck and world; steps them every fixed step | ContentCatalog, EventBus | emits `VehicleCollided` |
-| TrackView | presentation | `src/presentation/world/TrackView.ts` | Ground, road, markings, instanced trees and buildings (about 10 draw calls) | DrivingWorld, three | none |
+| TrackView | presentation | `src/presentation/world/TrackView.ts` | Ground, road, markings, instanced trees and buildings (7 draw calls) | DrivingWorld, three | none |
 | TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Truck mesh from body data; steering and rolling wheels; pitch and roll | VehicleDefinition, three | none |
 | CameraRig | presentation | `src/presentation/cameras/CameraRig.ts` | Chase and cabin cameras (spec §31) | three | none |
 | KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera) → `VehicleInput` | VehicleInput | none |

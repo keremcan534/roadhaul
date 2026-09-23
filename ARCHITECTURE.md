@@ -174,7 +174,7 @@ Central tuning values (fixed step, pixel-ratio cap, starting credits, later fuel
 
 - `RenderHost` owns the `WebGLRenderer`, the scene and the camera. Views add objects to the scene and dispose everything they create.
 - **Defaults for low/mid Android:** pixel ratio capped at 1.5, MSAA off, Lambert (or unlit) materials, no real-time shadows (bake lighting into vertex colours or textures instead), fog to hide the far plane.
-- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. The test track with the truck costs about 12–15 draw calls and 15k triangles.
+- **Budgets to validate on a real device (step 29):** at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. At the spawn point the test track and truck cost 16 draw calls and about 14.5k triangles in the chase view (11 draw calls from the cabin), as the `?debug` overlay shows.
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
 
