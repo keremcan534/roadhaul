@@ -74,7 +74,7 @@ flowchart TD
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
    3. validates the config against the content (for example, that the starting truck exists);
-   4. creates the `EventBus` and the services in dependency order: game state, driving, traffic, weather, economy, company, missions, navigation, damage, fuel, the garage and the upgrade shop, special events, saves and the game session (which subscribes last, so it saves state the others have already updated);
+   4. creates the `EventBus` and the services in dependency order: game state, driving, traffic, weather, economy, company, missions, navigation, damage, fuel, the garage and the upgrade shop, special events, the tutorial, saves and the game session (which subscribes last, so it saves state the others have already updated);
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
 3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `RestAreaView`, `TrafficView`, `GpsRouteView`, `RainView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
@@ -104,7 +104,8 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 - the garage: `VehiclePurchased`, `ActiveVehicleChanged`, `UpgradePurchased`;
 - the company: `CompanyProgressed`, `CompanyLevelUp`;
 - the weather: `WeatherChanged`;
-- special events: `EventProgressed`.
+- special events: `EventProgressed`;
+- the tutorial: `TutorialStepChanged`.
 
 Events join as their systems arrive.
 
@@ -186,6 +187,14 @@ Events (roadmap step 25, spec §22–23, §53) are data too, and reuse the contr
 - **`EventService`** (`src/systems/events`) listens to `MissionCompleted` after `EconomyService` and `CompanyService`: for every running event the company may join and the delivery qualifies for, it pays the bonus, advances the objective and, the first time the objective is met in a run, pays the reward (credits, and XP through `CompanyService.award`). It emits `EventProgressed`, which the result screen shows. Time comes from the injected `Clock`.
 - Progress belongs to a run: the save keeps each event's latest run, and a new run starts from nothing.
 
+### Tutorial
+
+The tutorial (roadmap step 26, spec §41) teaches by playing and never blocks anything.
+
+- **`tutorialStepAfter`** (`src/domain/tutorial`) is the whole flow: take a contract, drive to the pickup bay, deliver, buy an upgrade, done. A failed contract starts the drive over.
+- **`TutorialService`** (`src/systems/tutorial`) follows the game's events to move the steps on, and can be skipped. It emits `TutorialStepChanged`, on which the session saves.
+- **`TutorialHint`** (`src/ui/hud`) shows one short hint for the step, where the step is played: in the HQ above the list (in the flow, so it covers nothing), on the road under the mission HUD. `<html data-tutorial-step>` makes the control the hint is about glow, in CSS.
+
 ### Weather
 
 Weather (roadmap step 24, spec §38) is data: each `WeatherDefinition` says how likely and how long it is, what it does to play, and how it looks.
@@ -264,11 +273,12 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - since v2: the world (where the truck is parked), the contract under way, and statistics;
 - since v3: the upgrades fitted to each truck;
 - v4 has the same shape: the test track is retired, and saves on it move to the region's spawn;
-- since v5: the progress in each special event's latest run.
+- since v5: the progress in each special event's latest run;
+- since v6: the tutorial's step.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (5) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (6) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser (`platform/browser/browserStorage.ts`), memory in tests or when the browser forbids storage.
@@ -277,7 +287,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - **Corruption:** unreadable data is set aside and reported.
   - **Storage errors** (a full quota, private mode) come back as Results: the game never crashes because of a save.
 - **`GameSessionService`** (`src/systems/session`) is the company being played.
-  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, missions, events, the truck's position).
+  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, missions, events, the tutorial, the truck's position).
   - It saves after every delivery and failure; after each purchase and truck change, once what was bought is in place (`Refuelled`, `VehicleRepaired`, `VehiclePurchased`, `UpgradePurchased`, `ActiveVehicleChanged`, never on `MoneyChanged`); when the player leaves the road for a menu; and every 20 s of driving. The browser entry also saves when the tab hides or closes.
 
 ## 11. Rendering and the mobile performance budget

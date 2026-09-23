@@ -39,8 +39,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 23 | Navigation | 4 | ✅ | The route drawn on the road; the next turn, the distance by road and the arrival time on the HUD |
 | 24 | Weather | 4 | ✅ | Clear, cloudy, rain and night on a seeded schedule: sky, haze, light, clouds and rain change with it; lit windows, glowing lamps and headlights at night; wet roads grip less and traffic slows |
 | 25 | Events | 6 | ✅ | Express Week, Safe Driver and Heavy Cargo as data: a week every other week, a bonus on qualifying deliveries, a reward for the objective; an HQ tab; save v5 |
-| 26 | Tutorial | 7 | ⬜ **next** | First 10 minutes, taught by playing |
-| 27 | Optimization | 7 | ⬜ | Hit the device budgets (ARCHITECTURE.md §11) |
+| 26 | Tutorial | 7 | ✅ | The first contract and the first upgrade, taught by playing: one short hint at a time, the control it is about glows; skippable; save v6 |
+| 27 | Optimization | 7 | ⬜ **next** | Hit the device budgets (ARCHITECTURE.md §11) |
 | 28 | Android build | 8 | ⬜ | Capacitor app built in CI |
 | 29 | Device testing | 8 | ⬜ | Real low/mid Android phones |
 | 30 | MVP release candidate | 8 | ⬜ | Save migration check, crash handling, store assets |
@@ -114,11 +114,15 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Save v5 keeps the progress of each event's latest run; a new run starts from nothing.
 - The spec's random road events (§24: road works, traffic jams and the like) are not in yet.
 
-## Next step: 26 Tutorial
+### Phase 7 notes
+- Tutorial (step 26): a new company is walked through spec §41's first ten minutes by playing: take a contract, drive to the pickup bay (right pedal, the wheel, the blue line), deliver, then spend the pay on an upgrade. One short hint at a time, in the HQ above the list (so it never covers a button) or on the road under the mission HUD; the control it is about glows. A failed contract starts the drive over. Skip ends it for good.
+- TutorialService follows the game's events (MissionStateChanged, MissionCompleted, MissionFailed, UpgradePurchased); it never blocks the controls. Save v6 keeps the step; companies from older saves have played already and skip it.
+
+## Next step: 27 Optimization
 
 Suggested request:
 
-> Implement roadmap step 26 only. The first ten minutes (spec §41), taught by playing, with short hints instead of long texts: a new company is walked through its first contract (take it on the job board, drive to the pickup bay, load, deliver, get paid) and then to its first upgrade. A TutorialService in systems follows the game's events and knows the next step; the UI shows one short hint at a time and can be skipped. It runs once per company (saved, with a save version bump, migration and test) and never blocks the controls.
+> Implement roadmap step 27 only. Optimization (ARCHITECTURE.md §11 budgets, spec's performance rules): measure frame time, draw calls and triangles in the heaviest scenes (a busy junction at night in the rain, the HQ over the showcase) on a throttled low-end profile, then bring them within budget: an adaptive pixel ratio that drops when frames run long and recovers when they do not; quality presets (low, medium, high) picked automatically from the device and in a settings screen, scaling rain streaks, clouds, traffic and glows; and a check that per-frame code allocates nothing. Add a performance e2e that fails when the frame budget regresses.
 
 ## Infrastructure track
 

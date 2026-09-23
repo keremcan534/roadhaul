@@ -20,7 +20,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | ContentCatalog | data | `src/data/ContentCatalog.ts` | Validates content and cross-references; frozen id lookups | Definitions | none |
 | GameConfig | data | `src/data/config/GameConfig.ts` | Central tuning values + validation against content | ContentCatalog | none |
 | Company name rules | domain | `src/domain/company/companyName.ts` | Normalise and validate the player's company name | none | none |
-| SaveGameData | domain | `src/domain/save/` | Versioned save schema (v5), new-game state, migrations, validation of loaded saves | Definitions | none |
+| SaveGameData | domain | `src/domain/save/` | Versioned save schema (v6), new-game state, migrations, validation of loaded saves | Definitions | none |
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio, tone mapping, software-rendering fallback | three | none |
@@ -71,13 +71,13 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | CurrencyWallet, costs | domain | `src/domain/economy/` | Whole, non-negative credits; spending returns a Result; fuel and repair prices rounded up | none | none |
 | Fuel and damage rules | domain | `src/domain/vehicles/fuelConsumption.ts`, `vehicleDamage.ts` | Spec §17 fuel formula; spec §18 damage bands, impact damage, weakened engine and brakes | VehicleDefinition | none |
 | Company progression, delivery XP | domain | `src/domain/company/companyProgress.ts`, `src/domain/missions/missionProgress.ts` | Levels from XP (spec §14); XP and reputation for a delivery, reputation lost on failure | GameConfig | none |
-| Save migrations and validation | domain | `src/domain/save/saveMigrations.ts`, `validateSaveGameData.ts` | Upgrade old saves (v1 → … → v5), refuse newer ones, check every field and reference | ContentCatalog | none |
+| Save migrations and validation | domain | `src/domain/save/saveMigrations.ts`, `validateSaveGameData.ts` | Upgrade old saves (v1 → … → v6), refuse newer ones, check every field and reference | ContentCatalog | none |
 | EconomyService | systems | `src/systems/economy/EconomyService.ts` | The only owner of money (spec §13, §51): pays deliveries, spends, prices fuel and repairs | EventBus | listens `MissionCompleted`; emits `MoneyChanged` |
 | FuelService | systems | `src/systems/vehicles/FuelService.ts` | Burns fuel per fixed step; stalls an empty engine; refuels at the pump or on the road; emergency fuel; tank and consumption upgrades | DrivingService, DamageService, EconomyService | emits `FuelChanged`, `Refuelled` |
 | DamageService | systems | `src/systems/vehicles/DamageService.ts` | Truck damage from collisions (spec §18), performance penalty, paid repairs | DrivingService, EconomyService | listens `VehicleCollided`; emits `VehicleDamaged`, `VehicleRepaired` |
 | CompanyService | systems | `src/systems/company/CompanyService.ts` | Name, XP, level, reputation, statistics | EventBus, GameConfig | listens `MissionCompleted`, `MissionFailed`; emits `CompanyProgressed`, `CompanyLevelUp` |
 | SaveService | systems | `src/systems/save/SaveService.ts` | Versioned JSON saves (spec §32, §52): atomic write, backup, corruption handling, migrations | KeyValueStorage, ContentCatalog | none |
-| GameSessionService | systems | `src/systems/session/GameSessionService.ts` | New game or continue; hands each save section to its owner; autosaves | every Phase 3 service, DrivingService, MissionService, GarageService, EventService | listens to the mission, purchase, truck and state events to save |
+| GameSessionService | systems | `src/systems/session/GameSessionService.ts` | New game or continue; hands each save section to its owner; autosaves | every Phase 3 service, DrivingService, MissionService, GarageService, EventService, TutorialService | listens to the mission, purchase, truck, tutorial and state events to save |
 | NewCompanyDialog | ui | `src/ui/menus/NewCompanyDialog.ts` | Name the company (spec §41) | Strings | none |
 | Company HQ (finances, truck) | ui | `src/ui/hq/CompanyHq.ts` | Company card, truck card (refuel, repair), level-locked job board | Phase 3 services (read only) | none |
 | Toasts | ui | `src/ui/hud/Toasts.ts` | Short notices (level-up, fuel, damage, purchases, the weather turning, events) | none | none |
@@ -145,6 +145,14 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | EventService | systems | `src/systems/events/EventService.ts` | Counts deliveries toward the running events, pays bonuses and rewards (spec §22–23, §53); the save's event progress | ContentCatalog, CompanyService, EconomyService, Clock | listens `MissionCompleted`; emits `EventProgressed` |
 | HQ events tab | ui | `src/ui/hq/eventCards.ts`, `eventText.ts` | The events with their terms, bonus, progress, reward and time left; job cards mark contracts whose cargo counts | EventService (read only) | none |
 
+### Tutorial (Phase 7, roadmap step 26)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Tutorial steps | domain | `src/domain/tutorial/tutorialSteps.ts` | Spec §41's first ten minutes as steps, and what moves each on | none | none |
+| TutorialService | systems | `src/systems/tutorial/TutorialService.ts` | The step the company is on, followed through the game's events; skip; the save's step | EventBus | listens `MissionStateChanged`, `MissionCompleted`, `MissionFailed`, `UpgradePurchased`; emits `TutorialStepChanged` |
+| TutorialHint | ui | `src/ui/hud/TutorialHint.ts`, styles.css | One short hint (in the HQ above the list, on the road under the HUD) and a skip button; the control it is about glows | TutorialService (read only) | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -153,7 +161,6 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
-| TutorialService | systems, ui | ⬜ 26 | Learn-by-playing first 10 minutes (spec §41) |
 | AudioService | presentation | ⬜ Phase 7 | Engine, brake, horn, ambience, UI sounds (spec §37) |
 | Settings, more languages | ui | ⬜ Phase 7 | A settings screen (language, sound, quality); more string tables |
 | Android packaging | tooling | ⬜ 28 | Capacitor app built in CI |
