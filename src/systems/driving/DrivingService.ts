@@ -16,6 +16,23 @@ export interface VehiclePose {
   heading: number;
 }
 
+/**
+ * Writes the pose `alpha` (0..1) of the way from `previous` to `current` into
+ * `out`. Rendering uses it between fixed steps. Headings are never wrapped,
+ * so interpolating them linearly is safe. Allocation-free.
+ */
+export function interpolatePose(
+  out: VehiclePose,
+  previous: Readonly<VehiclePose>,
+  current: Readonly<VehiclePose>,
+  alpha: number,
+): VehiclePose {
+  out.x = previous.x + (current.x - previous.x) * alpha;
+  out.z = previous.z + (current.z - previous.z) * alpha;
+  out.heading = previous.heading + (current.heading - previous.heading) * alpha;
+  return out;
+}
+
 /** Impacts slower than this (m/s, about 5 km/h) are scrapes, not collisions. */
 export const COLLISION_EVENT_MIN_SPEED = 1.5;
 

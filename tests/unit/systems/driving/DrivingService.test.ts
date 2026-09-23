@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../../../src/core/events/EventBus';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
-import { COLLISION_EVENT_MIN_SPEED, DrivingService } from '../../../../src/systems/driving/DrivingService';
+import {
+  COLLISION_EVENT_MIN_SPEED,
+  DrivingService,
+  interpolatePose,
+} from '../../../../src/systems/driving/DrivingService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { contentFixture, mapFixture } from '../../../support/contentFixtures';
 import { input, STEP_SECONDS } from '../../../support/driving';
@@ -92,6 +96,15 @@ describe('DrivingService', () => {
     expect(() => driving.start('ghost_truck', 'test_map')).toThrow('Unknown vehicle "ghost_truck".');
     expect(() => driving.start('test_truck', 'atlantis')).toThrow('Unknown map "atlantis".');
     expect(driving.isDriving).toBe(false);
+  });
+
+  it('interpolates poses between fixed steps without allocating', () => {
+    const out = { x: 0, z: 0, heading: 0 };
+
+    const result = interpolatePose(out, { x: 0, z: 10, heading: 1 }, { x: 4, z: 20, heading: 2 }, 0.25);
+
+    expect(result).toBe(out);
+    expect(out).toEqual({ x: 1, z: 12.5, heading: 1.25 });
   });
 
   it('stops driving on stop() and on dispose()', () => {
