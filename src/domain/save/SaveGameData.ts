@@ -1,13 +1,17 @@
 import type { Credits, Fraction } from '../../data/units';
+import type { MissionFailureReason, MissionState } from '../missions/MissionInstance';
 
 /**
  * Version of the save schema written by this build (spec §32).
  *
- * Any change to the shape of SaveGameData must bump this number and ship a
- * migration from the previous version, with a test. The migration pipeline
- * itself arrives with SaveService (roadmap step 18).
+ * Any change to the shape of SaveGameData must bump this number and add a
+ * migration from the previous version to `SAVE_MIGRATIONS`, with a test.
+ *
+ * - v1: profile, company, economy, garage.
+ * - v2: adds world (where the truck is parked), missions (the contract under
+ *   way) and stats.
  */
-export const CURRENT_SAVE_VERSION = 1;
+export const CURRENT_SAVE_VERSION = 2;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -24,6 +28,9 @@ export interface SaveGameData {
   readonly company: CompanySaveData;
   readonly economy: EconomySaveData;
   readonly garage: GarageSaveData;
+  readonly world: WorldSaveData;
+  readonly missions: MissionsSaveData;
+  readonly stats: StatsSaveData;
 }
 
 export interface ProfileSaveData {
@@ -34,6 +41,7 @@ export interface CompanySaveData {
   /** Company level, starting at 1 (spec §14). */
   readonly level: number;
   readonly xp: number;
+  /** Never below 0. */
   readonly reputation: number;
 }
 
@@ -55,4 +63,43 @@ export interface VehicleSaveData {
   readonly definitionId: string;
   readonly fuelLiters: number;
   readonly damage: Fraction;
+}
+
+export interface WorldSaveData {
+  /** MapDefinition id the active truck is on. */
+  readonly mapId: string;
+  /** Where the active truck is parked; null puts it at the map's spawn. */
+  readonly truck: TruckPlacementSaveData | null;
+}
+
+export interface TruckPlacementSaveData {
+  /** Rear-axle position, meters. */
+  readonly x: number;
+  readonly z: number;
+  /** 0 faces +Z, π/2 faces +X. */
+  readonly headingRadians: number;
+}
+
+export interface MissionsSaveData {
+  /** The contract under way, or null. */
+  readonly active: ActiveMissionSaveData | null;
+}
+
+/** A saved MissionInstance (see src/domain/missions/MissionInstance.ts). */
+export interface ActiveMissionSaveData {
+  /** MissionDefinition id. */
+  readonly missionId: string;
+  readonly state: MissionState;
+  readonly handlingSeconds: number;
+  readonly deliverySeconds: number;
+  readonly cargoDamage: Fraction;
+  readonly failureReason: MissionFailureReason | null;
+}
+
+export interface StatsSaveData {
+  readonly deliveriesCompleted: number;
+  readonly deliveriesFailed: number;
+  /** Credits earned from deliveries, before costs. */
+  readonly creditsEarned: Credits;
+  readonly distanceDrivenMeters: number;
 }

@@ -1,0 +1,121 @@
+import { describe, expect, it } from 'vitest';
+import { ContentCatalog } from '../../../../src/data/ContentCatalog';
+import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
+import type { SaveGameData } from '../../../../src/domain/save/SaveGameData';
+import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
+import { contentFixture, vehicleFixture } from '../../../support/contentFixtures';
+
+const content = ContentCatalog.create(contentFixture());
+const MAX_LEVEL = 5;
+
+/** A valid save for the fixture content: test_truck (300 L tank) on test_map (±200 m). */
+function save(): SaveGameData {
+  return createNewSaveGameData({
+    companyName: 'Kuzey Lojistik',
+    startingCredits: 5000,
+    startingVehicle: vehicleFixture(),
+    startingMapId: 'test_map',
+    nowMs: 1000,
+  });
+}
+
+/** A copy of the valid save with one part replaced. */
+function withPart(path: string, value: unknown): unknown {
+  const copy = JSON.parse(JSON.stringify(save())) as Record<string, unknown>;
+  const keys = path.split('.');
+  let target = copy;
+  for (const key of keys.slice(0, -1)) {
+    target = target[key] as Record<string, unknown>;
+  }
+  target[keys[keys.length - 1]!] = value;
+  return copy;
+}
+
+function paths(data: unknown): string[] {
+  return validateSaveGameData(data, content, MAX_LEVEL).map((issue) => issue.path);
+}
+
+describe('validateSaveGameData', () => {
+  it('accepts a new game and a game in progress', () => {
+    const inProgress = {
+      ...save(),
+      world: { mapId: 'test_map', truck: { x: 12, z: -40, headingRadians: 7.5 } },
+      missions: {
+        active: {
+          missionId: 'test_mission',
+          state: 'delivering',
+          handlingSeconds: 0,
+          deliverySeconds: 42.5,
+          cargoDamage: 0.05,
+          failureReason: null,
+        },
+      },
+    };
+
+    expect(paths(save())).toEqual([]);
+    expect(paths(inProgress)).toEqual([]);
+  });
+
+  it('rejects things that are not saves at all', () => {
+    expect(paths(null)).toEqual(['save']);
+    expect(paths([])).toEqual(['save']);
+    expect(paths({ version: 2 })).toEqual([
+      'createdAtMs',
+      'updatedAtMs',
+      'profile',
+      'company',
+      'economy',
+      'garage',
+      'world',
+      'missions',
+      'stats',
+    ]);
+  });
+
+  it.each([
+    ['version', 1],
+    ['profile.companyName', ' padded '],
+    ['profile.companyName', ''],
+    ['company.level', 0],
+    ['company.level', 6],
+    ['company.xp', -1],
+    ['company.reputation', 1.5],
+    ['economy.credits', -10],
+    ['economy.credits', 2 ** 60],
+    ['world.mapId', 'atlantis'],
+    ['world.truck', { x: 500, z: 0, headingRadians: 0 }],
+    ['world.truck', { x: 0, z: 0 }],
+    ['missions.active', 'yes'],
+    ['stats.deliveriesCompleted', -2],
+    ['stats.distanceDrivenMeters', Number.POSITIVE_INFINITY],
+  ])('reports %s = %j', (path, value) => {
+    expect(paths(withPart(path, value))).toEqual([path]);
+  });
+
+  it('checks every truck against its model and the active truck against the garage', () => {
+    expect(paths(withPart('garage.vehicles', []))).toEqual(['garage.vehicles']);
+    expect(paths(withPart('garage.vehicles.0.definitionId', 'ghost_truck'))).toEqual([
+      'garage.vehicles[0].definitionId',
+    ]);
+    expect(paths(withPart('garage.vehicles.0.fuelLiters', 301))).toEqual(['garage.vehicles[0].fuelLiters']);
+    expect(paths(withPart('garage.vehicles.0.damage', 1.2))).toEqual(['garage.vehicles[0].damage']);
+    expect(paths(withPart('garage.vehicles.0.instanceId', 'truck'))).toEqual([
+      'garage.vehicles[0].instanceId',
+      'garage.activeVehicleInstanceId',
+    ]);
+    expect(paths(withPart('garage.activeVehicleInstanceId', 'truck_002'))).toEqual(['garage.activeVehicleInstanceId']);
+  });
+
+  it('only keeps unfinished contracts of known missions', () => {
+    const active = { missionId: 'test_mission', state: 'loaded', handlingSeconds: 0, deliverySeconds: 3, cargoDamage: 0, failureReason: null };
+
+    expect(paths(withPart('missions.active', { ...active, missionId: 'ghost' }))).toEqual(['missions.active.missionId']);
+    expect(paths(withPart('missions.active', { ...active, state: 'completed' }))).toEqual(['missions.active.state']);
+    expect(paths(withPart('missions.active', { ...active, deliverySeconds: -1 }))).toEqual([
+      'missions.active.deliverySeconds',
+    ]);
+    expect(paths(withPart('missions.active', { ...active, failureReason: 'abandoned' }))).toEqual([
+      'missions.active.failureReason',
+    ]);
+  });
+});

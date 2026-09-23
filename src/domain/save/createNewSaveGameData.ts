@@ -8,13 +8,15 @@ export interface NewGameParams {
   readonly companyName: string;
   readonly startingCredits: Credits;
   readonly startingVehicle: VehicleDefinition;
+  /** MapDefinition id the company starts on; the truck waits at its spawn. */
+  readonly startingMapId: string;
   /** Unix epoch milliseconds, from the injected Clock. */
   readonly nowMs: number;
 }
 
 /**
  * Builds the save for a brand-new company: level 1, starting credits and one
- * full-tank, undamaged starter truck (spec §41).
+ * full-tank, undamaged starter truck at the map's spawn (spec §41).
  *
  * Throws RangeError for an invalid company name. The onboarding UI must check
  * the name with validateCompanyName() first and show the error to the player.
@@ -47,6 +49,9 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
         },
       ],
     },
+    world: { mapId: params.startingMapId, truck: null },
+    missions: { active: null },
+    stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
   };
 }
 
