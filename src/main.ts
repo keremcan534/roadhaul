@@ -26,6 +26,7 @@ import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { CompanyHq } from './ui/hq/CompanyHq';
 import { MissionHud } from './ui/hud/MissionHud';
+import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
 import { chooseLanguage, stringsFor } from './ui/i18n';
 import { MainMenu } from './ui/menus/MainMenu';
@@ -128,8 +129,21 @@ async function start(): Promise<void> {
       );
     } else if (filled.error === 'insufficientFunds') {
       toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+    } else if (filled.error === 'notAtServicePoint') {
+      toasts.show(strings.t('hq.serviceAway'), 'warning');
     }
   };
+  const repair = (): void => {
+    const repaired = damage.repair();
+    if (repaired.ok) {
+      toasts.show(strings.t('toast.repaired', { cost: strings.money(repaired.value) }), 'success');
+    } else if (repaired.error === 'insufficientFunds') {
+      toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+    } else if (repaired.error === 'notAtServicePoint') {
+      toasts.show(strings.t('hq.serviceAway'), 'warning');
+    }
+  };
+  const restArea = new RestAreaPanel(ui, strings, { driving, fuel, damage, economy }, { onRefuel: () => refuel(false), onRepair: repair });
   const roadsideFuelOffer = (): RoadsideFuelOffer => {
     if (fuel.missingLiters < 0.5) {
       return null;
@@ -226,7 +240,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { missions, economy, company, fuel, damage, garage, upgrades },
+    { driving, missions, economy, company, fuel, damage, garage, upgrades },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -237,14 +251,7 @@ async function start(): Promise<void> {
         }
       },
       onRefuel: () => refuel(false),
-      onRepair: () => {
-        const repaired = damage.repair();
-        if (repaired.ok) {
-          toasts.show(strings.t('toast.repaired', { cost: strings.money(repaired.value) }), 'success');
-        } else if (repaired.error === 'insufficientFunds') {
-          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
-        }
-      },
+      onRepair: repair,
       onBuyTruck: (definitionId) => {
         const bought = garage.buy(definitionId);
         if (bought.ok) {
@@ -289,6 +296,9 @@ async function start(): Promise<void> {
   const refreshHq = (): void => {
     if (hq.isOpen) {
       hq.refresh();
+    }
+    if (restArea.isOpen) {
+      restArea.refresh();
     }
   };
   events.on('MissionStateChanged', ({ current }) => {
@@ -385,11 +395,16 @@ async function start(): Promise<void> {
   window.addEventListener('pagehide', () => session.save());
 
   if (config.debug.showPerfOverlay) {
-    // Debug: T parks the truck in the bay the mission needs next.
+    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area.
     window.addEventListener('keydown', (event) => {
+      if (event.repeat || !isDriving() || paused) {
+        return;
+      }
       const target = missions.target;
-      if (event.code === 'KeyT' && !event.repeat && isDriving() && !paused && target !== null) {
-        const parked = bayParkingPose(target.depot.bay, driving.definition.body);
+      const restArea = driving.world.restAreas[0];
+      const spot = event.code === 'KeyT' ? target?.depot.bay : event.code === 'KeyY' ? restArea?.lot : undefined;
+      if (spot !== undefined) {
+        const parked = bayParkingPose(spot, driving.definition.body);
         driving.placeTruck(parked.x, parked.z, parked.heading);
       }
     });
@@ -428,6 +443,8 @@ async function start(): Promise<void> {
         environment.update(renderHost.camera.position);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
+        restArea.visible = simulating;
+        restArea.update();
         toasts.update(deltaSeconds);
         renderHost.render();
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);

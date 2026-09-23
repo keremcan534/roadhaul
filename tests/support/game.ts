@@ -52,6 +52,16 @@ export function parkInTargetBay(game: Game): void {
   game.driving.placeTruck(pose.x, pose.z, pose.heading);
 }
 
+/** Parks the truck, at rest, in the bay of `cityId`'s depot: in its yard, where the pump and workshop are. */
+export function parkAtDepot(game: Game, cityId = 'city_a'): void {
+  const depot = game.driving.world.depotOf(cityId);
+  if (depot === undefined) {
+    throw new Error(`No depot for ${cityId} on this map.`);
+  }
+  const pose = bayParkingPose(depot.bay, game.driving.definition.body);
+  game.driving.placeTruck(pose.x, pose.z, pose.heading);
+}
+
 /** Takes `missionId` and drives it to completion by parking in each bay: the fastest possible delivery. */
 export function deliver(game: Game, missionId: string): void {
   const accepted = game.missions.accept(missionId);

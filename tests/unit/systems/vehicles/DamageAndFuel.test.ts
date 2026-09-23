@@ -6,11 +6,16 @@ import { EconomyService } from '../../../../src/systems/economy/EconomyService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { DamageService } from '../../../../src/systems/vehicles/DamageService';
 import { EMERGENCY_FUEL_LITERS, FuelService } from '../../../../src/systems/vehicles/FuelService';
+import { bayParkingPose } from '../../../../src/domain/missions/loadingBay';
 import { contentFixture } from '../../../support/contentFixtures';
 import { input, STEP_SECONDS } from '../../../support/driving';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
-/** Fixture truck: 300 L tank, 0.3 L/km; fuel at 10 credits (20 on the road); a full repair costs 6000. */
+/**
+ * Fixture truck: 300 L tank, 0.3 L/km; fuel at 10 credits (20 on the road); a
+ * full repair costs 6000. The truck starts in the origin depot's yard, where
+ * the pump and workshop are; driveFor() takes it out onto the road.
+ */
 function setup(credits = 10_000) {
   const logger = new MemoryLogger();
   const events = new EventBus<GameEvents>(logger);
@@ -20,9 +25,21 @@ function setup(credits = 10_000) {
   const damage = new DamageService(driving, economy, events, logger);
   const fuel = new FuelService(driving, damage, economy, events, { consumptionScale: 100, lowFuelFraction: 0.15 }, logger);
   driving.start('test_truck', 'test_map');
+  parkInYard(driving);
   economy.restore(credits);
   fuel.restore(300);
   return { events, driving, economy, damage, fuel };
+}
+
+/** Stops the truck in the origin depot's bay, inside its yard. */
+function parkInYard(driving: DrivingService): void {
+  const pose = bayParkingPose(driving.world.depots[0]!.bay, driving.definition.body);
+  driving.placeTruck(pose.x, pose.z, pose.heading);
+}
+
+/** Stops the truck on the open road, away from any depot or rest area. */
+function parkOnTheRoad(driving: DrivingService): void {
+  driving.placeTruck(0, 0, Math.PI / 2);
 }
 
 function driveFor(context: ReturnType<typeof setup>, seconds: number, throttle = 1): void {
@@ -67,6 +84,20 @@ describe('DamageService', () => {
     expect(context.damage.damage).toBe(0);
     expect(context.economy.credits).toBe(500);
     expect(context.damage.repair()).toEqual({ ok: false, error: 'notDamaged' });
+  });
+
+  it('repairs only in a depot yard or at a rest area', () => {
+    const context = setup();
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    parkOnTheRoad(context.driving);
+
+    expect(context.damage.atWorkshop).toBe(false);
+    expect(context.damage.repair()).toEqual({ ok: false, error: 'notAtServicePoint' });
+    expect(context.economy.credits).toBe(10_000);
+
+    parkInYard(context.driving);
+    expect(context.damage.atWorkshop).toBe(true);
+    expect(context.damage.repair().ok).toBe(true);
   });
 
   it('refuses a repair the company cannot afford', () => {
@@ -149,6 +180,8 @@ describe('FuelService', () => {
     expect(upgraded.fuel.refuel()).toEqual({ ok: true, value: { liters: 150, cost: 1500 } });
 
     upgraded.fuel.restore(300);
+    parkOnTheRoad(plain.driving);
+    parkOnTheRoad(upgraded.driving);
     driveFor(plain, 5);
     driveFor(upgraded, 5);
     const plainBurn = (300 - plain.fuel.fuelLiters) / plain.driving.vehicle.odometerMeters;
@@ -168,6 +201,21 @@ describe('FuelService', () => {
     expect(context.fuel.capacityLiters).toBe(300);
     driveFor(context, 2);
     expect(context.fuel.fuelLiters).toBeLessThan(300); // At most 90 % saved: fuel still burns.
+  });
+
+  it('fills up at the pump only in a depot yard or at a rest area; the fuel truck comes anywhere', () => {
+    const context = setup();
+    context.fuel.restore(200);
+    parkOnTheRoad(context.driving);
+
+    expect(context.fuel.atPump).toBe(false);
+    expect(context.fuel.refuel()).toEqual({ ok: false, error: 'notAtServicePoint' });
+    expect(context.fuel.refuel(true)).toEqual({ ok: true, value: { liters: 100, cost: 2000 } });
+
+    context.fuel.restore(200);
+    parkInYard(context.driving);
+    expect(context.fuel.atPump).toBe(true);
+    expect(context.fuel.refuel()).toEqual({ ok: true, value: { liters: 100, cost: 1000 } });
   });
 
   it('buys what the company can afford when a full tank is too dear', () => {

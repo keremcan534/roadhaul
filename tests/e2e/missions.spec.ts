@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { foundCompany, openCompanyHq, openMainMenu, watchForProblems } from './support';
+import { foundCompany, openCompanyHq, openGame, openMainMenu, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
 
@@ -82,6 +82,9 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
   await expect(page.locator('.job-card')).toHaveCount(20);
+  // The truck waits in the delivery depot's yard, where it can be serviced.
+  await expect(page.locator('.hq__truck-location')).toHaveText('At Demirkent depot');
+  await expect(page.locator('.hq__service-note')).toBeHidden();
   expect(problems).toEqual([]);
 });
 
@@ -193,8 +196,9 @@ test('checks the company name before founding it', async ({ page }) => {
   await expect(page.locator('.new-company__input')).toHaveValue('Wasd Paws');
 });
 
-test('burns fuel while driving and refuels at the HQ', async ({ page }) => {
-  await openCompanyHq(page, '?lang=en');
+test('burns fuel while driving, and refuels only at a depot or rest area', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openCompanyHq(page, '?lang=en&debug');
   await expect(page.locator('[data-action="refuel"]')).toHaveText('Tank full');
   await expect(page.locator('[data-action="refuel"]')).toBeDisabled();
 
@@ -204,14 +208,53 @@ test('burns fuel while driving and refuels at the HQ', async ({ page }) => {
     .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
     .toBeLessThan(100);
   await page.keyboard.up('ArrowUp');
+
+  // Out on the road there is no pump: the HQ says where to go.
   await page.locator('[data-action="pause"]').click();
   await page.locator('.pause-menu [data-action="company-hq"]').click();
-
   const refuel = page.locator('[data-action="refuel"]');
+  await expect(page.locator('.hq__truck-location')).toHaveText('On the road');
+  await expect(refuel).toBeDisabled();
+  await expect(page.locator('.hq__service-note')).toBeVisible();
+
+  // Parked at the rest area (debug Y), it can fill up.
+  await page.locator('[data-action="free-drive"]').click();
+  await page.keyboard.press('KeyY');
+  await page.locator('[data-action="pause"]').click();
+  await page.locator('.pause-menu [data-action="company-hq"]').click();
+  await expect(page.locator('.hq__truck-location')).toHaveText('At the rest area');
+  await expect(page.locator('.hq__service-note')).toBeHidden();
   await expect(refuel).toBeEnabled();
   await expect(refuel).toContainText('Refuel');
   await refuel.click();
   await expect(page.locator('.toast')).toContainText('Refuelled');
   await expect(refuel).toHaveText('Tank full');
+  expect(problems).toEqual([]);
 });
 
+test('offers fuel, repairs and the road again at the rest area', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page, '?lang=en&debug');
+  await page.keyboard.down('ArrowUp');
+  await expect
+    .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
+    .toBeLessThan(100);
+  await page.keyboard.up('ArrowUp');
+
+  // Debug Y parks the truck on the rest area's lot.
+  await page.keyboard.press('KeyY');
+  const counter = page.locator('.rest-area-panel');
+  await expect(counter).toBeVisible();
+  await expect(counter).toContainText('Rest area');
+  await expect(counter.locator('[data-action="rest-repair"]')).toBeDisabled(); // No damage.
+  await counter.locator('[data-action="rest-refuel"]').click();
+  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(counter.locator('[data-action="rest-refuel"]')).toHaveText('Tank full');
+
+  await counter.locator('[data-action="rest-continue"]').click();
+  await expect(counter).toBeHidden();
+  // It stays closed while the truck is still on the lot.
+  await page.keyboard.press('KeyY');
+  await expect(counter).toBeHidden();
+  expect(problems).toEqual([]);
+});

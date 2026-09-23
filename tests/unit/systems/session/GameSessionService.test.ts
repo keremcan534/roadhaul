@@ -5,7 +5,7 @@ import type { SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { SAVE_KEYS } from '../../../../src/systems/save/SaveService';
 import { AUTOSAVE_INTERVAL_SECONDS } from '../../../../src/systems/session/GameSessionService';
 import { STEP_SECONDS } from '../../../support/driving';
-import { bootGame as boot, parkInTargetBay, play, reachLevel } from '../../../support/game';
+import { bootGame as boot, parkAtDepot, parkInTargetBay, play, reachLevel } from '../../../support/game';
 
 describe('GameSessionService', () => {
   it('founds a new company with the starting truck, credits and a full tank, and saves it', async () => {
@@ -85,6 +85,7 @@ describe('GameSessionService', () => {
     reachLevel(game, 2);
     game.economy.restore(40_000);
 
+    parkAtDepot(game);
     game.fuel.restore(60);
     expect(game.fuel.refuel().ok).toBe(true);
     expect(savedTruck().fuelLiters).toBe(150);

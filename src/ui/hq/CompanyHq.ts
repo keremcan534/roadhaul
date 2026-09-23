@@ -1,4 +1,6 @@
+import type { ServicePoint } from '../../domain/world/DrivingWorld';
 import type { CompanyService } from '../../systems/company/CompanyService';
+import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
@@ -15,6 +17,7 @@ import { upgradeCard } from './upgradeCards';
 
 /** What the HQ shows. It only reads them; changes go through the actions. */
 export interface CompanyHqServices {
+  readonly driving: DrivingService;
   readonly missions: MissionService;
   readonly economy: EconomyService;
   readonly company: CompanyService;
@@ -57,6 +60,8 @@ export class CompanyHq {
   private readonly refuelButton: HTMLButtonElement;
   private readonly repairButton: HTMLButtonElement;
   private readonly truckName: HTMLParagraphElement;
+  private readonly truckLocation: HTMLParagraphElement;
+  private readonly serviceNote: HTMLParagraphElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
   private readonly list: HTMLDivElement;
   private tab: HqTab = 'jobs';
@@ -110,13 +115,17 @@ export class CompanyHq {
     this.refuelButton = button(document, 'button--secondary hq__service', '', 'refuel', actions.onRefuel);
     this.repairButton = button(document, 'button--secondary hq__service', '', 'repair', actions.onRepair);
     this.truckName = el('p', 'hq__truck-name');
+    this.truckLocation = el('p', 'hq__truck-location');
+    this.serviceNote = el('p', 'hq__service-note', strings.t('hq.serviceAway'));
     truck.append(
       el('h3', 'hq__card-title', strings.t('hq.truck')),
       this.truckName,
+      this.truckLocation,
       fuelRow,
       this.refuelButton,
       damageRow,
       this.repairButton,
+      this.serviceNote,
     );
 
     side.append(company, truck);
@@ -188,17 +197,20 @@ export class CompanyHq {
 
     const active = garage.activeTruck.definition;
     setText(this.truckName, `${strings.vehicleName(active.id)} · ${strings.t(`body.${active.bodyType}`)}`);
+    const servicePoint = this.services.driving.servicePoint;
+    setText(this.truckLocation, locationText(strings, servicePoint));
+    this.serviceNote.hidden = servicePoint !== null;
     setText(this.fuelLabel, `${strings.percent(fuel.fraction)} · ${strings.t('format.liters', { value: Math.round(fuel.fuelLiters) })}`);
     this.fuelFill.style.transform = `scaleX(${fuel.fraction})`;
     this.fuelFill.parentElement!.classList.toggle('is-low', fuel.isLow);
     const tankFull = fuel.missingLiters < 0.5;
-    this.refuelButton.disabled = tankFull || (economy.credits === 0 && !fuel.isEmpty);
+    this.refuelButton.disabled = tankFull || !fuel.atPump || (economy.credits === 0 && !fuel.isEmpty);
     setText(this.refuelButton, tankFull ? strings.t('hq.tankFull') : strings.t('hq.refuel', { cost: strings.money(fuel.fillUpCost()) }));
 
     setText(this.damageLabel, `${strings.percent(damage.damage)} · ${strings.t(`damage.${damage.band}`)}`);
     this.damageFill.style.transform = `scaleX(${damage.damage})`;
     const undamaged = damage.damage <= 0;
-    this.repairButton.disabled = undamaged || !economy.canAfford(damage.repairCost);
+    this.repairButton.disabled = undamaged || !damage.atWorkshop || !economy.canAfford(damage.repairCost);
     setText(this.repairButton, undamaged ? strings.t('hq.noDamage') : strings.t('hq.repair', { cost: strings.money(damage.repairCost) }));
 
     for (const [tab, tabButton] of this.tabs) {
@@ -256,4 +268,17 @@ export class CompanyHq {
       }
     }
   }
+}
+
+/** Where the truck stands, for the HQ's truck card: a depot, the rest area or the road. */
+function locationText(strings: Strings, servicePoint: ServicePoint | null): string {
+  if (servicePoint === null) {
+    return strings.t('hq.location.road');
+  }
+  if (servicePoint.kind === 'restArea') {
+    return strings.t('hq.location.restArea');
+  }
+  return strings.t('hq.location.depot', {
+    depot: strings.t('depot.name', { city: strings.cityName(servicePoint.depot.cityId) }),
+  });
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { input, kmh, STEP_SECONDS } from '../../../support/driving';
-import { bootGame, newCompany, parkInTargetBay, play, type Game } from '../../../support/game';
+import { bootGame, newCompany, parkAtDepot, parkInTargetBay, play, type Game } from '../../../support/game';
 
 /** Seconds from a standstill to 50 km/h at full throttle, from where the truck stands. */
 function timeTo50(game: Game): number {
@@ -80,6 +80,7 @@ describe('UpgradeService', () => {
   it('lets a bigger tank take more fuel', async () => {
     const game = await newCompany();
     game.upgrades.buy('fuel_tank');
+    parkAtDepot(game);
 
     expect(game.fuel.capacityLiters).toBe(180);
     expect(game.fuel.fraction).toBeCloseTo(150 / 180, 12);

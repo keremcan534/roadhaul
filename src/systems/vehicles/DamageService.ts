@@ -13,7 +13,8 @@ import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
 
-export type RepairError = 'notDamaged' | SpendError;
+/** notDamaged: nothing to repair; notAtServicePoint: workshops are at depots and rest areas. */
+export type RepairError = 'notDamaged' | 'notAtServicePoint' | SpendError;
 
 /**
  * The active truck's condition (spec §18; roadmap step 16). Collisions wear
@@ -55,10 +56,18 @@ export class DamageService {
     this.applyPerformance();
   }
 
-  /** Repairs the truck completely, paying for it. */
+  /** Whether a workshop is in reach: the truck stands in a depot yard or at a rest area. */
+  get atWorkshop(): boolean {
+    return this.driving.servicePoint !== null;
+  }
+
+  /** Repairs the truck completely at a depot or rest area, paying for it. */
   repair(): Result<Credits, RepairError> {
     if (this.currentDamage <= 0) {
       return err('notDamaged');
+    }
+    if (!this.atWorkshop) {
+      return err('notAtServicePoint');
     }
     const cost = this.repairCost;
     const paid = this.economy.spend(cost, 'repair');

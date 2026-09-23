@@ -15,7 +15,8 @@ import type { DamageService } from './DamageService';
 /** A stranded player who cannot pay gets this much fuel for free, so a broke company is never stuck. */
 export const EMERGENCY_FUEL_LITERS = 15;
 
-export type RefuelError = 'tankFull' | SpendError;
+/** tankFull: nothing to fill; notAtServicePoint: the pump is only at depots and rest areas (call a fuel truck instead). */
+export type RefuelError = 'tankFull' | 'notAtServicePoint' | SpendError;
 
 /** What a refuelling bought. */
 export interface Refuelled {
@@ -26,8 +27,8 @@ export interface Refuelled {
 /**
  * The active truck's fuel (spec §17; roadmap step 15). Every fixed step it
  * burns fuel for the distance driven, by the spec formula. An empty tank
- * stalls the engine. Refuelling costs money: at the depot pump (the HQ) or
- * brought out to the road at a higher price.
+ * stalls the engine. Refuelling costs money: at the pump of a depot or rest
+ * area, or brought out to the road at a higher price.
  */
 export class FuelService {
   private liters = 0;
@@ -129,15 +130,24 @@ export class FuelService {
     return this.economy.fuelCost(this.missingLiters, roadside);
   }
 
+  /** Whether the pump is in reach: the truck stands in a depot yard or at a rest area. */
+  get atPump(): boolean {
+    return this.driving.servicePoint !== null;
+  }
+
   /**
-   * Fills the tank, or as much of it as the company can pay for. A stranded
-   * truck whose company cannot pay for a single litre gets emergency fuel for
-   * free.
+   * Fills the tank, or as much of it as the company can pay for: at the pump
+   * of a depot or rest area, or anywhere from a fuel truck at the roadside
+   * price. A stranded truck whose company cannot pay for a single litre gets
+   * emergency fuel for free.
    */
   refuel(roadside = false): Result<Refuelled, RefuelError> {
     const missing = this.missingLiters;
     if (missing < 0.5) {
       return err('tankFull');
+    }
+    if (!roadside && !this.atPump) {
+      return err('notAtServicePoint');
     }
     let liters = missing;
     let cost = this.economy.fuelCost(liters, roadside);

@@ -184,6 +184,20 @@ describe('DrivingService', () => {
     expect(modified.vehicle.speed).toBeLessThan(plain.vehicle.speed * 0.85);
   });
 
+  it('knows when the middle of the truck stands in a depot yard or at a rest area', () => {
+    const lot = { x: 0, z: 40, headingDegrees: 90, lengthMeters: 60, widthMeters: 30 };
+    const { driving } = setup({ restAreas: [{ id: 'test_rest', lot }], buildings: [] });
+    expect(driving.servicePoint).toBeNull(); // Nothing driven yet.
+    driving.start('test_truck', 'test_map');
+
+    expect(driving.servicePoint).toBeNull(); // The spawn is on the open road.
+    // Rear axle just outside the yard (x = -122 to -78, z = -30 to -4); 2.5 m ahead, the middle of the truck is inside.
+    driving.placeTruck(-123, -17, Math.PI / 2);
+    expect(driving.servicePoint).toMatchObject({ kind: 'depot', depot: { id: 'test_origin_depot' } });
+    driving.placeTruck(0, 40, Math.PI / 2);
+    expect(driving.servicePoint).toMatchObject({ kind: 'restArea', restArea: { id: 'test_rest' } });
+  });
+
   it('keeps a stalled engine stalled across drives until it is restarted', () => {
     const { driving } = setup();
     driving.setEngineRunning(false);

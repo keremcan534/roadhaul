@@ -7,7 +7,7 @@ import { VehicleDynamics } from '../../domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint, type VehicleFootprint } from '../../domain/vehicles/VehicleFootprint';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
-import { DrivingWorld } from '../../domain/world/DrivingWorld';
+import { DrivingWorld, type ServicePoint } from '../../domain/world/DrivingWorld';
 import type { Surface } from '../../domain/world/Surface';
 import type { GameEvents } from '../GameEvents';
 
@@ -107,6 +107,24 @@ export class DrivingService {
   /** The ground under the middle of the truck at the last fixed step. */
   get surface(): Surface {
     return this.requireSession().surface;
+  }
+
+  /**
+   * The depot yard or rest area lot the middle of the truck stands in, where
+   * it can refuel at pump prices and be repaired; null elsewhere or when
+   * nothing is driven. Allocation-free.
+   */
+  get servicePoint(): ServicePoint | null {
+    const session = this.session;
+    if (session === null) {
+      return null;
+    }
+    const { state } = session;
+    const centreAhead = session.definition.body.wheelbaseMeters / 2;
+    return session.world.servicePointAt(
+      state.x + Math.sin(state.heading) * centreAhead,
+      state.z + Math.cos(state.heading) * centreAhead,
+    );
   }
 
   get isEngineRunning(): boolean {

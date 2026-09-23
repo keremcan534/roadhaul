@@ -21,6 +21,14 @@ export interface TreeObstacle {
   readonly scale: number;
 }
 
+/**
+ * Where a truck can refuel at pump prices and be repaired: a depot's yard or
+ * a rest area's lot (spec §25).
+ */
+export type ServicePoint =
+  | { readonly kind: 'depot'; readonly depot: DepotDefinition }
+  | { readonly kind: 'restArea'; readonly restArea: RestAreaDefinition };
+
 export interface BuildingObstacle {
   readonly minX: number;
   readonly maxX: number;
@@ -70,6 +78,8 @@ export class DrivingWorld {
   readonly restAreas: readonly RestAreaDefinition[];
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
+  /** Every depot yard and rest area lot, where trucks are serviced. */
+  readonly servicePoints: readonly ServicePoint[];
   private readonly treeGrid = new Map<number, number[]>();
   /**
    * Hardest contact of the current resolveCollisions() call: impact speed,
@@ -95,6 +105,10 @@ export class DrivingWorld {
     }));
     this.depots = map.depots;
     this.restAreas = map.restAreas;
+    this.servicePoints = [
+      ...map.depots.map((depot): ServicePoint => ({ kind: 'depot', depot })),
+      ...map.restAreas.map((restArea): ServicePoint => ({ kind: 'restArea', restArea })),
+    ];
     this.spawn = { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.trees.forEach((tree, index) => {
@@ -126,6 +140,18 @@ export class DrivingWorld {
       }
     }
     return GRASS;
+  }
+
+  /** The depot yard or rest area lot that (x, z) lies in, or null. Allocation-free. */
+  servicePointAt(x: number, z: number): ServicePoint | null {
+    for (let i = 0; i < this.servicePoints.length; i++) {
+      const point = this.servicePoints[i]!;
+      const area = point.kind === 'depot' ? point.depot.yard : point.restArea.lot;
+      if (rectangleContains(area, x, z)) {
+        return point;
+      }
+    }
+    return null;
   }
 
   /** The depot of `cityId` on this map, if it has one. */

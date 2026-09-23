@@ -22,7 +22,7 @@ Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the 
 
 ## Play
 
-**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops. It speaks your browser's language (Turkish or English); `?lang=tr` or `?lang=en` at the end of the URL picks one. `?debug` shows FPS, and its T key parks the truck in the bay the contract needs next.
+**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops. It speaks your browser's language (Turkish or English); `?lang=tr` or `?lang=en` at the end of the URL picks one. `?debug` shows FPS; its T key parks the truck in the bay the contract needs next, and Y at the rest area.
 Every push to `main` redeploys it through [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). This needs one-time repository settings: public visibility (or a paid plan) and *Settings → Pages → Source: GitHub Actions*.
 
 ## Quick start
