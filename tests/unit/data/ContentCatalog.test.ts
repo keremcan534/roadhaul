@@ -101,6 +101,25 @@ describe('ContentCatalog', () => {
     ]);
   });
 
+  it('reports entries that are not objects instead of crashing on them', () => {
+    const content = {
+      vehicles: [null],
+      cargo: [5],
+      cities: [null, cityFixture(), cityFixture({ id: 'test_destination' })],
+      missions: [null, missionFixture()],
+    } as unknown as Parameters<typeof validateGameContent>[0];
+
+    expect(issuePaths(content)).toEqual([
+      'vehicles[0]',
+      'cargo[0]',
+      'cities[0]',
+      'missions[0]',
+      'missions[1].cargoId',
+      'missions[1].cargoWeightTons',
+    ]);
+    expect(() => ContentCatalog.create(content)).toThrow(ValidationError);
+  });
+
   it('refuses to build a catalog from invalid content, listing every problem', () => {
     const content = contentFixture({
       cities: [cityFixture()],

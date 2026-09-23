@@ -79,6 +79,14 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   return validator.issues;
 }
 
+/**
+ * Content is typed, but future JSON packs are not: every check below must
+ * survive null or primitive entries and report them instead of throwing.
+ */
+function isObject(value: unknown): value is object {
+  return typeof value === 'object' && value !== null;
+}
+
 function validateTable<T extends { readonly id: string }>(
   validator: Validator,
   name: string,
@@ -91,7 +99,7 @@ function validateTable<T extends { readonly id: string }>(
   const seenIds = new Set<string>();
   items.forEach((item, index) => {
     const path = `${name}[${index}]`;
-    if (!validator.check(typeof item === 'object' && item !== null, path, 'must be an object')) {
+    if (!validator.check(isObject(item), path, 'must be an object')) {
       return;
     }
     validateItem(item, path, validator);
@@ -104,10 +112,15 @@ function validateMissionReferences(validator: Validator, content: GameContent): 
   if (![content.missions, content.cities, content.cargo, content.vehicles].every(Array.isArray)) {
     return; // Already reported by validateTable.
   }
-  const cityIds = new Set(content.cities.map((city) => city.id));
-  const cargoIds = new Set(content.cargo.map((cargo) => cargo.id));
+  // Non-object entries were reported by validateTable; skip them here.
+  const cityIds = new Set(content.cities.filter(isObject).map((city) => city.id));
+  const cargoIds = new Set(content.cargo.filter(isObject).map((cargo) => cargo.id));
+  const vehicles = content.vehicles.filter(isObject);
 
   content.missions.forEach((mission, index) => {
+    if (!isObject(mission)) {
+      return;
+    }
     const path = `missions[${index}]`;
     validator.check(
       cityIds.has(mission.originCityId),
@@ -128,7 +141,7 @@ function validateMissionReferences(validator: Validator, content: GameContent): 
 
     // A contract that no truck can haul could never be completed (spec §29, step 4).
     const requiredClass = mission.requiredVehicleClass;
-    const haulable = content.vehicles.some(
+    const haulable = vehicles.some(
       (vehicle) =>
         vehicle.maxPayloadTons >= mission.cargoWeightTons &&
         (requiredClass === undefined || vehicle.vehicleClass === requiredClass),
