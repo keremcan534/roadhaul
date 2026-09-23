@@ -1,6 +1,10 @@
 import { clamp, clamp01, degreesToRadians } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
-import type { MapDefinition } from '../../data/definitions/MapDefinition';
+import {
+  rectangleContains,
+  type DepotDefinition,
+  type MapDefinition,
+} from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
 import { RoadPath } from './RoadPath';
@@ -29,6 +33,8 @@ const TREE_ROAD_CLEARANCE = 4;
 /** …and are scattered up to this far beyond it. */
 const TREE_SCATTER_METERS = 45;
 const TREE_BUILDING_CLEARANCE = 4;
+/** Trees keep this far from depot yards, so trucks can manoeuvre. */
+const TREE_YARD_CLEARANCE = 6;
 const TREE_SPAWN_CLEARANCE = 20;
 const TREE_BOUNDARY_MARGIN = 8;
 /** Size of the lookup grid for trees, meters. */
@@ -54,6 +60,8 @@ export class DrivingWorld {
   readonly roads: readonly RoadPath[];
   readonly buildings: readonly BuildingObstacle[];
   readonly trees: readonly TreeObstacle[];
+  /** City depots: paved yards (driven like asphalt) with a loading bay each. */
+  readonly depots: readonly DepotDefinition[];
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
   private readonly treeGrid = new Map<number, number[]>();
@@ -78,6 +86,7 @@ export class DrivingWorld {
       maxZ: building.z + building.depthMeters / 2,
       heightMeters: building.heightMeters,
     }));
+    this.depots = map.depots;
     this.spawn = { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.trees.forEach((tree, index) => {
@@ -91,14 +100,24 @@ export class DrivingWorld {
     });
   }
 
-  /** The ground under a point: asphalt on any road, grass everywhere else. */
+  /** The ground under a point: asphalt on any road or depot yard, grass everywhere else. */
   surfaceAt(x: number, z: number): Surface {
     for (let i = 0; i < this.roads.length; i++) {
       if (this.roads[i]!.contains(x, z)) {
         return ASPHALT;
       }
     }
+    for (let i = 0; i < this.depots.length; i++) {
+      if (rectangleContains(this.depots[i]!.yard, x, z)) {
+        return ASPHALT;
+      }
+    }
     return GRASS;
+  }
+
+  /** The depot of `cityId` on this map, if it has one. */
+  depotOf(cityId: string): DepotDefinition | undefined {
+    return this.depots.find((depot) => depot.cityId === cityId);
   }
 
   /**
@@ -279,6 +298,9 @@ export class DrivingWorld {
       if (road.distanceTo(x, z) < road.widthMeters / 2 + TREE_ROAD_CLEARANCE - 0.5) {
         return false; // Another stretch of road passes close by.
       }
+    }
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE))) {
+      return false;
     }
     return this.buildings.every(
       (box) =>

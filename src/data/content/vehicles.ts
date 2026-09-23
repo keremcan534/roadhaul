@@ -11,6 +11,7 @@ export const VEHICLES: readonly VehicleDefinition[] = [
   {
     id: 'rh_h1',
     vehicleClass: 'light',
+    bodyType: 'box',
     maxPayloadTons: 5,
     fuelCapacityLiters: 150,
     baseFuelLitersPerKm: 0.2,

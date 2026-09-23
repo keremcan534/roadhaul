@@ -1,9 +1,10 @@
 import type { MissionDefinition } from '../definitions/MissionDefinition';
 
 /**
- * Placeholder missions, the first entries of the spec's "first 10 missions"
- * list (§77). Rewards and limits are unbalanced placeholders until the economy
- * step (roadmap step 14).
+ * The spec's first 10 missions (§77), between the three depots of the test
+ * track. All fit the starting box truck. Titles come from the string tables
+ * (`mission.<id>.title`). Time limits cover the delivery leg, from loading to
+ * unloading. Rewards are tuned with the economy (roadmap step 14).
  */
 export const MISSIONS: readonly MissionDefinition[] = [
   {
@@ -11,11 +12,33 @@ export const MISSIONS: readonly MissionDefinition[] = [
     originCityId: 'city_a',
     destinationCityId: 'city_b',
     cargoId: 'packaged_food',
-    cargoWeightTons: 3,
-    baseReward: 1200,
-    timeLimitSeconds: 900,
+    cargoWeightTons: 2,
+    baseReward: 900,
+    timeLimitSeconds: 120,
+    damageTolerance: 0.3,
+    difficulty: 'easy',
+  },
+  {
+    id: 'market_shipment',
+    originCityId: 'city_b',
+    destinationCityId: 'city_a',
+    cargoId: 'packaged_food',
+    cargoWeightTons: 3.5,
+    baseReward: 1100,
+    timeLimitSeconds: 150,
     damageTolerance: 0.25,
     difficulty: 'easy',
+  },
+  {
+    id: 'factory_supplies',
+    originCityId: 'city_c',
+    destinationCityId: 'city_b',
+    cargoId: 'machine_parts',
+    cargoWeightTons: 4,
+    baseReward: 1900,
+    timeLimitSeconds: 200,
+    damageTolerance: 0.2,
+    difficulty: 'normal',
   },
   {
     id: 'fragile_electronics',
@@ -24,8 +47,74 @@ export const MISSIONS: readonly MissionDefinition[] = [
     cargoId: 'consumer_electronics',
     cargoWeightTons: 2,
     baseReward: 2200,
-    timeLimitSeconds: 1200,
+    timeLimitSeconds: 200,
     damageTolerance: 0.1,
     difficulty: 'normal',
+  },
+  {
+    id: 'farm_harvest',
+    originCityId: 'city_c',
+    destinationCityId: 'city_a',
+    cargoId: 'farm_produce',
+    cargoWeightTons: 4.5,
+    baseReward: 1300,
+    timeLimitSeconds: 150,
+    damageTolerance: 0.25,
+    difficulty: 'easy',
+  },
+  {
+    id: 'express_delivery',
+    originCityId: 'city_a',
+    destinationCityId: 'city_c',
+    cargoId: 'packaged_food',
+    cargoWeightTons: 1.5,
+    baseReward: 1700,
+    timeLimitSeconds: 75,
+    damageTolerance: 0.25,
+    difficulty: 'hard',
+  },
+  {
+    id: 'long_haul',
+    originCityId: 'city_b',
+    destinationCityId: 'city_c',
+    cargoId: 'furniture',
+    cargoWeightTons: 3,
+    baseReward: 2000,
+    timeLimitSeconds: 180,
+    damageTolerance: 0.2,
+    difficulty: 'normal',
+  },
+  {
+    id: 'fuel_saver',
+    originCityId: 'city_b',
+    destinationCityId: 'city_a',
+    cargoId: 'farm_produce',
+    cargoWeightTons: 3,
+    baseReward: 1200,
+    timeLimitSeconds: 150,
+    damageTolerance: 0.25,
+    difficulty: 'normal',
+  },
+  {
+    id: 'night_delivery',
+    originCityId: 'city_a',
+    destinationCityId: 'city_b',
+    cargoId: 'consumer_electronics',
+    cargoWeightTons: 1.5,
+    baseReward: 1600,
+    timeLimitSeconds: 120,
+    damageTolerance: 0.15,
+    difficulty: 'normal',
+  },
+  {
+    id: 'sensitive_cargo',
+    originCityId: 'city_c',
+    destinationCityId: 'city_b',
+    cargoId: 'consumer_electronics',
+    cargoWeightTons: 1,
+    baseReward: 2600,
+    timeLimitSeconds: 200,
+    damageTolerance: 0.05,
+    difficulty: 'expert',
   },
 ];

@@ -1,4 +1,5 @@
 import type { Validator } from '../../core/validation/Validator';
+import { BODY_TYPES, type BodyType } from './BodyType';
 
 export const VEHICLE_CLASSES = ['light', 'medium', 'heavy'] as const;
 export type VehicleClass = (typeof VEHICLE_CLASSES)[number];
@@ -15,6 +16,8 @@ export interface VehicleDefinition {
   /** Stable snake_case id. It is written into save files: never rename it. */
   readonly id: string;
   readonly vehicleClass: VehicleClass;
+  /** What the load travels in; decides which cargo the truck can take (see bodyCanHaul). */
+  readonly bodyType: BodyType;
   readonly maxPayloadTons: number;
   readonly fuelCapacityLiters: number;
   /** Consumption of the empty truck on flat road (spec §17 `vehicle.baseFuelPerKm`). */
@@ -79,6 +82,7 @@ export interface VehicleHandling {
 export function validateVehicleDefinition(vehicle: VehicleDefinition, path: string, validator: Validator): void {
   validator.id(vehicle.id, `${path}.id`);
   validator.oneOf(vehicle.vehicleClass, VEHICLE_CLASSES, `${path}.vehicleClass`);
+  validator.oneOf(vehicle.bodyType, BODY_TYPES, `${path}.bodyType`);
   validator.positiveNumber(vehicle.maxPayloadTons, `${path}.maxPayloadTons`);
   validator.positiveNumber(vehicle.fuelCapacityLiters, `${path}.fuelCapacityLiters`);
   validator.positiveNumber(vehicle.baseFuelLitersPerKm, `${path}.baseFuelLitersPerKm`);

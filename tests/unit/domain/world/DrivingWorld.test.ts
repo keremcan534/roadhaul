@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
+import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
@@ -33,6 +34,19 @@ describe('DrivingWorld', () => {
     expect(world.surfaceAt(0, 0)).toBe(ASPHALT);
     expect(world.surfaceAt(50, 4)).toBe(ASPHALT);
     expect(world.surfaceAt(50, 8)).toBe(GRASS);
+  });
+
+  it('paves depot yards: they drive like asphalt', () => {
+    // The fixture's origin yard spans x -122..-78 and z -30..-4, south of the road.
+    expect(world.surfaceAt(-100, -17)).toBe(ASPHALT);
+    expect(world.surfaceAt(-121, -29)).toBe(ASPHALT);
+    expect(world.surfaceAt(-100, -31)).toBe(GRASS);
+    expect(world.surfaceAt(-124, -17)).toBe(GRASS);
+  });
+
+  it('finds the depot of a city', () => {
+    expect(world.depotOf('test_destination')?.id).toBe('test_destination_depot');
+    expect(world.depotOf('atlantis')).toBeUndefined();
   });
 
   it('takes the spawn point and heading from the map', () => {
@@ -158,6 +172,14 @@ describe('DrivingWorld', () => {
         expect(Math.hypot(tree.x - forest.spawn.x, tree.z - forest.spawn.z)).toBeGreaterThan(19);
         expect(Math.abs(tree.x)).toBeLessThan(map.halfSizeMeters);
         expect(Math.abs(tree.z)).toBeLessThan(map.halfSizeMeters);
+      }
+    });
+
+    it('keep clear of depot yards, so trucks can manoeuvre there', () => {
+      for (const tree of forest.trees) {
+        for (const depot of forest.depots) {
+          expect(rectangleContains(depot.yard, tree.x, tree.z, 5.9)).toBe(false);
+        }
       }
     });
 

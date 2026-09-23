@@ -11,6 +11,7 @@ export function vehicleFixture(overrides: Partial<VehicleDefinition> = {}): Vehi
   return {
     id: 'test_truck',
     vehicleClass: 'medium',
+    bodyType: 'box',
     maxPayloadTons: 10,
     fuelCapacityLiters: 300,
     baseFuelLitersPerKm: 0.3,
@@ -56,6 +57,7 @@ export function cargoFixture(overrides: Partial<CargoDefinition> = {}): CargoDef
     damageSensitivity: 0.5,
     timeSensitivity: 0.5,
     temperature: 'none',
+    requiredBody: 'box',
     ...overrides,
   };
 }
@@ -81,7 +83,9 @@ export function missionFixture(overrides: Partial<MissionDefinition> = {}): Miss
 
 /**
  * A straight, open 300 m road along the X axis (z = 0, 10 m wide), a building
- * north of its middle, and the truck spawning at the origin facing +X.
+ * north of its middle, a depot south of the road at each end (the fixture
+ * mission's origin in the west, its destination in the east) and the truck
+ * spawning at the origin facing +X.
  */
 export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinition {
   return {
@@ -99,6 +103,20 @@ export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinitio
       },
     ],
     buildings: [{ x: 0, z: 40, widthMeters: 20, depthMeters: 10, heightMeters: 5 }],
+    depots: [
+      {
+        id: 'test_origin_depot',
+        cityId: 'test_origin',
+        yard: { x: -100, z: -17, headingDegrees: 90, lengthMeters: 44, widthMeters: 26 },
+        bay: { x: -100, z: -17, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
+      },
+      {
+        id: 'test_destination_depot',
+        cityId: 'test_destination',
+        yard: { x: 100, z: -17, headingDegrees: 90, lengthMeters: 44, widthMeters: 26 },
+        bay: { x: 100, z: -17, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
+      },
+    ],
     spawn: { x: 0, z: 0, headingDegrees: 90 },
     scenery: { seed: 1, treesPerKilometer: 0 },
     ...overrides,

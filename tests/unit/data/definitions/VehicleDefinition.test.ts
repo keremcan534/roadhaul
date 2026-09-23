@@ -26,6 +26,12 @@ describe('validateVehicleDefinition', () => {
     expect(issues(broken).map((issue) => issue.path)).toEqual(['vehicle.body', 'vehicle.powertrain']);
   });
 
+  it('requires a known body type', () => {
+    const vehicle = vehicleFixture({ bodyType: 'tanker' as VehicleDefinition['bodyType'] });
+
+    expect(issues(vehicle).map((issue) => issue.path)).toEqual(['vehicle.bodyType']);
+  });
+
   it('requires the wheelbase to fit inside the body', () => {
     const fixture = vehicleFixture();
     const vehicle = vehicleFixture({ body: { ...fixture.body, wheelbaseMeters: fixture.body.lengthMeters } });
