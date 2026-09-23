@@ -53,6 +53,29 @@ export async function shownSpeed(page: Page): Promise<number> {
   return Number(await page.locator('.dashboard__speed').textContent());
 }
 
+/** The truck's heading from the `?debug` overlay, degrees from 0 to 360. Turning left increases it. */
+export async function shownHeading(page: Page): Promise<number> {
+  const text = (await page.locator('.perf-overlay').textContent()) ?? '';
+  return Number(/(\d+(?:\.\d+)?)°/.exec(text)?.[1] ?? Number.NaN);
+}
+
+/**
+ * Grabs the on-screen wheel at the top of its rim and drags it round by
+ * `radians` (positive is clockwise), then keeps holding it. Release with
+ * `page.mouse.up()`.
+ */
+export async function turnWheel(page: Page, radians: number): Promise<void> {
+  const wheel = await centreOf(page, '.steering-wheel');
+  const box = await page.locator('.steering-wheel').boundingBox();
+  const radius = (box?.width ?? 100) * 0.42;
+  await page.mouse.move(wheel.x, wheel.y - radius);
+  await page.mouse.down();
+  for (let step = 1; step <= 10; step++) {
+    const angle = -Math.PI / 2 + (step / 10) * radians;
+    await page.mouse.move(wheel.x + Math.cos(angle) * radius, wheel.y + Math.sin(angle) * radius);
+  }
+}
+
 /** The on-screen steering wheel's rotation, radians. */
 export async function wheelRotation(page: Page): Promise<number> {
   const transform = await page.locator('.steering-wheel').evaluate((element) => (element as HTMLElement).style.transform);
