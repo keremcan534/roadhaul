@@ -58,6 +58,10 @@ export class NewCompanyDialog {
     this.input.focus();
   }
 
+  get isOpen(): boolean {
+    return !this.overlay.hidden;
+  }
+
   close(): void {
     this.input.blur();
     this.overlay.hidden = true;

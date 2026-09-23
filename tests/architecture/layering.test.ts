@@ -35,7 +35,10 @@ const ALLOWED_LAYER_IMPORTS: Readonly<Record<Layer, readonly Layer[]>> = {
   entry: ['core', 'data', 'domain', 'systems', 'app', 'presentation', 'ui', 'platform'],
 };
 
-/** npm packages each layer may import. The engine-agnostic layers may import none. */
+/**
+ * npm packages each layer may import. The engine-agnostic layers may import
+ * none; the platform layer wraps the Android app's (Capacitor) plugins.
+ */
 const ALLOWED_PACKAGES: Readonly<Record<Layer, readonly string[]>> = {
   core: [],
   data: [],
@@ -44,7 +47,7 @@ const ALLOWED_PACKAGES: Readonly<Record<Layer, readonly string[]>> = {
   app: [],
   presentation: ['three'],
   ui: [],
-  platform: [],
+  platform: ['@capacitor/app'],
   entry: [],
 };
 

@@ -119,6 +119,23 @@ test('pausing stops the truck, and Escape resumes', async ({ page }) => {
   await expect.poll(async () => page.locator('.dashboard__speed').textContent()).not.toBe(frozen);
 });
 
+test('pauses the drive when the player leaves the game: another tab, or the app sent to the background', async ({
+  page,
+}) => {
+  const problems = watchForProblems(page);
+  await openCompanyHq(page, '?lang=en');
+  await page.locator('[data-action="free-drive"]').click();
+  await expect(page.locator('.pause-menu')).toBeHidden();
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  await expect(page.locator('.pause-menu')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
 test('keeps the mission HUD clear of the buttons and its text whole in both orientations', async ({ page }) => {
   test.setTimeout(90_000);
   /** True when a text is cut off with an ellipsis. */

@@ -14,6 +14,7 @@ import { browserStorage } from './platform/browser/browserStorage';
 import { applyConfigOverrides, requestedDateMs } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
+import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
@@ -39,6 +40,7 @@ import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
 import { TutorialHint, tutorialPlace } from './ui/hud/TutorialHint';
 import { chooseLanguage, stringsFor } from './ui/i18n';
+import { backAction } from './ui/menus/backAction';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
@@ -194,6 +196,10 @@ async function start(): Promise<void> {
       pauseMenu.open(missions.active !== null, roadsideFuelOffer());
     }
   };
+  const resume = (): void => {
+    pauseMenu.close();
+    paused = false;
+  };
   const pauseMenu = new PauseMenu(ui, strings, {
     onPauseRequested: pause,
     onResume: () => {
@@ -220,8 +226,7 @@ async function start(): Promise<void> {
     onToggleCamera: toggleCamera,
     onPause: () => {
       if (pauseMenu.isOpen) {
-        pauseMenu.close();
-        paused = false;
+        resume();
       } else {
         pause();
       }
@@ -461,15 +466,54 @@ async function start(): Promise<void> {
   logger.info(`Graphics: ${quality}.`);
   showState(gameState.current);
 
-  // Closing or hiding the tab keeps the latest state.
+  /** The player leaves for now (another tab, the app in the background): the truck waits, and the game saves. */
+  const leave = (): void => {
+    pause();
+    session.save();
+  };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      session.save();
+      leave();
     } else {
       adaptiveResolution.restart();
     }
   });
   window.addEventListener('pagehide', () => session.save());
+
+  /** Android's back button (backAction): false at the main menu, where it puts the app away. */
+  const goBack = (): boolean => {
+    const action = backAction({
+      gameState: gameState.current,
+      menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen,
+      pauseMenuOpen: pauseMenu.isOpen,
+      resultOpen: result.isOpen,
+    });
+    switch (action) {
+      case 'closeDialog':
+        settingsDialog.close();
+        newCompany.close();
+        break;
+      case 'pause':
+        pause();
+        break;
+      case 'resume':
+        resume();
+        break;
+      case 'mainMenu':
+        gameState.transitionTo('mainMenu');
+        break;
+      case 'stay':
+        break;
+      case 'leaveApp':
+        return false;
+    }
+    return true;
+  };
+  if (isNativeApp(window)) {
+    import('./platform/native/capacitorShell')
+      .then(({ capacitorShell }) => attachNativeApp(capacitorShell(), { back: goBack, leave }))
+      .catch((error: unknown) => logger.error('The Android app shell did not load.', error));
+  }
 
   if (config.debug.showPerfOverlay) {
     // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area.
