@@ -36,6 +36,7 @@ describe('createNewSaveGameData', () => {
       world: { mapId: 'north_valley', truck: null },
       missions: { active: null },
       stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
+      events: { runs: [] },
     });
   });
 

@@ -69,6 +69,7 @@ describe('validateSaveGameData', () => {
       'world',
       'missions',
       'stats',
+      'events',
     ]);
   });
 
@@ -88,6 +89,7 @@ describe('validateSaveGameData', () => {
     ['missions.active', 'yes'],
     ['stats.deliveriesCompleted', -2],
     ['stats.distanceDrivenMeters', Number.POSITIVE_INFINITY],
+    ['events.runs', null],
   ])('reports %s = %j', (path, value) => {
     expect(paths(withPart(path, value))).toEqual([path]);
   });
@@ -132,6 +134,21 @@ describe('validateSaveGameData', () => {
     expect(tankPaths(fuelled(450, { big_tank: 1 }))).toEqual([]);
     expect(tankPaths(fuelled(451, { big_tank: 1 }))).toEqual(['garage.vehicles[0].fuelLiters']);
     expect(tankPaths(fuelled(301, {}))).toEqual(['garage.vehicles[0].fuelLiters']);
+  });
+
+  it('keeps each event\'s latest run once, for events that exist', () => {
+    const run = { eventId: 'test_event', edition: 3, progress: 1, rewarded: false };
+
+    expect(paths(withPart('events.runs', [run]))).toEqual([]);
+    expect(paths(withPart('events.runs', [{ ...run, rewarded: true, progress: 2 }]))).toEqual([]);
+    expect(paths(withPart('events.runs', [{ ...run, eventId: 'ghost_week' }]))).toEqual(['events.runs[0].eventId']);
+    expect(paths(withPart('events.runs', [run, run]))).toEqual(['events.runs[1].eventId']);
+    expect(paths(withPart('events.runs', [{ ...run, edition: -1, progress: Number.NaN, rewarded: 'yes' }]))).toEqual([
+      'events.runs[0].edition',
+      'events.runs[0].progress',
+      'events.runs[0].rewarded',
+    ]);
+    expect(paths(withPart('events.runs', [7]))).toEqual(['events.runs[0]']);
   });
 
   it('only keeps unfinished contracts of known missions', () => {

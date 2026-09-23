@@ -12,9 +12,23 @@ export function watchForProblems(page: Page): string[] {
   return problems;
 }
 
+/**
+ * The game's calendar date in the tests (`?date=`), unless a test picks
+ * another: before the first special event starts, so no event bonus changes
+ * what a delivery pays.
+ */
+export const QUIET_DATE = '2025-12-01';
+
+export interface OpenOptions {
+  /** The date the game's calendar starts at: 'YYYY-MM-DD', or an ISO 8601 date and time. */
+  readonly date?: string;
+}
+
 /** Opens the game and waits until it has booted into the main menu. */
-export async function openMainMenu(page: Page, query = ''): Promise<void> {
-  await page.goto(`/${query}`);
+export async function openMainMenu(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
+  const parameters = new URLSearchParams(query);
+  parameters.set('date', options.date ?? QUIET_DATE);
+  await page.goto(`/?${parameters.toString()}`);
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-boot-state', 'ready');
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
@@ -59,27 +73,27 @@ export function savedCompany(
 }
 
 /** Opens the game with `save` in storage and continues it: its HQ. */
-export async function continueSavedCompany(page: Page, save: string, query = ''): Promise<void> {
+export async function continueSavedCompany(page: Page, save: string, query = '', options: OpenOptions = {}): Promise<void> {
   await page.addInitScript((json) => {
     if (sessionStorage.getItem('roadhaul.e2e.seeded') === null) {
       localStorage.setItem('roadhaul.save', json);
       sessionStorage.setItem('roadhaul.e2e.seeded', 'yes');
     }
   }, save);
-  await openMainMenu(page, query);
+  await openMainMenu(page, query, options);
   await page.locator('[data-action="continue-game"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
 }
 
 /** Opens the game and founds a new company: its HQ. */
-export async function openCompanyHq(page: Page, query = ''): Promise<void> {
-  await openMainMenu(page, query);
+export async function openCompanyHq(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
+  await openMainMenu(page, query, options);
   await foundCompany(page);
 }
 
 /** Opens the game and drives off without a contract: Play, then Free drive. */
-export async function openGame(page: Page, query = ''): Promise<void> {
-  await openCompanyHq(page, query);
+export async function openGame(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
+  await openCompanyHq(page, query, options);
   await page.locator('[data-action="free-drive"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
 }

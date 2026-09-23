@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GAME_CONFIG } from '../../../src/data/config/GameConfig';
-import { applyConfigOverrides, type QueryParameters } from '../../../src/platform/browser/configOverrides';
+import {
+  applyConfigOverrides,
+  requestedDateMs,
+  type QueryParameters,
+} from '../../../src/platform/browser/configOverrides';
 
 /** The URL's query as the game reads it, from "?a=1&b" (the unit tests run without browser globals). */
 function query(search: string): QueryParameters {
@@ -51,5 +55,18 @@ describe('applyConfigOverrides', () => {
       changes: false,
     });
     expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?weather=')).weather).toEqual(DEFAULT_GAME_CONFIG.weather);
+  });
+});
+
+describe('requestedDateMs', () => {
+  it('reads a day as its midnight UTC, or a full date and time', () => {
+    expect(requestedDateMs(query('?date=2026-09-30'))).toBe(Date.UTC(2026, 8, 30));
+    expect(requestedDateMs(query('?date=2026-09-30T14:30:00Z'))).toBe(Date.UTC(2026, 8, 30, 14, 30));
+  });
+
+  it('keeps the real date without one, or with one it cannot read', () => {
+    for (const search of ['', '?date=', '?date=someday', '?date=2026-02-30']) {
+      expect(requestedDateMs(query(search)), search).toBeNull();
+    }
   });
 });

@@ -2,6 +2,7 @@ import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
 import { validateCityDefinition, type CityDefinition } from './definitions/CityDefinition';
+import { validateEventDefinition, type EventDefinition } from './definitions/EventDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
 import {
   validateMissionDefinition,
@@ -65,6 +66,7 @@ export class ContentCatalog {
   readonly upgrades: DefinitionTable<UpgradeDefinition>;
   readonly trafficVehicles: DefinitionTable<TrafficVehicleDefinition>;
   readonly weather: DefinitionTable<WeatherDefinition>;
+  readonly events: DefinitionTable<EventDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -75,6 +77,7 @@ export class ContentCatalog {
     this.upgrades = new DefinitionTable('upgrade', content.upgrades);
     this.trafficVehicles = new DefinitionTable('traffic vehicle', content.trafficVehicles);
     this.weather = new DefinitionTable('weather', content.weather);
+    this.events = new DefinitionTable('event', content.events);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -98,6 +101,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'upgrades', content.upgrades, validateUpgradeDefinition);
   validateTable(validator, 'trafficVehicles', content.trafficVehicles, validateTrafficVehicleDefinition);
   validateTable(validator, 'weather', content.weather, validateWeatherDefinition);
+  validateTable(validator, 'events', content.events, validateEventDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   return validator.issues;

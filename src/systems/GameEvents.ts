@@ -1,3 +1,4 @@
+import type { EventReward } from '../data/definitions/EventDefinition';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
@@ -101,6 +102,18 @@ export interface GameEvents {
   /** The company reached a new level (spec §57 CompanyLevelUpEvent). */
   CompanyLevelUp: {
     readonly level: number;
+  };
+  /**
+   * A delivery counted toward a running event (spec §22): the bonus it paid,
+   * the event's progress, and its reward when this delivery met the objective.
+   */
+  EventProgressed: {
+    readonly eventId: string;
+    readonly bonus: Credits;
+    readonly progress: number;
+    readonly target: number;
+    /** Paid now, with this delivery; null when the objective is not met, or was met before. */
+    readonly reward: EventReward | null;
   };
   /** The weather is turning (spec §38): from `previousId` to `weatherId`, over the transition. */
   WeatherChanged: {

@@ -2,7 +2,7 @@ import { GameBootstrapper } from './app/GameBootstrapper';
 import { ServiceKeys } from './app/ServiceKeys';
 import { ConsoleLogger } from './core/logging/ConsoleLogger';
 import { metersPerSecondToKmh } from './core/math/scalar';
-import { systemClock } from './core/time/Clock';
+import { shiftedClock, systemClock } from './core/time/Clock';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
 import { DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
@@ -11,7 +11,7 @@ import { bayParkingPose } from './domain/missions/loadingBay';
 import { combineVehicleInputs, createVehicleInput } from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
 import { browserStorage } from './platform/browser/browserStorage';
-import { applyConfigOverrides } from './platform/browser/configOverrides';
+import { applyConfigOverrides, requestedDateMs } from './platform/browser/configOverrides';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
@@ -66,11 +66,14 @@ async function start(): Promise<void> {
   if (!persistent) {
     logger.warn('Storage is unavailable: this game will not be saved after the page closes.');
   }
+  // `?date=` sets the calendar the special events run by (tests, previews); the real date otherwise.
+  const startDateMs = requestedDateMs(query);
+  const clock = startDateMs === null ? systemClock : shiftedClock(systemClock, startDateMs - systemClock.now());
   const services = await new GameBootstrapper({
     config,
     content: GAME_CONTENT,
     logger,
-    clock: systemClock,
+    clock,
     storage,
   }).boot();
 

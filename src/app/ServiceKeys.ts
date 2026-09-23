@@ -7,6 +7,7 @@ import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
+import type { EventService } from '../systems/events/EventService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
 import type { MissionService } from '../systems/missions/MissionService';
@@ -31,6 +32,8 @@ export const ServiceKeys = Object.freeze({
   driving: serviceKey<DrivingService>('DrivingService'),
   traffic: serviceKey<TrafficService>('TrafficService'),
   weather: serviceKey<WeatherService>('WeatherService'),
+  /** The timed events of spec §22 (not the event bus: that is `events`). */
+  specialEvents: serviceKey<EventService>('EventService'),
   missions: serviceKey<MissionService>('MissionService'),
   navigation: serviceKey<NavigationService>('NavigationService'),
   economy: serviceKey<EconomyService>('EconomyService'),

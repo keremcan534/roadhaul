@@ -1,10 +1,22 @@
 import { isLogLevel } from '../../core/logging/Logger';
 import { MAX_TRAFFIC_VEHICLES, type GameConfig } from '../../data/config/GameConfig';
+import { utcMidnightMs } from '../../data/definitions/EventDefinition';
 
 /** The part of URLSearchParams this module needs. */
 export interface QueryParameters {
   has(name: string): boolean;
   get(name: string): string | null;
+}
+
+/**
+ * `?date=2026-09-30` (a day, or an ISO 8601 date and time, UTC unless it says
+ * otherwise) starts the game's calendar then, for the special events; the
+ * clock ticks on from there. Epoch ms, or null for the real date.
+ */
+export function requestedDateMs(query: QueryParameters): number | null {
+  const text = query.get('date')?.trim() ?? '';
+  const ms = /^\d{4}-\d{2}-\d{2}$/.test(text) ? utcMidnightMs(text) : Date.parse(text);
+  return text !== '' && Number.isFinite(ms) ? ms : null;
 }
 
 /**

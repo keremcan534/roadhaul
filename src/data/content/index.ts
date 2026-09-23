@@ -2,6 +2,7 @@ import type { GameContent } from '../GameContent';
 import { CARGO } from './cargo';
 import { CITIES } from './cities';
 import { MAPS } from './maps';
+import { EVENTS } from './events';
 import { MISSIONS } from './missions';
 import { TRAFFIC_VEHICLES } from './trafficVehicles';
 import { UPGRADES } from './upgrades';
@@ -18,4 +19,5 @@ export const GAME_CONTENT: GameContent = {
   upgrades: UPGRADES,
   trafficVehicles: TRAFFIC_VEHICLES,
   weather: WEATHER,
+  events: EVENTS,
 };

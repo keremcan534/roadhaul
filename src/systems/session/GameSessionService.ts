@@ -10,6 +10,7 @@ import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../domain/save/SaveG
 import type { CompanyService } from '../company/CompanyService';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
+import type { EventService } from '../events/EventService';
 import type { GameEvents } from '../GameEvents';
 import type { MissionService } from '../missions/MissionService';
 import type { LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
@@ -29,6 +30,8 @@ export interface GameSessionDependencies {
   readonly economy: EconomyService;
   readonly company: CompanyService;
   readonly garage: GarageService;
+  /** The company's progress in the special events (spec §22). */
+  readonly specialEvents: EventService;
   readonly logger: Logger;
 }
 
@@ -134,7 +137,7 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, garage } = this.deps;
+    const { driving, missions, economy, company, garage, specialEvents } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -154,6 +157,7 @@ export class GameSessionService {
         ...company.stats,
         distanceDrivenMeters: this.distanceBeforeThisDrive + vehicle.odometerMeters,
       },
+      events: { runs: specialEvents.snapshot() },
     };
   }
 
@@ -165,7 +169,7 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, garage } = this.deps;
+    const { driving, missions, economy, company, garage, specialEvents } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -179,6 +183,7 @@ export class GameSessionService {
     company.restore(save.profile, save.company, save.stats);
     garage.restore(save.garage);
     missions.restore(save.missions.active);
+    specialEvents.restore(save.events.runs);
     this.createdAtMs = save.createdAtMs;
     this.distanceBeforeThisDrive = save.stats.distanceDrivenMeters;
     this.sinceAutosave = 0;

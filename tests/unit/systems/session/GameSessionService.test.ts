@@ -5,7 +5,7 @@ import type { SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { SAVE_KEYS } from '../../../../src/systems/save/SaveService';
 import { AUTOSAVE_INTERVAL_SECONDS } from '../../../../src/systems/session/GameSessionService';
 import { STEP_SECONDS } from '../../../support/driving';
-import { bootGame as boot, parkAtDepot, parkInTargetBay, play, reachLevel } from '../../../support/game';
+import { bootGame as boot, deliver, parkAtDepot, parkInTargetBay, play, reachLevel } from '../../../support/game';
 
 describe('GameSessionService', () => {
   it('founds a new company with the starting truck, credits and a full tank, and saves it', async () => {
@@ -73,6 +73,23 @@ describe('GameSessionService', () => {
 
     play(game, AUTOSAVE_INTERVAL_SECONDS + 1, 1);
     expect(savedDistance()).toBeGreaterThan(distance);
+  });
+
+  it('continues the events where they were: a careful delivery during Safe Driver week still counts', async () => {
+    // Wednesday 2026-09-23: Safe Driver runs (from Monday), Express Week does not.
+    const wednesday = Date.UTC(2026, 8, 23, 12);
+    const first = await boot(new MemoryStorage(), wednesday);
+    first.session.startNewGame('Kuzey Lojistik');
+    deliver(first, 'first_package'); // Parked into each bay: no damage at all.
+
+    const second = await boot(first.storage, wednesday + 60_000);
+    second.session.continueGame();
+
+    const safeDriver = second.specialEvents.statuses().find((status) => status.definition.id === 'safe_driver')!;
+    expect(safeDriver).toMatchObject({ running: true, progress: 1, completed: false });
+    expect(second.session.snapshot().events.runs).toEqual([
+      { eventId: 'safe_driver', edition: 18, progress: 1, rewarded: false },
+    ]);
   });
 
   it('saves each purchase together with what it bought', async () => {

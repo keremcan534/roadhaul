@@ -73,6 +73,11 @@ export class CompanyService {
     return this.statistics;
   }
 
+  /** Adds XP earned outside a delivery: an event's reward. */
+  award(xp: number): void {
+    this.progress(xp, 0);
+  }
+
   /** Takes over a loaded or new company. No events: nothing was earned. */
   restore(profile: ProfileSaveData, company: CompanySaveData, stats: StatsSaveData): void {
     this.name = profile.companyName;

@@ -30,6 +30,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     damage: services.resolve(ServiceKeys.damage),
     garage: services.resolve(ServiceKeys.garage),
     upgrades: services.resolve(ServiceKeys.upgrades),
+    specialEvents: services.resolve(ServiceKeys.specialEvents),
     events: services.resolve(ServiceKeys.events),
   };
 }

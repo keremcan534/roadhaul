@@ -31,7 +31,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 4,
+        version: 5,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {} }],
@@ -39,6 +39,7 @@ describe('save migrations', () => {
         world: { mapId: 'north_valley', truck: null },
         missions: { active: null },
         stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
+        events: { runs: [] },
       },
     });
   });
@@ -97,8 +98,28 @@ describe('save migrations', () => {
     const moved = migrateSave(v3, { defaultMapId: 'north_valley' });
     const kept = migrateSave(elsewhere, { defaultMapId: 'north_valley' });
 
-    expect(moved).toEqual({ ok: true, value: { ...v3, version: 4, world: { mapId: 'north_valley', truck: null } } });
-    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 4 } });
+    const noEvents = { events: { runs: [] } };
+    expect(moved).toEqual({
+      ok: true,
+      value: { ...v3, version: 5, world: { mapId: 'north_valley', truck: null }, ...noEvents },
+    });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 5, ...noEvents } });
+  });
+
+  it('starts the events of a v4 save with no progress, keeping the rest', () => {
+    const v4 = {
+      ...V1_SAVE,
+      version: 4,
+      garage: {
+        activeVehicleInstanceId: 'truck_001',
+        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: { engine: 2 } }],
+      },
+      world: { mapId: 'north_valley', truck: { x: 1, z: 2, headingRadians: 3 } },
+      missions: { active: null },
+      stats: { deliveriesCompleted: 4, deliveriesFailed: 1, creditsEarned: 5200, distanceDrivenMeters: 9000 },
+    };
+
+    expect(migrateSave(v4, context)).toEqual({ ok: true, value: { ...v4, version: 5, events: { runs: [] } } });
   });
 
   it('migrates odd data without throwing, leaving it to validation', () => {

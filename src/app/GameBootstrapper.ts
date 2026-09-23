@@ -10,6 +10,7 @@ import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
+import { EventService } from '../systems/events/EventService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
 import { MissionService } from '../systems/missions/MissionService';
@@ -155,6 +156,11 @@ export class GameBootstrapper {
         ServiceKeys.upgrades,
         new UpgradeService(catalog, garage, economy, company, events, logger.withCategory('Upgrades')),
       );
+      // After the economy and the company: a delivery is paid and scored before its event bonus.
+      const specialEvents = container.register(
+        ServiceKeys.specialEvents,
+        new EventService(catalog, company, economy, clock, events, logger.withCategory('Events')),
+      );
       const saves = container.register(
         ServiceKeys.saves,
         new SaveService(
@@ -180,6 +186,7 @@ export class GameBootstrapper {
           economy,
           company,
           garage,
+          specialEvents,
           logger: logger.withCategory('Session'),
         }),
       );
@@ -213,5 +220,6 @@ function describeContent(catalog: ContentCatalog): string {
     `upgrades ${catalog.upgrades.size}`,
     `traffic vehicles ${catalog.trafficVehicles.size}`,
     `weather ${catalog.weather.size}`,
+    `events ${catalog.events.size}`,
   ].join(', ');
 }

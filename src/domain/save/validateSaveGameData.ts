@@ -125,7 +125,34 @@ export function validateSaveGameData(
       'must be 0 or more',
     );
   });
+  section('events', (events) => validateEventRuns(events['runs'], content, validator));
   return validator.issues;
+}
+
+/** Each run names a known event, once, with a whole edition and progress of 0 or more. */
+function validateEventRuns(runs: unknown, content: ContentCatalog, validator: Validator): void {
+  if (!validator.check(Array.isArray(runs), 'events.runs', 'must be a list')) {
+    return;
+  }
+  const seen = new Set<unknown>();
+  (runs as unknown[]).forEach((run, index) => {
+    const path = `events.runs[${index}]`;
+    if (!isJson(run)) {
+      validator.report(path, 'must be an object');
+      return;
+    }
+    const eventId = run['eventId'];
+    validator.check(
+      typeof eventId === 'string' && content.events.has(eventId),
+      `${path}.eventId`,
+      `unknown event ${JSON.stringify(eventId)}`,
+    );
+    validator.check(!seen.has(eventId), `${path}.eventId`, 'must not repeat');
+    seen.add(eventId);
+    validator.nonNegativeInteger(run['edition'], `${path}.edition`);
+    validator.check(isFiniteNumber(run['progress']) && (run['progress'] as number) >= 0, `${path}.progress`, 'must be 0 or more');
+    validator.boolean(run['rewarded'], `${path}.rewarded`);
+  });
 }
 
 function validateGarage(garage: Json, content: ContentCatalog, validator: Validator): void {

@@ -62,6 +62,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
         : { ...save, version: 4 };
     },
   },
+  {
+    // v5 records the progress in events, which older builds did not have.
+    from: 4,
+    migrate: (save) => ({ ...save, version: 5, events: { runs: [] } }),
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {

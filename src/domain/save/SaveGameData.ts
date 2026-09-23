@@ -13,8 +13,9 @@ import type { MissionFailureReason, MissionState } from '../missions/MissionInst
  * - v3: adds the upgrades fitted to each truck.
  * - v4: same shape; the test track is retired, and saves on it move to the
  *   start of the 3-city region.
+ * - v5: adds events (the progress in each event's latest run).
  */
-export const CURRENT_SAVE_VERSION = 4;
+export const CURRENT_SAVE_VERSION = 5;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -34,6 +35,7 @@ export interface SaveGameData {
   readonly world: WorldSaveData;
   readonly missions: MissionsSaveData;
   readonly stats: StatsSaveData;
+  readonly events: EventsSaveData;
 }
 
 export interface ProfileSaveData {
@@ -99,6 +101,23 @@ export interface ActiveMissionSaveData {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly failureReason: MissionFailureReason | null;
+}
+
+export interface EventsSaveData {
+  /** At most one per event: its latest run the company took part in. */
+  readonly runs: readonly EventRunSaveData[];
+}
+
+/** The company's progress in one run of an event (spec §32 EventState). */
+export interface EventRunSaveData {
+  /** EventDefinition id. */
+  readonly eventId: string;
+  /** Which run: 0 for the first. A later run starts from nothing. */
+  readonly edition: number;
+  /** Toward the objective: deliveries, or credits. */
+  readonly progress: number;
+  /** The objective was met and the reward paid. */
+  readonly rewarded: boolean;
 }
 
 export interface StatsSaveData {

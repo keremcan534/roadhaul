@@ -1,5 +1,6 @@
 import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition';
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
+import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
 import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
 import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
@@ -147,6 +148,7 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
         look: { ...weatherFixture().look, fogDensity: 0.005, sunlight: 0.1, skylight: 0.6, rain: 1, lamps: 0.4 },
       }),
     ],
+    events: [eventFixture()],
     ...overrides,
   };
 }
@@ -198,6 +200,22 @@ export function weatherFixture(overrides: Partial<WeatherDefinition> = {}): Weat
       rain: 0,
       lamps: 0,
     },
+    ...overrides,
+  };
+}
+
+/**
+ * On for a week every other week from Monday 2026-01-05: deliveries on time
+ * with a fifth of the time to spare count, two of them earn the reward.
+ */
+export function eventFixture(overrides: Partial<EventDefinition> = {}): EventDefinition {
+  return {
+    id: 'test_event',
+    schedule: { startDate: '2026-01-05', durationDays: 7, repeatEveryDays: 14 },
+    qualifyingDelivery: { minTimeLeft: 0.2 },
+    objective: { kind: 'deliveries', target: 2 },
+    reward: { credits: 1000, xp: 100 },
+    payBonus: 0.25,
     ...overrides,
   };
 }

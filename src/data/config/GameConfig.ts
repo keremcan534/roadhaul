@@ -239,6 +239,9 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
       );
     });
   });
+  content.events.all.forEach((event, index) => {
+    checkReachable(event.id, event.requiredCompanyLevel, `content.events[${index}].requiredCompanyLevel`);
+  });
   validator.nonNegativeInteger(newGame.startingCredits, 'newGame.startingCredits');
   validator.check(
     content.vehicles.has(newGame.startingVehicleId),
