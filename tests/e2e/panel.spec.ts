@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openCompanyHq, openPanel, watchForProblems } from './support';
+import { closePanel, openCompanyHq, openGame, openPanel, shownSpeed, watchForProblems } from './support';
 
 /** Drags one finger up the screen from (x, y) by `distance` pixels, as a phone's touch screen reports it. */
 async function swipeUp(page: Page, x: number, y: number, distance: number): Promise<void> {
@@ -64,3 +64,49 @@ for (const [orientation, viewport] of Object.entries(VIEWPORTS)) {
     expect(problems).toEqual([]);
   });
 }
+
+test('holds the truck while the panel is open over a moving truck, and drives on after', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const html = page.locator('html');
+  await openGame(page, '?lang=en&traffic=0');
+  await page.keyboard.down('ArrowUp');
+  await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(20);
+  await page.keyboard.up('ArrowUp');
+
+  await page.locator('[data-action="dock-truck"]').click();
+  await expect(html).toHaveAttribute('data-panel', 'open');
+  await expect(page.locator('.touch-controls')).toBeHidden();
+  await expect(page.locator('.pause-button')).toBeHidden();
+  const held = await shownSpeed(page);
+  expect(held).toBeGreaterThan(15);
+  // Nothing moves on while the panel is open, and the keys drive nothing.
+  await page.keyboard.down('ArrowUp');
+  await page.waitForTimeout(800);
+  await page.keyboard.up('ArrowUp');
+  expect(await shownSpeed(page)).toBe(held);
+
+  // Escape closes the panel: back on the road, rolling on.
+  await page.keyboard.press('Escape');
+  await expect(html).toHaveAttribute('data-panel', 'none');
+  await expect(page.locator('.pause-menu')).toBeHidden();
+  await expect(page.locator('.touch-controls')).toBeVisible();
+  await expect.poll(() => shownSpeed(page)).toBeLessThan(held);
+  expect(problems).toEqual([]);
+});
+
+test('leaves for the main menu from the pause menu, and continues on the road', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const html = page.locator('html');
+  await openGame(page, '?lang=en');
+  await openPanel(page, 'garage');
+  await closePanel(page);
+
+  await page.locator('.pause-button').click();
+  await page.locator('[data-action="pause-main-menu"]').click();
+  await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
+  await expect(page.locator('.hud-dock')).toBeHidden();
+  await page.locator('[data-action="continue-game"]').click();
+  await expect(html).toHaveAttribute('data-game-state', 'driving');
+  await expect(page.locator('.hud-dock')).toBeVisible();
+  expect(problems).toEqual([]);
+});
