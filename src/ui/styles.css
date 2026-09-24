@@ -74,8 +74,10 @@ body {
 .touch-controls {
   --rh-control-bg: rgb(16 22 30 / 55%);
   --rh-control-line: rgb(255 255 255 / 80%);
-  --rh-wheel-size: clamp(120px, 40vmin, 200px);
-  --rh-pedal-width: clamp(58px, 12vmin, 84px);
+  /* The size picked in Settings; capped so the bottom row still fits a narrow upright phone. */
+  --rh-control-scale: 1;
+  --rh-wheel-size: min(calc(clamp(120px, 40vmin, 200px) * var(--rh-control-scale)), 46vw);
+  --rh-pedal-width: min(calc(clamp(58px, 12vmin, 84px) * var(--rh-control-scale)), 17vw);
   position: fixed;
   inset: 0;
   pointer-events: none;
@@ -89,6 +91,21 @@ body {
 .touch-controls > * {
   pointer-events: auto;
   touch-action: none;
+}
+
+.touch-controls[data-size='small'] {
+  --rh-control-scale: 0.85;
+}
+
+.touch-controls[data-size='large'] {
+  --rh-control-scale: 1.2;
+}
+
+/* Only the picked way of steering shows: the wheel, the tilt button or the left/right buttons. */
+.touch-controls:not([data-steering='wheel']) .steering-wheel,
+.touch-controls:not([data-steering='tilt']) .tilt-button,
+.touch-controls:not([data-steering='buttons']) .steer-buttons {
+  display: none;
 }
 
 .steering-wheel {
@@ -154,6 +171,104 @@ body {
     inset 0 -2px 0 rgb(0 0 0 / 35%),
     0 0 0 2px var(--rh-pedal-accent),
     0 0 16px var(--rh-pedal-accent);
+}
+
+/* Steering by tilt: both thumbs are free, so the brake moves under the left one, the tilt button beside it. */
+.touch-controls[data-steering='tilt'] .pedals {
+  left: calc(env(safe-area-inset-left, 0px) + 20px);
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.touch-controls[data-steering='tilt'] .pedal {
+  pointer-events: auto;
+}
+
+/* Tap: the phone as held now is straight ahead. It glows while iOS waits for a tap to share the motion sensor. */
+.tilt-button {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 20px + var(--rh-pedal-width) * 1.2 + 16px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  color: var(--rh-control-line);
+}
+
+.tilt-button__icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin: auto;
+}
+
+.tilt-button[data-status='waiting'] {
+  opacity: 0.55;
+}
+
+.tilt-button[data-status='locked'] {
+  border-color: var(--rh-accent);
+  animation: tutorial-glow 1.4s ease-in-out infinite;
+}
+
+.tilt-button:active {
+  transform: scale(0.94);
+}
+
+/* Steering by buttons: left and right under the left thumb, held to steer. */
+.steer-buttons {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 20px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex;
+  gap: 12px;
+}
+
+.steer-button {
+  position: relative;
+  width: calc(var(--rh-pedal-width) * 1.25);
+  height: calc(var(--rh-pedal-width) * 1.25);
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #555c66, #2a2e34 55%, #1c1f23);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 28%),
+    inset 0 -3px 0 rgb(0 0 0 / 35%),
+    0 0 0 2px rgb(255 255 255 / 55%),
+    0 6px 12px rgb(0 0 0 / 45%);
+  opacity: 0.92;
+  transition: transform 60ms ease-out, box-shadow 60ms ease-out;
+}
+
+/* An arrowhead drawn in CSS, pointing the way the button steers. */
+.steer-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34%;
+  height: 42%;
+  background: var(--rh-control-line);
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+  transform: translate(-58%, -50%);
+}
+
+.steer-button--right::before {
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform: translate(-42%, -50%);
+}
+
+.steer-button.is-pressed {
+  transform: scale(0.94);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 20%),
+    inset 0 -2px 0 rgb(0 0 0 / 35%),
+    0 0 0 2px var(--rh-accent),
+    0 0 16px var(--rh-accent);
 }
 
 .dashboard {
@@ -558,15 +673,21 @@ body {
   font-size: 15px;
 }
 
-.settings__choices {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.settings__row {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
-/* Two choices (sound on, off) share the row the four graphics choices fill. */
-.settings__choices--pair {
-  grid-template-columns: repeat(2, 1fr);
+.settings__row[hidden] {
+  display: none;
+}
+
+/* The choices of a row share its width (--rh-choices: how many there are). */
+.settings__choices {
+  display: grid;
+  grid-template-columns: repeat(var(--rh-choices, 4), 1fr);
+  gap: 6px;
 }
 
 .settings__choice {
@@ -579,6 +700,40 @@ body {
   margin: 0;
   color: var(--rh-muted);
   font-size: 13px;
+}
+
+/* Phones on their side: two columns of settings, so they fit the short screen. */
+@media (orientation: landscape) and (min-width: 700px) {
+  .settings .settings__panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 8px 22px;
+    width: min(100%, 780px);
+  }
+
+  /* The title and Close share the top row: Close stays in reach however short the screen. */
+  .settings .settings__panel > .panel__title {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+
+  .settings .settings__close {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    align-self: center;
+    min-width: 110px;
+  }
+
+  .settings .settings__choice {
+    min-height: 36px;
+    padding: 4px 8px;
+  }
+
+  .settings .settings__note {
+    font-size: 12px;
+  }
 }
 
 /* ---- Company HQ and job board (src/ui/hq/CompanyHq.ts) ---- */

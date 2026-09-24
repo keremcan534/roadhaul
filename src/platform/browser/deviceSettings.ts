@@ -1,4 +1,12 @@
 import type { KeyValueStorage } from '../../core/storage/KeyValueStorage';
+import {
+  isControlSize,
+  isSteeringMode,
+  isTiltSensitivity,
+  type ControlSize,
+  type SteeringMode,
+  type TiltSensitivity,
+} from '../../data/config/controls';
 import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfig';
 
 /** Settings of this device, kept apart from the company's save: they belong to the phone, not the game. */
@@ -7,26 +15,41 @@ export interface DeviceSettings {
   readonly sound: boolean;
   /** The performance display (FPS, draw calls, the preset and GPU), for testing on phones. */
   readonly stats: boolean;
+  /** How the phone steers: the on-screen wheel, tilting the phone, or left/right buttons. */
+  readonly steering: SteeringMode;
+  readonly tiltSensitivity: TiltSensitivity;
+  /** How big the driving controls are drawn. */
+  readonly controlSize: ControlSize;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
-const DEFAULTS: DeviceSettings = Object.freeze({ quality: 'auto', sound: true, stats: false });
+export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
+  quality: 'auto',
+  sound: true,
+  stats: false,
+  steering: 'wheel',
+  tiltSensitivity: 'normal',
+  controlSize: 'normal',
+});
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
 export function loadSettings(storage: KeyValueStorage): DeviceSettings {
   try {
     const parsed: unknown = JSON.parse(storage.getItem(SETTINGS_KEY) ?? 'null');
     if (typeof parsed !== 'object' || parsed === null) {
-      return DEFAULTS;
+      return DEFAULT_SETTINGS;
     }
-    const { quality, sound, stats } = parsed as Record<string, unknown>;
+    const { quality, sound, stats, steering, tiltSensitivity, controlSize } = parsed as Record<string, unknown>;
     return {
-      quality: isQualityChoice(quality) ? quality : DEFAULTS.quality,
-      sound: typeof sound === 'boolean' ? sound : DEFAULTS.sound,
-      stats: typeof stats === 'boolean' ? stats : DEFAULTS.stats,
+      quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
+      sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
+      stats: typeof stats === 'boolean' ? stats : DEFAULT_SETTINGS.stats,
+      steering: isSteeringMode(steering) ? steering : DEFAULT_SETTINGS.steering,
+      tiltSensitivity: isTiltSensitivity(tiltSensitivity) ? tiltSensitivity : DEFAULT_SETTINGS.tiltSensitivity,
+      controlSize: isControlSize(controlSize) ? controlSize : DEFAULT_SETTINGS.controlSize,
     };
   } catch {
-    return DEFAULTS;
+    return DEFAULT_SETTINGS;
   }
 }
 

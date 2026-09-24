@@ -1,30 +1,52 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryStorage } from '../../../src/core/storage/KeyValueStorage';
-import { loadSettings, saveSettings, SETTINGS_KEY } from '../../../src/platform/browser/deviceSettings';
+import { loadSettings, saveSettings, SETTINGS_KEY, type DeviceSettings } from '../../../src/platform/browser/deviceSettings';
 
-const DEFAULTS = { quality: 'auto', sound: true, stats: false };
+const DEFAULTS: DeviceSettings = {
+  quality: 'auto',
+  sound: true,
+  stats: false,
+  steering: 'wheel',
+  tiltSensitivity: 'normal',
+  controlSize: 'normal',
+};
 
 describe('device settings', () => {
-  it('lets the device decide, plays sound and hides the performance display until the player picks otherwise', () => {
+  it('lets the device decide, plays sound and steers with the wheel until the player picks otherwise', () => {
     const storage = new MemoryStorage();
     expect(loadSettings(storage)).toEqual(DEFAULTS);
 
-    expect(saveSettings(storage, { quality: 'low', sound: false, stats: true })).toBe(true);
+    const picked: DeviceSettings = {
+      quality: 'low',
+      sound: false,
+      stats: true,
+      steering: 'tilt',
+      tiltSensitivity: 'high',
+      controlSize: 'large',
+    };
+    expect(saveSettings(storage, picked)).toBe(true);
 
-    expect(loadSettings(storage)).toEqual({ quality: 'low', sound: false, stats: true });
+    expect(loadSettings(storage)).toEqual(picked);
   });
 
   it('falls back to the default of each setting it cannot read', () => {
     const storage = new MemoryStorage();
-    for (const raw of ['{', 'null', '[]', '{"quality":"ultra","sound":"loud","stats":1}']) {
+    for (const raw of [
+      '{',
+      'null',
+      '[]',
+      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge"}',
+    ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);
     }
     // Settings saved before the later ones existed keep what they had.
     storage.setItem(SETTINGS_KEY, '{"quality":"medium"}');
     expect(loadSettings(storage)).toEqual({ ...DEFAULTS, quality: 'medium' });
-    storage.setItem(SETTINGS_KEY, '{"quality":"ultra","sound":false}');
-    expect(loadSettings(storage)).toEqual({ ...DEFAULTS, sound: false });
+    storage.setItem(SETTINGS_KEY, '{"quality":"ultra","sound":false,"stats":true}');
+    expect(loadSettings(storage)).toEqual({ ...DEFAULTS, sound: false, stats: true });
+    storage.setItem(SETTINGS_KEY, '{"steering":"buttons","controlSize":"small"}');
+    expect(loadSettings(storage)).toEqual({ ...DEFAULTS, steering: 'buttons', controlSize: 'small' });
   });
 
   it('survives storage that throws', () => {
@@ -38,6 +60,6 @@ describe('device settings', () => {
       removeItem: () => {},
     };
     expect(loadSettings(broken)).toEqual(DEFAULTS);
-    expect(saveSettings(broken, { quality: 'high', sound: true, stats: false })).toBe(false);
+    expect(saveSettings(broken, { ...DEFAULTS, quality: 'high' })).toBe(false);
   });
 });

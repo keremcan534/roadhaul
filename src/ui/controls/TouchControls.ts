@@ -1,4 +1,5 @@
 import { clamp, dampFactor } from '../../core/math/scalar';
+import type { ControlSize, SteeringMode, TiltStatus } from '../../data/config/controls';
 import { createVehicleInput, type VehicleInput } from '../../domain/vehicles/VehicleInput';
 
 /** The on-screen wheel turns this far each way for full steering lock. */
@@ -30,6 +31,17 @@ const WHEEL_ART = `
   <rect x="93" y="5" width="14" height="20" rx="4" fill="#f2b233"/>
 `;
 
+/** The tilt steering button: a phone turned like a wheel, between two turning arrows. */
+const TILT_ICON = `
+  <g transform="rotate(-20 12 12)">
+    <rect x="4.5" y="8.5" width="15" height="7" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.8"/>
+    <circle cx="17" cy="12" r="0.9" fill="currentColor"/>
+  </g>
+  <path d="M3.5 9.5a9 9 0 0 1 5.5-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M20.5 14.5a9 9 0 0 1-5.5 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M9.6 1.6 9.4 4.4 6.9 3.3z M14.4 22.4l.2-2.8 2.5 1.1z" fill="currentColor"/>
+`;
+
 /** Small gauge icons: a fuel pump and a wrench. */
 const FUEL_ICON =
   '<path d="M3 2h7v12H3z M10 5l3 2v5a1 1 0 0 0 2 0V6l-2-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5 4h3v3H5z" fill="currentColor"/>';
@@ -51,6 +63,8 @@ export interface TouchControlsOptions {
   readonly onToggleCamera: () => void;
   /** The horn button held down (true) or let go (false). */
   readonly onHorn: (pressed: boolean) => void;
+  /** The tilt button, shown when steering by tilt: recentre it, or allow the motion sensor (iOS). */
+  readonly onTilt: () => void;
 }
 
 /**
@@ -59,6 +73,11 @@ export interface TouchControlsOptions {
  * it writes `state`, which the entry point merges with the keyboard every
  * fixed step. Each control tracks its own fingers, so steering and pedals
  * work at the same time with two thumbs.
+ *
+ * The player picks how to steer (`steering`): the wheel; tilting the phone,
+ * which the entry point reads (TiltInput), with the brake moved to the left
+ * thumb and a button to recentre; or left and right buttons. `size` scales the
+ * wheel, pedals and buttons.
  */
 export class TouchControls {
   /** Current driver input from the touch controls. */
@@ -72,6 +91,10 @@ export class TouchControls {
   private readonly fuelFill: HTMLDivElement;
   private readonly damageGauge: HTMLDivElement;
   private readonly damageFill: HTMLDivElement;
+  private readonly tiltButton: HTMLButtonElement;
+  private mode: SteeringMode = 'wheel';
+  private steerLeft = false;
+  private steerRight = false;
   private shownFuelPercent = -1;
   private shownFuelLow = false;
   private shownDamagePercent = -1;
@@ -146,7 +169,24 @@ export class TouchControls {
     horn.type = 'button';
     horn.setAttribute('aria-label', 'Horn');
 
-    this.root.append(this.wheel, dashboard, pedals, camera, horn);
+    const steerButton = (side: 'left' | 'right'): HTMLButtonElement => {
+      const control = element('button', `steer-button steer-button--${side}`);
+      control.type = 'button';
+      control.setAttribute('aria-label', side === 'left' ? 'Steer left' : 'Steer right');
+      return control;
+    };
+    const left = steerButton('left');
+    const right = steerButton('right');
+    const steerButtons = element('div', 'steer-buttons');
+    steerButtons.append(left, right);
+
+    this.tiltButton = element('button', 'tilt-button');
+    this.tiltButton.type = 'button';
+    this.tiltButton.setAttribute('aria-label', 'Tilt steering: straight ahead');
+    this.tiltButton.append(art('tilt-button__icon', '0 0 24 24', TILT_ICON));
+    this.tiltButton.addEventListener('click', () => options.onTilt());
+
+    this.root.append(this.wheel, steerButtons, dashboard, pedals, this.tiltButton, camera, horn);
     // Long presses must not open menus or select anything.
     this.root.addEventListener('contextmenu', (event) => event.preventDefault());
     this.bindWheel();
@@ -156,7 +196,18 @@ export class TouchControls {
     this.bindHold(brake, (pressed) => {
       this.state.brake = pressed ? 1 : 0;
     });
+    this.bindHold(left, (pressed) => {
+      this.steerLeft = pressed;
+      this.steerByButtons();
+    });
+    this.bindHold(right, (pressed) => {
+      this.steerRight = pressed;
+      this.steerByButtons();
+    });
     this.bindHold(horn, options.onHorn);
+    this.steering = 'wheel';
+    this.size = 'normal';
+    this.showTilt('off');
     this.showTelemetry(0, 1);
     parent.append(this.root);
   }
@@ -165,15 +216,31 @@ export class TouchControls {
   set visible(visible: boolean) {
     this.root.hidden = !visible;
     if (!visible) {
-      for (const release of this.releaseAll) {
-        release();
-      }
+      this.releaseEverything();
     }
+  }
+
+  /** How the player steers; the controls of the other ways hide, and let go. */
+  set steering(mode: SteeringMode) {
+    this.mode = mode;
+    this.root.dataset.steering = mode;
+    this.releaseEverything();
+    this.wheelAngle = 0;
+    this.state.steer = 0;
+  }
+
+  set size(size: ControlSize) {
+    this.root.dataset.size = size;
+  }
+
+  /** Tilt steering's state, on the tilt button: it glows while a tap is needed to allow the motion sensor. */
+  showTilt(status: TiltStatus): void {
+    this.tiltButton.dataset.status = status;
   }
 
   /** Per frame: self-centres a released wheel and redraws it only when it moved. */
   update(deltaSeconds: number): void {
-    if (this.wheelPointer === null && this.wheelAngle !== 0) {
+    if (this.mode === 'wheel' && this.wheelPointer === null && this.wheelAngle !== 0) {
       this.wheelAngle -= this.wheelAngle * dampFactor(WHEEL_RETURN_RATE, deltaSeconds);
       if (Math.abs(this.wheelAngle) < 0.002) {
         this.wheelAngle = 0;
@@ -228,6 +295,19 @@ export class TouchControls {
     this.root.remove();
   }
 
+  private releaseEverything(): void {
+    for (const release of this.releaseAll) {
+      release();
+    }
+  }
+
+  /** Left and right held together cancel out. */
+  private steerByButtons(): void {
+    if (this.mode === 'buttons') {
+      this.state.steer = (this.steerRight ? 1 : 0) - (this.steerLeft ? 1 : 0);
+    }
+  }
+
   private bindWheel(): void {
     const angleOf = (event: PointerEvent): number => {
       const rect = this.wheel.getBoundingClientRect();
@@ -251,7 +331,7 @@ export class TouchControls {
       capturePointer(this.wheel, event.pointerId);
     });
     this.wheel.addEventListener('pointermove', (event) => {
-      if (event.pointerId !== this.wheelPointer) {
+      if (event.pointerId !== this.wheelPointer || this.mode !== 'wheel') {
         return;
       }
       const angle = angleOf(event);

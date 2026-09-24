@@ -5,6 +5,7 @@ import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
+import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
@@ -17,6 +18,7 @@ import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
+import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
@@ -154,7 +156,17 @@ async function start(): Promise<void> {
   const audio = new GameAudio(() => (typeof AudioContext === 'undefined' ? null : new AudioContext()), settings.sound);
   const soundState = createSoundState();
   const honk = (pressed: boolean): void => audio.setHorn(pressed);
-  const touch = new TouchControls(ui, { onToggleCamera: toggleCamera, onHorn: honk });
+  // Steering by turning the phone reads the motion sensor while it is the picked way of steering (applySteering).
+  const tilt = new TiltInput(window, settings.tiltSensitivity, (status) => showTilt(status));
+  const touch = new TouchControls(ui, {
+    onToggleCamera: toggleCamera,
+    onHorn: honk,
+    onTilt: () => {
+      tilt.unlock();
+      tilt.recenter();
+    },
+  });
+  touch.size = settings.controlSize;
   const hud = new MissionHud(ui, strings, missions, navigation, driving);
   const toasts = new Toasts(ui);
 
@@ -229,12 +241,15 @@ async function start(): Promise<void> {
       paused = false;
       gameState.transitionTo('companyHq');
     },
+    onSettings: () => settingsDialog.open(),
   });
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
     onHorn: honk,
     onPause: () => {
-      if (pauseMenu.isOpen) {
+      if (settingsDialog.isOpen) {
+        settingsDialog.close(); // Over the pause menu, which stays.
+      } else if (pauseMenu.isOpen) {
         resume();
       } else {
         pause();
@@ -288,7 +303,7 @@ async function start(): Promise<void> {
     },
     onSettings: () => settingsDialog.open(),
   });
-  const settingsDialog = new SettingsDialog(ui, strings, { quality: qualityChoice, qualityInUse: quality, sound: settings.sound, stats: settings.stats }, {
+  const settingsDialog = new SettingsDialog(ui, strings, { ...settings, quality: qualityChoice, qualityInUse: quality }, {
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
@@ -298,6 +313,21 @@ async function start(): Promise<void> {
         query.set('quality', choice);
       }
       window.location.search = query.toString();
+    },
+    onSteering: (mode) => {
+      settings = { ...settings, steering: mode };
+      saveSettings(storage, settings);
+      applySteering(mode);
+    },
+    onTiltSensitivity: (sensitivity) => {
+      settings = { ...settings, tiltSensitivity: sensitivity };
+      saveSettings(storage, settings);
+      tilt.sensitivity = sensitivity;
+    },
+    onControlSize: (size) => {
+      settings = { ...settings, controlSize: size };
+      saveSettings(storage, settings);
+      touch.size = size;
     },
     onSound: (on) => {
       settings = { ...settings, sound: on };
@@ -361,6 +391,30 @@ async function start(): Promise<void> {
   // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
   const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.gpu}`);
   perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
+
+  /** The picked way of steering: its controls show, and tilt steering listens to the motion sensor only while picked. */
+  const applySteering = (mode: SteeringMode): void => {
+    touch.steering = mode;
+    if (mode === 'tilt') {
+      tilt.enable(); // From the Settings tap, iOS can ask for the motion sensor at once.
+    } else {
+      tilt.disable();
+    }
+  };
+  /** Tilt steering's state on the tilt button (and for the e2e tests). Without a motion sensor, back to the wheel. */
+  function showTilt(status: TiltStatus): void {
+    touch.showTilt(status);
+    root.dataset.tilt = status;
+    if (status === 'unavailable') {
+      settings = { ...settings, steering: 'wheel' };
+      saveSettings(storage, settings);
+      settingsDialog.showSteering('wheel');
+      applySteering('wheel');
+      toasts.show(strings.t('toast.tiltUnavailable'), 'warning');
+    }
+  }
+  root.dataset.tilt = tilt.status;
+  applySteering(settings.steering);
   const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
@@ -474,6 +528,12 @@ async function start(): Promise<void> {
     }
     if (!drivingNow) {
       toasts.clear();
+    } else {
+      // Each drive starts straight ahead the way the phone is held.
+      tilt.recenter();
+      if (tilt.status === 'locked') {
+        toasts.show(strings.t('toast.tiltLocked'), 'info');
+      }
     }
     cameraRig.showcase = !drivingNow;
     truck.setCabinView(drivingNow && cameraRig.currentMode === 'cabin');
@@ -508,17 +568,19 @@ async function start(): Promise<void> {
     }
   });
   // Sound may start once the page has been touched or typed on: a touch counts when the finger lifts. Starting it
-  // earlier would only be refused, with a warning. A button pressed clicks (not the pedals or the horn: they are held).
+  // earlier would only be refused, with a warning. iOS shares the motion sensor (tilt steering) only from a tap too.
+  // A button pressed clicks (not the pedals, steering buttons or the horn: they are held).
   const unlockSound = (): void => {
     // Browsers without navigator.userActivation (older Safari and Firefox) get their chance at every gesture.
     if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
       audio.unlock();
+      tilt.unlock();
     }
   };
   window.addEventListener('pointerup', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
   document.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button)') !== null) {
+    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button)') !== null) {
       audio.click();
     }
   });
@@ -585,6 +647,8 @@ async function start(): Promise<void> {
   resize();
   new ResizeObserver(resize).observe(canvas);
 
+  /** The keyboard and the touch controls together; tilt steering joins them in `driverInput`. */
+  const controlsInput = createVehicleInput();
   const driverInput = createVehicleInput();
   let menuFrames = 0;
   const pose = { x: 0, z: 0, heading: 0 };
@@ -603,7 +667,8 @@ async function start(): Promise<void> {
         if (!isDriving()) {
           return;
         }
-        combineVehicleInputs(driverInput, keyboard.state, touch.state);
+        combineVehicleInputs(controlsInput, keyboard.state, touch.state);
+        combineVehicleInputs(driverInput, controlsInput, tilt.state);
         driving.step(stepSeconds, driverInput);
         missions.update(stepSeconds);
         navigation.update(stepSeconds);
@@ -613,6 +678,7 @@ async function start(): Promise<void> {
       frameUpdate: (deltaSeconds, alpha) => {
         const simulating = isDriving() && !paused;
         touch.update(deltaSeconds);
+        tilt.update(deltaSeconds);
         const vehicle = driving.vehicle;
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
