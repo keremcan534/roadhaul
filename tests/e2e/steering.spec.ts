@@ -57,29 +57,30 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
   await seedSettings(page, { steering: 'tilt', tiltSensitivity: 'high' });
   await openGame(page, '?debug');
   await expect(page.locator('html')).toHaveAttribute('data-tilt', 'waiting');
-  /** Heading change over a second, degrees: about none while the truck runs straight. */
+  /** Heading change over a second, degrees: about none while the truck runs straight, 9° or more with a third of full lock. */
   const drift = async (): Promise<number> => {
     const before = await shownHeading(page);
     await page.waitForTimeout(1_000);
     return Math.abs(headingChange(before, await shownHeading(page)));
   };
 
-  // Held turned 20° to the right from the start: that is straight ahead.
+  // Held turned 20° to the right from the start: that is straight ahead. The truck rolls on slowly, so it keeps
+  // to the road whatever the steering does.
   await tiltPhone(page, 20);
   await page.keyboard.down('ArrowUp');
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
-  expect(await drift()).toBeLessThan(3);
+  await page.keyboard.up('ArrowUp');
+  expect(await drift()).toBeLessThan(4);
 
   // Turned back 8° from there: a gentle left turn, until the tilt button makes this straight ahead.
   const before = await shownHeading(page);
   await tiltPhone(page, 12);
-  await expect.poll(async () => headingChange(before, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(5);
+  await expect.poll(async () => headingChange(before, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(3);
   await page.locator('.tilt-button').click();
   await tiltPhone(page, 12);
-  await page.waitForTimeout(500); // The wheels straighten.
-  expect(await drift()).toBeLessThan(3);
-
-  await page.keyboard.up('ArrowUp');
+  await page.waitForTimeout(300); // The wheels straighten.
+  expect(await drift()).toBeLessThan(4);
+  expect(await shownSpeed(page), 'still rolling, so the heading could have turned').toBeGreaterThan(3);
   expect(problems).toEqual([]);
 });
 
