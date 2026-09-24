@@ -222,8 +222,9 @@ export const TR: StringTable = {
   'settings.inUse': 'Kullanılan: {quality}.',
   'settings.restart': 'Yeni grafik ayarı için oyun yeniden başlar.',
   'settings.sound': 'Ses',
-  'settings.sound.on': 'Açık',
-  'settings.sound.off': 'Kapalı',
+  'settings.stats': 'Performans göstergesi',
+  'settings.on': 'Açık',
+  'settings.off': 'Kapalı',
   'settings.close': 'Kapat',
 
   'vehicle.rh_h1.name': 'RoadHaul H1',

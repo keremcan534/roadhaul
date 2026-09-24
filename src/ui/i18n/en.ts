@@ -222,8 +222,9 @@ export const EN: StringTable = {
   'settings.inUse': 'In use: {quality}.',
   'settings.restart': 'The game restarts to apply a new graphics setting.',
   'settings.sound': 'Sound',
-  'settings.sound.on': 'On',
-  'settings.sound.off': 'Off',
+  'settings.stats': 'Performance display',
+  'settings.on': 'On',
+  'settings.off': 'Off',
   'settings.close': 'Close',
 
   'vehicle.rh_h1.name': 'RoadHaul H1',

@@ -5,10 +5,12 @@ import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfi
 export interface DeviceSettings {
   readonly quality: QualityChoice;
   readonly sound: boolean;
+  /** The performance display (FPS, draw calls, the preset and GPU), for testing on phones. */
+  readonly stats: boolean;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
-const DEFAULTS: DeviceSettings = Object.freeze({ quality: 'auto', sound: true });
+const DEFAULTS: DeviceSettings = Object.freeze({ quality: 'auto', sound: true, stats: false });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
 export function loadSettings(storage: KeyValueStorage): DeviceSettings {
@@ -17,10 +19,11 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULTS;
     }
-    const { quality, sound } = parsed as Record<string, unknown>;
+    const { quality, sound, stats } = parsed as Record<string, unknown>;
     return {
       quality: isQualityChoice(quality) ? quality : DEFAULTS.quality,
       sound: typeof sound === 'boolean' ? sound : DEFAULTS.sound,
+      stats: typeof stats === 'boolean' ? stats : DEFAULTS.stats,
     };
   } catch {
     return DEFAULTS;

@@ -288,7 +288,7 @@ async function start(): Promise<void> {
     },
     onSettings: () => settingsDialog.open(),
   });
-  const settingsDialog = new SettingsDialog(ui, strings, { quality: qualityChoice, qualityInUse: quality, sound: settings.sound }, {
+  const settingsDialog = new SettingsDialog(ui, strings, { quality: qualityChoice, qualityInUse: quality, sound: settings.sound, stats: settings.stats }, {
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
@@ -303,6 +303,11 @@ async function start(): Promise<void> {
       settings = { ...settings, sound: on };
       saveSettings(storage, settings);
       audio.enabled = on;
+    },
+    onStats: (on) => {
+      settings = { ...settings, stats: on };
+      saveSettings(storage, settings);
+      perfOverlay.visible = on || config.debug.showPerfOverlay;
     },
     onClose: () => settingsDialog.close(),
   });
@@ -353,7 +358,9 @@ async function start(): Promise<void> {
       onMainMenu: () => gameState.transitionTo('mainMenu'),
     },
   );
-  const perfOverlay = config.debug.showPerfOverlay ? new PerfOverlay(ui) : null;
+  // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
+  const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.gpu}`);
+  perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
   const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
@@ -663,7 +670,9 @@ async function start(): Promise<void> {
           shownSound = audio.status;
           root.dataset.sound = shownSound;
         }
-        perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+        if (perfOverlay.visible) {
+          perfOverlay.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+        }
       },
       onError: (error) => {
         logger.error('The game loop stopped.', error);
