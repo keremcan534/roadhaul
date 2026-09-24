@@ -202,6 +202,42 @@ describe('CameraRig', () => {
     expect(camera.fov).toBe(72);
   });
 
+  it('widens the view ahead at speed, easing into it and back, but not the rear or top cameras\' views', () => {
+    const pose = { x: 0, z: 0, heading: 0 };
+    const fast: CameraMotion = { ...AT_REST, speed: 25 };
+    for (const [mode, base] of [
+      ['chase', 60],
+      ['cabin', 72],
+      ['hood', 70],
+    ] as const) {
+      const { camera, rig } = rigIn(mode);
+      rig.update(pose, AT_REST, 1 / 60);
+      expect(camera.fov).toBe(base);
+      rig.update(pose, fast, 1 / 60);
+      const easing = camera.fov;
+      expect(easing).toBeGreaterThan(base);
+      expect(easing).toBeLessThan(base + 1);
+      for (let i = 0; i < 600; i++) {
+        rig.update(pose, fast, 1 / 60);
+      }
+      expect(camera.fov).toBeCloseTo(base + 6, 1);
+      for (let i = 0; i < 600; i++) {
+        rig.update(pose, AT_REST, 1 / 60);
+      }
+      expect(camera.fov).toBeCloseTo(base, 1);
+    }
+    for (const [mode, base] of [
+      ['rear', 80],
+      ['top', 55],
+    ] as const) {
+      const { camera, rig } = rigIn(mode);
+      for (let i = 0; i < 60; i++) {
+        rig.update(pose, fast, 1 / 60);
+      }
+      expect(camera.fov).toBe(base);
+    }
+  });
+
   it('follows a truck swapped in from the same gap behind its tail, and above its roof', () => {
     const camera = new PerspectiveCamera();
     const pose = { x: 0, z: 0, heading: 0 };

@@ -1,5 +1,5 @@
 import { Vector3, type PerspectiveCamera } from 'three';
-import { clamp, dampFactor } from '../../core/math/scalar';
+import { clamp, clamp01, dampFactor } from '../../core/math/scalar';
 import { CAMERA_MODES, type CameraMode } from '../../data/config/controls';
 import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
@@ -43,6 +43,15 @@ const CABIN_SWAY_RATE = 4;
 /** Far enough for the look direction; the target point is this far along it. */
 const LOOK_DISTANCE_METERS = 30;
 const FIELD_OF_VIEW: Readonly<Record<CameraMode, number>> = { chase: 60, cabin: 72, hood: 70, rear: 80, top: 55 };
+/**
+ * Looking ahead (chase, cabin, hood), the view widens by up to this many
+ * degrees at speed, so the road seems to rush past: from the first speed
+ * to the second, m/s (30 to 90 km/h), eased in and out at this rate.
+ */
+const SPEED_WIDENING_DEGREES = 6;
+const SPEED_WIDENING_FROM = 8.3;
+const SPEED_WIDENING_TO = 25;
+const SPEED_WIDENING_RATE = 1.5;
 /** How far each camera can be turned by dragging, radians either way (yaw, pitch). */
 const LOOK_LIMITS: Readonly<Record<CameraMode, readonly [number, number]>> = {
   chase: [Math.PI, 0.35],
@@ -85,6 +94,8 @@ export class CameraRig {
   private turnLook = 0;
   private swayLeft = 0;
   private swayAhead = 0;
+  /** How much wider the view is for the speed, degrees (eased). */
+  private speedWidening = 0;
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -219,9 +230,25 @@ export class CameraRig {
       // right is on the screen's right, so a drag to the right turns it toward the truck's right.
       this.lookAlong(pose.heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN);
     }
+    this.widenForSpeed(motion.speed, deltaSeconds);
     this.snapNextFrame = false;
     this.camera.position.copy(this.position);
     this.camera.lookAt(this.target);
+  }
+
+  /** Eases the view wider with speed, for the cameras looking ahead. Allocation-free. */
+  private widenForSpeed(speed: number, deltaSeconds: number): void {
+    const ahead = !this.showcaseEnabled && (this.mode === 'chase' || this.mode === 'cabin' || this.mode === 'hood');
+    const share = clamp01((Math.abs(speed) - SPEED_WIDENING_FROM) / (SPEED_WIDENING_TO - SPEED_WIDENING_FROM));
+    const widening = ahead ? SPEED_WIDENING_DEGREES * share * share * (3 - 2 * share) : 0;
+    this.speedWidening = this.snapNextFrame
+      ? widening
+      : this.speedWidening + (widening - this.speedWidening) * dampFactor(SPEED_WIDENING_RATE, deltaSeconds);
+    const fov = this.baseFieldOfView() + this.speedWidening;
+    if (Math.abs(this.camera.fov - fov) > 0.01) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   /** Aims from the camera's position along a heading (radians), tipped up by `elevation` (radians). */
@@ -234,8 +261,13 @@ export class CameraRig {
     );
   }
 
+  private baseFieldOfView(): number {
+    return this.showcaseEnabled ? SHOWCASE_FOV : FIELD_OF_VIEW[this.mode];
+  }
+
   private applyFieldOfView(): void {
-    this.camera.fov = this.showcaseEnabled ? SHOWCASE_FOV : FIELD_OF_VIEW[this.mode];
+    this.speedWidening = 0;
+    this.camera.fov = this.baseFieldOfView();
     this.camera.updateProjectionMatrix();
   }
 }
