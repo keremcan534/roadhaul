@@ -6,15 +6,18 @@ import {
   MAX_SAVING,
   NO_BONUSES,
   statBonuses,
+  truckLooks,
   upgradePerformance,
 } from '../../../../src/domain/vehicles/upgradeBonuses';
 
 const SAVER: UpgradeDefinition = {
   id: 'saver',
+  look: 'stance',
   levels: [{ cost: 1, modifiers: [{ stat: 'cargoProtection', bonus: 0.6 }, { stat: 'fuelEfficiency', bonus: 0.5 }] }],
 };
 const PADDING: UpgradeDefinition = {
   id: 'padding',
+  look: 'wheels',
   levels: [{ cost: 1, modifiers: [{ stat: 'cargoProtection', bonus: 0.5 }, { stat: 'enginePower', bonus: 0.1 }] }],
 };
 
@@ -69,5 +72,25 @@ describe('upgradePerformance', () => {
     });
 
     expect(performance).toEqual({ torqueFactor: 1.25, brakeFactor: 1.3, gripFactor: 1.18, stabilityFactor: 1.15 });
+  });
+});
+
+describe('truckLooks', () => {
+  it('shows each fitted upgrade on its part of the truck, and nothing on a truck without upgrades', () => {
+    expect(truckLooks({}, UPGRADES)).toEqual({ exhaust: 0, brakes: 0, wheels: 0, stance: 0, fuelTank: 0 });
+    expect(truckLooks({ engine: 2, tires: 1, fuel_tank: 3, unknown: 2 }, UPGRADES)).toEqual({
+      exhaust: 2,
+      brakes: 0,
+      wheels: 1,
+      stance: 0,
+      fuelTank: 3,
+    });
+  });
+
+  it('shows the higher level when two upgrades show on the same part, and ignores levels that do not exist', () => {
+    const grip = { ...PADDING, id: 'grip' };
+
+    expect(truckLooks({ padding: 1, grip: 1 }, [PADDING, grip]).wheels).toBe(1);
+    expect(truckLooks({ padding: 4 }, [PADDING]).wheels).toBe(0);
   });
 });

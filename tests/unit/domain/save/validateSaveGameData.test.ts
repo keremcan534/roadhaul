@@ -133,7 +133,7 @@ describe('validateSaveGameData', () => {
 
     const tankContent = ContentCatalog.create(
       contentFixture({
-        upgrades: [{ id: 'big_tank', levels: [{ cost: 100, modifiers: [{ stat: 'fuelCapacity', bonus: 0.5 }] }] }],
+        upgrades: [{ id: 'big_tank', look: 'fuelTank', levels: [{ cost: 100, modifiers: [{ stat: 'fuelCapacity', bonus: 0.5 }] }] }],
       }),
     );
     const fuelled = (liters: number, upgrades: Record<string, number>): unknown => {

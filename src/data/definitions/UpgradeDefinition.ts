@@ -23,6 +23,15 @@ export const VEHICLE_STATS = [
 ] as const;
 export type VehicleStat = (typeof VEHICLE_STATS)[number];
 
+/**
+ * Where an upgrade shows on the truck, so the garage can show it before it is
+ * bought (the truck view builds each level): the exhaust stacks, the brake
+ * calipers, the wheel rims, the stance (lower, with side guards and
+ * mudflaps) or the fuel tank.
+ */
+export const UPGRADE_LOOKS = ['exhaust', 'brakes', 'wheels', 'stance', 'fuelTank'] as const;
+export type UpgradeLook = (typeof UPGRADE_LOOKS)[number];
+
 /** Stats whose bonus saves a share of something: their bonus must stay below 1. */
 const SAVING_STATS: readonly VehicleStat[] = ['fuelEfficiency', 'cargoProtection'];
 
@@ -56,12 +65,15 @@ export interface UpgradeLevelDefinition {
 export interface UpgradeDefinition {
   /** Stable snake_case id. It is written into save files: never rename it. */
   readonly id: string;
+  /** The part of the truck that shows its level. */
+  readonly look: UpgradeLook;
   /** Level 1 first. A truck starts with none of them. */
   readonly levels: readonly UpgradeLevelDefinition[];
 }
 
 export function validateUpgradeDefinition(upgrade: UpgradeDefinition, path: string, validator: Validator): void {
   validator.id(upgrade.id, `${path}.id`);
+  validator.oneOf(upgrade.look, UPGRADE_LOOKS, `${path}.look`);
   if (
     !validator.check(
       Array.isArray(upgrade.levels) && upgrade.levels.length > 0,
