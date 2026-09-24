@@ -25,7 +25,9 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, dampFactor } from '../../core/math/scalar';
+import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
@@ -78,6 +80,24 @@ const POOL_WIDTH_METERS = 20;
 const POOL_Y = 0.11;
 const POOL_COLOR = 0xffe7b8;
 const POOL_STRENGTH = 0.5;
+/** Upgraded parts (TruckViewOptions.looks), by level 0..3: how much taller the stacks stand, meters. */
+const STACK_EXTRA_HEIGHT = [0, 0.12, 0.22, 0.34] as const;
+/** The fuel tank's length and radius, meters; at level 3 a second one hangs on the other side. */
+const TANK_LENGTH = [1.1, 1.4, 1.7, 1.7] as const;
+const TANK_RADIUS = [0.28, 0.3, 0.31, 0.31] as const;
+/** Brake calipers on the wheels: none, yellow, orange, red (they stand out on the gold rims too). */
+const CALIPER_COLORS = [0, 0xffd21f, 0xff7a1a, 0xe0281f] as const;
+/** The rims: plain, polished, chrome, gold. */
+const RIM_FINISHES = [
+  { color: 0xffffff, shininess: 90, specular: 0x111111 },
+  { color: 0xe4ecf4, shininess: 120, specular: 0x555555 },
+  { color: 0xffffff, shininess: 200, specular: 0xffffff },
+  { color: 0xf0c050, shininess: 160, specular: 0xfff0c0 },
+] as const;
+/** How far the body sits lower on an upgraded suspension, meters. */
+const STANCE_DROP = [0, 0.04, 0.07, 0.1] as const;
+const CHROME_COLOR = 0xe9eef3;
+const MUDFLAP_COLOR = 0x1e2023;
 
 type PartMaterial =
   | 'paint'
@@ -89,7 +109,19 @@ type PartMaterial =
   | 'panels'
   | 'livery'
   | 'doors'
-  | 'deck';
+  | 'deck'
+  | 'chrome'
+  | 'mudflap';
+
+/** How a truck is built beyond its model: its paint, and the parts its upgrades show. */
+export interface TruckViewOptions {
+  /** False leaves the lamps without their glow at night (weaker devices). */
+  readonly lampGlows?: boolean;
+  /** 0xRRGGBB for the cab and the livery's stripe and doors; the model's factory colour without it. */
+  readonly paint?: number;
+  /** Each upgraded part at its level (UpgradeDefinition.look); parts left out are as built. */
+  readonly looks?: Partial<TruckLooks>;
+}
 
 /**
  * A cab-over truck built from a VehicleDefinition's body dimensions and body
@@ -97,11 +129,15 @@ type PartMaterial =
  * headlights and mirrors. A box body carries the RoadHaul livery on its sides
  * and doors; a refrigerated one adds a cooling unit over the cab; a flatbed
  * has a deck, headboard and stakes, and shows its load of bricks while loaded.
- * Heavy trucks stand on two rear axles. Parts that share a material are
- * merged, so a truck costs about 15 draw calls (two more at night, when its
- * lamps glow and the headlights light the road: setLamps()). Its origin is
- * the rear axle, like VehicleRuntimeState. Front wheels steer, all wheels
- * roll, and the body pitches and rolls with acceleration.
+ * Heavy trucks stand on two rear axles. Upgrades show (options.looks): taller
+ * chrome stacks, twin at level 2, with a roof light bar at 3; a longer tank,
+ * chrome, then a second one; polished, chrome or gold rims; yellow, orange
+ * or red brake calipers; and a body sitting lower on mudflaps, with a
+ * chrome bumper and grille bars. Parts that share a material are merged, so
+ * a truck costs about 15 draw calls (two more at night, when its lamps glow
+ * and the headlights light the road: setLamps(); one for the calipers). Its
+ * origin is the rear axle, like VehicleRuntimeState. Front wheels steer, all
+ * wheels roll, and the body pitches and rolls with acceleration.
  *
  * update() runs every frame and allocates nothing.
  */
@@ -119,6 +155,8 @@ export class TruckView {
   /** The flatbed's visible load; null for closed bodies, whose load is out of sight. */
   private readonly load: Mesh | null = null;
   private readonly wheels: InstancedMesh;
+  /** Brake calipers on the wheels' outer faces (a brakes upgrade); they steer but do not spin. */
+  private readonly calipers: InstancedMesh | null = null;
   /** Night: brighter lamps, their glows, and the headlights' light on the road ahead. */
   private readonly lampMaterial: MeshBasicMaterial;
   private readonly glows: LampGlows;
@@ -140,19 +178,22 @@ export class TruckView {
   private readonly euler = new Euler(0, 0, 0, 'YXZ');
   private readonly unitScale = new Vector3(1, 1, 1);
 
-  /**
-   * `lampGlows: false` leaves the lamps without their glow at night (weaker
-   * devices). `paint` (0xRRGGBB) colours the cab and the livery's stripe and
-   * doors instead of the model's factory colour.
-   */
+  /** What it was built from: equal keys make identical trucks (the entry point rebuilds a truck when its key changes). */
+  readonly key: string;
+
   constructor(
     private readonly scene: Scene,
     readonly definition: VehicleDefinition,
-    private readonly options: { readonly lampGlows?: boolean; readonly paint?: number } = {},
+    private readonly options: TruckViewOptions = {},
   ) {
     const { lengthMeters: L, widthMeters: W, heightMeters: H, wheelbaseMeters: B, wheelRadiusMeters: R } = definition.body;
     const paint = options.paint ?? definition.factoryColor;
     this.paint = paint;
+    this.key = truckViewKey(definition, options);
+    const level = (look: UpgradeLook): 0 | 1 | 2 | 3 => lookLevel(options.looks?.[look]);
+    const exhaust = level('exhaust');
+    const tank = level('fuelTank');
+    const stance = level('stance');
     // Heights: the box floor clears the wheels; the cab sits on top of the front axle (cab-over). The cameras
     // share these (cabGeometry): the driver's eye sits behind the steering wheel, the hood camera on the roof.
     const cab = cabGeometry(definition.body);
@@ -195,6 +236,13 @@ export class TruckView {
       }
       box('dark', [W * 0.7, 0.06, 0.3], [0, cabTop + 0.03, frontZ - 0.45]);
     }
+    if (exhaust === 3) {
+      // A light bar along the front of the roof.
+      box('dark', [W * 0.62, 0.08, 0.16], [0, cabTop + 0.04, frontZ - 0.2]);
+      for (let i = 0; i < 4; i++) {
+        lamp(0xffb42e, [0.18, 0.1, 0.06], [(i - 1.5) * W * 0.15, cabTop + 0.11, frontZ - 0.13]);
+      }
+    }
     // Side windows face outward only, so they do not block the view from the driver's seat.
     const windowHeight = (cabTop - beltY) * 0.7;
     const windowLength = cabLength * 0.5;
@@ -206,7 +254,15 @@ export class TruckView {
     }
     // Front: grille, bumper, headlights and indicators, and the mirrors.
     add('grille', frontQuad(W * 0.6, beltY - 0.2 - (bumperTop + 0.2), frontZ + 0.012, bumperTop + 0.2));
-    box('dark', [W + 0.06, 0.32, 0.24], [0, bumperTop - 0.16, frontZ + 0.02]);
+    box(stance >= 2 ? 'chrome' : 'dark', [W + 0.06, 0.32, 0.24], [0, bumperTop - 0.16, frontZ + 0.02]);
+    if (stance === 3) {
+      // Chrome bars across the grille.
+      const grilleBottom = bumperTop + 0.2;
+      const grilleHeight = beltY - 0.2 - grilleBottom;
+      for (let i = 1; i <= 3; i++) {
+        box('chrome', [W * 0.62, 0.035, 0.04], [0, grilleBottom + (grilleHeight * i) / 4, frontZ + 0.03]);
+      }
+    }
     for (const side of [1, -1] as const) {
       lamp(0xfff4d6, [0.42, 0.18, 0.05], [side * (halfW - 0.32), bumperTop + 0.2, frontZ + 0.015]);
       lamp(0xffa21c, [0.14, 0.12, 0.05], [side * (halfW - 0.06), bumperTop + 0.2, frontZ + 0.015]);
@@ -219,20 +275,47 @@ export class TruckView {
 
     // Chassis, fuel tank, battery box, rear mudguards, underrun bar and light bar.
     box('dark', [W * 0.7, 0.24, L * 0.9], [0, frameY, centreZ]);
-    add('metal', new CylinderGeometry(0.28, 0.28, 1.1, 16).rotateX(Math.PI / 2).translate(halfW - 0.32, frameY - 0.05, B * 0.45));
-    box('dark', [0.5, 0.45, 0.7], [-(halfW - 0.3), frameY - 0.08, B * 0.45]);
-    // The exhaust stack stands at the cab's rear corner on the right, up past the roof.
-    const stackTop = cabTop + STACK_OVER_ROOF;
-    const stackX = -(halfW + STACK_RADIUS + 0.02);
+    // The fuel tank on the left; at level 3 a second one takes the battery box's place on the right.
+    const tankRadius = TANK_RADIUS[tank];
+    const fuelTank = (side: 1 | -1): BufferGeometry =>
+      new CylinderGeometry(tankRadius, tankRadius, TANK_LENGTH[tank], 16)
+        .rotateX(Math.PI / 2)
+        .translate(side * (halfW - 0.04 - tankRadius), frameY - 0.05, B * 0.45);
+    add(tank >= 2 ? 'chrome' : 'metal', fuelTank(1));
+    if (tank === 3) {
+      add('chrome', fuelTank(-1));
+    } else {
+      box('dark', [0.5, 0.45, 0.7], [-(halfW - 0.3), frameY - 0.08, B * 0.45]);
+    }
+    // The exhaust stack stands at the cab's rear corner on the right, up past the roof: chrome and taller on an
+    // upgraded engine, and from level 2 a twin on the left.
+    const stackTop = cabTop + STACK_OVER_ROOF + STACK_EXTRA_HEIGHT[exhaust];
+    const stackRadius = STACK_RADIUS + (exhaust === 3 ? 0.02 : exhaust > 0 ? 0.01 : 0);
+    const stackX = -(halfW + stackRadius + 0.02);
     const stackZ = cabRear + 0.15;
-    add(
-      'metal',
-      new CylinderGeometry(STACK_RADIUS, STACK_RADIUS, stackTop - frameY, 10).translate(stackX, (stackTop + frameY) / 2, stackZ),
-    );
-    this.exhaustAt = [stackX, stackTop + 0.05, stackZ];
+    for (const side of exhaust >= 2 ? ([1, -1] as const) : ([-1] as const)) {
+      add(
+        exhaust > 0 ? 'chrome' : 'metal',
+        new CylinderGeometry(stackRadius, stackRadius, stackTop - frameY, 10).translate(
+          -side * stackX,
+          (stackTop + frameY) / 2,
+          stackZ,
+        ),
+      );
+    }
+    const drop = STANCE_DROP[stance];
+    this.exhaustAt = [stackX, stackTop + 0.05 - drop, stackZ];
     const guardLength = 2 * R + 0.3 + (tandem ? 2 * TANDEM_HALF_SPACING : 0);
     for (const side of [1, -1] as const) {
       box('dark', [TIRE_WIDTH + 0.08, 0.05, guardLength], [side * (halfW - 0.2), 2 * R + 0.05, 0]);
+    }
+    if (stance > 0) {
+      // Mudflaps behind the rear wheels, a stripe in the truck's colour near their foot.
+      const flapZ = -(tandem ? TANDEM_HALF_SPACING : 0) - R - 0.12;
+      for (const side of [1, -1] as const) {
+        add('mudflap', new BoxGeometry(TIRE_WIDTH + 0.12, 2 * R - 0.16, 0.03).translate(side * (halfW - 0.2), R + 0.1, flapZ));
+        box('paint', [TIRE_WIDTH + 0.13, 0.07, 0.035], [side * (halfW - 0.2), 0.32, flapZ]);
+      }
     }
     box('dark', [W - 0.3, 0.12, 0.1], [0, R + 0.02, rearZ + 0.08]);
     box('dark', [W, 0.2, 0.08], [0, R + 0.26, rearZ + 0.02]);
@@ -305,6 +388,8 @@ export class TruckView {
         new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
       ),
       deck: this.track(new MeshLambertMaterial({ color: 0x6e5238 })),
+      chrome: this.track(new MeshPhongMaterial({ color: CHROME_COLOR, shininess: 160, specular: 0xffffff })),
+      mudflap: this.track(new MeshLambertMaterial({ color: MUDFLAP_COLOR })),
     };
     for (const [material, geometries] of parts) {
       this.body.add(new Mesh(this.track(mergeGeometries(geometries)), materials[material]));
@@ -395,7 +480,11 @@ export class TruckView {
         [-trackHalf, R, z] as const,
       ]),
     ];
-    this.wheels = this.createWheels(R, this.wheelPositions.length);
+    this.wheels = this.createWheels(R, this.wheelPositions.length, level('wheels'));
+    const brakes = level('brakes');
+    if (brakes > 0) {
+      this.calipers = this.createCalipers(R, this.wheelPositions.length, CALIPER_COLORS[brakes]);
+    }
     this.updateWheels(0);
 
     // A soft shadow under the truck; it stays flat on the road while the body leans.
@@ -426,7 +515,13 @@ export class TruckView {
     this.body.add(this.glows.points);
     this.headlightPool = this.createHeadlightPool(frontZ, headlightX);
 
+    // An upgraded suspension sets the body lower over its wheels.
+    this.body.position.y = -drop;
+    this.cabin.position.y = -drop;
     this.root.add(shadow, this.headlightPool, this.body, this.cabin, this.wheels);
+    if (this.calipers !== null) {
+      this.root.add(this.calipers);
+    }
     scene.add(this.root);
   }
 
@@ -556,8 +651,8 @@ export class TruckView {
     return pool;
   }
 
-  /** Tyres with a rim on each face: two draw calls for all the wheels. */
-  private createWheels(radius: number, count: number): InstancedMesh {
+  /** Tyres with a rim on each face, the rims in the finish of the tyres upgrade's `level`: two draw calls for all the wheels. */
+  private createWheels(radius: number, count: number, level: 0 | 1 | 2 | 3): InstancedMesh {
     const tire = new CylinderGeometry(radius, radius, TIRE_WIDTH, 22).rotateZ(Math.PI / 2);
     const outer = new CircleGeometry(radius * 0.72, 22).rotateY(Math.PI / 2).translate(TIRE_WIDTH / 2 + 0.002, 0, 0);
     const inner = new CircleGeometry(radius * 0.72, 22).rotateY(-Math.PI / 2).translate(-TIRE_WIDTH / 2 - 0.002, 0, 0);
@@ -565,10 +660,26 @@ export class TruckView {
     for (const part of [tire, outer, inner]) {
       part.dispose();
     }
-    const rim = this.track(new MeshPhongMaterial({ map: this.texture(toTexture(rimImage())), shininess: 90 }));
+    const finish = RIM_FINISHES[level];
+    const rim = this.track(
+      new MeshPhongMaterial({
+        map: this.texture(toTexture(rimImage())),
+        color: finish.color,
+        shininess: finish.shininess,
+        specular: finish.specular,
+      }),
+    );
     return this.track(
       new InstancedMesh(this.track(wheel), [this.track(new MeshLambertMaterial({ color: 0x1d1d1f })), rim, rim], count),
     );
+  }
+
+  /** A caliper on each wheel's outer face, over the rim's upper rear: one draw call for them all. */
+  private createCalipers(radius: number, count: number, color: number): InstancedMesh {
+    const caliper = new BoxGeometry(0.03, radius * 0.34, radius * 0.5).translate(0, radius * 0.36, -radius * 0.22);
+    const mesh = new InstancedMesh(this.track(caliper), this.track(new MeshPhongMaterial({ color, shininess: 70 })), count);
+    mesh.name = 'brake-calipers';
+    return this.track(mesh);
   }
 
   private updateWheels(steerAngle: number): void {
@@ -579,8 +690,17 @@ export class TruckView {
       this.rotation.setFromEuler(this.euler.set(this.wheelSpin, steer, 0));
       this.position.set(x, y, z);
       this.wheels.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.unitScale));
+      if (this.calipers !== null) {
+        // On the outer face; it turns with the steering, not with the wheel.
+        this.rotation.setFromEuler(this.euler.set(0, steer, 0));
+        this.position.set(x + Math.sign(x) * (TIRE_WIDTH / 2 + 0.02), y, z);
+        this.calipers.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.unitScale));
+      }
     }
     this.wheels.instanceMatrix.needsUpdate = true;
+    if (this.calipers !== null) {
+      this.calipers.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private texture<T extends Texture>(texture: T): T {
@@ -679,4 +799,22 @@ function quad(corners: readonly (readonly [number, number, number])[], normal: r
   geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
   return geometry;
+}
+
+/** An upgrade level as the truck shows it: 0..3, anything else as 0 (or 3 above it). */
+function lookLevel(level: number | undefined): 0 | 1 | 2 | 3 {
+  if (level === undefined || !Number.isFinite(level) || level < 1) {
+    return 0;
+  }
+  return level >= 3 ? 3 : level >= 2 ? 2 : 1;
+}
+
+/** A key naming everything a TruckView is built from: its model, paint and upgraded parts. */
+export function truckViewKey(definition: VehicleDefinition, options: TruckViewOptions = {}): string {
+  const paint = options.paint ?? definition.factoryColor;
+  const looks = options.looks ?? {};
+  const parts = (['exhaust', 'brakes', 'wheels', 'stance', 'fuelTank'] as const)
+    .map((look) => lookLevel(looks[look]))
+    .join('');
+  return `${definition.id}:${paint.toString(16)}:${parts}:${options.lampGlows === false ? 0 : 1}`;
 }

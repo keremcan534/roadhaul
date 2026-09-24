@@ -2,7 +2,7 @@ import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { CAMERA_MODES } from '../../../../src/data/config/controls';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
-import { CameraRig, type CameraMotion } from '../../../../src/presentation/cameras/CameraRig';
+import { CameraRig, SHOWCASE_PART_ANGLES, type CameraMotion } from '../../../../src/presentation/cameras/CameraRig';
 import { cabGeometry } from '../../../../src/presentation/vehicles/cabGeometry';
 
 const body = VEHICLES[0]!.body;
@@ -200,6 +200,63 @@ describe('CameraRig', () => {
     rig.update(pose, AT_REST, 1 / 60);
     expect(rig.currentMode).toBe('cabin');
     expect(camera.fov).toBe(72);
+  });
+
+  it('frames the showcase beside a panel: the truck in the middle of the free part, from further back', () => {
+    const camera = new PerspectiveCamera(60, 2.4);
+    const rig = new CameraRig(camera, body);
+    const pose = { x: 0, z: 0, heading: 0 };
+    // Where the showcase looks: the middle of the truck, a little above the ground.
+    const target = (): Vector3 => {
+      camera.updateMatrixWorld();
+      return new Vector3(0, 1.8, cab.centreZ).project(camera);
+    };
+    const distance = (): number => Math.hypot(camera.position.x, camera.position.z - cab.centreZ);
+    rig.showcase = true;
+    rig.update(pose, AT_REST, 0);
+    const whole = distance();
+    expect(target().x).toBeCloseTo(0, 6);
+
+    // A panel over the right 70% (a phone on its side): the truck sits in the middle of the left 30%.
+    rig.frameBeside(0.7, 0);
+    rig.update(pose, AT_REST, 0);
+    expect(target().x).toBeCloseTo(-0.7, 3);
+    expect(target().y).toBeCloseTo(0, 3);
+    expect(distance()).toBeGreaterThan(whole);
+    // Over the bottom 60% (upright): the truck sits in the middle of the top 40%.
+    rig.frameBeside(0, 0.6);
+    rig.update(pose, AT_REST, 0);
+    expect(target().x).toBeCloseTo(0, 3);
+    expect(target().y).toBeCloseTo(0.6, 3);
+    expect(camera.aspect).toBeCloseTo(2.4, 9);
+
+    rig.frameBeside(0, 0);
+    rig.update(pose, AT_REST, 0);
+    expect(camera.view?.enabled ?? false).toBe(false);
+    expect(target().x).toBeCloseTo(0, 6);
+    expect(distance()).toBeCloseTo(whole, 6);
+  });
+
+  it('swings the showcase round to a part it is asked to show, the short way, then circles on', () => {
+    const camera = new PerspectiveCamera();
+    const rig = new CameraRig(camera, body);
+    const pose = { x: 0, z: 0, heading: 0 };
+    const around = (): number => Math.atan2(camera.position.x, camera.position.z - cab.centreZ);
+    rig.showcase = true;
+    rig.update(pose, AT_REST, 0);
+
+    const exhaust = SHOWCASE_PART_ANGLES.exhaust;
+    rig.turnShowcaseTo(exhaust);
+    let closest = Infinity;
+    for (let frame = 0; frame < 150; frame++) {
+      rig.update(pose, AT_REST, 1 / 30);
+      closest = Math.min(closest, Math.abs(Math.atan2(Math.sin(around() - exhaust), Math.cos(around() - exhaust))));
+    }
+    expect(closest).toBeLessThan(0.02);
+    // It goes on round from there.
+    const reached = around();
+    rig.update(pose, AT_REST, 1);
+    expect(around()).not.toBeCloseTo(reached, 3);
   });
 
   it('widens the view ahead at speed, easing into it and back, but not the rear or top cameras\' views', () => {

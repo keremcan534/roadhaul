@@ -1,6 +1,7 @@
 import { Vector3, type PerspectiveCamera } from 'three';
-import { clamp, clamp01, dampFactor } from '../../core/math/scalar';
+import { clamp, clamp01, dampFactor, finiteOr } from '../../core/math/scalar';
 import { CAMERA_MODES, type CameraMode } from '../../data/config/controls';
+import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
 import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { VehiclePose } from '../../systems/driving/DrivingService';
@@ -62,6 +63,26 @@ const LOOK_LIMITS: Readonly<Record<CameraMode, readonly [number, number]>> = {
 };
 /** Menus show the parked truck from a camera circling it slowly. */
 const SHOWCASE_DISTANCE_METERS = 14;
+/** Framed beside a panel (frameBeside), the showcase stands back this much more per share of the screen covered. */
+const SHOWCASE_FRAMED_STEP_BACK = 0.45;
+/** How fast the showcase swings round to a part it is asked to show (turnShowcaseTo), 1/s. */
+const SHOWCASE_SWING_RATE = 2.5;
+
+/**
+ * Where the showcase looks at each upgraded part from, radians round the
+ * truck (0 in front, π/2 its left): the exhaust stacks from the front right,
+ * the rims, calipers and tank from the left, the lower stance and its
+ * mudflaps from behind on the left.
+ */
+export const SHOWCASE_PART_ANGLES: Readonly<Record<UpgradeLook, number>> = {
+  exhaust: -0.8,
+  brakes: 1.2,
+  wheels: 1.1,
+  stance: 2.2,
+  fuelTank: 1.35,
+};
+/** The side view that shows a new coat of paint: the cab and the livery's stripe. */
+export const SHOWCASE_PAINT_ANGLE = 1.7;
 const SHOWCASE_HEIGHT_METERS = 4.2;
 const SHOWCASE_LOOK_HEIGHT_METERS = 1.8;
 const SHOWCASE_TURN_RATE = 0.15;
@@ -76,7 +97,9 @@ const SHOWCASE_FOV = 60;
  * - rear: behind the body, looking down at the road behind, for reversing;
  * - top: high above, for parking.
  * `look()` turns any of them by the player's drag (LookAround). Behind the
- * menus, a showcase camera circles the parked truck. Allocation-free per frame.
+ * menus, a showcase camera circles the parked truck; beside the company
+ * panel it frames the truck in the part of the screen the panel leaves
+ * free (frameBeside). Allocation-free per frame.
  */
 export class CameraRig {
   private mode: CameraMode = 'chase';
@@ -87,6 +110,8 @@ export class CameraRig {
   private showcaseEnabled = false;
   /** Radians around the truck, measured like headings (0 = in front of it along +Z). */
   private showcaseAngle = 2.4;
+  /** Where the showcase is swinging round to (turnShowcaseTo); null while it just circles. */
+  private showcaseSwing: number | null = null;
   /** The player's drag: radians to the right, and up. */
   private lookYaw = 0;
   private lookPitch = 0;
@@ -96,6 +121,9 @@ export class CameraRig {
   private swayAhead = 0;
   /** How much wider the view is for the speed, degrees (eased). */
   private speedWidening = 0;
+  /** The share of the screen a panel covers at the right and at the bottom (frameBeside). */
+  private coveredRight = 0;
+  private coveredBottom = 0;
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -155,6 +183,39 @@ export class CameraRig {
     }
   }
 
+  /**
+   * Frames the picture in the part of the screen a panel leaves free: the
+   * view shifts so what it looks at sits in the middle of it, and the
+   * showcase stands back to fit the truck there. `coveredRight` and
+   * `coveredBottom` are the shares of the screen's width and height the
+   * panel covers; 0 and 0 give the whole screen back.
+   */
+  frameBeside(coveredRight: number, coveredBottom: number): void {
+    const right = clamp01(finiteOr(coveredRight, 0));
+    const bottom = clamp01(finiteOr(coveredBottom, 0));
+    if (right === this.coveredRight && bottom === this.coveredBottom) {
+      return;
+    }
+    this.coveredRight = right;
+    this.coveredBottom = bottom;
+    if (right === 0 && bottom === 0) {
+      this.camera.clearViewOffset();
+      return;
+    }
+    // The view slides by half the covered share: the free part's middle comes to the picture's middle. The
+    // sizes are the camera's own shape (setViewOffset sets the aspect from them).
+    const width = this.camera.aspect;
+    this.camera.setViewOffset(width, 1, (width * right) / 2, bottom / 2, width, 1);
+  }
+
+  /**
+   * Swings the showcase round to `angle` (radians round the truck, 0 in
+   * front, π/2 its left: SHOWCASE_PART_ANGLES), then it circles on from there.
+   */
+  turnShowcaseTo(angle: number): void {
+    this.showcaseSwing = Number.isFinite(angle) ? angle : null;
+  }
+
   /** Follows the (interpolated) truck pose. */
   update(pose: Readonly<VehiclePose>, motion: Readonly<CameraMotion>, deltaSeconds: number): void {
     const sin = Math.sin(pose.heading);
@@ -168,12 +229,23 @@ export class CameraRig {
     const viewCos = Math.cos(view);
 
     if (this.showcaseEnabled) {
-      this.showcaseAngle = (this.showcaseAngle + SHOWCASE_TURN_RATE * deltaSeconds) % (2 * Math.PI);
+      if (this.showcaseSwing === null) {
+        this.showcaseAngle = (this.showcaseAngle + SHOWCASE_TURN_RATE * deltaSeconds) % (2 * Math.PI);
+      } else {
+        // The short way round.
+        const left = Math.atan2(Math.sin(this.showcaseSwing - this.showcaseAngle), Math.cos(this.showcaseSwing - this.showcaseAngle));
+        this.showcaseAngle += left * dampFactor(SHOWCASE_SWING_RATE, deltaSeconds);
+        if (Math.abs(left) < 0.01) {
+          this.showcaseSwing = null;
+        }
+      }
       const around = pose.heading + this.showcaseAngle;
+      const distance =
+        SHOWCASE_DISTANCE_METERS * (1 + SHOWCASE_FRAMED_STEP_BACK * Math.max(this.coveredRight, this.coveredBottom));
       this.position.set(
-        centreX + Math.sin(around) * SHOWCASE_DISTANCE_METERS,
+        centreX + Math.sin(around) * distance,
         SHOWCASE_HEIGHT_METERS,
-        centreZ + Math.cos(around) * SHOWCASE_DISTANCE_METERS,
+        centreZ + Math.cos(around) * distance,
       );
       this.target.set(centreX, SHOWCASE_LOOK_HEIGHT_METERS, centreZ);
     } else if (this.mode === 'chase' || this.mode === 'top') {
