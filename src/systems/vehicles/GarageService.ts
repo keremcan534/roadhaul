@@ -2,6 +2,7 @@ import type { EventBus } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
 import { err, ok, type Result } from '../../core/Result';
 import type { ContentCatalog } from '../../data/ContentCatalog';
+import type { PaintDefinition } from '../../data/definitions/PaintDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
@@ -23,6 +24,7 @@ import type { FuelService } from './FuelService';
 
 export type BuyTruckError = 'unknownVehicle' | 'alreadyOwned' | 'locked' | SpendError;
 export type SwitchTruckError = 'unknownTruck' | 'alreadyActive' | 'missionInProgress';
+export type PaintTruckError = 'unknownTruck' | 'unknownPaint' | 'alreadyPainted' | 'locked' | SpendError;
 
 /** A truck the company owns. The active truck's fuel and damage are live. */
 export interface OwnedTruck {
@@ -31,8 +33,18 @@ export interface OwnedTruck {
   readonly fuelLiters: number;
   readonly damage: Fraction;
   readonly upgrades: FittedUpgrades;
+  /** Its colour; null for its model's factory colour. */
+  readonly paint: PaintDefinition | null;
   /** The truck the player drives. */
   readonly active: boolean;
+}
+
+/** A colour at the garage's paint shop. */
+export interface PaintOffer {
+  readonly paint: PaintDefinition;
+  readonly requiredCompanyLevel: number;
+  /** Below that level: shown, but not for use yet. */
+  readonly locked: boolean;
 }
 
 /** A truck model at the dealer (spec §15). */
@@ -54,6 +66,7 @@ interface TruckRecord {
   fuelLiters: number;
   damage: Fraction;
   upgrades: Record<string, number>;
+  paintId: string | null;
 }
 
 /** Where the upgrades' effects go: the systems that drive the active truck. */
@@ -136,6 +149,7 @@ export class GarageService {
       fuelLiters: offer.definition.fuelCapacityLiters,
       damage: 0,
       upgrades: {},
+      paintId: null,
     };
     this.records.push(record);
     this.logger.info(`Bought ${definitionId} as ${record.instanceId} for ${offer.price}.`);
@@ -170,6 +184,46 @@ export class GarageService {
     return ok(this.view(next));
   }
 
+  /** Every colour of the paint shop, in content order. */
+  paintShop(): readonly PaintOffer[] {
+    return this.content.paints.all.map((paint) => {
+      const requiredCompanyLevel = paint.requiredCompanyLevel ?? 1;
+      return { paint, requiredCompanyLevel, locked: this.company.level < requiredCompanyLevel };
+    });
+  }
+
+  /**
+   * Paints one of the company's trucks, wherever it stands, for the colour's
+   * price; `paintId` null brings the model's factory colour back, for free.
+   */
+  paint(instanceId: string, paintId: string | null): Result<OwnedTruck, PaintTruckError> {
+    const record = this.records.find((candidate) => candidate.instanceId === instanceId);
+    if (record === undefined) {
+      return err('unknownTruck');
+    }
+    const offer = paintId === null ? null : this.paintShop().find((candidate) => candidate.paint.id === paintId);
+    if (offer === undefined) {
+      return err('unknownPaint');
+    }
+    if (record.paintId === paintId) {
+      return err('alreadyPainted');
+    }
+    if (offer?.locked === true) {
+      return err('locked');
+    }
+    const price = offer === null ? 0 : offer.paint.price;
+    if (price > 0) {
+      const paid = this.economy.spend(price, 'paint');
+      if (!paid.ok) {
+        return err(paid.error);
+      }
+    }
+    record.paintId = paintId;
+    this.logger.info(`Painted ${instanceId} ${paintId ?? 'in its factory colour'} for ${price}.`);
+    this.events.emit('VehiclePainted', { instanceId, paintId, price });
+    return ok(this.view(record));
+  }
+
   /** The level of `upgradeId` fitted to the active truck, 0 for none. */
   fittedLevel(upgradeId: string): number {
     const upgrade = this.content.upgrades.find(upgradeId);
@@ -198,6 +252,7 @@ export class GarageService {
       fuelLiters: vehicle.fuelLiters,
       damage: vehicle.damage,
       upgrades: { ...vehicle.upgrades },
+      paintId: vehicle.paintId,
     }));
     this.activeId = garage.activeVehicleInstanceId;
     const active = this.requireActive();
@@ -219,6 +274,7 @@ export class GarageService {
           fuelLiters: truck.fuelLiters,
           damage: truck.damage,
           upgrades: { ...truck.upgrades },
+          paintId: truck.paint?.id ?? null,
         };
       }),
     };
@@ -246,6 +302,7 @@ export class GarageService {
       fuelLiters: active ? this.fuel.fuelLiters : record.fuelLiters,
       damage: active ? this.damage.damage : record.damage,
       upgrades: { ...record.upgrades },
+      paint: record.paintId === null ? null : this.content.paints.get(record.paintId),
       active,
     };
   }

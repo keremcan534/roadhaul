@@ -6,6 +6,7 @@ import type { MapDefinition } from '../definitions/MapDefinition';
  *
  * - City A, Yeniliman (west): the starting town, where the high street
  *   crosses the harbour road. The company's home depot is on the high street.
+ *   The harbour road ends at the quay, on the sea along the map's west edge.
  * - City B, Demirkent (east): an industrial estate inside a ring road.
  * - City C, Başakova (north): a farm village on one street.
  * - The highway joins A's harbour road to B's ring road, with a rest area
@@ -194,8 +195,91 @@ export const MAPS: readonly MapDefinition[] = [
         lot: { x: 100, z: -638, headingDegrees: 90, lengthMeters: 90, widthMeters: 34 },
       },
     ],
+    // Each town's name greets the traffic coming in on each of its two roads from the country.
+    citySigns: [
+      { cityId: 'city_a', roadId: 'highway_a_b', distanceMeters: 70, direction: 'backward' },
+      { cityId: 'city_a', roadId: 'rural_a_c', distanceMeters: 70, direction: 'backward' },
+      { cityId: 'city_b', roadId: 'highway_a_b', distanceMeters: 2940, direction: 'forward' },
+      { cityId: 'city_b', roadId: 'rural_c_b', distanceMeters: 2100, direction: 'forward' },
+      { cityId: 'city_c', roadId: 'rural_a_c', distanceMeters: 2080, direction: 'forward' },
+      { cityId: 'city_c', roadId: 'rural_c_b', distanceMeters: 70, direction: 'backward' },
+    ],
+    // Farmland: fields line the country roads, with Başakova's own behind the village houses, and a few along the
+    // highway. Each lies beside a stretch of road, a few meters back from its edge.
+    fields: [
+      { roadId: 'rural_a_c', fromMeters: 140, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'wheat' },
+      { roadId: 'rural_a_c', fromMeters: 330, lengthMeters: 160, side: 'right', setbackMeters: 12, depthMeters: 120, crop: 'green' },
+      { roadId: 'rural_a_c', fromMeters: 560, lengthMeters: 180, side: 'left', setbackMeters: 10, depthMeters: 100, crop: 'stubble' },
+      { roadId: 'rural_a_c', fromMeters: 800, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 110, crop: 'ploughed' },
+      { roadId: 'rural_a_c', fromMeters: 1040, lengthMeters: 190, side: 'left', setbackMeters: 12, depthMeters: 120, crop: 'wheat' },
+      { roadId: 'rural_a_c', fromMeters: 1300, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 100, crop: 'stubble' },
+      { roadId: 'rural_a_c', fromMeters: 1560, lengthMeters: 180, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'green' },
+      { roadId: 'rural_a_c', fromMeters: 1800, lengthMeters: 160, side: 'right', setbackMeters: 12, depthMeters: 120, crop: 'wheat' },
+      { roadId: 'c_village_street', fromMeters: 60, lengthMeters: 170, side: 'right', setbackMeters: 72, depthMeters: 160, crop: 'green' },
+      { roadId: 'c_village_street', fromMeters: 250, lengthMeters: 180, side: 'right', setbackMeters: 72, depthMeters: 160, crop: 'stubble' },
+      { roadId: 'c_village_street', fromMeters: 450, lengthMeters: 180, side: 'right', setbackMeters: 72, depthMeters: 160, crop: 'wheat' },
+      { roadId: 'c_village_street', fromMeters: 60, lengthMeters: 170, side: 'left', setbackMeters: 75, depthMeters: 140, crop: 'wheat' },
+      { roadId: 'c_village_street', fromMeters: 250, lengthMeters: 180, side: 'left', setbackMeters: 75, depthMeters: 140, crop: 'green' },
+      { roadId: 'c_village_street', fromMeters: 450, lengthMeters: 180, side: 'left', setbackMeters: 75, depthMeters: 140, crop: 'ploughed' },
+      { roadId: 'rural_c_b', fromMeters: 150, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 110, crop: 'stubble' },
+      { roadId: 'rural_c_b', fromMeters: 380, lengthMeters: 170, side: 'left', setbackMeters: 12, depthMeters: 100, crop: 'wheat' },
+      { roadId: 'rural_c_b', fromMeters: 620, lengthMeters: 180, side: 'right', setbackMeters: 10, depthMeters: 120, crop: 'green' },
+      { roadId: 'rural_c_b', fromMeters: 880, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'ploughed' },
+      { roadId: 'rural_c_b', fromMeters: 1150, lengthMeters: 170, side: 'right', setbackMeters: 12, depthMeters: 100, crop: 'wheat' },
+      { roadId: 'highway_a_b', fromMeters: 500, lengthMeters: 220, side: 'right', setbackMeters: 15, depthMeters: 130, crop: 'wheat' },
+      { roadId: 'highway_a_b', fromMeters: 1900, lengthMeters: 220, side: 'left', setbackMeters: 15, depthMeters: 130, crop: 'green' },
+    ],
+    // A wind farm in the valley beside the highway, and three turbines beside the country road into Demirkent.
+    windTurbines: [
+      { x: -560, z: -380 },
+      { x: -340, z: -360 },
+      { x: -120, z: -350 },
+      { x: 100, z: -360 },
+      { x: 320, z: -370 },
+      { x: 540, z: -390 },
+      { x: 1400, z: 200 },
+      { x: 1330, z: 430 },
+      { x: 1250, z: 650 },
+    ],
+    // The sea along the west edge. The harbour road ends at Yeniliman's quay, where a coaster lies under two cranes
+    // and a tug waits; fishing boats lie off the shore south of it and out in the bay.
+    sea: {
+      shoreline: [
+        [-2260, -2400],
+        [-2240, -2000],
+        [-2275, -1600],
+        [-2230, -1200],
+        [-2205, -900],
+        [-2190, -650],
+        [-2170, -480],
+        [-2150, -360],
+        [-2150, -340],
+        [-2150, -160],
+        [-2150, -140],
+        [-2168, -40],
+        [-2195, 150],
+        [-2235, 450],
+        [-2215, 800],
+        [-2260, 1250],
+        [-2235, 1700],
+        [-2270, 2100],
+        [-2250, 2400],
+      ],
+      quays: [{ fromZ: -340, toZ: -160, widthMeters: 55 }],
+      boats: [
+        { kind: 'coaster', x: -2157, z: -265, headingDegrees: 0 },
+        { kind: 'tug', x: -2157, z: -192, headingDegrees: 180 },
+        { kind: 'fishing', x: -2178, z: -60, headingDegrees: 120 },
+        { kind: 'fishing', x: -2320, z: -430, headingDegrees: 200 },
+      ],
+      cranes: [
+        { x: -2140, z: -285, headingDegrees: -90 },
+        { x: -2140, z: -245, headingDegrees: -90 },
+      ],
+    },
     // On A's high street, in the lane heading north past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
-    scenery: { seed: 20260923, treesPerKilometer: 70 },
+    // Street lamps light the three towns' streets and B's ring road, on alternate sides.
+    scenery: { seed: 20260923, treesPerKilometer: 70, streetLampSpacingMeters: 26 },
   },
 ];

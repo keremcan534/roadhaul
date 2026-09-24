@@ -69,7 +69,7 @@ flowchart TD
 
 ## 4. Boot sequence
 
-1. `src/main.ts` picks the graphics preset (`?quality=`, the saved setting or the device) and reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar) and creates a `ConsoleLogger`.
+1. `src/main.ts` picks the graphics preset (`?quality=`, the saved setting or the device) and reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar, for the special events and the contracts of the day) and creates a `ConsoleLogger`.
 2. `GameBootstrapper.boot()`:
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
@@ -135,8 +135,8 @@ Driving runs through the layers like everything else (roadmap steps 04–08):
 
 ```text
 keyboard (platform/input) ─┐
-                           ├─ combineVehicleInputs ─► DrivingService.step(dt, input)   [fixedUpdate, 60 Hz]
-touch controls (ui) ───────┘                              │
+touch controls (ui) ───────┼─ combineVehicleInputs ─► DrivingService.step(dt, input)   [fixedUpdate, 60 Hz]
+tilt (platform/input) ─────┘                              │
                                         VehicleDynamics ──┤  domain: speed, gear, steering, position
                                         DrivingWorld ─────┘  domain: surface under the truck, collisions
                                                           │
@@ -158,11 +158,27 @@ touch controls (ui) ───────┘                              │
   - asphalt (roads, turning circles at dead ends, depot yards, rest area lots) or grass under the truck;
   - service points: the depot yards and rest area lots, the only places with a pump and a workshop;
   - trees scattered from a seed, kept clear of roads, yards, lots and buildings;
+  - street lamps along the town roads (streets and ring roads, where the map sets a spacing), on alternating sides, clear of junctions, yards, lots and other roads;
+  - the cities' name boards where roads enter them (`MapDefinition.citySigns`: a road, a distance along it, and the direction of the traffic they greet);
+  - farm fields, each given as a stretch of road, a side, a setback and a depth, and set back from wherever the road bulges toward it; seeded hay bales in rows on the harvested ones;
+  - wind turbines;
+  - the sea along the west edge (`MapDefinition.sea`): water west of a shoreline that runs from the map's north edge to its south edge, so there is one shore at any z; paved quays along it, boats moored off it, cranes on the quays, and seeded boulders along the natural shore. The shore is a wall the truck stops at (like the map edge, a line: each stretch of shoreline pushes the footprint's circles back onto the land). Quays drive like yards; trees keep clear of the shore and the quays, lamps of the water;
   - buildings and the map edge.
+
+  Tree trunks, lamp posts, the boards' posts, hay bales, turbine towers and the cranes' legs are solid circles, filed by 20 m grid cell like the road pieces. Fields drive like grass.
 
   Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two. Traffic counts too (moving obstacles): the truck takes an impact only when it drives into a vehicle, and one it rear-ends carries it along at its speed.
 - **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. It also sets the cargo mass (a loaded truck is slower), parks the truck at a pose, and recovers a stuck truck into the right-hand lane of the nearest road. Presentation reads its state and never writes it.
-- **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C) and touch controls (steering wheel, gas, brake, camera button) are merged every fixed step.
+- **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C), touch controls (gas, brake, camera button, and the steering wheel or left/right buttons) and tilt steering are merged every fixed step: steering adds up, pedals take the stronger press.
+- **Tilt steering** turns the phone into the steering wheel. `TiltSteering` (pure, unit-tested) measures how far the phone has turned about the screen's axis since it was calibrated, from the accelerometer's gravity: straight ahead is how the phone is held at the start of a drive, when the screen turns and when the tilt button is tapped. Only the angle between two readings counts, so it works in any screen orientation and with browsers that report gravity with the opposite sign. Tipped back far, the angle is read against half of gravity, so it stays steady down to a phone held flat. `TiltInput` (platform) feeds it from `devicemotion` only while tilt is the picked way of steering, and asks iOS for the sensor from a tap. The way of steering, tilt sensitivity and control size are device settings, like the graphics preset.
+
+### Cameras
+
+`CameraRig` (presentation) places the camera for the mode picked: chase, cabin, hood, rear or top (spec §31), from the truck's interpolated pose and motion, allocation-free. The cameras looking ahead widen their view by up to 6° between 30 and 90 km/h, eased, so the road seems to rush past. Where the cab's parts are comes from `cabGeometry`, shared with `TruckView`, so the driver's eye sits behind the steering wheel the truck model draws. The player's drag (`LookAround`, DOM-free) turns any camera within its limits. The rear camera's picture is mirrored by flipping the canvas (`RenderHost.mirrored`), not the projection, so face culling is untouched.
+
+### The 2D maps
+
+The minimap and the full-screen map draw the same `MapSketch`: the world's roads simplified (Ramer–Douglas–Peucker, 1.5 m) and cut into runs of up to 32 points, each with its bounds, plus yards, lots, turning circles, buildings, depots, rest areas and where city names go. `MapPainter` turns each run into a `Path2D` once and strokes only the runs a `MapViewport` sees, under the canvas transform, so a repaint allocates nothing. The viewport is DOM-free and unit-tested: north up for the full map, the truck's heading up for the minimap. The full map repaints only after a pan, zoom or resize, and the entry point pauses the drive and skips the 3D render while it is open.
 
 ### Traffic
 
@@ -197,10 +213,10 @@ The tutorial (roadmap step 26, spec §41) teaches by playing and never blocks an
 
 ### Weather
 
-Weather (roadmap step 24, spec §38) is data: each `WeatherDefinition` says how likely and how long it is, what it does to play, and how it looks.
+Weather (roadmap step 24, spec §38–39) is data: each `WeatherDefinition` says how likely and how long it is, what it may turn into, what it does to play, and how it looks. The time of day is weather too: dusk, night and dawn.
 
-- **`WeatherService`** (`src/systems/weather`) runs a seeded schedule and blends each change over `GameConfig.weather.transitionSeconds`. It hands the effects to the services that own them: the truck's grip as a `DrivingService` performance modifier (like damage and upgrades), and traffic's speed to `TrafficService`. It steps in `fixedUpdate` after traffic, behind the menus too, and emits `WeatherChanged` when a change begins.
-- **The look** is presentation's, read every frame from `previous`, `current` and `blend`. `EnvironmentView.applyWeather()` blends the sky, the haze, the lights and the clouds, and relights the pre-lit ground through `PrelitMaterials`, which rescales every unlit ground material and fades the baked shadows with the sun. `RainView` draws the rain round the camera in one draw call, animated in its vertex shader. `setLamps()` on `TruckView`, `TrafficView` and `TrackView` brightens the lamps, adds their glows (`LampGlows`, one `Points` draw call per set), the truck's headlight pool on the road, and lit windows.
+- **`WeatherService`** (`src/systems/weather`) runs a seeded schedule and blends each change over `GameConfig.weather.transitionSeconds`. It hands the effects to the services that own them: the truck's grip as a `DrivingService` performance modifier (like damage and upgrades), and traffic's speed to `TrafficService`. It steps in `fixedUpdate` after traffic, behind the menus too, and emits `WeatherChanged` when a change begins. The next weather is drawn by weight from the ones the current one names in `next` (any, when it names none), so the day goes round in order: a dry day turns to dusk now and then, dusk to night, night to dawn and dawn to a new day. `ContentCatalog` checks that `next` names weathers that exist.
+- **The look** is presentation's, read every frame from `previous`, `current` and `blend`. `EnvironmentView.applyWeather()` blends the sky, the haze, the lights and the clouds, and relights the pre-lit ground through `PrelitMaterials`, which rescales every unlit ground material and fades the baked shadows with the sun. It sets the sun as high as the look's `sunHeight` (low at dusk and dawn): the sun light comes from there, flat ground catches less of a low sun, the sky glows round it and along the horizon under it, and the clouds' shaded sides take the horizon's glow. At night the stars come out (700 soft dots in one draw call, each twinkling at its own pace, hidden behind clouds and hills) and the moon shows where the light comes from (a textured quad facing the camera); both are hidden by day. `RainView` draws the rain round the camera in one draw call, animated in its vertex shader, and `TruckEffects` the spray the truck's wheels throw off a wet road. `TrackView.setWetness()` wets the asphalt with the rain: its shader (a patch of three's basic material) darkens it and mirrors the sky's horizon colour by a Fresnel term, so the road ahead shines. `BirdsView` flies flocks by day, in one draw call, and sends them to roost at night and in the rain. `setLamps()` on `TruckView`, `TrafficView` and `TrackView` brightens the lamps, adds their glows (`LampGlows`, one `Points` draw call per set), the truck's headlight pool on the road, and lit windows.
 
 ### The mission loop
 
@@ -217,11 +233,13 @@ main menu ─► company HQ (job board) ─► accept ─► drive to the pickup
   - `loadingBay`: the whole truck must stand inside the bay, either way round, below about 1 km/h;
   - `MissionInstance`: the plain, saveable state of an accepted contract, with the stages accepted → travellingToPickup → loaded → delivering → completed or failed (abandoned, or cargo damaged beyond the client's tolerance);
   - `cargoDamage`: each crash damages the cargo with the square of its speed, scaled by the cargo's sensitivity;
-  - `missionReward`: base pay (reward × cargo multiplier), an on-time bonus, a late penalty capped at half the base pay (spec §64), and a condition bonus for careful driving.
+  - `missionReward`: base pay (reward × cargo multiplier), an on-time bonus, a late penalty capped at half the base pay (spec §64), and a condition bonus for careful driving;
+  - `contractGenerator`: contracts of the day (spec §28–29), a seeded batch per number. For each, an origin and another city as destination, a cargo (a city's specialities are likelier), a load some truck can carry, the road distance, pay by distance and tonnes times the difficulty's factor (spec §64), and the difficulty's time limit and damage tolerance. The company level asked is the difficulty's, or where the truck it needs is sold if that is later. Each batch opens with two easy contracts for the starting truck.
   - `world/RoadNetwork` gives the remaining distance by road and a point to steer toward. It computes the shortest routes to a target once (Dijkstra from the target) and caches them, so the HUD can ask every frame without allocating.
-- **`MissionService`** (`src/systems/missions`) offers the contracts the truck can haul (the job board), accepts one at a time, and advances it every fixed step after `DrivingService.step()`: loading after `GameConfig.missions.loadingSeconds` in the pickup bay (the truck gets the cargo's weight), the delivery clock, cargo damage from `VehicleCollided`, and unloading and the reward at the destination. It publishes `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed` and never touches the UI.
+- **`DailyContracts`** (`src/systems/missions`) deals the contracts of the day for the map being driven: a new batch every `GameConfig.missions.dailyContracts.refreshHours` of the clock (6), the same for everyone at the same time, so `?date=` fixes it for tests. Generated contracts' ids start with `daily_`, which the game's own must not use (content validation).
+- **`MissionService`** (`src/systems/missions`) offers the contracts the truck can haul (the job board: the game's own and the contracts of the day), accepts one at a time, and advances it every fixed step after `DrivingService.step()`: loading after `GameConfig.missions.loadingSeconds` in the pickup bay (the truck gets the cargo's weight), the delivery clock, cargo damage from `VehicleCollided`, and unloading and the reward at the destination. It publishes `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed` (the last two carry the contract itself, generated or not) and never touches the UI. A generated contract under way goes into the save whole, so it resumes after its batch has left the board.
 - **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay; `RestAreaView` draws the rest area's lot, stalls and fuel canopy. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the job board, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open, and the truck stays parked where it was left between contracts.
-- **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`). A unit test keeps both languages complete.
+- **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`); a generated contract is named after its cargo. A unit test keeps both languages complete.
 
 ### Economy, the truck's upkeep and the company
 
@@ -274,13 +292,15 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - since v3: the upgrades fitted to each truck;
 - v4 has the same shape: the test track is retired, and saves on it move to the region's spawn;
 - since v5: the progress in each special event's latest run;
-- since v6: the tutorial's step.
+- since v6: the tutorial's step;
+- since v7: each truck's paint (null for its model's factory colour);
+- since v8: the contract under way keeps its own definition when it was generated (a contract of the day); null for the game's own contracts.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (6) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (8) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
-- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
+- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage, fitted upgrades and paint, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §16), memory in tests or when the browser forbids storage.
   - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
   - **Backup:** loading falls back to it when the latest save is unreadable.
@@ -297,25 +317,29 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
   - `EnvironmentView` draws a gradient sky dome with a sun glow, clouds and a ring of hazy hills. They all follow the camera. It also owns the fog and the sun and sky lights (`world/lighting.ts`).
   - `TrackView` draws textured grass, asphalt with gravel shoulders, two tree species, buildings with facades, and soft shadow decals.
   - `DepotView` draws concrete yards and bay lines, and the beacon over the bay the mission needs next.
-  - `TruckView` builds a detailed cab-over truck carrying the RoadHaul livery.
-- **Procedural textures, no image files** (`presentation/textures`). Grass, asphalt, facades, livery, rims and shadows are drawn in plain TypeScript: tileable noise and a small stroke font. They cost nothing to download and are original by construction. The same code runs in Node, so it is unit-tested.
+  - `StreetLampView` draws the street lamps, instanced; at night their lenses light, glow and throw pools of light on the road. `CitySignView` draws the name boards, the names written by the stroke font into one texture. `FarmlandView` draws the fields (pre-lit, one texture of crop rows tinted per crop) and the hay bales; `WindTurbineView` the turbines, their rotors turning every frame, with warning lights blinking at night.
+  - `BirdsView` flies flocks of crows over the fields and gulls over the harbour: instanced V-shaped silhouettes circling their flocks, their wings beating (the gulls glide between beats), lit like the ground.
+  - `SeaView` draws the sea: the water mirrors the sky (`EnvironmentView.sky`, shared uniforms, so it follows the weather), with small waves drifting across it (a few sine ripples perturb its normal in the fragment shader, calming with distance so they do not alias into stripes), the sun glittering on it and foam along the shore; a sandy beach along the natural shore, pre-lit; and the boulders, instanced in 600 m stretches the camera culls. `HarbourView` draws the quays (concrete slabs, pre-lit, with a kerb, bollards and a yellow line), the portal cranes, merged, and the boats, each rocking gently at its mooring; at night their masthead lights and the cranes' warning lights glow. Boats, cranes and hulls are original low-poly designs.
+  - `TruckView` builds a detailed cab-over truck carrying the RoadHaul livery, with an exhaust stack behind the cab.
+  - `TruckEffects` throws what the truck throws into the air: exhaust from its stack, a light haze idling and dark puffs under load; dust from the rear wheels off the road, less on wet ground; spray from them on a wet road. All of it goes into one `ParticlePool` (`presentation/effects`): camera-facing quads written into one dynamic geometry every frame, moving, growing and fading, lit through `PrelitMaterials` and fogged like the scene; the oldest puff makes way when the pool is full.
+- **Procedural textures, no image files** (`presentation/textures`). Grass, asphalt, facades, livery, rims, shadows, the name boards, the moon and the puffs of smoke are drawn in plain TypeScript: tileable noise and a small stroke font with every capital of the English and Turkish alphabets. They cost nothing to download and are original by construction. The same code runs in Node, so it is unit-tested.
 - **Defaults for low/mid Android:**
   - pixel ratio capped by the graphics preset (1 to 1.5), MSAA off;
   - Lambert or Phong materials;
   - no real-time shadows (shadows are soft decals);
   - fog to hide the far plane.
-- **Graphics presets** (`GameConfig.rendering`, `QUALITY_PRESETS`): low, medium and high set the pixel ratio cap (1, 1.25, 1.5), how far the resolution may drop (to 70% or 60%), how many rain streaks fall (half, three quarters, all), whether lamps glow at night, and how many traffic vehicles drive (8, 12, 16). The preset comes from `?quality=`, else the player's choice in Settings, else the device (`platform/browser/deviceQuality.ts`): 4 cores or fewer, or 3 GB of memory or less, is low; other phones and tablets are medium; desktops are high. The choice is kept apart from the save (`roadhaul.settings`: it belongs to the phone, not the company), and changing it restarts the game. Where storage forgets (no persistent storage), the address carries it as `?quality=`.
+- **Graphics presets** (`GameConfig.rendering`, `QUALITY_PRESETS`): low, medium and high set the pixel ratio cap (1, 1.25, 1.5), how far the resolution may drop (to 70% or 60%), how many rain streaks fall and how much smoke, dust and spray the truck throws (half, three quarters, all), whether lamps glow at night, and how many traffic vehicles drive (8, 12, 16). The preset comes from `?quality=`, else the player's choice in Settings, else the device (`platform/browser/deviceQuality.ts`): 4 cores or fewer, or 3 GB of memory or less, is low; other phones and tablets are medium; desktops are high. The choice is kept apart from the save (`roadhaul.settings`: it belongs to the phone, not the company), and changing it restarts the game. Where storage forgets (no persistent storage), the address carries it as `?quality=`.
 - **Dynamic resolution** (`AdaptiveResolution`, a 30 FPS floor): frame times on the road are averaged over 2 s windows (the menus, drawn at half rate, are no measure). When a window averages slower than 27 FPS the resolution drops by 15%, down to the preset's floor; after three windows faster than 50 FPS it rises by 10%, back to the full pixel ratio. The wide gap keeps it from see-sawing. Frames over 0.2 s are hitches, not a measure, and the first window after a start or a return to the tab is not measured. `RenderHost` resizes the drawing buffer once per change (a resize waits for the GPU) and never to the size it has. The rain's streaks keep their width in pixels.
 - **Behind the menus** the scene is a backdrop: it renders every other frame, which saves the battery.
 - **Pre-lit flat surfaces.** The ground and road always face up under a fixed sun. They are unlit materials tinted with exactly what Lambert shading would give them (`flatGroundLight()`), so the pixels that cover most of the screen skip lighting.
 - **Software rendering** (no GPU: headless CI browsers, some virtual machines) is detected from the WebGL renderer name. The host then renders at one pixel per CSS pixel without anisotropic filtering, so the simulation still runs in real time.
-- **Budgets** (checked by `tests/e2e/performance.spec.ts`; to confirm on real phones in step 29): at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 48 draw calls and 91k triangles are in view, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle and one for their lamps. Weather adds at most a few: rain one, and at night the glows (two) and the headlight pool (one). The heaviest scenes measured, with 24 vehicles: a city yard at night, 52 draw calls and 92k triangles; the HQ backdrop at night, 59 and 98k; rain at the spawn, 52 and 109k.
+- **Budgets** (checked by `tests/e2e/performance.spec.ts`; to confirm on real phones in step 29): at most ~150 draw calls and ~300k triangles in view, a 30 FPS floor. Use `InstancedMesh` for repeated objects (lane markings, trees, traffic) and merged geometry for static scenery. On a map kilometres wide most of the scenery is out of sight: roads are merged into four draw calls, and the forest is cut into 600 m instanced tiles that the camera culls. At the region's spawn about 56 draw calls and 116k triangles are in view on a clear day without traffic, as the `?debug` overlay shows; traffic adds one draw call per kind of vehicle and one for their lamps. Street lamps add two draw calls, the name boards two, the farmland two and the wind turbines two; the truck's exhaust, dust and spray one while any puff is in the air; the birds one by day. The sea costs the water and the beach, one each, and one per stretch of boulders in view; the harbour three for its quays, kerbs and cranes and one per boat. On the quay, with 24 vehicles, about 44 draw calls are in view by day and 53 at night, with 100k triangles. Weather adds at most a few: rain one, and at night the glows (three, with the street lamps'), the headlight pool (one), the street lamps' pools (one), the turbines' warning lights (one), and the stars and the moon (two). The heaviest scenes measured, with 24 vehicles: a city yard at night, about 65 draw calls and 115k triangles; the HQ backdrop at night, 62 to 67 and up to 118k; rain at the spawn, about 63 and 131k.
 - **Translucent two-sided materials** set `forceSinglePass`. Otherwise three.js draws them twice (back, then front) and sets their shader up afresh for each pass, every frame.
 - **The simulation's share:** a fixed step of every system, with 16 vehicles, takes about 60 µs on a desktop CPU. Whatever runs every step must not visit the whole map: which ground the truck is on comes from `RoadGrid`, the road pieces filed by 20 m cell, like the trees for collisions.
 - **Bundle:** three.js ships in its own chunk (about 545 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 270 kB (85 kB gzipped).
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - **Profiling:** Chrome DevTools, on a phone through remote debugging. The Performance panel shows where frame time goes; Memory → "Allocation sampling" shows what allocates while driving. Profile with `npm run dev`, whose modules keep their file names.
-- The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
+- The performance display (`?debug`, or Settings → Performance display, which also works in the Android app) shows FPS, draw calls, triangles and the effective pixel ratio, the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering), and the graphics preset and GPU, for test reports. Only `?debug` adds the debug keys.
 
 ## 12. Testing
 
@@ -336,7 +360,7 @@ src/
   domain/          company/ economy/ missions/ save/ vehicles/ world/
   systems/         company/ driving/ economy/ gameState/ missions/ save/ session/ vehicles/ GameEvents.ts
   app/             GameBootstrapper.ts ServiceKeys.ts
-  presentation/    RenderHost.ts AdaptiveResolution.ts audio/ cameras/ navigation/ textures/ traffic/ vehicles/ weather/ world/
+  presentation/    RenderHost.ts AdaptiveResolution.ts audio/ cameras/ effects/ navigation/ textures/ traffic/ vehicles/ weather/ world/
   ui/              controls/ debug/ hq/ hud/ i18n/ menus/ dom.ts styles.css
   platform/        browser/ input/ native/
   main.ts

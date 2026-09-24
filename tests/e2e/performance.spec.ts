@@ -55,3 +55,28 @@ test('lets the player pick the graphics preset, and keeps it', async ({ page }) 
   await expect(page.locator('.settings')).toBeHidden();
   expect(problems).toEqual([]);
 });
+
+test('switches the performance display on from Settings, naming the preset and GPU, and keeps it', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const overlay = page.locator('.perf-overlay');
+  await openMainMenu(page, '?lang=en');
+  await expect(overlay).toBeHidden();
+
+  await page.locator('[data-action="settings"]').click();
+  await expect(page.locator('.settings [data-stats="off"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('.settings [data-stats="on"]').click();
+  await page.locator('[data-action="close-settings"]').click();
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toContainText(/\d+ FPS · \d+ draws/);
+  // The tests play on the high preset; the GPU follows it.
+  await expect(overlay).toContainText(/high · \S+/);
+
+  // Kept on this device, and off again at once.
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('data-boot-state', 'ready');
+  await expect(overlay).toBeVisible();
+  await page.locator('[data-action="settings"]').click();
+  await page.locator('.settings [data-stats="off"]').click();
+  await expect(overlay).toBeHidden();
+  expect(problems).toEqual([]);
+});

@@ -69,9 +69,103 @@ export interface RestAreaDefinition {
   readonly lot: RectangleDefinition;
 }
 
+/** Which way along a road: toward its last control point, or back toward its first. */
+export const ROAD_DIRECTIONS = ['forward', 'backward'] as const;
+export type RoadDirection = (typeof ROAD_DIRECTIONS)[number];
+
+/**
+ * A city's name board where a road enters it. It stands `distanceMeters`
+ * along road `roadId` (from its first control point), beside the road on
+ * the right of traffic driving `direction`, and faces that traffic.
+ */
+export interface CitySignDefinition {
+  /** CityDefinition id: the name on the board. */
+  readonly cityId: string;
+  readonly roadId: string;
+  readonly distanceMeters: number;
+  readonly direction: RoadDirection;
+}
+
+/**
+ * What grows on a farm field: standing wheat, stubble with hay bales after
+ * the harvest, a young green crop, or ploughed earth.
+ */
+export const FIELD_CROPS = ['wheat', 'stubble', 'green', 'ploughed'] as const;
+export type FieldCrop = (typeof FIELD_CROPS)[number];
+
+/** A side of a road, seen looking toward its last control point. */
+export const ROAD_SIDES = ['left', 'right'] as const;
+export type RoadSide = (typeof ROAD_SIDES)[number];
+
+/**
+ * A farm field (scenery) beside a road: a rectangle along the road from
+ * `fromMeters` to `fromMeters + lengthMeters`, on `side`, starting
+ * `setbackMeters` past the road's edge (past its outermost bulge, where it
+ * bends) and reaching `depthMeters` back from it. Rows of `crop` run along
+ * the road. It drives like grass.
+ */
+export interface FieldDefinition {
+  readonly roadId: string;
+  readonly fromMeters: number;
+  readonly lengthMeters: number;
+  readonly side: RoadSide;
+  readonly setbackMeters: number;
+  readonly depthMeters: number;
+  readonly crop: FieldCrop;
+}
+
+/** A wind turbine (scenery): a tall tower whose rotor turns in the wind. The tower is solid. */
+export interface WindTurbineDefinition {
+  readonly x: number;
+  readonly z: number;
+}
+
+/**
+ * The sea along the map's west edge (a harbour town's, spec §20): water
+ * west of the shoreline, a line of [x, z] points from the map's north edge
+ * to its south edge, z growing, so there is one shore at any z. The truck
+ * stops at the water's edge. Quays are paved stretches of the shore; boats
+ * lie off it and cranes stand on the quays.
+ */
+export interface SeaDefinition {
+  readonly shoreline: readonly Point2[];
+  readonly quays: readonly QuayDefinition[];
+  readonly boats: readonly BoatDefinition[];
+  readonly cranes: readonly CraneDefinition[];
+}
+
+/** A paved quay from `fromZ` to `toZ` along the shore, `widthMeters` back from the water's edge. It drives like a yard. */
+export interface QuayDefinition {
+  readonly fromZ: number;
+  readonly toZ: number;
+  readonly widthMeters: number;
+}
+
+/** Original boats: a small cargo ship, a harbour tug and a fishing boat. */
+export const BOAT_KINDS = ['coaster', 'tug', 'fishing'] as const;
+export type BoatKind = (typeof BOAT_KINDS)[number];
+
+/** A boat moored in the harbour (scenery): its middle, and which way its bow points (0° faces +Z, 90° faces +X). */
+export interface BoatDefinition {
+  readonly kind: BoatKind;
+  readonly x: number;
+  readonly z: number;
+  readonly headingDegrees: number;
+}
+
+/** A harbour crane on a quay (scenery): its legs are solid, and its jib reaches out `headingDegrees` (0° faces +Z). */
+export interface CraneDefinition {
+  readonly x: number;
+  readonly z: number;
+  readonly headingDegrees: number;
+}
+
+/** Boats lie at least this far off the shore, meters: they are wide. */
+export const BOAT_SHORE_CLEARANCE_METERS = 6;
+
 /**
  * A drivable area (spec §20, one region of the world): roads, buildings,
- * depots, rest areas, the truck's start and scenery.
+ * depots, rest areas, city name boards, the truck's start and scenery.
  */
 export interface MapDefinition {
   /** Stable snake_case id. */
@@ -82,11 +176,28 @@ export interface MapDefinition {
   readonly buildings: readonly BuildingDefinition[];
   readonly depots: readonly DepotDefinition[];
   readonly restAreas: readonly RestAreaDefinition[];
+  /** Name boards where roads enter the cities. */
+  readonly citySigns: readonly CitySignDefinition[];
+  readonly fields: readonly FieldDefinition[];
+  readonly windTurbines: readonly WindTurbineDefinition[];
+  /** The sea along the west edge; absent: the map is all land. */
+  readonly sea?: SeaDefinition;
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
-  readonly scenery: { readonly seed: number; readonly treesPerKilometer: number };
+  readonly scenery: {
+    readonly seed: number;
+    readonly treesPerKilometer: number;
+    /**
+     * Street lamps line the city roads (streets and ring roads) this far
+     * apart, on alternate sides. Absent: the roads are unlit.
+     */
+    readonly streetLampSpacingMeters?: number;
+  };
 }
+
+/** Street lamps stand at least this far apart along a road, meters. */
+export const MIN_STREET_LAMP_SPACING_METERS = 10;
 
 export function validateMapDefinition(map: MapDefinition, path: string, validator: Validator): void {
   validator.id(map.id, `${path}.id`);
@@ -126,9 +237,66 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       validateRectangle(restArea.lot, `${restAreaPath}.lot`, validator, inside);
     });
   }
+  const roadIds = new Set(
+    Array.isArray(map.roads) ? map.roads.filter((road) => typeof road === 'object' && road !== null).map((road) => road.id) : [],
+  );
+  if (validator.check(Array.isArray(map.citySigns), `${path}.citySigns`, 'must be a list')) {
+    map.citySigns.forEach((sign, index) => {
+      const signPath = `${path}.citySigns[${index}]`;
+      if (!validator.check(typeof sign === 'object' && sign !== null, signPath, 'must be an object')) {
+        return;
+      }
+      validator.id(sign.cityId, `${signPath}.cityId`);
+      validator.check(roadIds.has(sign.roadId), `${signPath}.roadId`, `unknown road "${String(sign.roadId)}"`);
+      validator.check(
+        Number.isFinite(sign.distanceMeters) && sign.distanceMeters >= 0,
+        `${signPath}.distanceMeters`,
+        'must be zero or more',
+      );
+      validator.oneOf(sign.direction, ROAD_DIRECTIONS, `${signPath}.direction`);
+    });
+  }
+  if (validator.check(Array.isArray(map.fields), `${path}.fields`, 'must be a list')) {
+    map.fields.forEach((field, index) => {
+      const fieldPath = `${path}.fields[${index}]`;
+      if (validator.check(typeof field === 'object' && field !== null, fieldPath, 'must be an object')) {
+        validator.check(roadIds.has(field.roadId), `${fieldPath}.roadId`, `unknown road "${String(field.roadId)}"`);
+        validator.check(
+          Number.isFinite(field.fromMeters) && field.fromMeters >= 0,
+          `${fieldPath}.fromMeters`,
+          'must be zero or more',
+        );
+        validator.positiveNumber(field.lengthMeters, `${fieldPath}.lengthMeters`);
+        validator.oneOf(field.side, ROAD_SIDES, `${fieldPath}.side`);
+        validator.check(
+          Number.isFinite(field.setbackMeters) && field.setbackMeters >= 0,
+          `${fieldPath}.setbackMeters`,
+          'must be zero or more',
+        );
+        validator.positiveNumber(field.depthMeters, `${fieldPath}.depthMeters`);
+        validator.oneOf(field.crop, FIELD_CROPS, `${fieldPath}.crop`);
+      }
+    });
+  }
+  if (validator.check(Array.isArray(map.windTurbines), `${path}.windTurbines`, 'must be a list')) {
+    map.windTurbines.forEach((turbine, index) => {
+      const turbinePath = `${path}.windTurbines[${index}]`;
+      validator.check(
+        typeof turbine === 'object' && turbine !== null && inside(turbine.x, turbine.z),
+        turbinePath,
+        'must be a point inside the map',
+      );
+    });
+  }
+  if (map.sea !== undefined && sizeValid) {
+    validateSea(map.sea, map.halfSizeMeters, `${path}.sea`, validator);
+  }
   const spawn = map.spawn;
   if (validator.check(typeof spawn === 'object' && spawn !== null, `${path}.spawn`, 'must be an object')) {
     validator.check(inside(spawn.x, spawn.z), `${path}.spawn`, 'must be inside the map');
+    if (map.sea !== undefined && isValidShoreline(map.sea.shoreline)) {
+      validator.check(!isInSea(map.sea.shoreline, spawn.x, spawn.z), `${path}.spawn`, 'must be on land');
+    }
     validator.check(Number.isFinite(spawn.headingDegrees), `${path}.spawn.headingDegrees`, 'must be a number');
   }
   const scenery = map.scenery;
@@ -139,6 +307,140 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       `${path}.scenery.treesPerKilometer`,
       'must be zero or more',
     );
+    const lampSpacing = scenery.streetLampSpacingMeters;
+    if (lampSpacing !== undefined) {
+      validator.check(
+        Number.isFinite(lampSpacing) && lampSpacing >= MIN_STREET_LAMP_SPACING_METERS,
+        `${path}.scenery.streetLampSpacingMeters`,
+        `must be at least ${MIN_STREET_LAMP_SPACING_METERS} m`,
+      );
+    }
+  }
+}
+
+/**
+ * The shoreline's x at `z`, between the points either side (the first or
+ * last point's beyond them). The shoreline must be valid (isValidShoreline).
+ */
+export function shorelineXAt(shoreline: readonly Point2[], z: number): number {
+  if (z <= shoreline[0]![1]) {
+    return shoreline[0]![0];
+  }
+  const last = shoreline.length - 1;
+  if (z >= shoreline[last]![1]) {
+    return shoreline[last]![0];
+  }
+  // Binary search for the stretch that holds z: callers ask every fixed step.
+  let low = 0;
+  let high = last;
+  while (high - low > 1) {
+    const middle = (low + high) >> 1;
+    if (shoreline[middle]![1] <= z) {
+      low = middle;
+    } else {
+      high = middle;
+    }
+  }
+  const [x0, z0] = shoreline[low]!;
+  const [x1, z1] = shoreline[high]!;
+  return x0 + ((x1 - x0) * (z - z0)) / (z1 - z0);
+}
+
+/** Whether (x, z) is in the sea west of `shoreline`, or within `margin` meters of its shore (east of it). */
+export function isInSea(shoreline: readonly Point2[], x: number, z: number, margin = 0): boolean {
+  return x < shorelineXAt(shoreline, z) + margin;
+}
+
+/** A shoreline has two or more [x, z] points, z growing. */
+export function isValidShoreline(shoreline: unknown): shoreline is readonly Point2[] {
+  return (
+    Array.isArray(shoreline) &&
+    shoreline.length >= 2 &&
+    shoreline.every(
+      (point, index) =>
+        Array.isArray(point) &&
+        point.length === 2 &&
+        Number.isFinite(point[0]) &&
+        Number.isFinite(point[1]) &&
+        (index === 0 || point[1] > (shoreline[index - 1] as Point2)[1]),
+    )
+  );
+}
+
+function validateSea(sea: SeaDefinition, halfSize: number, path: string, validator: Validator): void {
+  if (!validator.check(typeof sea === 'object' && sea !== null, path, 'must be an object')) {
+    return;
+  }
+  const shoreline = sea.shoreline;
+  const valid = validator.check(
+    isValidShoreline(shoreline),
+    `${path}.shoreline`,
+    'must list two or more [x, z] points, z growing',
+  );
+  if (valid) {
+    validator.check(
+      shoreline[0]![1] <= -halfSize && shoreline[shoreline.length - 1]![1] >= halfSize,
+      `${path}.shoreline`,
+      'must reach from the map\'s north edge to its south edge',
+    );
+    shoreline.forEach(([x], index) => {
+      validator.check(Math.abs(x) < halfSize, `${path}.shoreline[${index}]`, 'must be inside the map');
+    });
+  }
+  const shoreAt = (z: number): number => (valid ? shorelineXAt(shoreline, z) : Number.NaN);
+  const quays = Array.isArray(sea.quays) ? sea.quays : [];
+  if (validator.check(Array.isArray(sea.quays), `${path}.quays`, 'must be a list')) {
+    quays.forEach((quay, index) => {
+      const quayPath = `${path}.quays[${index}]`;
+      if (!validator.check(typeof quay === 'object' && quay !== null, quayPath, 'must be an object')) {
+        return;
+      }
+      validator.check(
+        Number.isFinite(quay.fromZ) && Number.isFinite(quay.toZ) && quay.fromZ < quay.toZ,
+        `${quayPath}.toZ`,
+        'must be past fromZ',
+      );
+      validator.check(
+        Math.abs(quay.fromZ) < halfSize && Math.abs(quay.toZ) < halfSize,
+        quayPath,
+        'must be inside the map',
+      );
+      validator.positiveNumber(quay.widthMeters, `${quayPath}.widthMeters`);
+    });
+  }
+  if (validator.check(Array.isArray(sea.boats), `${path}.boats`, 'must be a list')) {
+    sea.boats.forEach((boat, index) => {
+      const boatPath = `${path}.boats[${index}]`;
+      if (!validator.check(typeof boat === 'object' && boat !== null, boatPath, 'must be an object')) {
+        return;
+      }
+      validator.oneOf(boat.kind, BOAT_KINDS, `${boatPath}.kind`);
+      validator.check(Number.isFinite(boat.headingDegrees), `${boatPath}.headingDegrees`, 'must be a number');
+      validator.check(
+        Number.isFinite(boat.x) && Number.isFinite(boat.z) && boat.x < shoreAt(boat.z) - BOAT_SHORE_CLEARANCE_METERS,
+        boatPath,
+        `must lie in the water, at least ${BOAT_SHORE_CLEARANCE_METERS} m off the shore`,
+      );
+    });
+  }
+  if (validator.check(Array.isArray(sea.cranes), `${path}.cranes`, 'must be a list')) {
+    sea.cranes.forEach((crane, index) => {
+      const cranePath = `${path}.cranes[${index}]`;
+      if (!validator.check(typeof crane === 'object' && crane !== null, cranePath, 'must be an object')) {
+        return;
+      }
+      validator.check(Number.isFinite(crane.headingDegrees), `${cranePath}.headingDegrees`, 'must be a number');
+      const onQuay = quays.some(
+        (quay) =>
+          typeof quay === 'object' &&
+          quay !== null &&
+          crane.z >= quay.fromZ &&
+          crane.z <= quay.toZ &&
+          crane.x > shoreAt(crane.z) &&
+          crane.x < shoreAt(crane.z) + quay.widthMeters,
+      );
+      validator.check(onQuay, cranePath, 'must stand on a quay');
+    });
   }
 }
 

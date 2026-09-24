@@ -5,6 +5,7 @@ import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
+import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
@@ -17,30 +18,44 @@ import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
+import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
+import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { RainView } from './presentation/weather/RainView';
 import { PrelitMaterials } from './presentation/world/lighting';
+import { CitySignView } from './presentation/world/CitySignView';
+import { BirdsView } from './presentation/world/BirdsView';
+import { FarmlandView } from './presentation/world/FarmlandView';
+import { HarbourView } from './presentation/world/HarbourView';
+import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { StreetLampView } from './presentation/world/StreetLampView';
+import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
 import type { GameState } from './systems/gameState/GameState';
+import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { CompanyHq } from './ui/hq/CompanyHq';
 import { objectiveText } from './ui/hq/eventText';
+import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
 import { TutorialHint, tutorialPlace } from './ui/hud/TutorialHint';
 import { chooseLanguage, stringsFor } from './ui/i18n';
+import { MapPainter } from './ui/map/MapPainter';
+import { sketchWorld } from './ui/map/mapSketch';
+import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
@@ -98,6 +113,7 @@ async function start(): Promise<void> {
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
   const missions = services.resolve(ServiceKeys.missions);
+  const dailyContracts = services.resolve(ServiceKeys.dailyContracts);
   const navigation = services.resolve(ServiceKeys.navigation);
   const specialEvents = services.resolve(ServiceKeys.specialEvents);
   const tutorial = services.resolve(ServiceKeys.tutorial);
@@ -122,15 +138,44 @@ async function start(): Promise<void> {
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
   const environment = new EnvironmentView(renderHost.scene);
-  const track = new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
+  const track = new TrackView(renderHost.scene, driving.world, {
+    anisotropy: renderHost.anisotropy,
+    prelit,
+    sky: environment.sky,
+  });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
+  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows });
+  new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
+    anisotropy: renderHost.anisotropy,
+    prelit,
+  });
+  const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  // The sea mirrors the sky, so it follows the weather with it.
+  const coast = driving.world.sea;
+  const seaView =
+    coast === null
+      ? null
+      : new SeaView(renderHost.scene, coast, driving.world.halfSizeMeters, environment.sky, {
+          anisotropy: renderHost.anisotropy,
+          prelit,
+        });
+  const harbour =
+    coast === null
+      ? null
+      : new HarbourView(renderHost.scene, coast, { anisotropy: renderHost.anisotropy, prelit, lampGlows });
+  const birds = new BirdsView(renderHost.scene, driving.world, prelit);
+  const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
+    anisotropy: renderHost.anisotropy,
+  });
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
   });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity);
+  const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
+  const effectsState = createTruckEffectsState();
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
@@ -139,23 +184,53 @@ async function start(): Promise<void> {
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
+  cameraRig.currentMode = settings.camera;
+  // Dragging across the road looks round, within what the current camera allows.
+  const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
 
   /** The simulation stands still while a menu or the result is open over the road. */
   let paused = false;
   const isDriving = (): boolean => gameState.current === 'driving';
 
   const ui = document.body;
+  /** The camera in use, shown: the cab's inside from the driver's seat, the rear camera's picture mirrored. */
+  const showCamera = (drivingNow: boolean): void => {
+    const mode = cameraRig.currentMode;
+    truck.setCabinView(drivingNow && mode === 'cabin');
+    renderHost.mirrored = drivingNow && mode === 'rear';
+    root.dataset.camera = mode;
+  };
+  /** The camera button (or C): the next camera, named for a moment, and kept for next time. */
   const toggleCamera = (): void => {
     if (isDriving() && !paused) {
-      truck.setCabinView(cameraRig.toggleMode() === 'cabin');
+      const mode = cameraRig.toggleMode();
+      lookAround.reset();
+      showCamera(true);
+      settings = { ...settings, camera: mode };
+      saveSettings(storage, settings);
+      toasts.show(strings.t(`camera.${mode}`), 'info');
     }
   };
   // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
   const audio = new GameAudio(() => (typeof AudioContext === 'undefined' ? null : new AudioContext()), settings.sound);
   const soundState = createSoundState();
   const honk = (pressed: boolean): void => audio.setHorn(pressed);
-  const touch = new TouchControls(ui, { onToggleCamera: toggleCamera, onHorn: honk });
+  // Steering by turning the phone reads the motion sensor while it is the picked way of steering (applySteering).
+  const tilt = new TiltInput(window, settings.tiltSensitivity, (status) => showTilt(status));
+  const touch = new TouchControls(ui, {
+    onToggleCamera: toggleCamera,
+    onHorn: honk,
+    onTilt: () => {
+      tilt.unlock();
+      tilt.recenter();
+    },
+  });
+  touch.size = settings.controlSize;
   const hud = new MissionHud(ui, strings, missions, navigation, driving);
+  // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
+  const mapSketch = sketchWorld(driving.world);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions }, strings);
+  const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
   const result = new ResultDialog(ui, strings, () => {
@@ -229,12 +304,25 @@ async function start(): Promise<void> {
       paused = false;
       gameState.transitionTo('companyHq');
     },
+    onSettings: () => settingsDialog.open(),
+    onMap: () => openMap(),
   });
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
     onHorn: honk,
+    onMap: () => {
+      if (worldMap.isOpen) {
+        closeMap();
+      } else if (!settingsDialog.isOpen && !newCompany.isOpen && !result.isOpen && (isDriving() || gameState.current === 'companyHq')) {
+        openMap();
+      }
+    },
     onPause: () => {
-      if (pauseMenu.isOpen) {
+      if (settingsDialog.isOpen) {
+        settingsDialog.close(); // Over the pause menu, which stays.
+      } else if (worldMap.isOpen) {
+        closeMap();
+      } else if (pauseMenu.isOpen) {
         resume();
       } else {
         pause();
@@ -243,16 +331,18 @@ async function start(): Promise<void> {
   });
 
   const menuMessage = (): string | null => (persistent ? null : strings.t('menu.storageOff'));
-  /** Shows the truck being driven: a new model gets its own view, and the camera follows it. */
+  /** Shows the truck being driven: a new model or a new coat of paint gets its own view, and the camera follows it. */
   const showActiveTruck = (): void => {
-    if (truck.definition.id !== driving.definition.id) {
+    const paint = garage.activeTruck.paint?.color ?? driving.definition.factoryColor;
+    if (truck.definition.id !== driving.definition.id || truck.paint !== paint) {
       truck.dispose();
-      truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
+      truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, paint });
       cameraRig.setBody(driving.definition.body);
-      truck.setCabinView(isDriving() && cameraRig.currentMode === 'cabin');
+      showCamera(isDriving());
     }
     truck.setLoaded(driving.cargoMassKg > 0);
     root.dataset.vehicle = driving.definition.id;
+    root.dataset.paint = garage.activeTruck.paint?.id ?? 'factory';
   };
   const enterCompany = (): void => {
     showActiveTruck();
@@ -288,7 +378,7 @@ async function start(): Promise<void> {
     },
     onSettings: () => settingsDialog.open(),
   });
-  const settingsDialog = new SettingsDialog(ui, strings, { quality: qualityChoice, qualityInUse: quality, sound: settings.sound }, {
+  const settingsDialog = new SettingsDialog(ui, strings, { ...settings, quality: qualityChoice, qualityInUse: quality }, {
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
@@ -299,17 +389,37 @@ async function start(): Promise<void> {
       }
       window.location.search = query.toString();
     },
+    onSteering: (mode) => {
+      settings = { ...settings, steering: mode };
+      saveSettings(storage, settings);
+      applySteering(mode);
+    },
+    onTiltSensitivity: (sensitivity) => {
+      settings = { ...settings, tiltSensitivity: sensitivity };
+      saveSettings(storage, settings);
+      tilt.sensitivity = sensitivity;
+    },
+    onControlSize: (size) => {
+      settings = { ...settings, controlSize: size };
+      saveSettings(storage, settings);
+      touch.size = size;
+    },
     onSound: (on) => {
       settings = { ...settings, sound: on };
       saveSettings(storage, settings);
       audio.enabled = on;
+    },
+    onStats: (on) => {
+      settings = { ...settings, stats: on };
+      saveSettings(storage, settings);
+      perfOverlay.visible = on || config.debug.showPerfOverlay;
     },
     onClose: () => settingsDialog.close(),
   });
   const hq = new CompanyHq(
     ui,
     strings,
-    { driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents },
+    { driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -329,6 +439,17 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
         } else {
           logger.warn(`Could not buy ${definitionId}: ${bought.error}.`);
+        }
+      },
+      onPaintTruck: (instanceId, paintId) => {
+        const painted = garage.paint(instanceId, paintId);
+        if (painted.ok) {
+          const paint = paintId === null ? strings.t('hq.garage.factoryPaint') : strings.t(`paint.${paintId}.name`);
+          toasts.show(strings.t('toast.painted', { truck: strings.vehicleName(painted.value.definition.id), paint }), 'success');
+        } else if (painted.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not paint ${instanceId} ${paintId}: ${painted.error}.`);
         }
       },
       onSwitchTruck: (instanceId) => {
@@ -351,9 +472,56 @@ async function start(): Promise<void> {
       },
       onFreeDrive: () => gameState.transitionTo('driving'),
       onMainMenu: () => gameState.transitionTo('mainMenu'),
+      onOpenMap: () => openMap(),
     },
   );
-  const perfOverlay = config.debug.showPerfOverlay ? new PerfOverlay(ui) : null;
+  /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
+  let pausedForMap = false;
+  const openMap = (): void => {
+    if (worldMap.isOpen) {
+      return;
+    }
+    if (isDriving() && !paused) {
+      paused = true;
+      pausedForMap = true;
+    }
+    worldMap.open();
+  };
+  const closeMap = (): void => {
+    worldMap.close();
+    if (pausedForMap) {
+      pausedForMap = false;
+      paused = false;
+    }
+  };
+  const worldMap = new WorldMap(ui, strings, mapPainter, mapSketch, driving, { onClose: closeMap });
+  // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
+  const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.gpu}`);
+  perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
+
+  /** The picked way of steering: its controls show, and tilt steering listens to the motion sensor only while picked. */
+  const applySteering = (mode: SteeringMode): void => {
+    touch.steering = mode;
+    if (mode === 'tilt') {
+      tilt.enable(); // From the Settings tap, iOS can ask for the motion sensor at once.
+    } else {
+      tilt.disable();
+    }
+  };
+  /** Tilt steering's state on the tilt button (and for the e2e tests). Without a motion sensor, back to the wheel. */
+  function showTilt(status: TiltStatus): void {
+    touch.showTilt(status);
+    root.dataset.tilt = status;
+    if (status === 'unavailable') {
+      settings = { ...settings, steering: 'wheel' };
+      saveSettings(storage, settings);
+      settingsDialog.showSteering('wheel');
+      applySteering('wheel');
+      toasts.show(strings.t('toast.tiltUnavailable'), 'warning');
+    }
+  }
+  root.dataset.tilt = tilt.status;
+  applySteering(settings.steering);
   const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
@@ -385,14 +553,14 @@ async function start(): Promise<void> {
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
-    result.showCompleted(content.missions.get(delivery.missionId), delivery, economy.credits);
+    result.showCompleted(delivery.mission, delivery, economy.credits);
   });
-  events.on('MissionFailed', ({ missionId, reason, reputationLost }) => {
+  events.on('MissionFailed', ({ mission, reason, reputationLost }) => {
     audio.fail();
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
-    result.showFailed(content.missions.get(missionId), reason, reputationLost);
+    result.showFailed(mission, reason, reputationLost);
   });
   events.on('EventProgressed', ({ eventId, bonus, progress, reward }) => {
     const name = strings.eventName(eventId);
@@ -445,6 +613,10 @@ async function start(): Promise<void> {
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
   events.on('UpgradePurchased', refreshHq);
+  events.on('VehiclePainted', () => {
+    showActiveTruck();
+    refreshHq();
+  });
   events.on('ActiveVehicleChanged', () => {
     showActiveTruck();
     refreshHq();
@@ -455,6 +627,7 @@ async function start(): Promise<void> {
     const drivingNow = state === 'driving';
     touch.visible = drivingNow;
     hud.visible = drivingNow;
+    minimap.visible = drivingNow;
     pauseMenu.buttonVisible = drivingNow;
     mainMenu.visible = state === 'mainMenu';
     if (state === 'mainMenu') {
@@ -467,9 +640,16 @@ async function start(): Promise<void> {
     }
     if (!drivingNow) {
       toasts.clear();
+    } else {
+      // Each drive starts straight ahead the way the phone is held.
+      tilt.recenter();
+      if (tilt.status === 'locked') {
+        toasts.show(strings.t('toast.tiltLocked'), 'info');
+      }
     }
     cameraRig.showcase = !drivingNow;
-    truck.setCabinView(drivingNow && cameraRig.currentMode === 'cabin');
+    lookAround.enabled = drivingNow;
+    showCamera(drivingNow);
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
@@ -501,17 +681,19 @@ async function start(): Promise<void> {
     }
   });
   // Sound may start once the page has been touched or typed on: a touch counts when the finger lifts. Starting it
-  // earlier would only be refused, with a warning. A button pressed clicks (not the pedals or the horn: they are held).
+  // earlier would only be refused, with a warning. iOS shares the motion sensor (tilt steering) only from a tap too.
+  // A button pressed clicks (not the pedals, steering buttons or the horn: they are held).
   const unlockSound = (): void => {
     // Browsers without navigator.userActivation (older Safari and Firefox) get their chance at every gesture.
     if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
       audio.unlock();
+      tilt.unlock();
     }
   };
   window.addEventListener('pointerup', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
   document.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button)') !== null) {
+    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button)') !== null) {
       audio.click();
     }
   });
@@ -521,7 +703,7 @@ async function start(): Promise<void> {
   const goBack = (): boolean => {
     const action = backAction({
       gameState: gameState.current,
-      menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen,
+      menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
     });
@@ -529,6 +711,7 @@ async function start(): Promise<void> {
       case 'closeDialog':
         settingsDialog.close();
         newCompany.close();
+        closeMap();
         break;
       case 'pause':
         pause();
@@ -578,6 +761,8 @@ async function start(): Promise<void> {
   resize();
   new ResizeObserver(resize).observe(canvas);
 
+  /** The keyboard and the touch controls together; tilt steering joins them in `driverInput`. */
+  const controlsInput = createVehicleInput();
   const driverInput = createVehicleInput();
   let menuFrames = 0;
   const pose = { x: 0, z: 0, heading: 0 };
@@ -596,7 +781,8 @@ async function start(): Promise<void> {
         if (!isDriving()) {
           return;
         }
-        combineVehicleInputs(driverInput, keyboard.state, touch.state);
+        combineVehicleInputs(controlsInput, keyboard.state, touch.state);
+        combineVehicleInputs(driverInput, controlsInput, tilt.state);
         driving.step(stepSeconds, driverInput);
         missions.update(stepSeconds);
         navigation.update(stepSeconds);
@@ -606,11 +792,21 @@ async function start(): Promise<void> {
       frameUpdate: (deltaSeconds, alpha) => {
         const simulating = isDriving() && !paused;
         touch.update(deltaSeconds);
+        tilt.update(deltaSeconds);
         const vehicle = driving.vehicle;
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         const lamps = weather.lamps;
         track.setLamps(lamps);
+        track.setWetness(weather.rain);
+        streetLamps.setLamps(lamps);
+        citySigns.setLamps(lamps);
+        windTurbines.setLamps(lamps);
+        windTurbines.update(paused ? 0 : deltaSeconds);
+        harbour?.setLamps(lamps);
+        harbour?.update(paused ? 0 : deltaSeconds);
+        seaView?.update(paused ? 0 : deltaSeconds);
+        birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
@@ -621,13 +817,29 @@ async function start(): Promise<void> {
           shownTraffic = vehicles;
           root.dataset.traffic = String(vehicles);
         }
-        cameraRig.update(pose, vehicle.speed, deltaSeconds);
+        lookAround.update(deltaSeconds);
+        cameraRig.look(lookAround.yaw, lookAround.pitch);
+        cameraRig.update(pose, vehicle, deltaSeconds);
         environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
-        environment.update(renderHost.camera.position);
+        environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         const eye = renderHost.camera.position;
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
+        // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
+        effectsState.driving = simulating;
+        effectsState.engineRunning = driving.isEngineRunning;
+        effectsState.engineRpm = vehicle.engineRpm;
+        effectsState.idleRpm = driving.definition.powertrain.idleRpm;
+        effectsState.maxRpm = driving.definition.powertrain.maxRpm;
+        effectsState.drivePedal = vehicle.gear < 0 ? driverInput.brake : driverInput.throttle;
+        effectsState.speed = vehicle.speed;
+        effectsState.heading = pose.heading;
+        effectsState.offRoad = driving.surface.name === 'grass';
+        effectsState.rain = weather.rain;
+        truckEffects.update(paused ? 0 : deltaSeconds, truck, effectsState, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
+        minimap.update(deltaSeconds);
+        worldMap.frame();
         const tutorialStep = tutorial.step;
         const tutorialAt = tutorialPlace(tutorialStep);
         tutorialHint.show(tutorialAt === gameState.current && !paused && !result.isOpen ? tutorialStep : null, tutorialAt);
@@ -640,9 +852,10 @@ async function start(): Promise<void> {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitRain();
         }
-        // Behind the menus the scene is a backdrop: every other frame is enough, and saves the battery.
+        // Behind the menus the scene is a backdrop: every other frame is enough, and saves the battery. The full
+        // map hides it all.
         menuFrames = isDriving() ? 0 : menuFrames + 1;
-        if ((menuFrames & 1) === 0) {
+        if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
@@ -663,7 +876,9 @@ async function start(): Promise<void> {
           shownSound = audio.status;
           root.dataset.sound = shownSound;
         }
-        perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+        if (perfOverlay.visible) {
+          perfOverlay.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+        }
       },
       onError: (error) => {
         logger.error('The game loop stopped.', error);

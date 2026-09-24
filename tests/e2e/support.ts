@@ -189,3 +189,45 @@ export async function centreOf(page: Page, selector: string): Promise<{ x: numbe
   }
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
+
+/** Device settings (Settings dialog) stored before the game opens, as the game keeps them. Set once per test. */
+export async function seedSettings(page: Page, settings: Readonly<Record<string, string | boolean>>): Promise<void> {
+  await page.addInitScript((json) => {
+    if (sessionStorage.getItem('roadhaul.e2e.settings') === null) {
+      localStorage.setItem('roadhaul.settings', json);
+      sessionStorage.setItem('roadhaul.e2e.settings', 'yes');
+    }
+  }, JSON.stringify(settings));
+}
+
+/**
+ * Sends the page a motion sensor reading (gravity included, m/s²) for a
+ * phone held on its side, top to the left, tipped back 40° and turned like
+ * a steering wheel by `turnDegrees` (clockwise, seen from the front, is positive).
+ */
+export async function tiltPhone(page: Page, turnDegrees: number): Promise<void> {
+  await page.evaluate((turn) => {
+    const g = 9.81;
+    const back = (40 * Math.PI) / 180;
+    const angle = (turn * Math.PI) / 180;
+    // Turning the phone clockwise swings gravity anticlockwise across its screen.
+    const inPlane = g * Math.cos(back);
+    const accelerationIncludingGravity = { x: inPlane * Math.cos(angle), y: inPlane * Math.sin(angle), z: g * Math.sin(back) };
+    window.dispatchEvent(new DeviceMotionEvent('devicemotion', { accelerationIncludingGravity }));
+  }, turnDegrees);
+}
+
+/** Opens the settings from the pause menu while driving. */
+export async function openSettingsWhileDriving(page: Page): Promise<void> {
+  await page.locator('.pause-button').click();
+  await page.locator('[data-action="pause-settings"]').click();
+  await expect(page.locator('.settings')).toBeVisible();
+}
+
+/** Closes the settings, then the pause menu: back on the road. */
+export async function closeSettingsAndResume(page: Page): Promise<void> {
+  await page.locator('[data-action="close-settings"]').click();
+  await expect(page.locator('.settings')).toBeHidden();
+  await page.locator('[data-action="resume"]').click();
+  await expect(page.locator('.pause-menu')).toBeHidden();
+}

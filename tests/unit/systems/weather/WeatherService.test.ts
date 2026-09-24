@@ -114,6 +114,37 @@ describe('WeatherService', () => {
     }
   });
 
+  it('goes round the day in order: each weather only turns into those it may', () => {
+    const logger = new MemoryLogger();
+    const events = new EventBus<GameEvents>(logger);
+    const day = (id: string, next: string[]) => weatherFixture({ id, next, minSeconds: 10, maxSeconds: 10 });
+    const content = ContentCatalog.create(
+      contentFixture({
+        weather: [
+          day('day', ['rain', 'dusk']),
+          day('rain', ['day']),
+          day('dusk', ['night']),
+          day('night', ['dawn']),
+          day('dawn', ['day']),
+        ],
+      }),
+    );
+    const turns: string[] = [];
+    events.on('WeatherChanged', ({ previousId, weatherId }) => turns.push(`${previousId}>${weatherId}`));
+    const weather = new WeatherService(
+      content,
+      { setPerformanceModifier: () => {} } as unknown as DrivingService,
+      { setSpeedFactor: () => {} } as unknown as TrafficService,
+      events,
+      { initialWeatherId: 'day', changes: true, transitionSeconds: 1 },
+      logger,
+    );
+
+    run(weather, 2000);
+
+    expect(new Set(turns)).toEqual(new Set(['day>rain', 'rain>day', 'day>dusk', 'dusk>night', 'night>dawn', 'dawn>day']));
+  });
+
   it('keeps its weather when it may not change, and can be set straight away', () => {
     const { weather, changes, grip } = setup({ changes: false });
 

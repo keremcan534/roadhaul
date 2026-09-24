@@ -29,6 +29,8 @@ export interface VehicleDefinition {
   readonly purchasePrice: Credits;
   /** The company level that lets the garage sell it. Omit for level 1. */
   readonly requiredCompanyLevel?: number;
+  /** The colour it leaves the dealer in, 0xRRGGBB; the garage can paint it another (PaintDefinition). */
+  readonly factoryColor: number;
   readonly body: VehicleBody;
   readonly powertrain: VehiclePowertrain;
   readonly handling: VehicleHandling;
@@ -96,6 +98,11 @@ export function validateVehicleDefinition(vehicle: VehicleDefinition, path: stri
   if (vehicle.requiredCompanyLevel !== undefined) {
     validator.positiveInteger(vehicle.requiredCompanyLevel, `${path}.requiredCompanyLevel`);
   }
+  validator.check(
+    Number.isInteger(vehicle.factoryColor) && vehicle.factoryColor >= 0 && vehicle.factoryColor <= 0xffffff,
+    `${path}.factoryColor`,
+    'must be a colour, 0x000000 to 0xffffff',
+  );
   validateBody(vehicle.body, `${path}.body`, validator);
   validatePowertrain(vehicle.powertrain, `${path}.powertrain`, validator);
   validateHandling(vehicle.handling, `${path}.handling`, validator);

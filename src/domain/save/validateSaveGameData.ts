@@ -1,5 +1,6 @@
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
+import { validateMissionDefinition, type MissionDefinition } from '../../data/definitions/MissionDefinition';
 import { validateCompanyName } from '../company/companyName';
 import { MISSION_STATES } from '../missions/MissionInstance';
 import { TUTORIAL_STEPS } from '../tutorial/tutorialSteps';
@@ -100,11 +101,32 @@ export function validateSaveGameData(
       return;
     }
     const missionId = active['missionId'];
-    validator.check(
-      typeof missionId === 'string' && content.missions.has(missionId),
-      'missions.active.missionId',
-      `unknown mission ${JSON.stringify(missionId)}`,
-    );
+    const contract = active['contract'];
+    if (contract === null) {
+      validator.check(
+        typeof missionId === 'string' && content.missions.has(missionId),
+        'missions.active.missionId',
+        `unknown mission ${JSON.stringify(missionId)}`,
+      );
+    } else if (!isJson(contract)) {
+      validator.report('missions.active.contract', 'must be null or a contract');
+    } else {
+      // A generated contract, kept whole: its fields, and what it names in the content.
+      validateMissionDefinition(contract as unknown as MissionDefinition, 'missions.active.contract', validator);
+      validator.check(contract['id'] === missionId, 'missions.active.contract.id', 'must be the mission id');
+      validator.check(
+        typeof contract['cargoId'] === 'string' && content.cargo.has(contract['cargoId']),
+        'missions.active.contract.cargoId',
+        `unknown cargo ${JSON.stringify(contract['cargoId'])}`,
+      );
+      for (const key of ['originCityId', 'destinationCityId']) {
+        validator.check(
+          typeof contract[key] === 'string' && content.cities.has(contract[key]),
+          `missions.active.contract.${key}`,
+          `unknown city ${JSON.stringify(contract[key])}`,
+        );
+      }
+    }
     validator.oneOf(active['state'], SAVED_MISSION_STATES, 'missions.active.state');
     for (const key of ['handlingSeconds', 'deliverySeconds']) {
       validator.check(
@@ -195,6 +217,12 @@ function validateGarage(garage: Json, content: ContentCatalog, validator: Valida
       'must be from 0 to the tank capacity',
     );
     validator.fraction(vehicle['damage'], `${path}.damage`);
+    const paintId = vehicle['paintId'];
+    validator.check(
+      paintId === null || (typeof paintId === 'string' && content.paints.has(paintId)),
+      `${path}.paintId`,
+      `must be null or a known paint, not ${JSON.stringify(paintId)}`,
+    );
   });
   const active = garage['activeVehicleInstanceId'];
   validator.check(

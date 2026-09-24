@@ -16,6 +16,7 @@ import {
   MeshPhongMaterial,
   PlaneGeometry,
   Quaternion,
+  TorusGeometry,
   ShaderMaterial,
   Vector3,
   type Material,
@@ -24,24 +25,36 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, dampFactor } from '../../core/math/scalar';
-import type { VehicleClass, VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
 import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
+import { cabGeometry } from './cabGeometry';
 import { LampGlows } from './LampGlows';
 
 /** Cab paint and livery accent per truck class: original colours, no real-world liveries. */
-const CLASS_PAINT: Readonly<Record<VehicleClass, number>> = {
-  light: 0xe0622a,
-  medium: 0x2f6fb5,
-  heavy: 0xb3262e,
-};
-const DASHBOARD_COLOR = 0x3a4047;
+/** The cab's inside is drawn unlit, in these colours (the sun would leave it black), and dimmer at night. */
+const DASHBOARD_COLOR = 0x4a525b;
+const BINNACLE_COLOR = 0x353b42;
+const PILLAR_COLOR = 0x2f353c;
+const SILL_COLOR = 0x3d444c;
+const GAUGE_COLOR = 0xcfd6dc;
+const STEERING_WHEEL_COLOR = 0x23282d;
+const ACCENT_COLOR = 0xf2b233;
+/** At night (setLamps(1)) the cab's inside keeps this share of its daytime brightness. */
+const CABIN_NIGHT_LEVEL = 0.45;
+/** The steering wheel turns this many times as far as the front wheels (about 1¼ turns to full lock). */
+const STEERING_RATIO = 12;
+/** The steering wheel leans back toward the driver this far from upright, radians. */
+const STEERING_WHEEL_TILT = 0.83;
 const TIRE_WIDTH = 0.36;
 /** A heavy truck's two rear axles stand this far either side of the rear axle the physics uses. */
 const TANDEM_HALF_SPACING = 0.68;
+/** The exhaust stack behind the cab on the right: its radius, and how far its top stands over the cab roof. */
+const STACK_RADIUS = 0.075;
+const STACK_OVER_ROOF = 0.42;
 /** Colours of the flatbed's load: pallets, bricks and ratchet straps. */
 const PALLET_COLOR = 0x9c7a4f;
 const BRICK_COLOR = 0xa94f35;
@@ -96,8 +109,13 @@ export class TruckView {
   private readonly root = new Group();
   private readonly body = new Group();
   private readonly windshield: Mesh;
-  /** Only shown from the driver's seat. */
-  private readonly dashboard: Mesh;
+  /** The cab's inside: only shown from the driver's seat. */
+  private readonly cabin = new Group();
+  /** Turns with the front wheels. */
+  private readonly steeringWheel: Mesh;
+  private readonly cabinMaterial: MeshBasicMaterial;
+  /** The colour it is painted in, 0xRRGGBB. */
+  readonly paint: number;
   /** The flatbed's visible load; null for closed bodies, whose load is out of sight. */
   private readonly load: Mesh | null = null;
   private readonly wheels: InstancedMesh;
@@ -109,6 +127,9 @@ export class TruckView {
   private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
+  /** In the model: the exhaust stack's outlet, and just behind the last rear wheel on the left (+x) side. */
+  private readonly exhaustAt: readonly [number, number, number];
+  private readonly behindRearWheelAt: readonly [number, number, number];
   private wheelSpin = 0;
   private pitch = 0;
   private roll = 0;
@@ -119,25 +140,26 @@ export class TruckView {
   private readonly euler = new Euler(0, 0, 0, 'YXZ');
   private readonly unitScale = new Vector3(1, 1, 1);
 
-  /** `lampGlows: false` leaves the lamps without their glow at night (weaker devices). */
+  /**
+   * `lampGlows: false` leaves the lamps without their glow at night (weaker
+   * devices). `paint` (0xRRGGBB) colours the cab and the livery's stripe and
+   * doors instead of the model's factory colour.
+   */
   constructor(
     private readonly scene: Scene,
     readonly definition: VehicleDefinition,
-    private readonly options: { readonly lampGlows?: boolean } = {},
+    private readonly options: { readonly lampGlows?: boolean; readonly paint?: number } = {},
   ) {
     const { lengthMeters: L, widthMeters: W, heightMeters: H, wheelbaseMeters: B, wheelRadiusMeters: R } = definition.body;
-    const paint = CLASS_PAINT[definition.vehicleClass];
-    const centreZ = B / 2;
-    const frontZ = centreZ + L / 2;
-    const rearZ = centreZ - L / 2;
-    // Heights: the box floor clears the wheels; the cab sits on top of the front axle (cab-over).
-    const deckY = 2 * R + 0.1;
+    const paint = options.paint ?? definition.factoryColor;
+    this.paint = paint;
+    // Heights: the box floor clears the wheels; the cab sits on top of the front axle (cab-over). The cameras
+    // share these (cabGeometry): the driver's eye sits behind the steering wheel, the hood camera on the roof.
+    const cab = cabGeometry(definition.body);
+    const { centreZ, frontZ, rearZ, deckY, cabTop, beltY, cabLength } = cab;
     const frameY = 2 * R - 0.12;
     const cabBottom = 2 * R + 0.04;
     const bumperTop = R + 0.16;
-    const cabTop = deckY + (H - deckY) * 0.78;
-    const beltY = deckY + (cabTop - deckY) * 0.42;
-    const cabLength = Math.min(2.4, Math.max(1.8, L * 0.28));
     const cabRear = frontZ - cabLength;
     const boxFront = cabRear - 0.12;
     const halfW = W / 2;
@@ -188,16 +210,26 @@ export class TruckView {
     for (const side of [1, -1] as const) {
       lamp(0xfff4d6, [0.42, 0.18, 0.05], [side * (halfW - 0.32), bumperTop + 0.2, frontZ + 0.015]);
       lamp(0xffa21c, [0.14, 0.12, 0.05], [side * (halfW - 0.06), bumperTop + 0.2, frontZ + 0.015]);
-      // Mirror on an arm near the front pillar.
+      // Mirror on an arm near the front pillar, its glass facing back (the driver sees it from the cab).
       const mirrorY = beltY + (cabTop - beltY) * 0.3;
       box('dark', [0.36, 0.04, 0.04], [side * (halfW + 0.16), mirrorY + 0.2, frontZ - 0.32]);
-      box('dark', [0.07, 0.36, 0.2], [side * (halfW + 0.36), mirrorY, frontZ - 0.32]);
+      box('dark', [0.2, 0.36, 0.07], [side * (halfW + 0.33), mirrorY, frontZ - 0.32]);
+      add('glass', new PlaneGeometry(0.16, 0.31).rotateY(Math.PI).translate(side * (halfW + 0.33), mirrorY, frontZ - 0.32 - 0.036));
     }
 
     // Chassis, fuel tank, battery box, rear mudguards, underrun bar and light bar.
     box('dark', [W * 0.7, 0.24, L * 0.9], [0, frameY, centreZ]);
     add('metal', new CylinderGeometry(0.28, 0.28, 1.1, 16).rotateX(Math.PI / 2).translate(halfW - 0.32, frameY - 0.05, B * 0.45));
     box('dark', [0.5, 0.45, 0.7], [-(halfW - 0.3), frameY - 0.08, B * 0.45]);
+    // The exhaust stack stands at the cab's rear corner on the right, up past the roof.
+    const stackTop = cabTop + STACK_OVER_ROOF;
+    const stackX = -(halfW + STACK_RADIUS + 0.02);
+    const stackZ = cabRear + 0.15;
+    add(
+      'metal',
+      new CylinderGeometry(STACK_RADIUS, STACK_RADIUS, stackTop - frameY, 10).translate(stackX, (stackTop + frameY) / 2, stackZ),
+    );
+    this.exhaustAt = [stackX, stackTop + 0.05, stackZ];
     const guardLength = 2 * R + 0.3 + (tandem ? 2 * TANDEM_HALF_SPACING : 0);
     for (const side of [1, -1] as const) {
       box('dark', [TIRE_WIDTH + 0.08, 0.05, guardLength], [side * (halfW - 0.2), 2 * R + 0.05, 0]);
@@ -288,22 +320,59 @@ export class TruckView {
     );
     this.body.add(this.windshield);
 
-    // The cab interior, seen only in cabin view (see CameraRig's eye position): a low dashboard along the
-    // windscreen. It does not lean with the body: neither does the driver's eye, and it would bob up and
-    // down the screen.
-    const eyeY = H * 0.72;
+    // The cab's inside, seen only from the driver's seat (cabGeometry's eye): a low dashboard along the
+    // windscreen with two gauges, the pillars and roof edge that frame the view, and a steering wheel that
+    // turns with the front wheels. It does not lean with the body: neither does the driver's eye, and it
+    // would bob up and down the screen.
+    const { eyeX, eyeY, eyeZ } = cab;
+    // The gauges sit in a hood on the dashboard, seen through the top of the steering wheel.
+    const gauge = (x: number): BufferGeometry =>
+      colored(new CircleGeometry(0.055, 18).rotateY(Math.PI).translate(eyeX + x, eyeY - 0.27, eyeZ + 0.725), GAUGE_COLOR);
+    const pillar = (side: 1 | -1): BufferGeometry =>
+      colored(new BoxGeometry(0.08, cabTop - beltY, 0.1).translate(side * (halfW - 0.07), (beltY + cabTop) / 2, frontZ - 0.1), PILLAR_COLOR);
     const interior = [
-      new BoxGeometry(W * 0.9, 0.22, 0.6).translate(0, eyeY - 0.6, frontZ - 0.42),
-      new BoxGeometry(W * 0.9, 0.04, 0.12).translate(0, eyeY - 0.48, frontZ - 0.16),
+      colored(new BoxGeometry(W * 0.9, 0.22, 0.6).translate(0, eyeY - 0.6, frontZ - 0.42), DASHBOARD_COLOR),
+      colored(new BoxGeometry(W * 0.9, 0.04, 0.12).translate(0, eyeY - 0.48, frontZ - 0.16), DASHBOARD_COLOR),
+      colored(new BoxGeometry(0.5, 0.29, 0.14).translate(eyeX, eyeY - 0.345, eyeZ + 0.8), BINNACLE_COLOR),
+      gauge(0.11),
+      gauge(-0.11),
+      pillar(1),
+      pillar(-1),
+      colored(new BoxGeometry(W, 0.07, 0.12).translate(0, cabTop - 0.035, frontZ - 0.1), PILLAR_COLOR),
+      // Ceiling and door sills: from inside, the cab's painted walls face away and are not drawn, so these
+      // keep the roof's gear and the paint's top edge out of sight.
+      colored(new BoxGeometry(W - 0.08, 0.02, cabLength - 0.2).translate(0, cabTop - 0.03, frontZ - 0.1 - (cabLength - 0.2) / 2), PILLAR_COLOR),
+      colored(new BoxGeometry(W - 0.08, 0.02, cabLength - 0.3).translate(0, beltY + 0.012, frontZ - 0.2 - (cabLength - 0.3) / 2), SILL_COLOR),
     ];
-    this.dashboard = new Mesh(
-      this.track(mergeGeometries(interior)),
-      this.track(new MeshLambertMaterial({ color: DASHBOARD_COLOR })),
-    );
+    this.cabinMaterial = this.track(new MeshBasicMaterial({ vertexColors: true }));
+    const interiorMaterial = this.cabinMaterial;
+    const interiorMesh = new Mesh(this.track(mergeGeometries(interior)), interiorMaterial);
+    interiorMesh.name = 'cab-interior';
+    this.cabin.add(interiorMesh);
     for (const part of interior) {
       part.dispose();
     }
-    this.dashboard.visible = false;
+    // Rim, hub and three spokes, with a mark at the top like the on-screen wheel's.
+    const wheelParts = [
+      colored(new TorusGeometry(0.2, 0.024, 8, 28), STEERING_WHEEL_COLOR),
+      colored(new CylinderGeometry(0.055, 0.055, 0.05, 14).rotateX(Math.PI / 2), STEERING_WHEEL_COLOR),
+      colored(new BoxGeometry(0.17, 0.035, 0.018).translate(0.1, 0, 0), STEERING_WHEEL_COLOR),
+      colored(new BoxGeometry(0.17, 0.035, 0.018).translate(-0.1, 0, 0), STEERING_WHEEL_COLOR),
+      colored(new BoxGeometry(0.035, 0.17, 0.018).translate(0, -0.1, 0), STEERING_WHEEL_COLOR),
+      colored(new BoxGeometry(0.035, 0.03, 0.05).translate(0, 0.2, 0), ACCENT_COLOR),
+    ];
+    this.steeringWheel = new Mesh(this.track(mergeGeometries(wheelParts)), interiorMaterial);
+    this.steeringWheel.name = 'steering-wheel';
+    for (const part of wheelParts) {
+      part.dispose();
+    }
+    // Its column rises toward the driver: the rim's top leans forward.
+    const column = new Group();
+    column.position.set(eyeX, eyeY - 0.36, eyeZ + 0.56);
+    column.rotation.x = STEERING_WHEEL_TILT;
+    column.add(this.steeringWheel);
+    this.cabin.add(column);
+    this.cabin.visible = false;
 
     if (loadParts.length > 0) {
       this.load = new Mesh(this.track(mergeGeometries(loadParts)), this.track(new MeshLambertMaterial({ vertexColors: true })));
@@ -317,6 +386,7 @@ export class TruckView {
     // Front wheels first: they steer.
     const trackHalf = halfW - 0.2;
     const rearAxles = tandem ? [TANDEM_HALF_SPACING, -TANDEM_HALF_SPACING] : [0];
+    this.behindRearWheelAt = [trackHalf, R * 0.5, Math.min(...rearAxles) - R * 1.05];
     this.wheelPositions = [
       [trackHalf, R, B],
       [-trackHalf, R, B],
@@ -356,7 +426,7 @@ export class TruckView {
     this.body.add(this.glows.points);
     this.headlightPool = this.createHeadlightPool(frontZ, headlightX);
 
-    this.root.add(shadow, this.headlightPool, this.body, this.dashboard, this.wheels);
+    this.root.add(shadow, this.headlightPool, this.body, this.cabin, this.wheels);
     scene.add(this.root);
   }
 
@@ -367,6 +437,8 @@ export class TruckView {
 
     this.wheelSpin += (state.speed * deltaSeconds) / this.definition.body.wheelRadiusMeters;
     this.updateWheels(state.steerAngle);
+    // Clockwise, as the driver sees it, for a right turn.
+    this.steeringWheel.rotation.z = state.steerAngle * STEERING_RATIO;
 
     // Nose dips when braking and lifts when accelerating; the body leans out of turns.
     const response = dampFactor(LEAN_RESPONSE_RATE, deltaSeconds);
@@ -375,6 +447,22 @@ export class TruckView {
     this.pitch += (targetPitch - this.pitch) * response;
     this.roll += (targetRoll - this.roll) * response;
     this.body.rotation.set(this.pitch, 0, this.roll);
+  }
+
+  /** Where the exhaust stack's outlet is in the world, as of the last update(). Writes into `out`. */
+  exhaustOutlet(out: Vector3): Vector3 {
+    const [x, y, z] = this.exhaustAt;
+    return this.toWorld(x, y, z, out);
+  }
+
+  /**
+   * Just behind the last rear wheel on `side` (1: left, -1: right), low down,
+   * in the world as of the last update(): where it throws dust and spray.
+   * Writes into `out`.
+   */
+  behindRearWheel(side: 1 | -1, out: Vector3): Vector3 {
+    const [x, y, z] = this.behindRearWheelAt;
+    return this.toWorld(x * side, y, z, out);
   }
 
   /** Shows or hides a flatbed's load. Closed bodies keep their load out of sight. */
@@ -395,15 +483,16 @@ export class TruckView {
     }
     this.lamps = level;
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
+    this.cabinMaterial.color.setScalar(1 - level * (1 - CABIN_NIGHT_LEVEL));
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
     this.poolIntensity.value = level * POOL_STRENGTH;
     this.headlightPool.visible = level > 0.01;
   }
 
-  /** From the driver's seat the windshield would block the view: swap it for the dashboard. */
+  /** From the driver's seat the windshield would block the view: swap it for the cab's inside. */
   setCabinView(enabled: boolean): void {
     this.windshield.visible = !enabled;
-    this.dashboard.visible = enabled;
+    this.cabin.visible = enabled;
   }
 
   dispose(): void {
@@ -496,6 +585,14 @@ export class TruckView {
 
   private texture<T extends Texture>(texture: T): T {
     return this.track(texture);
+  }
+
+  /** A point in the model to the world, by the pose of the last update() (the body's lean left out). */
+  private toWorld(x: number, y: number, z: number, out: Vector3): Vector3 {
+    const heading = this.root.rotation.y;
+    const cos = Math.cos(heading);
+    const sin = Math.sin(heading);
+    return out.set(this.root.position.x + x * cos + z * sin, y, this.root.position.z - x * sin + z * cos);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {

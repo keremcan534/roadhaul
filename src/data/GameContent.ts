@@ -3,6 +3,7 @@ import type { CityDefinition } from './definitions/CityDefinition';
 import type { EventDefinition } from './definitions/EventDefinition';
 import type { MapDefinition } from './definitions/MapDefinition';
 import type { MissionDefinition } from './definitions/MissionDefinition';
+import type { PaintDefinition } from './definitions/PaintDefinition';
 import type { TrafficVehicleDefinition } from './definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from './definitions/UpgradeDefinition';
 import type { VehicleDefinition } from './definitions/VehicleDefinition';
@@ -24,4 +25,5 @@ export interface GameContent {
   readonly trafficVehicles: readonly TrafficVehicleDefinition[];
   readonly weather: readonly WeatherDefinition[];
   readonly events: readonly EventDefinition[];
+  readonly paints: readonly PaintDefinition[];
 }

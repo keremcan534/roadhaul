@@ -11,6 +11,7 @@ import {
   mapFixture,
   missionFixture,
   vehicleFixture,
+  weatherFixture,
 } from '../../support/contentFixtures';
 
 function issuePaths(content: Parameters<typeof validateGameContent>[0]): string[] {
@@ -126,6 +127,42 @@ describe('ContentCatalog', () => {
     ]);
   });
 
+  it('reports weathers that would turn into one that does not exist', () => {
+    const content = contentFixture({ weather: [weatherFixture({ next: ['test_rain', 'blizzard'] })] });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'weather[0].next[0]', message: 'unknown weather "test_rain"' },
+      { path: 'weather[0].next[1]', message: 'unknown weather "blizzard"' },
+    ]);
+  });
+
+  it('keeps the ids of generated contracts out of the game\'s own', () => {
+    const content = contentFixture({ missions: [missionFixture({ id: 'daily_1_1' })] });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'missions[0].id', message: 'ids starting with "daily_" are kept for generated contracts' },
+    ]);
+  });
+
+  it('reports city name boards of unknown cities', () => {
+    const map = mapFixture();
+    const content = contentFixture({
+      maps: [
+        {
+          ...map,
+          citySigns: [
+            { cityId: 'test_origin', roadId: 'test_road', distanceMeters: 10, direction: 'forward' },
+            { cityId: 'atlantis', roadId: 'test_road', distanceMeters: 290, direction: 'backward' },
+          ],
+        },
+      ],
+    });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'maps[0].citySigns[1].cityId', message: 'unknown city "atlantis"' },
+    ]);
+  });
+
   it('reports entries that are not objects instead of crashing on them', () => {
     const content = {
       vehicles: [null],
@@ -137,6 +174,7 @@ describe('ContentCatalog', () => {
       trafficVehicles: ['car'],
       weather: [null],
       events: [null],
+      paints: [null],
     } as unknown as Parameters<typeof validateGameContent>[0];
 
     expect(issuePaths(content)).toEqual([
@@ -148,6 +186,7 @@ describe('ContentCatalog', () => {
       'trafficVehicles[0]',
       'weather[0]',
       'events[0]',
+      'paints[0]',
       'missions[1].originCityId', // No maps, so no depots.
       'missions[1].destinationCityId',
       'missions[1].cargoId',

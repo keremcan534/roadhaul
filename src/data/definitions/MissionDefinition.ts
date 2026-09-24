@@ -4,6 +4,9 @@ import { bodyCanHaul } from './BodyType';
 import type { CargoDefinition } from './CargoDefinition';
 import { VEHICLE_CLASSES, type VehicleClass, type VehicleDefinition } from './VehicleDefinition';
 
+/** Generated contracts' ids start with this (the contract generator); the game's own must not. */
+export const GENERATED_MISSION_ID_PREFIX = 'daily_';
+
 /** Spec §40. */
 export const MISSION_DIFFICULTIES = ['easy', 'normal', 'hard', 'expert'] as const;
 export type MissionDifficulty = (typeof MISSION_DIFFICULTIES)[number];

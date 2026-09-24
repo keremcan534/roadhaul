@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { Validator } from '../../../../src/core/validation/Validator';
 import {
+  isInSea,
   rectangleContains,
   rectangleCorners,
+  shorelineXAt,
   validateMapDefinition,
   type DepotDefinition,
   type MapDefinition,
   type RoadKind,
 } from '../../../../src/data/definitions/MapDefinition';
-import { mapFixture } from '../../../support/contentFixtures';
+import { mapFixture, seaFixture } from '../../../support/contentFixtures';
 
 function issuePaths(map: MapDefinition): string[] {
   const validator = new Validator();
@@ -79,7 +81,7 @@ describe('validateMapDefinition', () => {
   it('validates sizes and scenery settings', () => {
     const map = mapFixture({
       buildings: [{ x: 0, z: 0, widthMeters: 0, depthMeters: 10, heightMeters: -1 }],
-      scenery: { seed: 1.5, treesPerKilometer: -3 },
+      scenery: { seed: 1.5, treesPerKilometer: -3, streetLampSpacingMeters: 4 },
     });
 
     expect(issuePaths(map)).toEqual([
@@ -87,7 +89,38 @@ describe('validateMapDefinition', () => {
       'map.buildings[0].heightMeters',
       'map.scenery.seed',
       'map.scenery.treesPerKilometer',
+      'map.scenery.streetLampSpacingMeters',
     ]);
+  });
+
+  it('checks where city name boards stand: on a known road, a distance along it, facing one way', () => {
+    const map = mapFixture({
+      citySigns: [
+        { cityId: 'test_origin', roadId: 'test_road', distanceMeters: 20, direction: 'forward' },
+        { cityId: 'Test Origin', roadId: 'no_road', distanceMeters: -1, direction: 'sideways' as 'forward' },
+        null as unknown as MapDefinition['citySigns'][number],
+      ],
+    });
+
+    expect(issuePaths(map)).toEqual([
+      'map.citySigns[1].cityId',
+      'map.citySigns[1].roadId',
+      'map.citySigns[1].distanceMeters',
+      'map.citySigns[1].direction',
+      'map.citySigns[2]',
+    ]);
+    expect(issuePaths(mapFixture({ citySigns: 'none' as unknown as MapDefinition['citySigns'] }))).toEqual(['map.citySigns']);
+  });
+
+  it('lights the city roads only when the map asks for street lamps', () => {
+    const lit = (streetLampSpacingMeters?: number): MapDefinition =>
+      mapFixture({ scenery: { seed: 1, treesPerKilometer: 0, ...(streetLampSpacingMeters === undefined ? {} : { streetLampSpacingMeters }) } });
+
+    expect(issuePaths(lit())).toEqual([]);
+    expect(issuePaths(lit(30))).toEqual([]);
+    for (const spacing of [9, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(issuePaths(lit(spacing)), String(spacing)).toEqual(['map.scenery.streetLampSpacingMeters']);
+    }
   });
 
   it('reports depots that are not objects or have broken rectangles', () => {
@@ -117,6 +150,85 @@ describe('validateMapDefinition', () => {
       'map.depots[0].yard',
       'map.depots[1].bay',
     ]);
+  });
+});
+
+describe('the sea', () => {
+  it('accepts a sea along the west edge, with a quay, a boat and a crane', () => {
+    expect(issuePaths(mapFixture({ sea: seaFixture() }))).toEqual([]);
+  });
+
+  it('asks for a shoreline from the north edge to the south edge, never turning back, inside the map', () => {
+    const shore = (shoreline: readonly (readonly [number, number])[]) =>
+      issuePaths(mapFixture({ sea: seaFixture({ shoreline, boats: [], cranes: [] }) }));
+
+    expect(shore([[-180, -200]])).toEqual(['map.sea.shoreline']);
+    expect(
+      shore([
+        [-180, -200],
+        [-180, 50],
+        [-170, 40],
+        [-180, 200],
+      ]),
+    ).toEqual(['map.sea.shoreline']);
+    expect(
+      shore([
+        [-180, -150],
+        [-180, 200],
+      ]),
+    ).toEqual(['map.sea.shoreline']);
+    expect(
+      shore([
+        [-180, -200],
+        [-250, 0],
+        [-180, 200],
+      ]),
+    ).toEqual(['map.sea.shoreline[1]']);
+  });
+
+  it('keeps boats in the water off the shore, cranes on the quays, and the truck\'s start on land', () => {
+    const sea = seaFixture({
+      quays: [{ fromZ: 30, toZ: -30, widthMeters: 0 }],
+      boats: [
+        { kind: 'tug', x: -178, z: 0, headingDegrees: 0 },
+        { kind: 'yacht' as never, x: -300, z: 0, headingDegrees: Number.NaN },
+      ],
+      cranes: [
+        { x: -172, z: 120, headingDegrees: -90 },
+        { x: -190, z: 0, headingDegrees: 0 },
+      ],
+    });
+
+    expect(issuePaths(mapFixture({ sea, spawn: { x: -190, z: 0, headingDegrees: 0 } }))).toEqual([
+      'map.sea.quays[0].toZ',
+      'map.sea.quays[0].widthMeters',
+      'map.sea.boats[0]',
+      'map.sea.boats[1].kind',
+      'map.sea.boats[1].headingDegrees',
+      'map.sea.cranes[0]',
+      'map.sea.cranes[1]',
+      'map.spawn',
+    ]);
+  });
+
+  it('finds the shore at any z along the line, and the sea west of it', () => {
+    const shoreline = [
+      [-200, -300],
+      [-100, -100],
+      [-100, 100],
+      [-160, 400],
+    ] as const;
+
+    expect(shorelineXAt(shoreline, -300)).toBe(-200);
+    expect(shorelineXAt(shoreline, -200)).toBeCloseTo(-150, 9);
+    expect(shorelineXAt(shoreline, 0)).toBe(-100);
+    expect(shorelineXAt(shoreline, 250)).toBeCloseTo(-130, 9);
+    // Beyond the ends, the end points' x.
+    expect(shorelineXAt(shoreline, -900)).toBe(-200);
+    expect(shorelineXAt(shoreline, 900)).toBe(-160);
+    expect(isInSea(shoreline, -101, 0)).toBe(true);
+    expect(isInSea(shoreline, -99, 0)).toBe(false);
+    expect(isInSea(shoreline, -99, 0, 2)).toBe(true);
   });
 });
 

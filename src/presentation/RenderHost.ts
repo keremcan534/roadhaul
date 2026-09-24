@@ -24,6 +24,8 @@ export class RenderHost {
    * one pixel per CSS pixel and turns off anisotropic filtering.
    */
   readonly softwareRendering: boolean;
+  /** The GPU's name as WebGL reports it, for the performance display. */
+  readonly gpu: string;
   /** Share of the capped pixel ratio drawn at (AdaptiveResolution), and the size last asked for. */
   private resolutionScale = 1;
   private cssWidth = 0;
@@ -43,7 +45,8 @@ export class RenderHost {
     // Filmic tone mapping: bright sky and sunlit paint roll off softly instead of clipping.
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.softwareRendering = SOFTWARE_RENDERER.test(rendererName(this.renderer.getContext()));
+    this.gpu = rendererName(this.renderer.getContext());
+    this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
   }
 
   /** Texture anisotropy to use: the GPU's maximum, up to 4, or 1 when rendering in software. */
@@ -81,6 +84,15 @@ export class RenderHost {
 
   render(): void {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /**
+   * Shows the picture left to right the other way, like a reversing
+   * camera's (the rear camera), so the truck's right is on the screen's
+   * right. Only the canvas flips: the controls and menus over it do not.
+   */
+  set mirrored(mirrored: boolean) {
+    this.renderer.domElement.style.transform = mirrored ? 'scaleX(-1)' : '';
   }
 
   /**

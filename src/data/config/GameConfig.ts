@@ -31,12 +31,19 @@ export interface GameConfig {
     readonly minResolutionScale: Fraction;
     /** Share of the rain's streaks drawn. */
     readonly rainDensity: Fraction;
+    /** Share of the exhaust, dust and spray puffs the truck throws. */
+    readonly particleDensity: Fraction;
     /** Glows round lit lamps at night. */
     readonly lampGlows: boolean;
   };
   readonly missions: {
     /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
     readonly loadingSeconds: number;
+    /**
+     * Contracts of the day (spec §28–29): how many the generator adds to the
+     * job board, and every how many hours a new batch replaces them.
+     */
+    readonly dailyContracts: { readonly count: number; readonly refreshHours: number };
   };
   readonly economy: {
     /** Price of a litre of diesel at a depot pump (spec §17: prices live in config, not in the world). */
@@ -121,18 +128,40 @@ export interface QualityPreset {
   readonly maxPixelRatio: number;
   readonly minResolutionScale: Fraction;
   readonly rainDensity: Fraction;
+  readonly particleDensity: Fraction;
   readonly lampGlows: boolean;
   /** NPC vehicles around the truck. */
   readonly trafficVehicles: number;
 }
 
 export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = frozenCopy({
-  low: { maxPixelRatio: 1, minResolutionScale: 0.7, rainDensity: 0.5, lampGlows: false, trafficVehicles: 8 },
-  medium: { maxPixelRatio: 1.25, minResolutionScale: 0.6, rainDensity: 0.75, lampGlows: true, trafficVehicles: 12 },
-  high: { maxPixelRatio: 1.5, minResolutionScale: 0.6, rainDensity: 1, lampGlows: true, trafficVehicles: 16 },
+  low: {
+    maxPixelRatio: 1,
+    minResolutionScale: 0.7,
+    rainDensity: 0.5,
+    particleDensity: 0.5,
+    lampGlows: false,
+    trafficVehicles: 8,
+  },
+  medium: {
+    maxPixelRatio: 1.25,
+    minResolutionScale: 0.6,
+    rainDensity: 0.75,
+    particleDensity: 0.75,
+    lampGlows: true,
+    trafficVehicles: 12,
+  },
+  high: {
+    maxPixelRatio: 1.5,
+    minResolutionScale: 0.6,
+    rainDensity: 1,
+    particleDensity: 1,
+    lampGlows: true,
+    trafficVehicles: 16,
+  },
 });
 
-/** `config` with the graphics preset `level`: resolution, rain, glows and how much traffic. */
+/** `config` with the graphics preset `level`: resolution, rain, smoke and dust, glows and how much traffic. */
 export function applyQualityPreset(config: GameConfig, level: QualityLevel): GameConfig {
   const { trafficVehicles, ...rendering } = QUALITY_PRESETS[level];
   return {
@@ -155,10 +184,12 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     antialias: false,
     minResolutionScale: 0.6,
     rainDensity: 1,
+    particleDensity: 1,
     lampGlows: true,
   },
   missions: {
     loadingSeconds: 3,
+    dailyContracts: { count: 5, refreshHours: 6 },
   },
   economy: {
     fuelPricePerLiter: 12,
@@ -225,11 +256,23 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'must be greater than 0 and at most 1',
   );
   validator.fraction(rendering.rainDensity, 'rendering.rainDensity');
+  validator.fraction(rendering.particleDensity, 'rendering.particleDensity');
   validator.boolean(rendering.lampGlows, 'rendering.lampGlows');
   validator.check(
     Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,
     'missions.loadingSeconds',
     'must be greater than 0 and at most 30',
+  );
+  const daily = missions.dailyContracts;
+  validator.check(
+    Number.isInteger(daily.count) && daily.count >= 0 && daily.count <= 12,
+    'missions.dailyContracts.count',
+    'must be a whole number from 0 to 12',
+  );
+  validator.check(
+    Number.isFinite(daily.refreshHours) && daily.refreshHours >= 1,
+    'missions.dailyContracts.refreshHours',
+    'must be at least 1',
   );
   validator.positiveInteger(economy.fuelPricePerLiter, 'economy.fuelPricePerLiter');
   validator.check(

@@ -5,6 +5,7 @@ import { validateCityDefinition, type CityDefinition } from './definitions/CityD
 import { validateEventDefinition, type EventDefinition } from './definitions/EventDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
 import {
+  GENERATED_MISSION_ID_PREFIX,
   validateMissionDefinition,
   vehicleCanHaul,
   type MissionDefinition,
@@ -13,6 +14,7 @@ import {
   validateTrafficVehicleDefinition,
   type TrafficVehicleDefinition,
 } from './definitions/TrafficVehicleDefinition';
+import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import { validateWeatherDefinition, type WeatherDefinition } from './definitions/WeatherDefinition';
@@ -67,6 +69,7 @@ export class ContentCatalog {
   readonly trafficVehicles: DefinitionTable<TrafficVehicleDefinition>;
   readonly weather: DefinitionTable<WeatherDefinition>;
   readonly events: DefinitionTable<EventDefinition>;
+  readonly paints: DefinitionTable<PaintDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -78,6 +81,7 @@ export class ContentCatalog {
     this.trafficVehicles = new DefinitionTable('traffic vehicle', content.trafficVehicles);
     this.weather = new DefinitionTable('weather', content.weather);
     this.events = new DefinitionTable('event', content.events);
+    this.paints = new DefinitionTable('paint', content.paints);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -102,9 +106,26 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'trafficVehicles', content.trafficVehicles, validateTrafficVehicleDefinition);
   validateTable(validator, 'weather', content.weather, validateWeatherDefinition);
   validateTable(validator, 'events', content.events, validateEventDefinition);
+  validateTable(validator, 'paints', content.paints, validatePaintDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
+  validateWeatherSuccessions(validator, content);
   return validator.issues;
+}
+
+/** Every weather a weather may turn into exists. */
+function validateWeatherSuccessions(validator: Validator, content: GameContent): void {
+  if (!Array.isArray(content.weather)) {
+    return; // Already reported by validateTable.
+  }
+  const ids = new Set(content.weather.filter(isObject).map((weather) => weather.id));
+  content.weather.forEach((weather, index) => {
+    if (isObject(weather) && Array.isArray(weather.next)) {
+      (weather.next as readonly string[]).forEach((id: string, nextIndex: number) => {
+        validator.check(ids.has(id), `weather[${index}].next[${nextIndex}]`, `unknown weather "${id}"`);
+      });
+    }
+  });
 }
 
 /**
@@ -155,6 +176,11 @@ function validateMissionReferences(validator: Validator, content: GameContent): 
       return;
     }
     const path = `missions[${index}]`;
+    validator.check(
+      typeof mission.id !== 'string' || !mission.id.startsWith(GENERATED_MISSION_ID_PREFIX),
+      `${path}.id`,
+      `ids starting with "${GENERATED_MISSION_ID_PREFIX}" are kept for generated contracts`,
+    );
     for (const key of ['originCityId', 'destinationCityId'] as const) {
       const cityId = mission[key];
       if (validator.check(cityIds.has(cityId), `${path}.${key}`, `unknown city "${cityId}"`)) {
@@ -202,5 +228,13 @@ function validateDepotReferences(validator: Validator, content: GameContent): vo
       validator.check(!seenDepotIds.has(depot.id), `${path}.id`, `duplicate depot id "${depot.id}"`);
       seenDepotIds.add(depot.id);
     });
+    if (Array.isArray(map.citySigns)) {
+      map.citySigns.forEach((sign, index) => {
+        if (isObject(sign)) {
+          const path = `maps[${mapIndex}].citySigns[${index}].cityId`;
+          validator.check(cityIds.has(sign.cityId), path, `unknown city "${sign.cityId}"`);
+        }
+      });
+    }
   });
 }

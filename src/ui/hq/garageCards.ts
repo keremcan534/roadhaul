@@ -1,7 +1,8 @@
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
-import type { OwnedTruck, TruckOffer } from '../../systems/vehicles/GarageService';
+import type { OwnedTruck, PaintOffer, TruckOffer } from '../../systems/vehicles/GarageService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
+import { paintPicker } from './paintPicker';
 
 /** What the garage card of a model offers the player. */
 export interface TruckCardState {
@@ -10,17 +11,22 @@ export interface TruckCardState {
   readonly owned: OwnedTruck | undefined;
   /** A contract is under way: trucks cannot be switched. */
   readonly busy: boolean;
-  readonly canAfford: boolean;
+  /** Whether the company has `price` credits (the truck, or a paint). */
+  readonly canAfford: (price: number) => boolean;
+  /** The paint shop's colours, for the truck the company owns. */
+  readonly paints: readonly PaintOffer[];
 }
 
 export interface TruckCardActions {
   readonly onBuy: (definitionId: string) => void;
   readonly onSwitch: (instanceId: string) => void;
+  readonly onPaint: (instanceId: string, paintId: string | null) => void;
 }
 
 /**
  * A truck model in the garage (spec §15): what it carries and costs, and
  * whether the company drives it, owns it, can buy it, or must level up first.
+ * A truck the company owns can be painted here (paintPicker).
  */
 export function truckCard(document: Document, strings: Strings, state: TruckCardState, actions: TruckCardActions): HTMLElement {
   const { offer, owned } = state;
@@ -66,10 +72,13 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
       'buy-truck',
       () => actions.onBuy(definition.id),
     );
-    buy.disabled = !state.canAfford;
+    buy.disabled = !state.canAfford(offer.price);
     bottom.append(buy);
   }
   card.append(top, body, facts, bottom);
+  if (owned !== undefined) {
+    card.append(paintPicker(document, strings, { truck: owned, offers: state.paints, canAfford: state.canAfford }, actions.onPaint));
+  }
   return card;
 }
 

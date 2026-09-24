@@ -13,6 +13,7 @@ import { EconomyService } from '../systems/economy/EconomyService';
 import { EventService } from '../systems/events/EventService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
+import { DailyContracts } from '../systems/missions/DailyContracts';
 import { MissionService } from '../systems/missions/MissionService';
 import { NavigationService } from '../systems/navigation/NavigationService';
 import { SaveService } from '../systems/save/SaveService';
@@ -117,9 +118,21 @@ export class GameBootstrapper {
         ServiceKeys.company,
         new CompanyService(events, config.company, logger.withCategory('Company')),
       );
+      const dailyContracts = container.register(
+        ServiceKeys.dailyContracts,
+        new DailyContracts(catalog, driving, clock, config.missions.dailyContracts),
+      );
       const missions = container.register(
         ServiceKeys.missions,
-        new MissionService(catalog, driving, company, events, config.missions, logger.withCategory('Missions')),
+        new MissionService(
+          catalog,
+          driving,
+          company,
+          events,
+          config.missions,
+          logger.withCategory('Missions'),
+          dailyContracts,
+        ),
       );
       container.register(
         ServiceKeys.navigation,

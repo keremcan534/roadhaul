@@ -6,14 +6,19 @@ import {
   concreteImage,
   glowImage,
   grassImage,
+  lightPoolImage,
   liveryImage,
+  moonImage,
+  puffImage,
   officeFacadeImage,
   officeWindowLightsImage,
   rearDoorsImage,
   softShadowImage,
   warehouseWindowLightsImage,
 } from '../../../../src/presentation/textures/proceduralImages';
-import { drawText, measureText } from '../../../../src/presentation/textures/strokeFont';
+import { drawText, hasGlyph, measureText } from '../../../../src/presentation/textures/strokeFont';
+import { EN } from '../../../../src/ui/i18n/en';
+import { TR } from '../../../../src/ui/i18n/tr';
 import { toTexture } from '../../../../src/presentation/textures/toTexture';
 
 const style = { height: 40, weight: 0.17, spacing: 0.12, slant: 0.16, color: [0, 0, 0] as const };
@@ -70,6 +75,46 @@ describe('stroke font', () => {
       }
     }
     expect(inked).toBeGreaterThan(500);
+  });
+
+  it('has every capital of the English and Turkish alphabets, so it can write the cities\' names', () => {
+    for (const letter of 'ABCÇDEFGĞHIİJKLMNOÖPQRSŞTUÜVWXYZ') {
+      expect(hasGlyph(letter), letter).toBe(true);
+    }
+    const cityNames = [EN, TR].flatMap((table) =>
+      Object.entries(table)
+        .filter(([key]) => /^city\.[a-z_]+\.name$/.test(key))
+        .map(([, name]) => name),
+    );
+    expect(cityNames.length).toBeGreaterThan(0);
+    for (const name of cityNames) {
+      for (const letter of name.toLocaleUpperCase('tr').replaceAll(' ', '')) {
+        expect(hasGlyph(letter), `${name}: ${letter}`).toBe(true);
+      }
+    }
+  });
+
+  it('puts the dots and hooks of Turkish letters above the capitals and below the line', () => {
+    /** The lowest and highest inked rows of `text` drawn with its baseline at y = 30. */
+    const inkedRows = (text: string): [number, number] => {
+      const image = createImage(120, 90);
+      drawText(image, text, 10, 30, style);
+      const rows: number[] = [];
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+          if (pixel(image, x, y)[0]! < 128) rows.push(y);
+        }
+      }
+      return [Math.min(...rows), Math.max(...rows)];
+    };
+    const [plainBottom, plainTop] = inkedRows('I');
+
+    expect(inkedRows('İ')[1]).toBeGreaterThan(plainTop + 5);
+    expect(inkedRows('Ş')[0]).toBeLessThan(plainBottom - 5);
+    expect(inkedRows('Ç')[0]).toBeLessThan(plainBottom - 5);
+    expect(inkedRows('Ğ')[1]).toBeGreaterThan(plainTop + 5);
+    expect(inkedRows('Ö')[1]).toBeGreaterThan(plainTop + 5);
+    expect(inkedRows('Ü')[1]).toBeGreaterThan(plainTop + 5);
   });
 
   it('renders unknown characters as spaces', () => {
@@ -187,6 +232,54 @@ describe('procedural images', () => {
     for (let x = 17; x < 31; x++) {
       expect(pixel(glow, x + 1, 16)[3]).toBeLessThanOrEqual(pixel(glow, x, 16)[3]!);
     }
+  });
+
+  it('light a street lamp\'s pool most under the lamp, fading smoothly to nothing at the rim', () => {
+    const pool = lightPoolImage(32);
+
+    expect(pixel(pool, 16, 16)[3]).toBeGreaterThan(245);
+    expect(pixel(pool, 0, 16)[3]).toBe(0);
+    expect(pixel(pool, 0, 0)[3]).toBe(0);
+    for (let x = 16; x < 31; x++) {
+      expect(pixel(pool, x + 1, 16)[3]).toBeLessThanOrEqual(pixel(pool, x, 16)[3]!);
+    }
+  });
+
+  it('draw the moon as a pale disc with darker seas, its corners see-through without a dark fringe', () => {
+    const moon = moonImage(32);
+    const disc: number[] = [];
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        if (Math.hypot(x + 0.5 - 16, y + 0.5 - 16) < 13) {
+          const [r, g, b, a] = pixel(moon, x, y);
+          expect(a).toBe(255);
+          disc.push(r! + g! + b!);
+        }
+      }
+    }
+    // Highlands and seas: bright, with some clearly darker ground.
+    expect(Math.max(...disc)).toBeGreaterThan(3 * 215);
+    expect(Math.min(...disc)).toBeLessThan(Math.max(...disc) * 0.85);
+    // The corners are transparent, in the highlands' colour.
+    const corner = pixel(moon, 0, 0);
+    expect(corner[3]).toBe(0);
+    expect(corner[0]).toBeGreaterThan(200);
+    expect(moonImage(32)).toEqual(moon);
+  });
+
+  it('draw a puff as a soft, lumpy white cloud, clear at the edges', () => {
+    const puff = puffImage(32);
+
+    expect(pixel(puff, 16, 16)[3]).toBeGreaterThan(150);
+    expect(pixel(puff, 0, 16)[3]).toBe(0);
+    expect(pixel(puff, 0, 0)[3]).toBe(0);
+    expect(pixel(puff, 16, 16).slice(0, 3)).toEqual([255, 255, 255]);
+    // Lumpy: a ring halfway out is not all the same.
+    const ring = Array.from({ length: 16 }, (_, i) => {
+      const angle = (i / 16) * Math.PI * 2;
+      return pixel(puff, Math.round(16 + Math.cos(angle) * 7), Math.round(16 + Math.sin(angle) * 7))[3]!;
+    });
+    expect(Math.max(...ring) - Math.min(...ring)).toBeGreaterThan(10);
   });
 
   it('fade the soft shadow from the centre to transparent edges', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
-import { deliver, newCompany, play } from '../../../support/game';
+import { bootGame, deliver, newCompany, play } from '../../../support/game';
 
 describe('GarageService', () => {
   it('starts a company with the H1, and shows the dealer\'s bigger trucks locked until their level', async () => {
@@ -115,5 +115,55 @@ describe('GarageService', () => {
 
     expect(game.company.stats.deliveriesCompleted).toBe(1);
     expect(game.economy.credits).toBeGreaterThan(credits);
+  });
+});
+
+describe('GarageService paint shop', () => {
+  it('paints any of the company\'s trucks for the colour\'s price, and brings the factory colour back for free', async () => {
+    const game = await newCompany(2, 30_000);
+    game.garage.buy('rh_h2');
+    const painted: GameEvents['VehiclePainted'][] = [];
+    game.events.on('VehiclePainted', (event) => painted.push(event));
+    const credits = game.economy.credits;
+
+    // The truck waiting in the garage too, not only the one driven.
+    const blue = game.garage.paint('truck_002', 'ocean_blue');
+    expect(blue.ok && blue.value).toMatchObject({ instanceId: 'truck_002', paint: expect.objectContaining({ id: 'ocean_blue' }) });
+    expect(game.economy.credits).toBe(credits - 1500);
+    expect(game.garage.paint('truck_002', 'ocean_blue')).toEqual({ ok: false, error: 'alreadyPainted' });
+
+    const factory = game.garage.paint('truck_002', null);
+    expect(factory.ok && factory.value.paint).toBeNull();
+    expect(game.economy.credits).toBe(credits - 1500);
+    expect(game.garage.paint('truck_001', null)).toEqual({ ok: false, error: 'alreadyPainted' });
+    expect(painted).toEqual([
+      { instanceId: 'truck_002', paintId: 'ocean_blue', price: 1500 },
+      { instanceId: 'truck_002', paintId: null, price: 0 },
+    ]);
+  });
+
+  it('keeps the richer colours for bigger companies, and refuses unknown trucks, colours and empty wallets', async () => {
+    const game = await newCompany(1, 1000);
+    const shop = game.garage.paintShop();
+    expect(shop.map((offer) => offer.paint.id)).toContain('royal_purple');
+    expect(shop.find((offer) => offer.paint.id === 'royal_purple')).toMatchObject({ requiredCompanyLevel: 3, locked: true });
+    expect(shop.find((offer) => offer.paint.id === 'signal_red')).toMatchObject({ requiredCompanyLevel: 1, locked: false });
+
+    expect(game.garage.paint('truck_001', 'royal_purple')).toEqual({ ok: false, error: 'locked' });
+    expect(game.garage.paint('truck_001', 'chrome')).toEqual({ ok: false, error: 'unknownPaint' });
+    expect(game.garage.paint('truck_009', 'signal_red')).toEqual({ ok: false, error: 'unknownTruck' });
+    expect(game.garage.paint('truck_001', 'signal_red')).toEqual({ ok: false, error: 'insufficientFunds' });
+    expect(game.garage.activeTruck.paint).toBeNull();
+    expect(game.economy.credits).toBe(1000);
+  });
+
+  it('saves the paint at once, and a continued company still has it', async () => {
+    const first = await newCompany(1, 5000);
+    first.garage.paint('truck_001', 'forest_green');
+    expect(first.session.snapshot().garage.vehicles[0]!.paintId).toBe('forest_green');
+
+    const second = await bootGame(first.storage, 9_000);
+    second.session.continueGame();
+    expect(second.garage.activeTruck.paint?.id).toBe('forest_green');
   });
 });

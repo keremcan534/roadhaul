@@ -46,7 +46,7 @@ describe('GameConfig', () => {
   it('reports out-of-range values', () => {
     const config = withChanges({
       simulation: { fixedStepSeconds: 0, maxStepsPerFrame: 0 },
-      missions: { loadingSeconds: 0 },
+      missions: { loadingSeconds: 0, dailyContracts: { count: 2.5, refreshHours: 0 } },
       newGame: { startingCredits: -100 },
     });
 
@@ -54,6 +54,8 @@ describe('GameConfig', () => {
       'simulation.fixedStepSeconds',
       'simulation.maxStepsPerFrame',
       'missions.loadingSeconds',
+      'missions.dailyContracts.count',
+      'missions.dailyContracts.refreshHours',
       'newGame.startingCredits',
     ]);
   });
@@ -149,13 +151,15 @@ describe('GameConfig', () => {
     }
   });
 
-  it('asks less of weaker devices: fewer pixels, less rain and traffic, no glows on low', () => {
+  it('asks less of weaker devices: fewer pixels, less rain, smoke and traffic, no glows on low', () => {
     const [low, medium, high] = QUALITY_LEVELS.map((level) => QUALITY_PRESETS[level]);
 
     expect(low!.maxPixelRatio).toBeLessThan(medium!.maxPixelRatio);
     expect(medium!.maxPixelRatio).toBeLessThan(high!.maxPixelRatio);
     expect(low!.trafficVehicles).toBeLessThan(high!.trafficVehicles);
     expect(low!.rainDensity).toBeLessThan(high!.rainDensity);
+    expect(low!.particleDensity).toBeLessThan(medium!.particleDensity);
+    expect(medium!.particleDensity).toBeLessThan(high!.particleDensity);
     expect(low!.lampGlows).toBe(false);
     const applied = applyQualityPreset(DEFAULT_GAME_CONFIG, 'low');
     expect(applied.rendering).toMatchObject({ quality: 'low', maxPixelRatio: low!.maxPixelRatio, lampGlows: false });
@@ -170,6 +174,7 @@ describe('GameConfig', () => {
         quality: 'ultra' as never,
         minResolutionScale: 0,
         rainDensity: 1.5,
+        particleDensity: -0.5,
         lampGlows: 'yes' as never,
       },
     };
@@ -178,6 +183,7 @@ describe('GameConfig', () => {
       'rendering.quality',
       'rendering.minResolutionScale',
       'rendering.rainDensity',
+      'rendering.particleDensity',
       'rendering.lampGlows',
     ]);
   });

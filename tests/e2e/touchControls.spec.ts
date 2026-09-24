@@ -1,39 +1,73 @@
-import { expect, test } from '@playwright/test';
-import { centreOf, openGame, shownSpeed, watchForProblems } from './support';
+import { expect, test, type Page } from '@playwright/test';
+import {
+  centreOf,
+  closeSettingsAndResume,
+  openGame,
+  openSettingsWhileDriving,
+  seedSettings,
+  shownSpeed,
+  watchForProblems,
+} from './support';
 
-const CONTROLS = ['.steering-wheel', '.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button', '.horn-button', '.pause-button'] as const;
+const COMMON_CONTROLS = ['.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button', '.horn-button', '.pause-button', '.minimap'];
+/** The controls each way of steering (Settings) adds. */
+const STEERING_CONTROLS = {
+  wheel: ['.steering-wheel'],
+  tilt: ['.tilt-button'],
+  buttons: ['.steer-button--left', '.steer-button--right'],
+} as const;
+const VIEWPORTS = {
+  landscape: null, // The project's phone, on its side.
+  portrait: { width: 412, height: 839 }, // Pixel 7 held upright.
+  'narrow portrait': { width: 360, height: 740 }, // Smaller Android phones.
+} as const;
 
-for (const orientation of ['landscape', 'portrait'] as const) {
-  test(`lays out the touch controls without overlaps in ${orientation}`, async ({ page }) => {
-    const problems = watchForProblems(page);
-    if (orientation === 'portrait') {
-      await page.setViewportSize({ width: 412, height: 839 }); // Pixel 7 held upright.
-    }
-    await openGame(page);
-
-    const viewport = page.viewportSize()!;
-    const boxes = await Promise.all(CONTROLS.map((selector) => page.locator(selector).boundingBox()));
-    boxes.forEach((box, index) => {
-      expect(box, `${CONTROLS[index]} is not shown`).not.toBeNull();
-      expect(box!.x).toBeGreaterThanOrEqual(0);
-      expect(box!.y).toBeGreaterThanOrEqual(0);
-      expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
-      expect(box!.y + box!.height).toBeLessThanOrEqual(viewport.height);
-    });
-    for (let a = 0; a < boxes.length; a++) {
-      for (let b = a + 1; b < boxes.length; b++) {
-        const first = boxes[a]!;
-        const second = boxes[b]!;
-        const overlap =
-          first.x < second.x + second.width &&
-          second.x < first.x + first.width &&
-          first.y < second.y + second.height &&
-          second.y < first.y + first.height;
-        expect(overlap, `${CONTROLS[a]} overlaps ${CONTROLS[b]}`).toBe(false);
-      }
-    }
-    expect(problems).toEqual([]);
+/** Every control is on screen, and none covers another. */
+async function expectLaidOut(page: Page, controls: readonly string[], context: string): Promise<void> {
+  const viewport = page.viewportSize()!;
+  const boxes = await Promise.all(controls.map((selector) => page.locator(selector).boundingBox()));
+  boxes.forEach((box, index) => {
+    expect(box, `${controls[index]} is not shown (${context})`).not.toBeNull();
+    expect(box!.x, context).toBeGreaterThanOrEqual(0);
+    expect(box!.y, context).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width, context).toBeLessThanOrEqual(viewport.width);
+    expect(box!.y + box!.height, context).toBeLessThanOrEqual(viewport.height);
   });
+  for (let a = 0; a < boxes.length; a++) {
+    for (let b = a + 1; b < boxes.length; b++) {
+      const first = boxes[a]!;
+      const second = boxes[b]!;
+      const overlap =
+        first.x < second.x + second.width &&
+        second.x < first.x + first.width &&
+        first.y < second.y + second.height &&
+        second.y < first.y + first.height;
+      expect(overlap, `${controls[a]} overlaps ${controls[b]} (${context})`).toBe(false);
+    }
+  }
+}
+
+for (const [orientation, viewport] of Object.entries(VIEWPORTS)) {
+  for (const steering of ['wheel', 'tilt', 'buttons'] as const) {
+    test(`lays out the ${steering} controls in every size without overlaps, ${orientation}`, async ({ page }) => {
+      const problems = watchForProblems(page);
+      if (viewport !== null) {
+        await page.setViewportSize(viewport);
+      }
+      await seedSettings(page, { steering });
+      await openGame(page);
+
+      const controls = [...STEERING_CONTROLS[steering], ...COMMON_CONTROLS];
+      await expectLaidOut(page, controls, 'normal size');
+      for (const size of ['small', 'large'] as const) {
+        await openSettingsWhileDriving(page);
+        await page.locator(`.settings [data-control-size="${size}"]`).click();
+        await closeSettingsAndResume(page);
+        await expectLaidOut(page, controls, `${size} size`);
+      }
+      expect(problems).toEqual([]);
+    });
+  }
 }
 
 test('keeps a pedal pressed until the last finger on it lifts', async ({ page }) => {

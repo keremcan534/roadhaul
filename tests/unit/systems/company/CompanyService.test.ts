@@ -3,8 +3,10 @@ import { EventBus } from '../../../../src/core/events/EventBus';
 import { calculateMissionReward } from '../../../../src/domain/missions/missionReward';
 import { CompanyService } from '../../../../src/systems/company/CompanyService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
+import { missionFixture } from '../../../support/contentFixtures';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
+const mission = missionFixture({ id: 'm' });
 const reward = calculateMissionReward({
   baseReward: 1000,
   cargoRewardMultiplier: 1,
@@ -30,7 +32,7 @@ function setup() {
 }
 
 function deliver(events: EventBus<GameEvents>, xp: number, reputation: number): void {
-  events.emit('MissionCompleted', { missionId: 'm', reward, deliverySeconds: 60, cargoDamage: 0, xp, reputation });
+  events.emit('MissionCompleted', { missionId: 'm', mission, reward, deliverySeconds: 60, cargoDamage: 0, xp, reputation });
 }
 
 describe('CompanyService', () => {
@@ -73,7 +75,7 @@ describe('CompanyService', () => {
   it('loses reputation on a failed contract, never below zero', () => {
     const { events, company } = setup();
 
-    events.emit('MissionFailed', { missionId: 'm', reason: 'cargoDamaged', reputationLost: 6 });
+    events.emit('MissionFailed', { missionId: 'm', mission, reason: 'cargoDamaged', reputationLost: 6 });
 
     expect(company.reputation).toBe(0);
     expect(company.stats.deliveriesFailed).toBe(1);

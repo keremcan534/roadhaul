@@ -24,7 +24,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio scaled by AdaptiveResolution (one drawing-buffer resize per change), tone mapping, software-rendering fallback | three | none |
-| PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
+| PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | The performance display (`?debug`, or switched on in Settings): FPS / draw calls / triangles / pixel ratio, truck position and heading, the graphics preset and GPU | none | none |
 | Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`, `?date`, `?quality`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result), pausing (also when the player leaves) and the back button; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
 
@@ -33,20 +33,21 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | VehicleDefinition | data | `src/data/definitions/VehicleDefinition.ts` | Truck data: body, powertrain, handling; validated (no gearbox hunting) | Validator | none |
-| MapDefinition | data | `src/data/definitions/MapDefinition.ts` | Roads (with a kind), buildings, depots, rest areas, spawn, scenery seed | Validator | none |
+| MapDefinition | data | `src/data/definitions/MapDefinition.ts` | Roads (with a kind), buildings, depots, rest areas, name boards, fields, wind turbines, the sea (shoreline, quays, boats, cranes), spawn, scenery seed; `shorelineXAt`, `isInSea` | Validator | none |
 | VehicleDynamics | domain | `src/domain/vehicles/VehicleDynamics.ts` | Deterministic truck model: drivetrain, gearbox, governor, brakes, reverse, understeer (ADR 0002) | VehicleDefinition | none |
 | VehicleInput, VehicleRuntimeState | domain | `src/domain/vehicles/` | Device-independent driver input; live truck state | none | none |
 | RoadPath | domain | `src/domain/world/RoadPath.ts` | Catmull-Rom centreline shared by driving and rendering | MapDefinition | none |
-| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, buildings, depots, rest areas, service points, collisions, map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
+| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, street lamps along the town roads, the cities' name boards, farm fields beside their roads with seeded hay bales, wind turbines, the sea (water west of the shoreline, paved quays, boats, cranes, seeded boulders along the shore), buildings, depots, rest areas, service points, collisions (trunks, posts, bales, towers and crane legs are solid circles filed by grid cell; the shore is a wall), map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
 | RoadGrid | domain | `src/domain/world/RoadGrid.ts`, `gridCells.ts` | The roads' centreline pieces filed by 20 m cell: on a road, or near one, from the few pieces round a point | RoadPath | none |
 | DrivingService | systems | `src/systems/driving/DrivingService.ts` | Owns the driven truck and world; steps them every fixed step; cargo mass, parking, recovery onto the road; the service point the truck stands at | ContentCatalog, EventBus | emits `VehicleCollided` |
-| EnvironmentView | presentation | `src/presentation/world/EnvironmentView.ts`, `world/lighting.ts` | Gradient sky with sun glow, clouds and horizon hills that follow the camera; fog; sun and sky lights | three | none |
+| EnvironmentView | presentation | `src/presentation/world/EnvironmentView.ts`, `world/lighting.ts` | Gradient sky with sun glow, clouds and horizon hills that follow the camera; twinkling stars and the moon at night; fog; sun and sky lights | three | none |
 | Procedural textures | presentation | `src/presentation/textures/` | Grass, asphalt, gravel, concrete, facades, livery, rims and soft shadows drawn in code (tileable noise, stroke font): no image files | three | none |
-| TrackView | presentation | `src/presentation/world/TrackView.ts` | Pre-lit textured ground; every road in four draw calls, with markings by road kind that stop at junctions; two tree species in 600 m instanced tiles the camera culls; buildings with facades and roofs; soft shadow decals | DrivingWorld, three | none |
-| TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Detailed cab-over truck from body data (windows, grille, lights, mirrors, livery, rims), merged per material; box, refrigerated (cooling unit) or flatbed body (deck, headboard, a load shown while loaded); tandem rear axle for heavy trucks; steering and rolling wheels; pitch and roll; cabin dashboard | VehicleDefinition, three | none |
-| CameraRig | presentation | `src/presentation/cameras/CameraRig.ts` | Chase and cabin cameras (spec §31), fitted to the truck's size; a camera circling the parked truck behind the menus | three | none |
-| KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera), Escape/P (pause) → `VehicleInput` | VehicleInput | none |
-| TouchControls | ui | `src/ui/controls/TouchControls.ts` | SVG steering wheel, gas and brake pedals, camera button, speed dial and gear readout | VehicleInput | none |
+| TrackView | presentation | `src/presentation/world/TrackView.ts` | Pre-lit textured ground; every road in four draw calls, with markings by road kind that stop at junctions; two tree species in 600 m instanced tiles the camera culls; buildings with facades and roofs; soft shadow decals; the asphalt darkens and mirrors the sky in the rain (setWetness) | DrivingWorld, three | none |
+| TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Detailed cab-over truck from body data (windows, grille, lights, mirrors, livery, rims), merged per material; box, refrigerated (cooling unit) or flatbed body (deck, headboard, a load shown while loaded); tandem rear axle for heavy trucks; an exhaust stack behind the cab (where the exhaust comes from); steering and rolling wheels; pitch and roll; the cab's inside for the cabin camera (dashboard, gauges, pillars, ceiling and a steering wheel that turns) | VehicleDefinition, three | none |
+| CameraRig | presentation | `src/presentation/cameras/CameraRig.ts`, `vehicles/cabGeometry.ts` | Chase, cabin, hood, rear and top cameras (spec §31), fitted to the truck's size; the cabin looks into bends and the head sways; any camera turns by the player's drag; a camera circling the parked truck behind the menus; the view ahead widens a little with speed | three | none |
+| LookAround | ui | `src/ui/controls/LookAround.ts` | Dragging across the road turns the camera (within its limits); it turns back ahead after the finger lifts (DOM-free, unit-tested) | none | none |
+| KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera), H (horn), M (map), Escape/P (pause) → `VehicleInput` | VehicleInput | none |
+| TouchControls | ui | `src/ui/controls/TouchControls.ts` | SVG steering wheel, gas and brake pedals, camera button, speed dial and gear readout; the way of steering picked in Settings (the wheel, the tilt button with the brake under the left thumb, or left/right buttons) and the control size | VehicleInput, controls settings | none |
 
 ### Mission loop (Phase 2, roadmap steps 09–13)
 
@@ -55,14 +56,22 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Cargo, BodyType | data | `src/data/definitions/CargoDefinition.ts`, `BodyType.ts`, `src/data/content/cargo.ts` | Eight cargo types (spec §11) with the truck body each needs (box, refrigerated, flatbed) | Validator | none |
 | Depots | data | `DepotDefinition` in `src/data/definitions/MapDefinition.ts` | A paved yard and loading bay per city, validated against cities and missions | Validator | none |
 | Missions (content) | data | `src/data/content/missions.ts` | Twenty contracts (spec §43, §77): ten for the starting truck, ten for the H2 and H3 | ContentCatalog | none |
-| Mission rules | domain | `src/domain/missions/` | Bay parking, the `MissionInstance` stages (spec §50), cargo damage, itemised reward (spec §64) | Definitions | none |
+| Mission rules | domain | `src/domain/missions/` | Bay parking, the `MissionInstance` stages (spec §50), cargo damage, itemised reward (spec §64), the contract generator (spec §28–29) | Definitions, SeededRandom | none |
+| DailyContracts | systems | `src/systems/missions/DailyContracts.ts` | Contracts of the day: a generated batch for the map every 6 h of the clock (`GameConfig.missions.dailyContracts`) | ContentCatalog, DrivingService (the map and its roads), Clock | none |
 | RoadNetwork | domain | `src/domain/world/RoadNetwork.ts`, `roadRoute.ts` | The roads joined at shared control points; cached shortest routes to each target; remaining distance and a point to steer toward, without allocating | RoadPath | none |
-| MissionService | systems | `src/systems/missions/MissionService.ts` | Job board with what blocks each contract (company level, truck), accepting, loading and unloading in bays, delivery clock, cargo damage (less with cargo protection), reward, abandoning | DrivingService, ContentCatalog, EventBus | listens `VehicleCollided`; emits `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed` |
+| MissionService | systems | `src/systems/missions/MissionService.ts` | Job board (the game's own contracts and the contracts of the day) with what blocks each contract (company level, truck), accepting, loading and unloading in bays, delivery clock, cargo damage (less with cargo protection), reward, abandoning | DrivingService, ContentCatalog, EventBus, DailyContracts | listens `VehicleCollided`; emits `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed` |
 | DepotView | presentation | `src/presentation/world/DepotView.ts` | Concrete yards, bay lines, the beacon over the next bay | three | none |
+| StreetLampView | presentation | `src/presentation/world/StreetLampView.ts` | Street lamps: instanced posts and lenses (two draw calls); at night the lenses light, glow and throw pools of light on the road (two more, left out on the low preset) | DrivingWorld, LampGlows, three | none |
+| FarmlandView | presentation | `src/presentation/world/FarmlandView.ts` | Farm fields (pre-lit, one texture of crop rows tinted per crop: one draw call) and instanced hay bales (one) | DrivingWorld, three | none |
+| WindTurbineView | presentation | `src/presentation/world/WindTurbineView.ts` | Wind turbines: instanced towers and turning rotors (two draw calls); red warning lights blink at night (one more, left out on the low preset) | DrivingWorld, LampGlows, three | none |
+| BirdsView | presentation | `src/presentation/world/BirdsView.ts` | Crows circling over the fields and gulls over the harbour, wings beating; one instanced draw call by day, none at night or in the rain | DrivingWorld, three | none |
+| SeaView | presentation | `src/presentation/world/SeaView.ts` | The sea: water that mirrors the sky (shared uniforms from EnvironmentView) with drifting ripples, glitter and foam, fogged; a pre-lit sandy beach; boulders instanced per 600 m of shore | DrivingWorld, EnvironmentView, three | none |
+| HarbourView | presentation | `src/presentation/world/HarbourView.ts` | The quays (pre-lit concrete; kerb, bollards and a yellow line), the portal cranes, merged, and the moored boats rocking gently; masthead and warning lights glow at night | DrivingWorld, LampGlows, three | none |
+| CitySignView | presentation | `src/presentation/world/CitySignView.ts` | The cities' name boards: posts and backs, and faces sharing one texture with a row per name in Turkish capitals (two draw calls); they glow a little by day, more at night | DrivingWorld, three | none |
 | MainMenu | ui | `src/ui/menus/MainMenu.ts` | Title screen and language switch | Strings | none |
-| CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, blocked ones say what unlocks them | MissionService offers, Strings | none |
+| CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, the contracts of the day first in each group and marked, with when the next ones come; blocked ones say what unlocks them | MissionService offers, DailyContracts, Strings | none |
 | MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, next turn, arrival time, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30, §63) | MissionService, NavigationService, DrivingService | none |
-| PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ); the itemised result or the failure reason | Strings | none |
+| PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ, map, settings); the itemised result or the failure reason | Strings | none |
 | String tables | ui | `src/ui/i18n/` | Turkish and English text, number, money, distance and time formats; language choice | none | none |
 
 ### Economy, upkeep, progression and saving (Phase 3, roadmap steps 14–18)
@@ -90,15 +99,16 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Truck roster | data | `src/data/content/vehicles.ts` | H1 light box, H2 medium refrigerated, H3 heavy flatbed (spec §15), with prices and unlock levels; tuned per class | VehicleDefinition | none |
 | UpgradeDefinition, upgrades | data | `src/data/definitions/UpgradeDefinition.ts`, `src/data/content/upgrades.ts` | Upgrade levels with cost, unlock level and stat modifiers (spec §16); engine, brakes, tyres, suspension, fuel tank | Validator | none |
 | Upgrade bonuses, performance factors | domain | `src/domain/vehicles/upgradeBonuses.ts`, `performance.ts` | A truck's stat bonuses from its fitted levels; engine, brake, grip and stability factors | UpgradeDefinition | none |
-| GarageService | systems | `src/systems/vehicles/GarageService.ts` | The company's trucks and the active one (spec §32 GarageState); the dealer; switching in place; fits the active truck's upgrades to driving, fuel and missions | DrivingService, MissionService, FuelService, DamageService, EconomyService | emits `VehiclePurchased`, `ActiveVehicleChanged` |
+| GarageService | systems | `src/systems/vehicles/GarageService.ts` | The company's trucks and the active one (spec §32 GarageState); the dealer; switching in place; fits the active truck's upgrades to driving, fuel and missions; the paint shop (any owned truck, the factory colour back for free) | DrivingService, MissionService, FuelService, DamageService, EconomyService | emits `VehiclePurchased`, `ActiveVehicleChanged`, `VehiclePainted` |
 | UpgradeService | systems | `src/systems/vehicles/UpgradeService.ts` | The upgrade shop: the next level of each upgrade for the active truck | GarageService, EconomyService | emits `UpgradePurchased` |
-| HQ garage and upgrade tabs | ui | `src/ui/hq/CompanyHq.ts`, `garageCards.ts`, `upgradeCards.ts` | Buy and switch trucks; buy upgrade levels; each card says what it costs or unlocks it | GarageService, UpgradeService (read only) | none |
+| HQ garage and upgrade tabs | ui | `src/ui/hq/CompanyHq.ts`, `garageCards.ts`, `paintPicker.ts`, `upgradeCards.ts` | Buy and switch trucks; paint an owned truck (pick a swatch, then confirm the price); buy upgrade levels; each card says what it costs or unlocks it | GarageService, UpgradeService (read only) | none |
+| Paints | data | `src/data/definitions/PaintDefinition.ts`, `src/data/content/paints.ts` | Nine colours with prices, the richer ones from company levels 2 and 3; each truck model's factory colour is in its VehicleDefinition | Validator | none |
 
 ### The 3-city region (Phase 4, roadmap step 21)
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| north_valley | data | `src/data/content/maps.ts` | Yeniliman (A), Demirkent (B, ring road), Başakova (C); the highway with a rest area; country roads; 11.5 km of road | MapDefinition | none |
+| north_valley | data | `src/data/content/maps.ts` | Yeniliman (A, on the sea, with a quay at the end of its harbour road), Demirkent (B, ring road), Başakova (C); the highway with a rest area; country roads; 11.5 km of road | MapDefinition | none |
 | Service points | domain, systems | `DrivingWorld.servicePointAt`, `DrivingService.servicePoint` | Depot yards and rest area lots: the only places with a pump and a workshop | DrivingWorld | none |
 | FuelService, DamageService (service rule) | systems | `src/systems/vehicles/` | Pump refuelling and repairs only at a service point; the fuel truck anywhere | DrivingService | as above |
 | RestAreaView | presentation | `src/presentation/world/RestAreaView.ts`, `groundDecals.ts` | Concrete lot, parking stalls, fuel canopy, pumps and price sign (three draw calls) | DrivingWorld, three | none |
@@ -130,12 +140,14 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| WeatherDefinition, weather | data | `src/data/definitions/WeatherDefinition.ts`, `src/data/content/weather.ts` | Clear, cloudy, rain, night (spec §38): how likely and how long, grip, traffic speed, and the look (sky, haze, light, clouds, rain, lamps) | Validator | none |
+| WeatherDefinition, weather | data | `src/data/definitions/WeatherDefinition.ts`, `src/data/content/weather.ts` | Clear, cloudy, rain, dusk, night, dawn (spec §38–39): how likely and how long, what each may turn into, grip, traffic speed, and the look (sky, haze, light, the sun's height, clouds, rain, lamps, stars, moon) | Validator | none |
 | GameConfig.weather | data | `src/data/config/GameConfig.ts` | The first weather, whether it changes, how long a change takes; `?weather=id` fixes it | ContentCatalog | none |
-| WeatherService | systems | `src/systems/weather/WeatherService.ts` | Seeded schedule of weathers, blended changes; the truck's grip (a DrivingService performance modifier) and traffic speed; blended rain and lamps for the views | DrivingService, TrafficService, ContentCatalog | emits `WeatherChanged` |
-| Weather look | presentation | `EnvironmentView.applyWeather`, `world/lighting.ts` (`PrelitMaterials`) | Sky, haze, sun and sky light, clouds; relights the pre-lit ground and fades baked shadows | three | none |
+| WeatherService | systems | `src/systems/weather/WeatherService.ts` | Seeded schedule of weathers, each drawn from the ones the last may turn into (so the day goes round in order), blended changes; the truck's grip (a DrivingService performance modifier) and traffic speed; blended rain and lamps for the views | DrivingService, TrafficService, ContentCatalog | emits `WeatherChanged` |
+| Weather look | presentation | `EnvironmentView.applyWeather`, `world/lighting.ts` (`PrelitMaterials`) | Sky, haze, sun and sky light, clouds; the sun low at dusk and dawn, the sky glowing round it and the clouds catching the glow; relights the pre-lit ground and fades baked shadows | three | none |
 | RainView | presentation | `src/presentation/weather/RainView.ts` | Rain streaks round the camera, animated on the GPU, one draw call; more of them the harder it rains | three | none |
-| Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows | three | none |
+| TruckEffects | presentation | `src/presentation/vehicles/TruckEffects.ts` | What the truck throws into the air: exhaust from the stack (more and darker under load), dust from the rear wheels off the road, spray on a wet road; thinned out by the graphics preset | TruckView, ParticlePool, three | none |
+| ParticlePool | presentation | `src/presentation/effects/ParticlePool.ts` | Soft puffs in one draw call: camera-facing quads rebuilt every frame, moving, growing and fading, lit like the ground; hidden while none is in the air | three | none |
+| Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps`, `StreetLampView.setLamps`, `CitySignView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows, street lamps and their light on the road, name boards in the headlights | three | none |
 
 ### Special events (Phase 6, roadmap step 25)
 
@@ -159,9 +171,9 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | Graphics presets | data | `QUALITY_PRESETS`, `applyQualityPreset` in `src/data/config/GameConfig.ts` | Low, medium, high: pixel ratio cap, resolution floor, rain density, lamp glows, traffic | none | none |
-| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, sound), kept apart from the save | GameConfig, KeyValueStorage | none |
+| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, steering, tilt sensitivity, control size, sound, the performance display), kept apart from the save | GameConfig, controls settings, KeyValueStorage | none |
 | AdaptiveResolution | presentation | `src/presentation/AdaptiveResolution.ts` | Lowers the resolution when frames run slow, raises it when they are quick again (a 30 FPS floor) | none | none |
-| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use; sound on or off | Strings | none |
+| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu and the pause menu: the graphics preset (auto, low, medium, high) and the one in use; how to steer, tilt sensitivity and control size; sound and the performance display on or off | Strings | none |
 
 ### Sound (Phase 7, spec §37)
 
@@ -170,6 +182,23 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Sound model | presentation | `src/presentation/audio/soundModel.ts` | The engine's note, loudness and brightness from rpm and pedal; road, brake and crash levels (pure, unit-tested) | none | none |
 | GameAudio | presentation | `src/presentation/audio/GameAudio.ts` | Web Audio from oscillators and noise, no sound files: engine, brakes and their air hiss, horn, tyres and wind, rain; clicks, delivery chime, failure, crash and loading sounds; starts at the first gesture, sleeps while hidden | Web Audio | fed by the entry point from `VehicleCollided` and the mission events |
 | Horn controls | ui, platform | `TouchControls` (horn button), `KeyboardInput` (H) | Hold to sound the horn | none | none |
+
+### Controls (player feedback, roadmap step 29)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Controls settings | data | `src/data/config/controls.ts` | The ways of steering (wheel, tilt, buttons), tilt sensitivities, control sizes and tilt steering's states | none | none |
+| TiltSteering | platform | `src/platform/input/TiltSteering.ts` | Turning the phone like a steering wheel → steering: calibrates straight ahead, any screen orientation, either gravity sign, steady down to a flat phone, dead zone, easing (pure, unit-tested) | controls settings | none |
+| TiltInput | platform | `src/platform/input/TiltInput.ts` | Feeds TiltSteering from `devicemotion` while tilt is picked; asks iOS for the motion sensor from a tap; recentres when the screen turns | TiltSteering, VehicleInput | none |
+
+### 2D maps (player feedback)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Map sketch, viewport | ui | `src/ui/map/mapSketch.ts`, `MapViewport.ts` | The world as a 2D map draws it: roads simplified into short runs with bounds, yards, lots, quays, turning circles, the sea, fields, wind turbines, buildings, depots, rest areas and city name spots; the view's pan, zoom and turn (DOM-free, unit-tested) | DrivingWorld | none |
+| MapPainter | ui | `src/ui/map/MapPainter.ts` | Paints a sketch on a canvas through a viewport: only the roads in view, the route to the next bay, pins, city names, the truck and north; allocation-free | MapSketch, DrivingService, NavigationService, MissionService | none |
+| Minimap | ui | `src/ui/hud/Minimap.ts` | The round map on the road, the truck heading up, twelve repaints a second; a tap opens the full map | MapPainter | none |
+| WorldMap | ui | `src/ui/map/WorldMap.ts` | The full-screen map from the minimap, the pause menu, the HQ or M: drag, pinch, wheel and buttons; repaints only after a change; the drive waits while it is open | MapPainter | none |
 
 ### Android app (Phase 8, roadmap step 28)
 
@@ -188,7 +217,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
-| More settings, more languages | ui | ⬜ Phase 7 | Language in Settings (graphics and sound are there); more string tables |
+| More settings, more languages | ui | ⬜ Phase 7 | Language in Settings (graphics, controls and sound are there); more string tables |
 
 ## Not in the MVP (spec §44)
 

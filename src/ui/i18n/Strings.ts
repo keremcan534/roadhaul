@@ -1,3 +1,4 @@
+import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { Credits, Fraction } from '../../data/units';
 
 export const LANGUAGES = ['tr', 'en'] as const;
@@ -51,8 +52,10 @@ export class Strings {
     return this.t(`cargo.${cargoId}.name`);
   }
 
-  missionTitle(missionId: string): string {
-    return this.t(`mission.${missionId}.title`);
+  /** A contract's title: the game's own have one each; a generated contract is named after its cargo. */
+  missionTitle(mission: Pick<MissionDefinition, 'id' | 'cargoId'>): string {
+    const key = `mission.${mission.id}.title`;
+    return this.has(key) ? this.t(key) : this.t('mission.generated.title', { cargo: this.cargoName(mission.cargoId) });
   }
 
   vehicleName(vehicleId: string): string {

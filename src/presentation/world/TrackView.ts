@@ -38,6 +38,7 @@ import {
 } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { flatGroundLight, SHADOW_OFFSET_PER_METER, type PrelitMaterials } from './lighting';
+import type { SkyUniforms } from './EnvironmentView';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
@@ -83,7 +84,12 @@ const TREE_TILE_METERS = 600;
 
 const UP = new Vector3(0, 1, 0);
 
+/** The sky a wet road mirrors when there is none given (a rainy day's haze). */
+const WET_SKY = 0x7f8b97;
+
 export interface TrackViewOptions {
+  /** The sky, for a wet road to mirror (EnvironmentView.sky); without it, a rainy day's haze. */
+  readonly sky?: SkyUniforms;
   /** Texture anisotropy for the ground and road (renderer capability). */
   readonly anisotropy?: number;
   /** Where the pre-lit ground and road and the shadows register, to follow the weather's light. */
@@ -108,6 +114,8 @@ export class TrackView {
   /** Facades whose windows light up at night. */
   private readonly facades: MeshLambertMaterial[] = [];
   private lamps = 0;
+  /** How wet the asphalt is (0..1), and the sky it mirrors: its shader's uniforms. */
+  private readonly wet: { readonly wetness: { value: number }; readonly wetSky: { readonly value: Color } };
 
   constructor(
     private readonly scene: Scene,
@@ -115,6 +123,7 @@ export class TrackView {
     options: TrackViewOptions = {},
   ) {
     this.prelit = options.prelit;
+    this.wet = { wetness: { value: 0 }, wetSky: options.sky?.horizon ?? { value: new Color(WET_SKY) } };
     const anisotropy = options.anisotropy ?? 1;
     this.root.add(this.createGround(world.halfSizeMeters, anisotropy));
     if (world.roads.length > 0) {
@@ -141,6 +150,15 @@ export class TrackView {
     for (const facade of this.facades) {
       facade.emissive.setScalar(level * WINDOW_GLOW);
     }
+  }
+
+  /**
+   * How wet the roads are, 0..1 (the rain's): wet asphalt darkens and
+   * mirrors the sky, the more the flatter it is seen, so the road ahead
+   * shines. Cheap to call every frame.
+   */
+  setWetness(level: number): void {
+    this.wet.wetness.value = level;
   }
 
   dispose(): void {
@@ -242,7 +260,7 @@ export class TrackView {
 
     const meshes: (Mesh | InstancedMesh)[] = [
       new Mesh(this.merged(shoulders), this.overlayMaterial({ map: gravel }, 1)),
-      new Mesh(this.merged(surfaces), this.overlayMaterial({ map: asphalt }, 2)),
+      new Mesh(this.merged(surfaces), this.wettable(this.overlayMaterial({ map: asphalt }, 2))),
     ];
     if (lines.length > 0) {
       meshes.push(new Mesh(this.merged(lines), this.overlayMaterial({ color: MARKING_COLOR }, 3)));
@@ -501,6 +519,33 @@ export class TrackView {
         polygonOffsetUnits: -2 * layer,
       }),
     );
+  }
+
+  /**
+   * Lets the rain wet `material` (setWetness): it darkens, and mirrors the
+   * sky by a Fresnel term, the view grazing the road mirroring the most.
+   */
+  private wettable(material: MeshBasicMaterial): MeshBasicMaterial {
+    const wet = this.wet;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['wetness'] = wet.wetness;
+      shader.uniforms['wetSky'] = wet.wetSky;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vToEye;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvToEye = -mvPosition.xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform float wetness;\nuniform vec3 wetSky;\nvarying vec3 vToEye;')
+        .replace(
+          '#include <opaque_fragment>',
+          [
+            'vec3 roadUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);',
+            'float grazing = pow(1.0 - max(dot(normalize(vToEye), roadUp), 0.0), 4.0);',
+            'outgoingLight = mix(outgoingLight * (1.0 - 0.35 * wetness), wetSky, wetness * grazing * 0.6);',
+            '#include <opaque_fragment>',
+          ].join('\n'),
+        );
+    };
+    return material;
   }
 
   private registerLit(material: MeshBasicMaterial): MeshBasicMaterial {

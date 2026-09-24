@@ -1,8 +1,9 @@
 import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition';
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
-import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
+import type { MapDefinition, SeaDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
+import type { PaintDefinition } from '../../src/data/definitions/PaintDefinition';
 import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from '../../src/data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
@@ -15,6 +16,7 @@ export function vehicleFixture(overrides: Partial<VehicleDefinition> = {}): Vehi
   return {
     id: 'test_truck',
     vehicleClass: 'medium',
+    factoryColor: 0x2f6fb5,
     bodyType: 'box',
     maxPayloadTons: 10,
     fuelCapacityLiters: 300,
@@ -92,6 +94,23 @@ export function missionFixture(overrides: Partial<MissionDefinition> = {}): Miss
  * mission's origin in the west, its destination in the east) and the truck
  * spawning at the origin facing +X.
  */
+/**
+ * The sea along the fixture map's west edge: the shore at x = -180, with a
+ * 60 m quay in the middle, a boat off it and a crane on it.
+ */
+export function seaFixture(overrides: Partial<SeaDefinition> = {}): SeaDefinition {
+  return {
+    shoreline: [
+      [-180, -200],
+      [-180, 200],
+    ],
+    quays: [{ fromZ: -30, toZ: 30, widthMeters: 25 }],
+    boats: [{ kind: 'tug', x: -192, z: 0, headingDegrees: 0 }],
+    cranes: [{ x: -172, z: 10, headingDegrees: -90 }],
+    ...overrides,
+  };
+}
+
 export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinition {
   return {
     id: 'test_map',
@@ -124,6 +143,9 @@ export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinitio
       },
     ],
     restAreas: [],
+    citySigns: [],
+    fields: [],
+    windTurbines: [],
     spawn: { x: 0, z: 0, headingDegrees: 90 },
     scenery: { seed: 1, treesPerKilometer: 0 },
     ...overrides,
@@ -149,8 +171,14 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
       }),
     ],
     events: [eventFixture()],
+    paints: [paintFixture(), paintFixture({ id: 'test_gold', color: 0xd4af37, price: 3000, requiredCompanyLevel: 2 })],
     ...overrides,
   };
+}
+
+/** A red paint for 1,000 credits, open from level 1. */
+export function paintFixture(overrides: Partial<PaintDefinition> = {}): PaintDefinition {
+  return { id: 'test_red', color: 0xcc2222, price: 1000, ...overrides };
 }
 
 export function trafficVehicleFixture(overrides: Partial<TrafficVehicleDefinition> = {}): TrafficVehicleDefinition {
@@ -199,6 +227,9 @@ export function weatherFixture(overrides: Partial<WeatherDefinition> = {}): Weat
       cloudBrightness: 1,
       rain: 0,
       lamps: 0,
+      sunHeight: 1,
+      stars: 0,
+      moon: 0,
     },
     ...overrides,
   };

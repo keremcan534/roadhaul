@@ -115,3 +115,41 @@ test('shows a heavy flatbed with its load', async ({ page }, testInfo) => {
   await testInfo.attach('loaded flatbed', { body: await page.screenshot(), contentType: 'image/png' });
   expect(problems).toEqual([]);
 });
+
+test('paints the truck at the garage for the colour\'s price, after the player confirms, and keeps it', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openCompanyHq(page, '?lang=en');
+  await tab(page, 'garage').click();
+  const picker = page.locator('.truck-card[data-vehicle-id="rh_h1"] .paint-picker');
+  const apply = picker.locator('[data-action="paint-truck"]');
+  await expect(picker.locator('.paint-picker__label')).toHaveText('Paint: Factory colour');
+  await expect(picker.locator('[data-paint-id="factory"]')).toHaveClass(/is-current/);
+  await expect(apply).toBeHidden();
+  // Colours for bigger companies wait for their level.
+  await expect(picker.locator('[data-paint-id="royal_purple"]')).toBeDisabled();
+
+  // A tap only picks the colour: nothing is spent until the button is pressed.
+  await picker.locator('[data-paint-id="ocean_blue"]').click();
+  await expect(picker.locator('.paint-picker__label')).toHaveText('Paint: Ocean blue');
+  await expect(apply).toHaveText('Paint it · 1,500 credits');
+  await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
+  await apply.click();
+  await expect(page.locator('.toast')).toContainText('RoadHaul H1 painted: Ocean blue.');
+  await expect(page.locator('.hq__credits')).toHaveText('3,500 credits');
+  await expect(html(page)).toHaveAttribute('data-paint', 'ocean_blue');
+  await expect(picker.locator('[data-paint-id="ocean_blue"]')).toHaveClass(/is-current/);
+
+  // Kept in the save: a new visit finds the truck blue.
+  await page.reload();
+  await page.locator('[data-action="continue-game"]').click();
+  await expect(html(page)).toHaveAttribute('data-paint', 'ocean_blue');
+
+  // The factory colour comes back for free.
+  await tab(page, 'garage').click();
+  await picker.locator('[data-paint-id="factory"]').click();
+  await expect(apply).toHaveText('Back to the factory colour');
+  await apply.click();
+  await expect(html(page)).toHaveAttribute('data-paint', 'factory');
+  await expect(page.locator('.hq__credits')).toHaveText('3,500 credits');
+  expect(problems).toEqual([]);
+});

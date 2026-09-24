@@ -16,7 +16,8 @@ test('teaches the first contract and the first upgrade by playing, one short hin
   await expect(hint(page)).toBeVisible();
   await expect(hint(page)).toContainText('Take your first job');
   await expect(page.locator('.hq__hint .tutorial-hint')).toHaveCount(1);
-  const accept = page.locator('.job-card').first().locator('[data-action="accept"]');
+  const accept = page.locator('.job-card--tutorial [data-action="accept"]');
+  await expect(page.locator('.job-card--tutorial')).toHaveAttribute('data-mission-id', 'first_package');
   await expect(accept).toHaveCSS('animation-name', 'tutorial-glow');
   await testInfo.attach('take a contract', { body: await page.screenshot(), contentType: 'image/png' });
 

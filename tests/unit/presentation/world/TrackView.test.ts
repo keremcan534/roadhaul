@@ -1,4 +1,17 @@
-import { Frustum, InstancedMesh, Matrix4, Mesh, MeshLambertMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
+import {
+  Color,
+  Frustum,
+  InstancedMesh,
+  Matrix4,
+  Mesh,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  PerspectiveCamera,
+  Scene,
+  ShaderLib,
+  UniformsUtils,
+  Vector3,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
@@ -217,6 +230,36 @@ describe('TrackView', () => {
     });
 
     expect(walls).toBe(8); // Four walls, two triangles each.
+  });
+
+  it('wets the asphalt in the rain: it darkens and mirrors the sky it is given', () => {
+    const scene = new Scene();
+    const horizon = { value: new Color(0x123456) };
+    const view = new TrackView(scene, world, {
+      sky: { zenith: { value: new Color() }, horizon, sunColor: { value: new Color() }, sunDirection: { value: new Vector3() } },
+    });
+    const wettable: MeshBasicMaterial[] = [];
+    scene.traverse((object) => {
+      if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
+        wettable.push(object.material);
+      }
+    });
+    // Only the asphalt: the shoulders, markings and ground stay as they are.
+    expect(wettable).toHaveLength(1);
+    const shader = {
+      uniforms: UniformsUtils.clone(ShaderLib.basic.uniforms),
+      vertexShader: ShaderLib.basic.vertexShader,
+      fragmentShader: ShaderLib.basic.fragmentShader,
+    };
+    wettable[0]!.onBeforeCompile(shader as never, undefined as never);
+
+    expect(shader.uniforms['wetSky']).toBe(horizon);
+    expect(shader.fragmentShader).toContain('wetness');
+    expect(shader.fragmentShader).toContain('#include <opaque_fragment>');
+    expect(shader.vertexShader).toContain('vToEye = -mvPosition.xyz;');
+    expect(shader.uniforms['wetness']!.value).toBe(0);
+    view.setWetness(0.7);
+    expect(shader.uniforms['wetness']!.value).toBe(0.7);
   });
 
   it('releases every GPU resource, textures included, on dispose', () => {

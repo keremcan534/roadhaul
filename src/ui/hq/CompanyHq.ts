@@ -3,6 +3,7 @@ import type { CompanyService } from '../../systems/company/CompanyService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
+import type { DailyContracts } from '../../systems/missions/DailyContracts';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
@@ -29,6 +30,7 @@ export interface CompanyHqServices {
   readonly garage: GarageService;
   readonly upgrades: UpgradeService;
   readonly specialEvents: EventService;
+  readonly dailyContracts: DailyContracts;
 }
 
 export interface CompanyHqActions {
@@ -37,9 +39,11 @@ export interface CompanyHqActions {
   readonly onRepair: () => void;
   readonly onBuyTruck: (definitionId: string) => void;
   readonly onSwitchTruck: (instanceId: string) => void;
+  readonly onPaintTruck: (instanceId: string, paintId: string | null) => void;
   readonly onBuyUpgrade: (upgradeId: string) => void;
   readonly onFreeDrive: () => void;
   readonly onMainMenu: () => void;
+  readonly onOpenMap: () => void;
 }
 
 /**
@@ -144,6 +148,7 @@ export class CompanyHq {
     const tools = el('div', 'hq__tools');
     tools.append(
       button(document, 'button--ghost', strings.t('hq.mainMenu'), 'main-menu', actions.onMainMenu),
+      button(document, 'button--ghost', strings.t('hq.map'), 'hq-map', actions.onOpenMap),
       button(document, 'button--secondary', strings.t('hq.freeDrive'), 'free-drive', actions.onFreeDrive),
     );
     const tabBar = el('div', 'hq__tabs');
@@ -241,19 +246,34 @@ export class CompanyHq {
   private tabContent(): HTMLElement[] {
     const document = this.root.ownerDocument;
     const { strings, actions } = this;
-    const { missions, economy, garage, upgrades, specialEvents } = this.services;
+    const { missions, economy, garage, upgrades, specialEvents, dailyContracts } = this.services;
     switch (this.tab) {
       case 'jobs': {
-        const cards = sortJobOffers(missions.jobBoard()).map((offer) =>
-          jobCard(
+        const offers = sortJobOffers(missions.jobBoard());
+        // The tutorial points at the first of the game's own contracts the company can take: it starts at home.
+        const firstOwn = offers.find((offer) => !offer.daily && offer.blockedBy === null);
+        const cards = offers.map((offer) => {
+          const card = jobCard(
             document,
             strings,
             offer,
             actions.onAccept,
-            offer.blockedBy === null ? specialEvents.eventsForContract(offer.mission.id) : [],
-          ),
-        );
-        return cards.length > 0 ? cards : [element(document, 'p', 'hq__empty', strings.t('hq.noJobs'))];
+            offer.blockedBy === null ? specialEvents.eventsForContract(offer.mission) : [],
+          );
+          card.classList.toggle('job-card--tutorial', offer === firstOwn);
+          return card;
+        });
+        if (cards.length === 0) {
+          return [element(document, 'p', 'hq__empty', strings.t('hq.noJobs'))];
+        }
+        if (!offers.some((offer) => offer.daily)) {
+          return cards;
+        }
+        const note = strings.t('hq.dailyNote', {
+          hours: dailyContracts.refreshHours,
+          time: strings.timeSpan(dailyContracts.msUntilNextBatch()),
+        });
+        return [element(document, 'p', 'hq__note', note), ...cards];
       }
       case 'events':
         return [
@@ -263,6 +283,8 @@ export class CompanyHq {
       case 'garage': {
         const owned = garage.trucks;
         const busy = missions.active !== null;
+        const paints = garage.paintShop();
+        const canAfford = (price: number): boolean => economy.canAfford(price);
         return garage.dealer().map((offer) =>
           truckCard(
             document,
@@ -271,9 +293,10 @@ export class CompanyHq {
               offer,
               owned: owned.find((truck) => truck.definition.id === offer.definition.id),
               busy,
-              canAfford: economy.canAfford(offer.price),
+              canAfford,
+              paints,
             },
-            { onBuy: actions.onBuyTruck, onSwitch: actions.onSwitchTruck },
+            { onBuy: actions.onBuyTruck, onSwitch: actions.onSwitchTruck, onPaint: actions.onPaintTruck },
           ),
         );
       }

@@ -3,6 +3,7 @@ import { EventBus } from '../../../../src/core/events/EventBus';
 import type { MissionReward } from '../../../../src/domain/missions/missionReward';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { TutorialService } from '../../../../src/systems/tutorial/TutorialService';
+import { missionFixture } from '../../../support/contentFixtures';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
 function setup() {
@@ -23,7 +24,15 @@ function playContract(bus: EventBus<GameEvents>): void {
   bus.emit('MissionStateChanged', { missionId, previous: 'accepted', current: 'travellingToPickup' });
   bus.emit('MissionStateChanged', { missionId, previous: 'travellingToPickup', current: 'loaded' });
   bus.emit('MissionStateChanged', { missionId, previous: 'loaded', current: 'delivering' });
-  bus.emit('MissionCompleted', { missionId, reward: REWARD as MissionReward, deliverySeconds: 100, cargoDamage: 0, xp: 100, reputation: 10 });
+  bus.emit('MissionCompleted', {
+    missionId,
+    mission: missionFixture({ id: missionId }),
+    reward: REWARD as MissionReward,
+    deliverySeconds: 100,
+    cargoDamage: 0,
+    xp: 100,
+    reputation: 10,
+  });
 }
 
 describe('TutorialService', () => {

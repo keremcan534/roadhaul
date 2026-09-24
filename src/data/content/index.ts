@@ -4,6 +4,7 @@ import { CITIES } from './cities';
 import { MAPS } from './maps';
 import { EVENTS } from './events';
 import { MISSIONS } from './missions';
+import { PAINTS } from './paints';
 import { TRAFFIC_VEHICLES } from './trafficVehicles';
 import { UPGRADES } from './upgrades';
 import { VEHICLES } from './vehicles';
@@ -20,4 +21,5 @@ export const GAME_CONTENT: GameContent = {
   trafficVehicles: TRAFFIC_VEHICLES,
   weather: WEATHER,
   events: EVENTS,
+  paints: PAINTS,
 };

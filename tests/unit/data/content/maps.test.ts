@@ -68,6 +68,122 @@ describe.each(MAPS)('map $id', (map) => {
     }
   });
 
+  it('names each city with a depot on the roads into it, beside the road and facing the traffic coming in', () => {
+    const signedCities = new Set(world.citySigns.map((sign) => sign.cityId));
+    for (const depot of map.depots) {
+      expect(signedCities, depot.cityId).toContain(depot.cityId);
+    }
+    for (const sign of world.citySigns) {
+      expect(world.surfaceAt(sign.x, sign.z)).not.toBe(ASPHALT);
+      const edges = world.roads.map((road) => road.distanceTo(sign.x, sign.z) - road.widthMeters / 2);
+      expect(Math.min(...edges)).toBeGreaterThan(4.4);
+      expect(Math.min(...edges)).toBeLessThan(4.9);
+      // A board on a straight stretch, clear of junctions, faces straight along the road.
+      const road = world.roads[edges.indexOf(Math.min(...edges))]!;
+      const sample = road.nearestSampleIndex(sign.x, sign.z);
+      const next = road.stepIndex(sample, 1);
+      const alongX = road.x(next) - road.x(sample);
+      const alongZ = road.z(next) - road.z(sample);
+      const facing = (Math.sin(sign.heading) * alongX + Math.cos(sign.heading) * alongZ) / Math.hypot(alongX, alongZ);
+      expect(Math.abs(facing)).toBeGreaterThan(0.98);
+      for (const junction of world.network.junctions) {
+        expect(Math.hypot(sign.x - junction.x, sign.z - junction.z)).toBeGreaterThan(40);
+      }
+    }
+  });
+
+  it('keeps its fields off the roads, yards, lots and buildings, and apart', () => {
+    /** Points round a rectangle's edge, every 2 m. */
+    const rim = (rectangle: RectangleDefinition): [number, number][] => {
+      const corners = rectangleCorners(rectangle);
+      return corners.flatMap(([ax, az], index) => {
+        const [bx, bz] = corners[(index + 1) % corners.length]!;
+        const steps = Math.ceil(Math.hypot(bx - ax, bz - az) / 2);
+        return Array.from({ length: steps }, (_, step): [number, number] => [
+          ax + ((bx - ax) * step) / steps,
+          az + ((bz - az) * step) / steps,
+        ]);
+      });
+    };
+    /** How far (x, z) lies from the rectangle: 0 inside it. */
+    const distanceToArea = (area: RectangleDefinition, x: number, z: number): number => {
+      const heading = (area.headingDegrees * Math.PI) / 180;
+      const along = (x - area.x) * Math.sin(heading) + (z - area.z) * Math.cos(heading);
+      const across = (x - area.x) * Math.cos(heading) - (z - area.z) * Math.sin(heading);
+      return Math.hypot(
+        Math.max(0, Math.abs(along) - area.lengthMeters / 2),
+        Math.max(0, Math.abs(across) - area.widthMeters / 2),
+      );
+    };
+    for (const field of world.fields) {
+      const name = `${field.crop} field at ${Math.round(field.area.x)}, ${Math.round(field.area.z)}`;
+      // The road's centreline samples lie 4 m apart: between two of them it comes at most a few centimetres closer.
+      let roadClearance = Infinity;
+      for (const road of world.roads) {
+        for (let i = 0; i < road.pointCount; i++) {
+          roadClearance = Math.min(roadClearance, distanceToArea(field.area, road.x(i), road.z(i)) - road.widthMeters / 2);
+        }
+      }
+      expect(roadClearance, name).toBeGreaterThan(8);
+      const edge = rim(field.area);
+      let buildingClearance = Infinity;
+      for (const [x, z] of edge) {
+        for (const building of world.buildings) {
+          const dx = x - Math.max(building.minX, Math.min(x, building.maxX));
+          const dz = z - Math.max(building.minZ, Math.min(z, building.maxZ));
+          buildingClearance = Math.min(buildingClearance, Math.hypot(dx, dz));
+        }
+      }
+      expect(buildingClearance, name).toBeGreaterThan(5);
+      const others = world.fields.filter((candidate) => candidate !== field);
+      expect(edge.some(([x, z]) => others.some((other) => rectangleContains(other.area, x, z))), name).toBe(false);
+      for (const area of [...map.depots.map((depot) => depot.yard), ...map.restAreas.map((restArea) => restArea.lot)]) {
+        expect(edge.some(([x, z]) => rectangleContains(area, x, z, 5)), name).toBe(false);
+      }
+    }
+  });
+
+  it('stands its wind turbines well clear of the roads, buildings and each other', () => {
+    for (const turbine of map.windTurbines) {
+      for (const road of world.roads) {
+        expect(road.distanceTo(turbine.x, turbine.z) - road.widthMeters / 2).toBeGreaterThan(60);
+      }
+      for (const building of world.buildings) {
+        expect(Math.hypot(turbine.x - (building.minX + building.maxX) / 2, turbine.z - (building.minZ + building.maxZ) / 2)).toBeGreaterThan(80);
+      }
+      for (const other of map.windTurbines.filter((candidate) => candidate !== turbine)) {
+        expect(Math.hypot(turbine.x - other.x, turbine.z - other.z)).toBeGreaterThan(150);
+      }
+      for (const field of world.fields) {
+        expect(rectangleContains(field.area, turbine.x, turbine.z, 10)).toBe(false);
+      }
+    }
+  });
+
+  it('keeps its roads, buildings, yards and lots on land, and ends the harbour road at the quay', () => {
+    if (world.sea === null) {
+      return;
+    }
+    for (const road of world.roads) {
+      for (let i = 0; i < road.pointCount; i++) {
+        expect(world.isWater(road.x(i), road.z(i), road.widthMeters / 2 + 10), road.id).toBe(false);
+      }
+    }
+    for (const building of map.buildings) {
+      expect(world.isWater(building.x - building.widthMeters / 2, building.z, 5)).toBe(false);
+    }
+    for (const rectangle of [...map.depots.map((depot) => depot.yard), ...map.restAreas.map((area) => area.lot)]) {
+      for (const [x, z] of rectangleCorners(rectangle)) {
+        expect(world.isWater(x, z, 10)).toBe(false);
+      }
+    }
+    // Some road reaches the quay: trucks can drive to the harbour.
+    expect(world.turningCircles.some((circle) => world.isOnQuay(circle.x, circle.z, circle.radiusMeters))).toBe(true);
+    // The boats lie off the quay or the shore; the cranes over the water's edge.
+    expect(world.sea.boats.length).toBeGreaterThan(0);
+    expect(world.sea.cranes.every((crane) => world.isOnQuay(crane.x, crane.z))).toBe(true);
+  });
+
   it('has every kind of road (spec §20)', () => {
     expect(new Set(map.roads.map((road) => road.kind))).toEqual(new Set(ROAD_KINDS));
   });

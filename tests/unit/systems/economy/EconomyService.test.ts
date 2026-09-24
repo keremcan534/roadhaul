@@ -4,6 +4,7 @@ import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import { calculateMissionReward } from '../../../../src/domain/missions/missionReward';
 import { EconomyService } from '../../../../src/systems/economy/EconomyService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
+import { missionFixture } from '../../../support/contentFixtures';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
 function setup() {
@@ -57,7 +58,15 @@ describe('EconomyService', () => {
       damageTolerance: 0.3,
     });
 
-    events.emit('MissionCompleted', { missionId: 'm', reward, deliverySeconds: 60, cargoDamage: 0, xp: 100, reputation: 10 });
+    events.emit('MissionCompleted', {
+      missionId: 'm',
+      mission: missionFixture({ id: 'm' }),
+      reward,
+      deliverySeconds: 60,
+      cargoDamage: 0,
+      xp: 100,
+      reputation: 10,
+    });
 
     expect(economy.credits).toBe(1000 + reward.total);
   });

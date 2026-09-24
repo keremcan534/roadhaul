@@ -48,6 +48,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
           fuelLiters: params.startingVehicle.fuelCapacityLiters,
           damage: 0,
           upgrades: {},
+          paintId: null,
         },
       ],
     },

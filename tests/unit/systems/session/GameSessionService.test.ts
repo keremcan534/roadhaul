@@ -54,6 +54,27 @@ describe('GameSessionService', () => {
     expect(second.damage.damage).toBeGreaterThan(0);
   });
 
+  it('continues a contract of the day after its batch has gone from the board', async () => {
+    const first = await boot();
+    first.session.startNewGame('Kuzey Lojistik');
+    const daily = first.missions.jobBoard().find((offer) => offer.daily && offer.blockedBy === null)!;
+    expect(first.missions.accept(daily.mission.id).ok).toBe(true);
+    play(first, STEP_SECONDS);
+    parkInTargetBay(first);
+    play(first, DEFAULT_GAME_CONFIG.missions.loadingSeconds + 0.1);
+    first.session.save();
+
+    // A day later the board deals other contracts; the one under way comes back whole.
+    const second = await boot(first.storage, 1_000 + 24 * 60 * 60 * 1000);
+    expect(second.session.continueGame()).toEqual({ ok: true, value: undefined });
+    const board = second.missions.jobBoard().map((offer) => offer.mission.id);
+    expect(board).not.toContain(daily.mission.id);
+    expect(second.missions.activeDefinition).toEqual(daily.mission);
+    expect(second.missions.active?.state).toBe('loaded');
+    expect(second.missions.target).toMatchObject({ kind: 'delivery', depot: { cityId: daily.mission.destinationCityId } });
+    expect(second.driving.totalMassKg).toBe(first.driving.totalMassKg);
+  });
+
   it('saves on its own after a delivery, and every few seconds of driving', async () => {
     const game = await boot();
     game.session.startNewGame('Kuzey Lojistik');

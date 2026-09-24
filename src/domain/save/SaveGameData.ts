@@ -1,3 +1,4 @@
+import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import type { MissionFailureReason, MissionState } from '../missions/MissionInstance';
 import type { TutorialStep } from '../tutorial/tutorialSteps';
@@ -16,8 +17,11 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   start of the 3-city region.
  * - v5: adds events (the progress in each event's latest run).
  * - v6: adds the tutorial's step.
+ * - v7: adds each truck's paint.
+ * - v8: the contract under way keeps its own definition when it was
+ *   generated (a contract of the day).
  */
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 8;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -73,6 +77,8 @@ export interface VehicleSaveData {
   readonly damage: Fraction;
   /** UpgradeDefinition id → fitted level (1 is the first). Upgrades not listed are not fitted. */
   readonly upgrades: Readonly<Record<string, number>>;
+  /** PaintDefinition id; null for the model's factory colour. */
+  readonly paintId: string | null;
 }
 
 export interface WorldSaveData {
@@ -104,6 +110,12 @@ export interface ActiveMissionSaveData {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly failureReason: MissionFailureReason | null;
+  /**
+   * A generated contract (a contract of the day) itself: the generator moves
+   * on to new batches, so the save keeps it. Null for the game's own
+   * contracts, found by `missionId` in the content.
+   */
+  readonly contract: MissionDefinition | null;
 }
 
 export interface TutorialSaveData {
