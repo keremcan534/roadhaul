@@ -8,6 +8,7 @@ import {
   grassImage,
   lightPoolImage,
   liveryImage,
+  moonImage,
   officeFacadeImage,
   officeWindowLightsImage,
   rearDoorsImage,
@@ -241,6 +242,28 @@ describe('procedural images', () => {
     for (let x = 16; x < 31; x++) {
       expect(pixel(pool, x + 1, 16)[3]).toBeLessThanOrEqual(pixel(pool, x, 16)[3]!);
     }
+  });
+
+  it('draw the moon as a pale disc with darker seas, its corners see-through without a dark fringe', () => {
+    const moon = moonImage(32);
+    const disc: number[] = [];
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        if (Math.hypot(x + 0.5 - 16, y + 0.5 - 16) < 13) {
+          const [r, g, b, a] = pixel(moon, x, y);
+          expect(a).toBe(255);
+          disc.push(r! + g! + b!);
+        }
+      }
+    }
+    // Highlands and seas: bright, with some clearly darker ground.
+    expect(Math.max(...disc)).toBeGreaterThan(3 * 215);
+    expect(Math.min(...disc)).toBeLessThan(Math.max(...disc) * 0.85);
+    // The corners are transparent, in the highlands' colour.
+    const corner = pixel(moon, 0, 0);
+    expect(corner[3]).toBe(0);
+    expect(corner[0]).toBeGreaterThan(200);
+    expect(moonImage(32)).toEqual(moon);
   });
 
   it('fade the soft shadow from the centre to transparent edges', () => {

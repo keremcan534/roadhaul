@@ -6,7 +6,9 @@ import type { WeatherDefinition } from '../definitions/WeatherDefinition';
  * driver: the road is slippery in the rain, and at night the headlights only
  * reach so far. The day goes round in order: a dry day turns to dusk now
  * and then, dusk to night, night to dawn, and dawn to a new day. The sun
- * stands low at dawn and dusk, and the sky glows round it.
+ * stands low at dawn and dusk, and the sky glows round it. At night the
+ * light is the moon's, lower in the sky than the day's sun, and the stars
+ * come out; the first show at dusk and the last fade at dawn.
  */
 export const WEATHER: readonly WeatherDefinition[] = [
   {
@@ -29,6 +31,8 @@ export const WEATHER: readonly WeatherDefinition[] = [
       rain: 0,
       lamps: 0,
       sunHeight: 1,
+      stars: 0,
+      moon: 0,
     },
   },
   {
@@ -51,6 +55,8 @@ export const WEATHER: readonly WeatherDefinition[] = [
       rain: 0,
       lamps: 0,
       sunHeight: 1,
+      stars: 0,
+      moon: 0,
     },
   },
   {
@@ -73,6 +79,8 @@ export const WEATHER: readonly WeatherDefinition[] = [
       rain: 1,
       lamps: 0.35,
       sunHeight: 1,
+      stars: 0,
+      moon: 0,
     },
   },
   {
@@ -96,6 +104,8 @@ export const WEATHER: readonly WeatherDefinition[] = [
       rain: 0,
       lamps: 0.6,
       sunHeight: 0.1,
+      stars: 0.15,
+      moon: 0,
     },
   },
   {
@@ -111,13 +121,15 @@ export const WEATHER: readonly WeatherDefinition[] = [
       horizonColor: 0x1b2740,
       fogDensity: 0.0032,
       sunlight: 0.1,
-      skylight: 0.3,
+      skylight: 0.34,
       lightColor: 0x9fb4e0,
       cloudCover: 0.35,
       cloudBrightness: 0.12,
       rain: 0,
       lamps: 1,
-      sunHeight: 0.7,
+      sunHeight: 0.3,
+      stars: 1,
+      moon: 1,
     },
   },
   {
@@ -141,6 +153,8 @@ export const WEATHER: readonly WeatherDefinition[] = [
       rain: 0,
       lamps: 0.25,
       sunHeight: 0.14,
+      stars: 0.1,
+      moon: 0,
     },
   },
 ];

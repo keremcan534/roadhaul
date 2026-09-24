@@ -47,6 +47,10 @@ export interface WeatherLook {
   readonly lamps: Fraction;
   /** How high the sun (or the moon) stands: 1 as high as on a clear day, 0 on the horizon. */
   readonly sunHeight: Fraction;
+  /** How brightly the stars shine (0: not at all; 1: a clear night). */
+  readonly stars: Fraction;
+  /** How brightly the moon shows where the light comes from, in the sun's place (0: not at all; 1: full). */
+  readonly moon: Fraction;
 }
 
 export function validateWeatherDefinition(weather: WeatherDefinition, path: string, validator: Validator): void {
@@ -95,7 +99,8 @@ export function validateWeatherDefinition(weather: WeatherDefinition, path: stri
     `${path}.look.fogDensity`,
     'must be greater than 0 and at most 0.02',
   );
-  for (const key of ['sunlight', 'skylight', 'cloudCover', 'cloudBrightness', 'rain', 'lamps', 'sunHeight'] as const) {
+  const fractions = ['sunlight', 'skylight', 'cloudCover', 'cloudBrightness', 'rain', 'lamps', 'sunHeight', 'stars', 'moon'] as const;
+  for (const key of fractions) {
     validator.fraction(look[key], `${path}.look.${key}`);
   }
 }

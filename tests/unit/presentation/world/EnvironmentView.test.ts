@@ -8,7 +8,7 @@ import {
   MeshBasicMaterial,
   Scene,
   ShaderMaterial,
-  type Vector3,
+  Vector3,
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { WEATHER } from '../../../../src/data/content/weather';
@@ -19,6 +19,17 @@ import { drawCallCount, gpuResources, watchDisposal } from '../../../support/thr
 
 function look(weatherId: string): WeatherLook {
   return WEATHER.find((weather) => weather.id === weatherId)!.look;
+}
+
+/** The stars (the mesh drawn first of the see-through ones) and the moon (the textured one after them). */
+function nightSky(scene: Scene): { stars: Mesh; moon: Mesh } {
+  let stars: Mesh | undefined;
+  let moon: Mesh | undefined;
+  scene.traverse((object) => {
+    if (object instanceof Mesh && object.renderOrder === -2) stars = object;
+    if (object instanceof Mesh && object.renderOrder === -1) moon = object;
+  });
+  return { stars: stars!, moon: moon! };
 }
 
 describe('EnvironmentView', () => {
@@ -33,17 +44,60 @@ describe('EnvironmentView', () => {
     );
     expect(scene.children.some((child) => child instanceof HemisphereLight)).toBe(true);
     expect(scene.fog).toBeInstanceOf(FogExp2);
-    expect(drawCallCount(scene)).toBeLessThanOrEqual(3);
+    // The dome, the hills and the clouds; the stars and the moon at night.
+    expect(drawCallCount(scene)).toBeLessThanOrEqual(5);
   });
 
-  it('keeps the sky, clouds and hills centred on the camera', () => {
+  it('keeps the sky, clouds, hills, stars and moon centred on the camera', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);
-    const backdrop = scene.children.find((child) => child.children.length === 3)!;
+    const backdrop = scene.children.find((child) => child.children.length === 5)!;
 
     view.update({ x: 120, z: -340 });
 
     expect(backdrop.position.toArray()).toEqual([120, 0, -340]);
+  });
+
+  it('puts out the stars and the moon at night, where the light comes from, and hides them by day', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const sun = scene.children.find((child) => child instanceof DirectionalLight)!;
+    const { stars, moon } = nightSky(scene);
+
+    view.applyWeather(look('clear'), look('clear'), 1);
+    expect(stars.visible).toBe(false);
+    expect(moon.visible).toBe(false);
+
+    view.applyWeather(look('night'), look('night'), 1);
+    expect(stars.visible).toBe(true);
+    expect((stars.material as ShaderMaterial).uniforms['level']!.value).toBe(1);
+    expect(moon.visible).toBe(true);
+    expect((moon.material as MeshBasicMaterial).opacity).toBe(1);
+    const light = sun.position.clone().normalize();
+    expect(moon.position.clone().normalize().distanceTo(light)).toBeLessThan(1e-9);
+    // Low enough to see over the road ahead, and facing the camera at the centre.
+    expect(light.y).toBeGreaterThan(0.15);
+    expect(light.y).toBeLessThan(0.4);
+    const facing = new Vector3(0, 0, 1).applyQuaternion(moon.quaternion);
+    expect(facing.dot(light)).toBeCloseTo(-1, 9);
+
+    // The first stars come out at dusk, without the moon.
+    view.applyWeather(look('dusk'), look('dusk'), 1);
+    expect(stars.visible).toBe(true);
+    expect((stars.material as ShaderMaterial).uniforms['level']!.value).toBeLessThan(0.3);
+    expect(moon.visible).toBe(false);
+  });
+
+  it('twinkles the stars as time goes by, and not while it stands still', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const time = (nightSky(scene).stars.material as ShaderMaterial).uniforms['time']!;
+
+    view.update({ x: 0, z: 0 }, 0.5);
+    view.update({ x: 0, z: 0 }, 0.25);
+    expect(time.value).toBeCloseTo(0.75, 9);
+    view.update({ x: 0, z: 0 });
+    expect(time.value).toBeCloseTo(0.75, 9);
   });
 
   it('turns sky, haze, light, clouds and the pre-lit ground to the weather, and blends between two', () => {
@@ -88,7 +142,9 @@ describe('EnvironmentView', () => {
     const sun = scene.children.find((child) => child instanceof DirectionalLight)!;
     let dome: Mesh | undefined;
     scene.traverse((object) => {
-      if (object instanceof Mesh && object.material instanceof ShaderMaterial) dome = object;
+      if (object instanceof Mesh && object.material instanceof ShaderMaterial && 'sunLow' in object.material.uniforms) {
+        dome = object;
+      }
     });
     const uniforms = (dome!.material as ShaderMaterial).uniforms;
 

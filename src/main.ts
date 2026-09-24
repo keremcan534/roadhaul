@@ -792,7 +792,7 @@ async function start(): Promise<void> {
         cameraRig.look(lookAround.yaw, lookAround.pitch);
         cameraRig.update(pose, vehicle, deltaSeconds);
         environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
-        environment.update(renderHost.camera.position);
+        environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         const eye = renderHost.camera.position;
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);

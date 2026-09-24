@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   BackSide,
   BufferAttribute,
   BufferGeometry,
@@ -11,7 +12,9 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   MeshLambertMaterial,
+  PlaneGeometry,
   Quaternion,
   ShaderMaterial,
   SphereGeometry,
@@ -21,6 +24,8 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { WeatherLook } from '../../data/definitions/WeatherDefinition';
+import { moonImage } from '../textures/proceduralImages';
+import { toTexture } from '../textures/toTexture';
 import {
   GROUND_LIGHT_COLOR,
   relativeGroundLight,
@@ -55,14 +60,29 @@ const GROUND_HAZE_SHADE = 0.86;
 const SUN_AZIMUTH = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
 const DAY_SUN_ELEVATION = Math.asin(SUN_DIRECTION.y);
 const HORIZON_SUN_ELEVATION = (3 * Math.PI) / 180;
+/**
+ * The night sky, beyond the clouds and inside the dome: this many stars, as
+ * far as this, each this wide in radians (the brightest the widest); and the
+ * moon, this far and this wide (about 3°, bigger than life, like the sun).
+ */
+const STAR_COUNT = 700;
+const STAR_DISTANCE = 780;
+const STAR_SIZE = { faint: 0.0028, bright: 0.007 } as const;
+const MOON_DISTANCE = 760;
+const MOON_SIZE_METERS = 42;
+const MOON_COLOR = 0xeef2ff;
+/** Time for the stars' twinkling runs round this many seconds, so it keeps its precision. */
+const TWINKLE_PERIOD_SECONDS = 3600;
+const Z_AXIS = new Vector3(0, 0, 1);
 
 /**
  * Sky, horizon and light: a gradient dome with a sun glow, low-poly clouds,
- * a ring of hazy hills, fog, and the sun and sky lights. The dome, clouds
- * and hills follow the camera (call update() every frame), so they always
- * sit at the horizon. About three draw calls. applyWeather() turns it all
- * to the weather (spec §38): sky, haze, light, clouds, and the pre-lit
- * ground with it.
+ * a ring of hazy hills, fog, and the sun and sky lights; at night the stars
+ * and the moon. The dome, clouds, hills, stars and moon follow the camera
+ * (call update() every frame), so they always sit at the horizon. About
+ * three draw calls, two more at night. applyWeather() turns it all to the
+ * weather and the time of day (spec §38–39): sky, haze, light, the sun's
+ * height, clouds, stars and moon, and the pre-lit ground with it.
  */
 export class EnvironmentView {
   private readonly backdrop = new Group();
@@ -82,6 +102,11 @@ export class EnvironmentView {
   };
   private readonly clouds: InstancedMesh;
   private readonly cloudMaterial: MeshLambertMaterial;
+  private readonly stars: Mesh;
+  private readonly starUniforms = { time: { value: 0 }, level: { value: 0 } };
+  private readonly moon: Mesh;
+  private readonly moonMaterial: MeshBasicMaterial;
+  private readonly toMoon = new Vector3();
   private readonly resources: { dispose(): void }[] = [];
   /** Scratch colours for blending looks, and what was last applied (so an unchanged look costs nothing). */
   private readonly tint = new Color();
@@ -116,7 +141,24 @@ export class EnvironmentView {
     );
     this.clouds = this.createClouds();
     this.clouds.count = Math.round(CLOUD_COUNT * 0.55);
-    this.backdrop.add(this.createDome(), this.createHills(), this.clouds);
+    this.stars = this.createStars();
+    this.moonMaterial = this.track(
+      new MeshBasicMaterial({
+        map: this.track(toTexture(moonImage())),
+        color: MOON_COLOR,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        fog: false,
+        toneMapped: false,
+      }),
+    );
+    this.moon = new Mesh(this.track(new PlaneGeometry(MOON_SIZE_METERS, MOON_SIZE_METERS)), this.moonMaterial);
+    // Over the stars, under everything else see-through; hidden (no draw call) by day.
+    this.moon.renderOrder = -1;
+    this.moon.frustumCulled = false;
+    this.moon.visible = false;
+    this.backdrop.add(this.createDome(), this.createHills(), this.clouds, this.stars, this.moon);
     scene.add(this.backdrop);
   }
 
@@ -151,6 +193,15 @@ export class EnvironmentView {
     );
     uniforms.sunLow.value = (1 - sunHeight) * (1 - sunHeight);
     this.sunLight.position.copy(sun).multiplyScalar(300);
+    // At night the light is the moon's: it shows where the light comes from, facing the camera.
+    const moon = mix(from.moon, to.moon, blend);
+    this.moon.visible = moon > 0.01;
+    this.moonMaterial.opacity = moon;
+    this.moon.position.copy(sun).multiplyScalar(MOON_DISTANCE);
+    this.moon.quaternion.setFromUnitVectors(Z_AXIS, this.toMoon.copy(sun).negate());
+    const stars = mix(from.stars, to.stars, blend);
+    this.stars.visible = stars > 0.01;
+    this.starUniforms.level.value = stars;
     // Flat ground catches less of a low sun, and its baked shadows fade with it.
     const groundSun = (sunlight * Math.sin(elevation)) / Math.sin(DAY_SUN_ELEVATION);
     this.background.copy(uniforms.horizon.value);
@@ -174,9 +225,11 @@ export class EnvironmentView {
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
   }
 
-  /** Keeps the backdrop centred on the camera. Allocation-free. */
-  update(cameraPosition: Readonly<{ x: number; z: number }>): void {
+  /** Keeps the backdrop centred on the camera, and twinkles the stars `deltaSeconds` on. Allocation-free. */
+  update(cameraPosition: Readonly<{ x: number; z: number }>, deltaSeconds = 0): void {
     this.backdrop.position.set(cameraPosition.x, 0, cameraPosition.z);
+    const time = this.starUniforms.time;
+    time.value = (time.value + deltaSeconds) % TWINKLE_PERIOD_SECONDS;
   }
 
   dispose(): void {
@@ -283,6 +336,102 @@ export class EnvironmentView {
     );
     hills.frustumCulled = false;
     return hills;
+  }
+
+  /**
+   * The stars: small soft dots on a sphere round the camera, faint ones
+   * common and bright ones few, most white, some bluish or warm. Each
+   * twinkles at its own pace, and they fade into the haze low down. One
+   * draw call, added onto the sky; clouds and hills hide the stars behind
+   * them. Hidden (no draw call) by day.
+   */
+  private createStars(): Mesh {
+    const random = new SeededRandom(83);
+    const positions = new Float32Array(STAR_COUNT * 12);
+    const corners = new Float32Array(STAR_COUNT * 8);
+    const colors = new Float32Array(STAR_COUNT * 12);
+    const twinkles = new Float32Array(STAR_COUNT * 8);
+    const indices = new Uint16Array(STAR_COUNT * 6);
+    const direction = new Vector3();
+    const across = new Vector3();
+    const along = new Vector3();
+    const up = new Vector3(0, 1, 0);
+    const tint = new Color();
+    const quad = [-1, -1, 1, -1, 1, 1, -1, 1];
+    for (let star = 0; star < STAR_COUNT; star++) {
+      // Even over the sky above the horizon: a uniform height on a sphere covers equal areas.
+      const height = random.range(0.03, 1);
+      const angle = random.range(0, Math.PI * 2);
+      const ring = Math.sqrt(1 - height * height);
+      direction.set(Math.cos(angle) * ring, height, Math.sin(angle) * ring);
+      across.crossVectors(direction, up).normalize();
+      along.crossVectors(across, direction);
+      const magnitude = random.next() ** 3;
+      const halfSize = (STAR_DISTANCE * (STAR_SIZE.faint + (STAR_SIZE.bright - STAR_SIZE.faint) * magnitude)) / 2;
+      const hue = random.next();
+      tint.setHex(hue < 0.15 ? 0xbcd2ff : hue < 0.28 ? 0xffe2b8 : 0xffffff).multiplyScalar(0.55 + 0.45 * magnitude);
+      const phase = random.range(0, Math.PI * 2);
+      const speed = random.range(1.2, 3.4);
+      for (let corner = 0; corner < 4; corner++) {
+        const cx = quad[corner * 2]!;
+        const cy = quad[corner * 2 + 1]!;
+        const v = star * 4 + corner;
+        positions[v * 3] = direction.x * STAR_DISTANCE + (across.x * cx + along.x * cy) * halfSize;
+        positions[v * 3 + 1] = direction.y * STAR_DISTANCE + (across.y * cx + along.y * cy) * halfSize;
+        positions[v * 3 + 2] = direction.z * STAR_DISTANCE + (across.z * cx + along.z * cy) * halfSize;
+        corners[v * 2] = cx;
+        corners[v * 2 + 1] = cy;
+        colors[v * 3] = tint.r;
+        colors[v * 3 + 1] = tint.g;
+        colors[v * 3 + 2] = tint.b;
+        twinkles[v * 2] = phase;
+        twinkles[v * 2 + 1] = speed;
+      }
+      indices.set([star * 4, star * 4 + 1, star * 4 + 2, star * 4, star * 4 + 2, star * 4 + 3], star * 6);
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(positions, 3));
+    geometry.setAttribute('corner', new BufferAttribute(corners, 2));
+    geometry.setAttribute('starColor', new BufferAttribute(colors, 3));
+    geometry.setAttribute('twinkle', new BufferAttribute(twinkles, 2));
+    geometry.setIndex(new BufferAttribute(indices, 1));
+    const material = new ShaderMaterial({
+      uniforms: this.starUniforms,
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      fog: false,
+      vertexShader: /* glsl */ `
+        attribute vec2 corner;
+        attribute vec3 starColor;
+        attribute vec2 twinkle;
+        uniform float time;
+        uniform float level;
+        varying vec2 vCorner;
+        varying vec3 vColor;
+        void main() {
+          vCorner = corner;
+          float flicker = 0.72 + 0.28 * sin(twinkle.x + time * twinkle.y);
+          float haze = clamp(normalize(position).y * 5.0, 0.0, 1.0);
+          vColor = starColor * (flicker * haze * level);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec2 vCorner;
+        varying vec3 vColor;
+        void main() {
+          float dot2 = max(1.0 - dot(vCorner, vCorner), 0.0);
+          gl_FragColor = vec4(vColor, dot2 * dot2);
+        }
+      `,
+    });
+    const stars = new Mesh(this.track(geometry), this.track(material));
+    // Drawn first of everything see-through: behind it all.
+    stars.renderOrder = -2;
+    stars.frustumCulled = false;
+    stars.visible = false;
+    return stars;
   }
 
   /** Flat-bottomed clusters of puffs, scattered around the sky. */

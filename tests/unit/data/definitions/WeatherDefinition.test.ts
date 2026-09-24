@@ -53,6 +53,22 @@ describe('validateWeatherDefinition', () => {
     }
   });
 
+  it('puts out the stars and the moon at night only; the first stars show at dusk and the last at dawn', () => {
+    const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
+    expect(byId('night').look.stars).toBe(1);
+    expect(byId('night').look.moon).toBe(1);
+    for (const id of ['dusk', 'dawn']) {
+      expect(byId(id).look.stars).toBeGreaterThan(0);
+      expect(byId(id).look.stars).toBeLessThan(0.3);
+      // The moon shows in the sun's place: never while the sun is up.
+      expect(byId(id).look.moon).toBe(0);
+    }
+    for (const id of ['clear', 'cloudy', 'rain']) {
+      expect(byId(id).look.stars).toBe(0);
+      expect(byId(id).look.moon).toBe(0);
+    }
+  });
+
   it('reports successions that are not a list of other weathers', () => {
     expect(issues(weatherFixture({ next: [] }))).toEqual(['weather.next']);
     expect(issues(weatherFixture({ next: ['test_clear', 'Rain', 'dawn', 'dawn'] }))).toEqual([
@@ -71,7 +87,16 @@ describe('validateWeatherDefinition', () => {
       maxSeconds: 50,
       gripFactor: 0.2,
       trafficSpeedFactor: 1.5,
-      look: { ...fixture.look, zenithColor: -1, fogDensity: 0, rain: 2, lamps: Number.NaN, sunHeight: 1.5 },
+      look: {
+        ...fixture.look,
+        zenithColor: -1,
+        fogDensity: 0,
+        rain: 2,
+        lamps: Number.NaN,
+        sunHeight: 1.5,
+        stars: -0.1,
+        moon: 2,
+      },
     });
 
     expect(issues(weather)).toEqual([
@@ -85,6 +110,8 @@ describe('validateWeatherDefinition', () => {
       'weather.look.rain',
       'weather.look.lamps',
       'weather.look.sunHeight',
+      'weather.look.stars',
+      'weather.look.moon',
     ]);
     expect(issues({ ...fixture, look: null as unknown as WeatherDefinition['look'] })).toEqual(['weather.look']);
   });

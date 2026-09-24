@@ -211,6 +211,40 @@ export function glowImage(size = 64): PixelImage {
 }
 
 /**
+ * The full moon, filling the square but for a pixel round it: pale highlands,
+ * darker seas, a little grain, and a rim a shade darker than the middle. The
+ * corners are transparent (in the highlands' colour, so filtering leaves no
+ * dark fringe).
+ */
+export function moonImage(size = 64, seed = 67): PixelImage {
+  const highland: Rgb = [240, 238, 229];
+  const sea: Rgb = [176, 181, 188];
+  const image = createImage(size, size, highland, 0);
+  const rim = 1 - 1 / size;
+  const edge = 1.5 / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = (x + 0.5) / size;
+      const v = (y + 0.5) / size;
+      const r = Math.hypot(u - 0.5, v - 0.5) * 2;
+      const disc = 1 - smoothstep(rim - edge, rim + edge, r);
+      if (disc <= 0) {
+        continue;
+      }
+      const seas = smoothstep(0.52, 0.62, fractalNoise(u, v, 3, 3, seed));
+      const light = (1 - 0.16 * r * r) * (0.95 + 0.05 * grain(x, y, seed));
+      const color = mixRgb(highland, sea, seas);
+      const i = (y * size + x) * 4;
+      image.data[i] = Math.round(color[0] * light);
+      image.data[i + 1] = Math.round(color[1] * light);
+      image.data[i + 2] = Math.round(color[2] * light);
+      image.data[i + 3] = Math.round(255 * disc);
+    }
+  }
+  return image;
+}
+
+/**
  * The cities' name boards, one row per name from the bottom up: dark blue
  * capitals on a white board inside a blue frame. Names too long for the
  * board are drawn smaller. A board's face maps onto its row (see
