@@ -37,7 +37,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | VehicleDynamics | domain | `src/domain/vehicles/VehicleDynamics.ts` | Deterministic truck model: drivetrain, gearbox, governor, brakes, reverse, understeer (ADR 0002) | VehicleDefinition | none |
 | VehicleInput, VehicleRuntimeState | domain | `src/domain/vehicles/` | Device-independent driver input; live truck state | none | none |
 | RoadPath | domain | `src/domain/world/RoadPath.ts` | Catmull-Rom centreline shared by driving and rendering | MapDefinition | none |
-| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, buildings, depots, rest areas, service points, collisions, map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
+| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, street lamps along the town roads, the cities' name boards, farm fields beside their roads with seeded hay bales, wind turbines, buildings, depots, rest areas, service points, collisions (trunks, posts, bales and towers are solid circles filed by grid cell), map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
 | RoadGrid | domain | `src/domain/world/RoadGrid.ts`, `gridCells.ts` | The roads' centreline pieces filed by 20 m cell: on a road, or near one, from the few pieces round a point | RoadPath | none |
 | DrivingService | systems | `src/systems/driving/DrivingService.ts` | Owns the driven truck and world; steps them every fixed step; cargo mass, parking, recovery onto the road; the service point the truck stands at | ContentCatalog, EventBus | emits `VehicleCollided` |
 | EnvironmentView | presentation | `src/presentation/world/EnvironmentView.ts`, `world/lighting.ts` | Gradient sky with sun glow, clouds and horizon hills that follow the camera; fog; sun and sky lights | three | none |
@@ -60,6 +60,10 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | RoadNetwork | domain | `src/domain/world/RoadNetwork.ts`, `roadRoute.ts` | The roads joined at shared control points; cached shortest routes to each target; remaining distance and a point to steer toward, without allocating | RoadPath | none |
 | MissionService | systems | `src/systems/missions/MissionService.ts` | Job board with what blocks each contract (company level, truck), accepting, loading and unloading in bays, delivery clock, cargo damage (less with cargo protection), reward, abandoning | DrivingService, ContentCatalog, EventBus | listens `VehicleCollided`; emits `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed` |
 | DepotView | presentation | `src/presentation/world/DepotView.ts` | Concrete yards, bay lines, the beacon over the next bay | three | none |
+| StreetLampView | presentation | `src/presentation/world/StreetLampView.ts` | Street lamps: instanced posts and lenses (two draw calls); at night the lenses light, glow and throw pools of light on the road (two more, left out on the low preset) | DrivingWorld, LampGlows, three | none |
+| FarmlandView | presentation | `src/presentation/world/FarmlandView.ts` | Farm fields (pre-lit, one texture of crop rows tinted per crop: one draw call) and instanced hay bales (one) | DrivingWorld, three | none |
+| WindTurbineView | presentation | `src/presentation/world/WindTurbineView.ts` | Wind turbines: instanced towers and turning rotors (two draw calls); red warning lights blink at night (one more, left out on the low preset) | DrivingWorld, LampGlows, three | none |
+| CitySignView | presentation | `src/presentation/world/CitySignView.ts` | The cities' name boards: posts and backs, and faces sharing one texture with a row per name in Turkish capitals (two draw calls); they glow a little by day, more at night | DrivingWorld, three | none |
 | MainMenu | ui | `src/ui/menus/MainMenu.ts` | Title screen and language switch | Strings | none |
 | CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, blocked ones say what unlocks them | MissionService offers, Strings | none |
 | MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, next turn, arrival time, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30, §63) | MissionService, NavigationService, DrivingService | none |
@@ -137,7 +141,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | WeatherService | systems | `src/systems/weather/WeatherService.ts` | Seeded schedule of weathers, blended changes; the truck's grip (a DrivingService performance modifier) and traffic speed; blended rain and lamps for the views | DrivingService, TrafficService, ContentCatalog | emits `WeatherChanged` |
 | Weather look | presentation | `EnvironmentView.applyWeather`, `world/lighting.ts` (`PrelitMaterials`) | Sky, haze, sun and sky light, clouds; relights the pre-lit ground and fades baked shadows | three | none |
 | RainView | presentation | `src/presentation/weather/RainView.ts` | Rain streaks round the camera, animated on the GPU, one draw call; more of them the harder it rains | three | none |
-| Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows | three | none |
+| Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps`, `StreetLampView.setLamps`, `CitySignView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows, street lamps and their light on the road, name boards in the headlights | three | none |
 
 ### Special events (Phase 6, roadmap step 25)
 
@@ -185,7 +189,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| Map sketch, viewport | ui | `src/ui/map/mapSketch.ts`, `MapViewport.ts` | The world as a 2D map draws it: roads simplified into short runs with bounds, yards, lots, turning circles, buildings, depots, rest areas and city name spots; the view's pan, zoom and turn (DOM-free, unit-tested) | DrivingWorld | none |
+| Map sketch, viewport | ui | `src/ui/map/mapSketch.ts`, `MapViewport.ts` | The world as a 2D map draws it: roads simplified into short runs with bounds, yards, lots, turning circles, fields, wind turbines, buildings, depots, rest areas and city name spots; the view's pan, zoom and turn (DOM-free, unit-tested) | DrivingWorld | none |
 | MapPainter | ui | `src/ui/map/MapPainter.ts` | Paints a sketch on a canvas through a viewport: only the roads in view, the route to the next bay, pins, city names, the truck and north; allocation-free | MapSketch, DrivingService, NavigationService, MissionService | none |
 | Minimap | ui | `src/ui/hud/Minimap.ts` | The round map on the road, the truck heading up, twelve repaints a second; a tap opens the full map | MapPainter | none |
 | WorldMap | ui | `src/ui/map/WorldMap.ts` | The full-screen map from the minimap, the pause menu, the HQ or M: drag, pinch, wheel and buttons; repaints only after a change; the drive waits while it is open | MapPainter | none |
