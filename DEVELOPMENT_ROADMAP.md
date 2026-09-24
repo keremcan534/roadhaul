@@ -41,8 +41,8 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 25 | Events | 6 | ✅ | Express Week, Safe Driver and Heavy Cargo as data: a week every other week, a bonus on qualifying deliveries, a reward for the objective; an HQ tab; save v5 |
 | 26 | Tutorial | 7 | ✅ | The first contract and the first upgrade, taught by playing: one short hint at a time, the control it is about glows; skippable; save v6 |
 | 27 | Optimization | 7 | ✅ | Low, medium and high graphics presets, picked for the device and in Settings; dynamic resolution; half-rate menus; the heaviest scenes at 52–59 draw calls and under 110k triangles, checked by an e2e test; the ground under the truck found through a grid |
-| 28 | Android build | 8 | ⬜ **next** | Capacitor app built in CI |
-| 29 | Device testing | 8 | ⬜ | Real low/mid Android phones |
+| 28 | Android build | 8 | ✅ | Capacitor app: offline, full screen, original icon; back button and pausing in the background; a debug APK from CI for every pull request |
+| 29 | Device testing | 8 | ⬜ **next** | Real low/mid Android phones |
 | 30 | MVP release candidate | 8 | ⬜ | Save migration check, crash handling, store assets |
 
 ### Phase 0 checklist (spec §45)
@@ -123,11 +123,19 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Profiling found three costs and removed them; the first two made about a third of the garbage per frame while driving a contract. The bay beacon's two translucent two-sided materials were drawn twice each, with their shaders set up afresh every frame. The ground under the truck was found by measuring all ~2,900 road pieces every step; a grid of road pieces answers a hundred times faster, and the world builds in a quarter of the time (its trees ask the same question). The canvas was resized twice per resolution change, each time waiting for the GPU.
 - Frame rate itself waits for real phones (step 29): CI renders in software, so its tests check what is drawn, not how fast. The clouds are one draw call, so every preset keeps them.
 
-## Next step: 28 Android build
+### Phase 8 notes
+- Android build (step 28): Capacitor 8 wraps the production build into an app that runs offline from its own files (`android/`, `capacitor.config.json`). `npm run android` copies the build in; `./gradlew assembleDebug` builds the APK. CI does both for every pull request and keeps the APK 14 days (see README.md).
+- Saves stay in the app's WebView storage under the `https://localhost` origin. The app's scheme and hostname must never change, or saves are lost.
+- Debug builds share a signing key kept in the repository, so each installs over the last one and keeps the save; CI numbers the builds. A store release (step 30) needs its own, secret key.
+- Android's back button closes the dialog that is open, pauses and resumes the drive, takes the HQ back to the main menu, and at the main menu puts the app away. Going to the background pauses the drive and saves; a hidden browser tab now does the same.
+- Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
+- Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
+
+## Next step: 29 Device testing
 
 Suggested request:
 
-> Implement roadmap step 28 only. Android build (spec §81, ARCHITECTURE.md): wrap the production build in a Capacitor Android app that runs offline from the app's own files (the relative asset paths already allow it), full screen in either orientation, with the app's name and an original icon. Keep saves in the app's storage (Capacitor Preferences or the WebView's localStorage, behind the existing `KeyValueStorage` interface), pause the game when the app goes to the background, and let the Android back button open the pause menu. Build a debug APK in CI on every pull request and keep it as a workflow artifact, so it can be installed on test phones (step 29). Document how to build it locally.
+> Implement roadmap step 29 only. Device testing (spec §81): install the CI debug APK (and the Pages build in Chrome) on at least one low-end and one mid-range Android phone, and fix what they show: frame rate against the 30 FPS floor with the `?debug` overlay (the Pages build takes it in the address; give the app a way to turn it on, such as a switch in Settings), which graphics preset each phone gets and whether the dynamic resolution settles, touch control feel (steering wheel, pedals, camera, pause), text and controls round display cutouts in both orientations, the back button and the app in the background, saving across restarts and updates, and the first ten minutes (tutorial) as a new player. Record each phone's results in the roadmap.
 
 ## Infrastructure track
 
@@ -137,7 +145,7 @@ These are not gameplay features, so they sit outside the numbered order. They ma
 |---|---|---|
 | CI: typecheck, unit tests, build, e2e | ✅ | `.github/workflows/ci.yml` on every pull request |
 | Phone preview link | ✅ | GitHub Pages: `.github/workflows/deploy-pages.yml` publishes every push to `main` at https://keremcan534.github.io/roadhaul/ (needs the repository to be public and Pages source set to "GitHub Actions") |
-| Android APK from CI | ⬜ | Spec step 28. Pulling it forward for device testing is optional; it is the owner's call. |
+| Android APK from CI | ✅ | Step 28: the `android` job in `.github/workflows/ci.yml`; download **roadhaul-debug-apk** from the run's page |
 
 ## MVP scope (spec §43)
 

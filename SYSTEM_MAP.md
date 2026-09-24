@@ -26,7 +26,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio scaled by AdaptiveResolution (one drawing-buffer resize per change), tone mapping, software-rendering fallback | three | none |
 | PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
 | Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`, `?date`, `?quality`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
-| Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result) and pausing; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
+| Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result), pausing (also when the player leaves) and the back button; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
 
 ### Driving prototype (Phase 1, roadmap steps 04–08)
 
@@ -163,6 +163,15 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | AdaptiveResolution | presentation | `src/presentation/AdaptiveResolution.ts` | Lowers the resolution when frames run slow, raises it when they are quick again (a 30 FPS floor) | none | none |
 | SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use | Strings | none |
 
+### Android app (Phase 8, roadmap step 28)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Android project | tooling | `android/`, `capacitor.config.json`, `scripts/androidIcons.mjs` | Capacitor 8 wrapper around `dist/`: Gradle build, manifest, full-screen activity, original icons and splash, debug signing | Capacitor | none |
+| Native app shell | platform | `src/platform/native/nativeApp.ts`, `capacitorShell.ts` | Inside the app: the back button and going to the background, through Capacitor's App plugin (loaded only there) | `@capacitor/app` | none |
+| Back button rules | ui | `src/ui/menus/backAction.ts` | What back does on each screen: close a dialog, pause or resume, HQ to main menu, put the app away | GameState | none |
+| APK build | CI | `.github/workflows/ci.yml` (job `android`) | A debug APK for every pull request, kept 14 days | JDK 21, Android SDK | none |
+
 ## Planned for the MVP
 
 The system names follow the spec. Placement follows `ARCHITECTURE.md`.
@@ -173,7 +182,6 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
 | AudioService | presentation | ⬜ Phase 7 | Engine, brake, horn, ambience, UI sounds (spec §37) |
 | More settings, more languages | ui | ⬜ Phase 7 | Language and sound in Settings (graphics are there since step 27); more string tables |
-| Android packaging | tooling | ⬜ 28 | Capacitor app built in CI |
 
 ## Not in the MVP (spec §44)
 

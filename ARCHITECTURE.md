@@ -4,12 +4,12 @@ This document explains how the code is organised and why. The rules it describes
 
 ## 1. Goals
 
-- **Mobile first.** Runs in Android browsers today and in a Capacitor-wrapped app later, at 30 FPS or more on low/mid devices (spec §5).
+- **Mobile first.** Runs in Android browsers and in a Capacitor-wrapped Android app, at 30 FPS or more on low/mid devices (spec §5).
 - **Playable core before content** (spec §2.2). The code must grow by adding data, not by rewriting systems.
 - **Game rules run without a browser.** They are unit-testable in Node and reusable on a server if the game goes online (spec §66).
 - **Every change is verifiable** by typecheck, tests, build and a real-browser smoke test, in CI and in Claude Code sessions.
 
-Stack: TypeScript, three.js (WebGL2), Vite, Vitest and Playwright ([ADR 0001](docs/adr/0001-web-stack-typescript-threejs.md)). Vehicle physics is our own deterministic model rather than a physics engine ([ADR 0002](docs/adr/0002-custom-vehicle-model.md)). Capacitor (Android packaging) arrives later.
+Stack: TypeScript, three.js (WebGL2), Vite, Vitest and Playwright ([ADR 0001](docs/adr/0001-web-stack-typescript-threejs.md)). Vehicle physics is our own deterministic model rather than a physics engine ([ADR 0002](docs/adr/0002-custom-vehicle-model.md)). Capacitor wraps the same build into the Android app (§15).
 
 ## 2. Layers
 
@@ -24,7 +24,7 @@ flowchart TD
   app[app<br/>headless composition root]
   presentation[presentation<br/>three.js]
   ui[ui<br/>DOM overlay]
-  platform[platform<br/>browser adapters]
+  platform[platform<br/>browser and app adapters]
   entry[main.ts<br/>browser composition root]
 
   data --> core
@@ -49,7 +49,7 @@ flowchart TD
 | app | `src/app` | Headless composition root: `GameBootstrapper`, `ServiceKeys` | core … systems | anywhere |
 | presentation | `src/presentation` | three.js renderer, environment, track, depot and truck views, cameras, visual effects | core … systems, `three` | browser |
 | ui | `src/ui` | DOM overlay: main menu, company HQ job board, mission HUD, touch driving controls, pause and result screens, string tables, debug overlay, styles | core … systems | browser |
-| platform | `src/platform` | Browser/device adapters: frame scheduler, keyboard input, URL flags, fatal error screen, localStorage | core … systems | browser |
+| platform | `src/platform` | Browser/device adapters: frame scheduler, keyboard input, URL flags, fatal error screen, localStorage, the device's graphics preset and settings; the Android app's back button and lifecycle | core … systems, `@capacitor/app` | browser, Android app |
 | entry | `src/main.ts` | Browser composition root | everything | browser |
 
 "Anywhere" means browser, Node (tests) or a future server.
@@ -281,7 +281,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - `CURRENT_SAVE_VERSION` (6) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
-- **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser (`platform/browser/browserStorage.ts`), memory in tests or when the browser forbids storage.
+- **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §15), memory in tests or when the browser forbids storage.
   - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
   - **Backup:** loading falls back to it when the latest save is unreadable.
   - **Corruption:** unreadable data is set aside and reported.
@@ -325,7 +325,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 | Architecture | `tests/architecture` | `npm test` | layer and package import rules, and the import scanner that checks them |
 | End-to-end (spec: PlayMode) | `tests/e2e` | `npm run build && npm run test:e2e` (Playwright) | on an emulated Pixel 7 with SwiftShader WebGL: boot into the menu, the job board, a whole delivery (with the `?debug` T key), abandoning, pausing, keyboard and touch driving, reverse, camera switch, layout in both orientations, the draw budget in the heaviest scenes, no console errors. The tests play on the high preset (`?quality=high`) unless they pick one, so what they count does not depend on the machine |
 
-Test helpers live in `tests/support`: `MemoryLogger`, the content fixtures, the driving loop helpers and the three.js resource helpers. CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, build and e2e on every pull request.
+Test helpers live in `tests/support`: `MemoryLogger`, the content fixtures, the driving loop helpers and the three.js resource helpers. CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, build and e2e on every pull request; a second job builds the Android debug APK (§15).
 
 ## 13. Folder layout
 
@@ -338,10 +338,12 @@ src/
   app/             GameBootstrapper.ts ServiceKeys.ts
   presentation/    RenderHost.ts cameras/ textures/ vehicles/ world/ (later: effects/)
   ui/              controls/ debug/ hq/ hud/ i18n/ menus/ dom.ts styles.css
-  platform/        browser/ input/
+  platform/        browser/ input/ native/
   main.ts
 tests/
   unit/ architecture/ e2e/ support/
+android/           the Android app's native project (Capacitor): Gradle build, manifest, icons
+scripts/           androidIcons.mjs (draws the launcher icons)
 docs/
   ROADHAUL_Game_Design_Technical_Spec.md  adr/
 ```
@@ -355,3 +357,14 @@ Feature folders are created inside a layer when the feature arrives (`src/domain
 - **Content packs and DLC (spec §79).** These are JSON with the `GameContent` shape, validated by the same catalog code.
 - **Localization.** Turkish and English string tables keyed by definition ids (`src/ui/i18n`). No text is stored in definitions; more languages are more tables.
 - **Multiplayer (V5+).** It is not part of V1. Keep new state serialisable and change it only through service methods, so it can be synchronised later.
+- **iOS.** Capacitor wraps the same build for iOS too (`cap add ios`); `capacitorShell` would serve it as it is.
+
+## 15. The Android app
+
+- **Capacitor 8 wraps the production build** (`dist/`) into an Android app (`android/`, `capacitor.config.json`). The app serves the game from its own files at `https://localhost`: it runs offline and loads like the web build.
+- **`npm run android`** builds the game and copies it into the native project (`cap sync`); `./gradlew assembleDebug` in `android/` builds the APK. CI does both on every pull request and keeps the APK as an artifact for 14 days, numbering each build (`ROADHAUL_VERSION_CODE`); the version name is `package.json`'s.
+- **Saves** stay in the WebView's localStorage, inside the app's own data, under the `https://localhost` origin. Changing the app's scheme or hostname (`server.androidScheme`, `server.hostname`) would change the origin and lose every saved game.
+- **Debug builds are signed with `android/app/debug.keystore`,** kept in the repository, so every build installs over the last one and keeps the save. That key is public: a store release (step 30) needs its own key, kept out of the repository.
+- **The back button and the app's lifecycle** come from Capacitor's App plugin, wrapped by `platform/native/capacitorShell.ts`. `main.ts` loads that module only when the native bridge is there (`isNativeApp`), so the web build never downloads it. The back button closes the dialog that is open, pauses and resumes the drive, and takes the HQ back to the main menu (`ui/menus/backAction.ts`); at the main menu it puts the app away. Going to the background pauses the drive and saves, as a hidden browser tab does.
+- **Full screen:** `MainActivity` hides the status and navigation bars; a swipe from the edge shows them for a moment. Capacitor's SystemBars keeps the page's `env(safe-area-inset-*)` right round display cutouts, which the HUD's CSS already uses.
+- **Art:** the launcher icons (`scripts/androidIcons.mjs`: a dark box truck on the game's amber) and the splash (the icon on the game's background) are original. Capacitor's template images were removed.
