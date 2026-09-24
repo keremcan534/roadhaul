@@ -4,6 +4,7 @@ import { RoadPath } from '../../../../src/domain/world/RoadPath';
 
 const straight: RoadDefinition = {
   id: 'straight',
+  kind: 'street',
   widthMeters: 10,
   closed: false,
   controlPoints: [
@@ -14,6 +15,7 @@ const straight: RoadDefinition = {
 
 const loop: RoadDefinition = {
   id: 'loop',
+  kind: 'street',
   widthMeters: 8,
   closed: true,
   controlPoints: [
@@ -45,6 +47,26 @@ describe('RoadPath', () => {
     expect(path.contains(0, -5.1)).toBe(false);
   });
 
+  it('measures the distance to each straight piece of the centreline, the last one of a loop joining up', () => {
+    const path = new RoadPath(straight);
+    const closed = new RoadPath(loop);
+    const last = closed.segmentCount - 1;
+    const midX = (closed.x(last) + closed.x(0)) / 2;
+    const midZ = (closed.z(last) + closed.z(0)) / 2;
+
+    // The first piece runs from x = -150 a few meters on: beside it, and past its end.
+    expect(path.segmentDistance(0, -149, 3)).toBeCloseTo(3, 9);
+    expect(path.segmentDistance(0, -150, -4)).toBeCloseTo(4, 9);
+    expect(path.segmentDistance(0, 0, 0)).toBeGreaterThan(100);
+    expect(closed.segmentDistance(last, midX, midZ)).toBeCloseTo(0, 9);
+    // The closest piece is the distance to the road.
+    let closest = Infinity;
+    for (let segment = 0; segment < closed.segmentCount; segment++) {
+      closest = Math.min(closest, closed.segmentDistance(segment, 37, -93));
+    }
+    expect(closest).toBe(closed.distanceTo(37, -93));
+  });
+
   it('passes through every control point of a closed loop and joins up', () => {
     const path = new RoadPath(loop);
 
@@ -64,4 +86,50 @@ describe('RoadPath', () => {
     }
     expect(path.distances[path.pointCount - 1]).toBeLessThan(path.lengthMeters);
   });
+
+  it('finds the nearest centreline sample', () => {
+    const path = new RoadPath(straight);
+    const index = path.nearestSampleIndex(20, 30);
+
+    for (let i = 0; i < path.pointCount; i++) {
+      expect(Math.hypot(path.x(i) - 20, path.z(i) - 30)).toBeGreaterThanOrEqual(
+        Math.hypot(path.x(index) - 20, path.z(index) - 30),
+      );
+    }
+    expect(Math.abs(path.x(index) - 20)).toBeLessThan(3);
+  });
+
+  it('measures signed distances along an open road', () => {
+    const path = new RoadPath(straight);
+    const west = path.nearestSampleIndex(-100, 0);
+    const east = path.nearestSampleIndex(100, 0);
+
+    expect(path.distanceAlong(west, east)).toBeCloseTo(path.distances[east]! - path.distances[west]!, 9);
+    expect(path.distanceAlong(west, east)).toBeGreaterThan(190);
+    expect(path.distanceAlong(east, west)).toBeLessThan(-190);
+  });
+
+  it('goes the shorter way round a closed road', () => {
+    const path = new RoadPath(loop);
+    const start = path.nearestSampleIndex(-100, -100);
+    const oneSideOn = path.nearestSampleIndex(100, -100);
+    const lastSide = path.nearestSampleIndex(-100, 100);
+
+    // Forward along the first side; backward across the join to the last corner.
+    expect(path.distanceAlong(start, oneSideOn)).toBeGreaterThan(150);
+    expect(path.distanceAlong(start, lastSide)).toBeLessThan(-150);
+    expect(Math.abs(path.distanceAlong(start, lastSide))).toBeLessThan(path.lengthMeters / 2);
+  });
+
+  it('steps between samples, wrapping on a loop and stopping at the ends of an open road', () => {
+    const open = new RoadPath(straight);
+    const closed = new RoadPath(loop);
+
+    expect(open.stepIndex(0, -1)).toBe(0);
+    expect(open.stepIndex(open.pointCount - 1, 3)).toBe(open.pointCount - 1);
+    expect(open.stepIndex(5, 2)).toBe(7);
+    expect(closed.stepIndex(0, -1)).toBe(closed.pointCount - 1);
+    expect(closed.stepIndex(closed.pointCount - 1, 2)).toBe(1);
+  });
 });
+

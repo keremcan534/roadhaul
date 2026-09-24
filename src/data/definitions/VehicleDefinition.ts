@@ -1,4 +1,6 @@
 import type { Validator } from '../../core/validation/Validator';
+import type { Credits } from '../units';
+import { BODY_TYPES, type BodyType } from './BodyType';
 
 export const VEHICLE_CLASSES = ['light', 'medium', 'heavy'] as const;
 export type VehicleClass = (typeof VEHICLE_CLASSES)[number];
@@ -15,12 +17,18 @@ export interface VehicleDefinition {
   /** Stable snake_case id. It is written into save files: never rename it. */
   readonly id: string;
   readonly vehicleClass: VehicleClass;
+  /** What the load travels in; decides which cargo the truck can take (see bodyCanHaul). */
+  readonly bodyType: BodyType;
   readonly maxPayloadTons: number;
   readonly fuelCapacityLiters: number;
   /** Consumption of the empty truck on flat road (spec §17 `vehicle.baseFuelPerKm`). */
   readonly baseFuelLitersPerKm: number;
   /** Speed governor: the truck never drives faster than this. */
   readonly maxSpeedKmh: number;
+  /** What the garage sells it for (spec §15). The starting truck is free with a new company. */
+  readonly purchasePrice: Credits;
+  /** The company level that lets the garage sell it. Omit for level 1. */
+  readonly requiredCompanyLevel?: number;
   readonly body: VehicleBody;
   readonly powertrain: VehiclePowertrain;
   readonly handling: VehicleHandling;
@@ -79,10 +87,15 @@ export interface VehicleHandling {
 export function validateVehicleDefinition(vehicle: VehicleDefinition, path: string, validator: Validator): void {
   validator.id(vehicle.id, `${path}.id`);
   validator.oneOf(vehicle.vehicleClass, VEHICLE_CLASSES, `${path}.vehicleClass`);
+  validator.oneOf(vehicle.bodyType, BODY_TYPES, `${path}.bodyType`);
   validator.positiveNumber(vehicle.maxPayloadTons, `${path}.maxPayloadTons`);
   validator.positiveNumber(vehicle.fuelCapacityLiters, `${path}.fuelCapacityLiters`);
   validator.positiveNumber(vehicle.baseFuelLitersPerKm, `${path}.baseFuelLitersPerKm`);
   validator.positiveNumber(vehicle.maxSpeedKmh, `${path}.maxSpeedKmh`);
+  validator.nonNegativeInteger(vehicle.purchasePrice, `${path}.purchasePrice`);
+  if (vehicle.requiredCompanyLevel !== undefined) {
+    validator.positiveInteger(vehicle.requiredCompanyLevel, `${path}.requiredCompanyLevel`);
+  }
   validateBody(vehicle.body, `${path}.body`, validator);
   validatePowertrain(vehicle.powertrain, `${path}.powertrain`, validator);
   validateHandling(vehicle.handling, `${path}.handling`, validator);

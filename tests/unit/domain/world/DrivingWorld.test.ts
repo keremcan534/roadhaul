@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
+import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
-import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
+import { DrivingWorld, type MovingObstacles } from '../../../../src/domain/world/DrivingWorld';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { mapFixture, vehicleFixture } from '../../../support/contentFixtures';
 
@@ -26,6 +27,29 @@ function circleZs(state: { z: number; heading: number }): number[] {
   return footprint.offsets.map((offset) => state.z + Math.cos(state.heading) * offset);
 }
 
+interface MovingCircle {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly vx: number;
+  readonly vz: number;
+}
+
+/** Traffic as the truck meets it: circles that move, and a record of every touch. */
+function movingObstacles(circles: readonly MovingCircle[]): MovingObstacles & { hits: [number, number][] } {
+  const hits: [number, number][] = [];
+  return {
+    circleCount: circles.length,
+    circleX: Float64Array.from(circles, (circle) => circle.x),
+    circleZ: Float64Array.from(circles, (circle) => circle.z),
+    circleRadius: Float64Array.from(circles, (circle) => circle.radius),
+    circleVelocityX: Float64Array.from(circles, (circle) => circle.vx),
+    circleVelocityZ: Float64Array.from(circles, (circle) => circle.vz),
+    hit: (index, impact) => hits.push([index, impact]),
+    hits,
+  };
+}
+
 describe('DrivingWorld', () => {
   const world = new DrivingWorld(mapFixture());
 
@@ -33,6 +57,19 @@ describe('DrivingWorld', () => {
     expect(world.surfaceAt(0, 0)).toBe(ASPHALT);
     expect(world.surfaceAt(50, 4)).toBe(ASPHALT);
     expect(world.surfaceAt(50, 8)).toBe(GRASS);
+  });
+
+  it('paves depot yards: they drive like asphalt', () => {
+    // The fixture's origin yard spans x -122..-78 and z -30..-4, south of the road.
+    expect(world.surfaceAt(-100, -17)).toBe(ASPHALT);
+    expect(world.surfaceAt(-121, -29)).toBe(ASPHALT);
+    expect(world.surfaceAt(-100, -31)).toBe(GRASS);
+    expect(world.surfaceAt(-124, -17)).toBe(GRASS);
+  });
+
+  it('finds the depot of a city', () => {
+    expect(world.depotOf('test_destination')?.id).toBe('test_destination_depot');
+    expect(world.depotOf('atlantis')).toBeUndefined();
   });
 
   it('takes the spawn point and heading from the map', () => {
@@ -141,6 +178,59 @@ describe('DrivingWorld', () => {
     expect(state).toMatchObject({ x: 0, z: 0, speed: 20 });
   });
 
+  it('paves a turning circle at each dead end, so trucks and traffic can turn round', () => {
+    // The fixture road ends at x = ±150; each circle is centred 2 m past the end.
+    expect(world.turningCircles.map((circle) => [circle.x, circle.z, circle.radiusMeters])).toEqual([
+      [-152, 0, 11],
+      [152, 0, 11],
+    ]);
+    expect(world.surfaceAt(158, 8)).toBe(ASPHALT);
+    expect(world.surfaceAt(160, 12)).toBe(GRASS);
+  });
+
+  describe('against traffic', () => {
+    // Heading +X, the front circle's centre is `front` meters ahead of the rear axle at x = 0.
+    const touching = front + footprint.radius + 0.9 - 0.2;
+
+    it('carries a truck that runs into the back of a slower vehicle along at its speed', () => {
+      const state = truckAt(0, 0, 90, 20);
+      const car = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: 15, vz: 0 }]);
+
+      const impact = world.resolveCollisions(state, footprint, car);
+
+      expect(impact).toBeCloseTo(5, 6); // How much faster the truck was going.
+      expect(state.speed).toBeCloseTo(15, 6);
+      expect(car.hits).toEqual([[0, impact]]);
+    });
+
+    it('stops a truck that drives head-on into an oncoming vehicle, with both speeds in the impact', () => {
+      const state = truckAt(0, 0, 90, 10);
+      const car = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: -8, vz: 0 }]);
+
+      expect(world.resolveCollisions(state, footprint, car)).toBeCloseTo(18, 6);
+      expect(state.speed).toBeCloseTo(0, 6);
+    });
+
+    it('takes no impact when a vehicle drives into the truck standing still: it only shoves it', () => {
+      const state = truckAt(0, 0, 90, 0);
+      const car = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: -8, vz: 0 }]);
+
+      expect(world.resolveCollisions(state, footprint, car)).toBe(0);
+      expect(state.x).toBeLessThan(0);
+      expect(state.speed).toBe(0);
+      expect(car.hits).toEqual([[0, 0]]);
+    });
+
+    it('leaves vehicles it does not touch alone', () => {
+      const state = truckAt(0, 0, 90, 20);
+      const car = movingObstacles([{ x: touching, z: 3, radius: 0.9, vx: 0, vz: 0 }]);
+
+      expect(world.resolveCollisions(state, footprint, car)).toBe(0);
+      expect(car.hits).toEqual([]);
+      expect(state).toMatchObject({ x: 0, z: 0, speed: 20 });
+    });
+  });
+
   describe('trees', () => {
     const map = MAPS[0]!;
     const forest = new DrivingWorld(map);
@@ -158,6 +248,23 @@ describe('DrivingWorld', () => {
         expect(Math.hypot(tree.x - forest.spawn.x, tree.z - forest.spawn.z)).toBeGreaterThan(19);
         expect(Math.abs(tree.x)).toBeLessThan(map.halfSizeMeters);
         expect(Math.abs(tree.z)).toBeLessThan(map.halfSizeMeters);
+      }
+    });
+
+    it('keep clear of turning circles', () => {
+      expect(forest.turningCircles.length).toBeGreaterThan(0);
+      for (const tree of forest.trees) {
+        for (const circle of forest.turningCircles) {
+          expect(Math.hypot(tree.x - circle.x, tree.z - circle.z)).toBeGreaterThan(circle.radiusMeters + 3);
+        }
+      }
+    });
+
+    it('keep clear of depot yards, so trucks can manoeuvre there', () => {
+      for (const tree of forest.trees) {
+        for (const depot of forest.depots) {
+          expect(rectangleContains(depot.yard, tree.x, tree.z, 5.9)).toBe(false);
+        }
       }
     });
 

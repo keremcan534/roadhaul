@@ -8,6 +8,7 @@ import {
   cargoFixture,
   cityFixture,
   contentFixture,
+  mapFixture,
   missionFixture,
   vehicleFixture,
 } from '../../support/contentFixtures';
@@ -60,6 +61,7 @@ describe('ContentCatalog', () => {
     const content = contentFixture({
       vehicles: [vehicleFixture({ id: 'Bad Id', fuelCapacityLiters: -5, vehicleClass: 'flying' as VehicleClass })],
       cargo: [cargoFixture({ damageSensitivity: 1.5, category: 'gold' as CargoCategory })],
+      missions: [missionFixture({ requiredCompanyLevel: 0 })],
     });
 
     expect(issuePaths(content)).toEqual([
@@ -68,6 +70,7 @@ describe('ContentCatalog', () => {
       'vehicles[0].fuelCapacityLiters',
       'cargo[0].category',
       'cargo[0].damageSensitivity',
+      'missions[0].requiredCompanyLevel',
     ]);
   });
 
@@ -94,10 +97,32 @@ describe('ContentCatalog', () => {
   it('reports missions no vehicle can haul', () => {
     const tooHeavy = missionFixture({ id: 'too_heavy', cargoWeightTons: 40 });
     const wrongClass = missionFixture({ id: 'wrong_class', requiredVehicleClass: 'heavy' });
+    const wrongBody = missionFixture({ id: 'wrong_body', cargoId: 'frozen_peas' });
+    const content = contentFixture({
+      cargo: [cargoFixture(), cargoFixture({ id: 'frozen_peas', temperature: 'frozen', requiredBody: 'refrigerated' })],
+      missions: [tooHeavy, wrongClass, wrongBody],
+    });
 
-    expect(validateGameContent(contentFixture({ missions: [tooHeavy, wrongClass] }))).toEqual([
-      { path: 'missions[0].cargoWeightTons', message: 'no vehicle can carry 40 t' },
-      { path: 'missions[1].cargoWeightTons', message: 'no heavy vehicle can carry 5 t' },
+    expect(validateGameContent(content)).toEqual([
+      { path: 'missions[0].cargoWeightTons', message: 'no vehicle with a body for box cargo can carry 40 t' },
+      { path: 'missions[1].cargoWeightTons', message: 'no heavy vehicle with a body for box cargo can carry 5 t' },
+      { path: 'missions[2].cargoWeightTons', message: 'no vehicle with a body for refrigerated cargo can carry 5 t' },
+    ]);
+  });
+
+  it('reports depots of unknown cities, duplicate depots, and mission cities without a depot', () => {
+    const map = mapFixture();
+    const strayDepot = { ...map.depots[0]!, id: 'stray_depot', cityId: 'atlantis' };
+    const content = contentFixture({
+      cities: [cityFixture(), cityFixture({ id: 'test_destination' }), cityFixture({ id: 'lonely_town' })],
+      missions: [missionFixture({ destinationCityId: 'lonely_town' })],
+      maps: [{ ...map, depots: [...map.depots, strayDepot, { ...map.depots[0]!, cityId: 'test_destination' }] }],
+    });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'missions[0].destinationCityId', message: 'city "lonely_town" has no depot on any map' },
+      { path: 'maps[0].depots[2].cityId', message: 'unknown city "atlantis"' },
+      { path: 'maps[0].depots[3].id', message: 'duplicate depot id "test_origin_depot"' },
     ]);
   });
 
@@ -108,6 +133,10 @@ describe('ContentCatalog', () => {
       cities: [null, cityFixture(), cityFixture({ id: 'test_destination' })],
       missions: [null, missionFixture()],
       maps: [],
+      upgrades: [7],
+      trafficVehicles: ['car'],
+      weather: [null],
+      events: [null],
     } as unknown as Parameters<typeof validateGameContent>[0];
 
     expect(issuePaths(content)).toEqual([
@@ -115,8 +144,13 @@ describe('ContentCatalog', () => {
       'cargo[0]',
       'cities[0]',
       'missions[0]',
+      'upgrades[0]',
+      'trafficVehicles[0]',
+      'weather[0]',
+      'events[0]',
+      'missions[1].originCityId', // No maps, so no depots.
+      'missions[1].destinationCityId',
       'missions[1].cargoId',
-      'missions[1].cargoWeightTons',
     ]);
     expect(() => ContentCatalog.create(content)).toThrow(ValidationError);
   });
@@ -138,6 +172,7 @@ describe('ContentCatalog', () => {
     expect((thrown as ValidationError).issues.map((issue) => issue.path)).toEqual([
       'missions[0].destinationCityId',
       'missions[0].cargoId',
+      'maps[0].depots[1].cityId', // The fixture's destination depot lost its city too.
     ]);
   });
 });

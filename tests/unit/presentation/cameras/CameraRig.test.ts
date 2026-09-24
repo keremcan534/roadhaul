@@ -62,4 +62,53 @@ describe('CameraRig', () => {
     expect(rig.toggleMode()).toBe('chase');
     expect(camera.fov).toBeLessThan(65);
   });
+
+  it('circles the parked truck behind the menus, looking at it, and returns to the driving camera after', () => {
+    const camera = new PerspectiveCamera();
+    const rig = new CameraRig(camera, body);
+    const pose = { x: 30, z: -40, heading: 0.7 };
+    const centre = new Vector3(
+      pose.x + Math.sin(pose.heading) * (body.wheelbaseMeters / 2),
+      0,
+      pose.z + Math.cos(pose.heading) * (body.wheelbaseMeters / 2),
+    );
+    rig.toggleMode(); // Cabin view while driving.
+
+    rig.showcase = true;
+    const angles: number[] = [];
+    for (let i = 0; i < 3; i++) {
+      rig.update(pose, 0, 2);
+      const dx = camera.position.x - centre.x;
+      const dz = camera.position.z - centre.z;
+      expect(Math.hypot(dx, dz)).toBeCloseTo(14, 6);
+      expect(camera.fov).toBe(60);
+      const view = camera.getWorldDirection(new Vector3());
+      expect(view.x * -dx + view.z * -dz).toBeGreaterThan(0); // Looking back at the truck.
+      angles.push(Math.atan2(dx, dz));
+    }
+    expect(new Set(angles.map((angle) => angle.toFixed(3))).size).toBe(3); // It moves round.
+
+    rig.showcase = false;
+    rig.update(pose, 0, 1 / 60);
+    expect(rig.currentMode).toBe('cabin');
+    expect(camera.fov).toBe(72);
+  });
+
+  it('follows a truck swapped in from the same gap behind its tail, and above its roof', () => {
+    const camera = new PerspectiveCamera();
+    const pose = { x: 0, z: 0, heading: 0 };
+    const rig = new CameraRig(camera, body);
+    /** How far behind the back of the body the camera is. */
+    const gapBehindTail = (truck: typeof body): number =>
+      -inTruckFrame(camera, pose).z - (truck.lengthMeters / 2 - truck.wheelbaseMeters / 2);
+    rig.update(pose, 0, 1 / 60);
+    const gap = gapBehindTail(body);
+
+    for (const truck of VEHICLES.slice(1).map((vehicle) => vehicle.body)) {
+      rig.setBody(truck);
+      rig.update(pose, 0, 1 / 60); // Snaps: no swing across the map.
+      expect(gapBehindTail(truck)).toBeCloseTo(gap, 9);
+      expect(camera.position.y).toBeGreaterThan(truck.heightMeters + 1);
+    }
+  });
 });

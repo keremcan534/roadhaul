@@ -1,6 +1,7 @@
 import { approach, clamp, clamp01, degreesToRadians, finiteOr, kmhToMetersPerSecond } from '../../core/math/scalar';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Surface } from '../world/Surface';
+import type { PerformanceFactors } from './performance';
 import type { VehicleInput } from './VehicleInput';
 import type { VehicleRuntimeState } from './VehicleRuntimeState';
 
@@ -53,6 +54,12 @@ export class VehicleDynamics {
   private readonly maxSteerAngle: number;
   private readonly steerSpeed: number;
   private massKg: number;
+  private torqueFactor = 1;
+  private brakeFactor = 1;
+  private gripFactor = 1;
+  private stabilityFactor = 1;
+  private engineRunning = true;
+  private reverseAllowed = true;
 
   constructor(
     readonly definition: VehicleDefinition,
@@ -80,6 +87,31 @@ export class VehicleDynamics {
   /** Loading and unloading change how the truck accelerates, brakes and corners. */
   setCargoMass(cargoMassKg: number): void {
     this.massKg = this.definition.body.massKg + usableCargoMass(cargoMassKg);
+  }
+
+  /**
+   * Engine, brake, tyre and body strength relative to the definition (damage
+   * and upgrades): torque and power, brake force, grip and the cornering
+   * limit are multiplied by these. Unusable values count as 1.
+   */
+  setPerformance(factors: PerformanceFactors): void {
+    this.torqueFactor = Math.max(0, finiteOr(factors.torqueFactor, 1));
+    this.brakeFactor = Math.max(0, finiteOr(factors.brakeFactor, 1));
+    this.gripFactor = Math.max(0, finiteOr(factors.gripFactor, 1));
+    this.stabilityFactor = Math.max(0, finiteOr(factors.stabilityFactor, 1));
+  }
+
+  /** A stalled engine (an empty tank) drives nothing; the truck still rolls, brakes and steers. */
+  setEngineRunning(running: boolean): void {
+    this.engineRunning = running;
+  }
+
+  /**
+   * While false, holding the brake at a standstill keeps the truck stopped
+   * instead of engaging reverse (a truck standing in a loading bay).
+   */
+  setReverseAllowed(allowed: boolean): void {
+    this.reverseAllowed = allowed;
   }
 
   /** A truck at rest in first gear. */
@@ -124,7 +156,7 @@ export class VehicleDynamics {
 
   private updateDirection(state: VehicleRuntimeState, throttle: number, brake: number, dt: number): void {
     const standing = Math.abs(state.speed) < STANDSTILL_SPEED;
-    const wantsReverse = state.gear > 0 && brake > 0 && throttle === 0;
+    const wantsReverse = this.reverseAllowed && state.gear > 0 && brake > 0 && throttle === 0;
     const wantsForward = state.gear < 0 && throttle > 0 && brake === 0;
     if (!standing || !(wantsReverse || wantsForward)) {
       state.directionChangeTimer = 0;
@@ -188,16 +220,16 @@ export class VehicleDynamics {
   ): void {
     const mass = this.massKg;
     const weight = mass * GRAVITY;
-    const grip = this.definition.handling.tireGrip * surface.gripFactor;
+    const grip = this.definition.handling.tireGrip * this.gripFactor * surface.gripFactor;
     const reversing = state.gear < 0;
 
     let driveForce = 0;
     const travelSpeed = reversing ? -state.speed : state.speed;
     const speedLimit = reversing ? this.maxReverseSpeed : this.maxSpeed;
     const limiterHit = state.engineRpm >= this.definition.powertrain.maxRpm;
-    if (drivePedal > 0 && state.shiftTimer <= 0 && !limiterHit && travelSpeed < speedLimit) {
+    if (this.engineRunning && drivePedal > 0 && state.shiftTimer <= 0 && !limiterHit && travelSpeed < speedLimit) {
       const engineAngularSpeed = state.engineRpm / RPM_PER_RADIAN_PER_SECOND;
-      const torque = Math.min(this.maxTorque, this.maxPowerWatts / engineAngularSpeed);
+      const torque = this.torqueFactor * Math.min(this.maxTorque, this.maxPowerWatts / engineAngularSpeed);
       const wheelForce = (drivePedal * torque * this.totalRatio(state.gear) * DRIVETRAIN_EFFICIENCY) / this.radius;
       driveForce = Math.min(wheelForce, grip * weight * DRIVEN_WEIGHT_SHARE);
     }
@@ -206,7 +238,7 @@ export class VehicleDynamics {
     const drag = 0.5 * AIR_DENSITY * this.dragArea * speedMagnitude * speedMagnitude;
     const rolling = surface.rollingResistance * weight;
     const engineBrake = drivePedal === 0 && speedMagnitude > STANDSTILL_SPEED ? ENGINE_BRAKE_DECELERATION * mass : 0;
-    const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons, grip * weight);
+    const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons * this.brakeFactor, grip * weight);
     const resistance = drag + rolling + engineBrake + braking;
 
     const previousSpeed = state.speed;
@@ -224,7 +256,9 @@ export class VehicleDynamics {
     // Understeer: never turn tighter than the tyres hold or the truck stays upright
     // (lateral acceleration v² · tan(angle) / wheelbase ≤ limit).
     const { tireGrip, maxLateralAccelerationG } = this.definition.handling;
-    const lateralLimit = Math.min(tireGrip * surface.gripFactor, maxLateralAccelerationG) * GRAVITY;
+    const lateralLimit =
+      Math.min(tireGrip * this.gripFactor * surface.gripFactor, maxLateralAccelerationG * this.stabilityFactor) *
+      GRAVITY;
     const speedSquared = state.speed * state.speed;
     const limitedAngle =
       speedSquared > 1e-6 ? Math.atan((lateralLimit * this.wheelbase) / speedSquared) : this.maxSteerAngle;

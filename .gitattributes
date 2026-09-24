@@ -1,1 +1,3 @@
 * text=auto eol=lf
+# Windows scripts (the Gradle wrapper) run in cmd, which expects CRLF.
+*.bat text eol=crlf

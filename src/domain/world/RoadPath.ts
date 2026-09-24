@@ -1,4 +1,4 @@
-import type { Point2, RoadDefinition } from '../../data/definitions/MapDefinition';
+import type { Point2, RoadDefinition, RoadKind } from '../../data/definitions/MapDefinition';
 
 /** Target distance between centreline samples, meters. */
 const DEFAULT_SPACING_METERS = 4;
@@ -11,6 +11,7 @@ const DEFAULT_SPACING_METERS = 4;
  */
 export class RoadPath {
   readonly id: string;
+  readonly kind: RoadKind;
   readonly widthMeters: number;
   readonly closed: boolean;
   /** Sample positions, x and z interleaved: [x0, z0, x1, z1, …]. */
@@ -21,6 +22,7 @@ export class RoadPath {
 
   constructor(road: RoadDefinition, spacingMeters = DEFAULT_SPACING_METERS) {
     this.id = road.id;
+    this.kind = road.kind;
     this.widthMeters = road.widthMeters;
     this.closed = road.closed;
     this.points = sampleCatmullRom(road.controlPoints, road.closed, spacingMeters);
@@ -55,20 +57,61 @@ export class RoadPath {
     return this.points[index * 2 + 1] ?? 0;
   }
 
-  /** Shortest distance from (x, z) to the centreline. Allocation-free. */
+  /** Shortest distance from (x, z) to the centreline. Allocation-free, but it visits every sample: see RoadGrid. */
   distanceTo(x: number, z: number): number {
-    const count = this.pointCount;
     let best = Infinity;
     for (let i = 0; i < this.segmentCount; i++) {
-      const next = (i + 1) % count;
-      best = Math.min(best, distanceToSegment(x, z, this.x(i), this.z(i), this.x(next), this.z(next)));
+      best = Math.min(best, this.segmentDistance(i, x, z));
     }
     return best;
+  }
+
+  /** Distance from (x, z) to the straight piece of centreline from sample `segment` to the next. Allocation-free. */
+  segmentDistance(segment: number, x: number, z: number): number {
+    const next = (segment + 1) % this.pointCount;
+    return distanceToSegment(x, z, this.x(segment), this.z(segment), this.x(next), this.z(next));
   }
 
   /** True when (x, z) is on the paved surface. */
   contains(x: number, z: number): boolean {
     return this.distanceTo(x, z) <= this.widthMeters / 2;
+  }
+
+  /** Index of the centreline sample closest to (x, z). Samples are about 4 m apart. Allocation-free. */
+  nearestSampleIndex(x: number, z: number): number {
+    let best = 0;
+    let bestDistanceSquared = Infinity;
+    for (let i = 0; i < this.pointCount; i++) {
+      const dx = this.x(i) - x;
+      const dz = this.z(i) - z;
+      const distanceSquared = dx * dx + dz * dz;
+      if (distanceSquared < bestDistanceSquared) {
+        bestDistanceSquared = distanceSquared;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Signed distance along the road from sample `from` to sample `to`:
+   * positive in the direction of increasing sample index. A closed road
+   * takes whichever way round is shorter.
+   */
+  distanceAlong(from: number, to: number): number {
+    const along = (this.distances[to] ?? 0) - (this.distances[from] ?? 0);
+    if (!this.closed) {
+      return along;
+    }
+    const forward = ((along % this.lengthMeters) + this.lengthMeters) % this.lengthMeters;
+    return forward <= this.lengthMeters / 2 ? forward : forward - this.lengthMeters;
+  }
+
+  /** The sample `steps` samples after `index` (before it for negative steps); a closed road wraps, an open one stops at its ends. */
+  stepIndex(index: number, steps: number): number {
+    const count = this.pointCount;
+    const next = index + steps;
+    return this.closed ? ((next % count) + count) % count : Math.max(0, Math.min(count - 1, next));
   }
 }
 

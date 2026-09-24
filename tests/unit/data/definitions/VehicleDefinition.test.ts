@@ -26,6 +26,19 @@ describe('validateVehicleDefinition', () => {
     expect(issues(broken).map((issue) => issue.path)).toEqual(['vehicle.body', 'vehicle.powertrain']);
   });
 
+  it('requires a whole, non-negative price and a sensible unlock level', () => {
+    const vehicle = vehicleFixture({ purchasePrice: 99.5, requiredCompanyLevel: 0 });
+
+    expect(issues(vehicle).map((issue) => issue.path)).toEqual(['vehicle.purchasePrice', 'vehicle.requiredCompanyLevel']);
+    expect(issues(vehicleFixture({ purchasePrice: 0, requiredCompanyLevel: 3 }))).toEqual([]);
+  });
+
+  it('requires a known body type', () => {
+    const vehicle = vehicleFixture({ bodyType: 'tanker' as VehicleDefinition['bodyType'] });
+
+    expect(issues(vehicle).map((issue) => issue.path)).toEqual(['vehicle.bodyType']);
+  });
+
   it('requires the wheelbase to fit inside the body', () => {
     const fixture = vehicleFixture();
     const vehicle = vehicleFixture({ body: { ...fixture.body, wheelbaseMeters: fixture.body.lengthMeters } });

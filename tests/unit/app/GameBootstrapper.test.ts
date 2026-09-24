@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GameBootstrapper, type BootstrapOptions } from '../../../src/app/GameBootstrapper';
 import { ServiceKeys } from '../../../src/app/ServiceKeys';
+import { MemoryStorage } from '../../../src/core/storage/KeyValueStorage';
 import { ValidationError } from '../../../src/core/validation/Validator';
 import { DEFAULT_GAME_CONFIG } from '../../../src/data/config/GameConfig';
 import { GAME_CONTENT } from '../../../src/data/content';
@@ -13,6 +14,7 @@ function options(overrides: Partial<BootstrapOptions> = {}): BootstrapOptions {
     content: GAME_CONTENT,
     logger: new MemoryLogger(),
     clock: { now: () => 1_000 },
+    storage: new MemoryStorage(),
     ...overrides,
   };
 }
@@ -41,7 +43,7 @@ describe('GameBootstrapper', () => {
     await new GameBootstrapper(options({ logger })).boot();
 
     expect(logger.messages('info')).toContain(
-      'Ready in 0 ms: vehicles 1, cargo types 2, cities 3, missions 2, maps 1.',
+      'Ready in 0 ms: vehicles 3, cargo types 8, cities 3, missions 20, maps 1, upgrades 5, traffic vehicles 4, weather 4, events 3.',
     );
   });
 

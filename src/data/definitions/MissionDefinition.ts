@@ -1,6 +1,8 @@
 import type { Validator } from '../../core/validation/Validator';
 import type { Credits, Fraction } from '../units';
-import { VEHICLE_CLASSES, type VehicleClass } from './VehicleDefinition';
+import { bodyCanHaul } from './BodyType';
+import type { CargoDefinition } from './CargoDefinition';
+import { VEHICLE_CLASSES, type VehicleClass, type VehicleDefinition } from './VehicleDefinition';
 
 /** Spec §40. */
 export const MISSION_DIFFICULTIES = ['easy', 'normal', 'hard', 'expert'] as const;
@@ -28,6 +30,8 @@ export interface MissionDefinition {
   readonly difficulty: MissionDifficulty;
   /** Restricts the mission to one vehicle class. Omit to allow any truck that can carry the weight. */
   readonly requiredVehicleClass?: VehicleClass;
+  /** The company level that unlocks the contract (spec §14). Omit for level 1. */
+  readonly requiredCompanyLevel?: number;
 }
 
 /** Checks the mission's own fields. References to other definitions are checked by the content catalog. */
@@ -44,4 +48,16 @@ export function validateMissionDefinition(mission: MissionDefinition, path: stri
   if (mission.requiredVehicleClass !== undefined) {
     validator.oneOf(mission.requiredVehicleClass, VEHICLE_CLASSES, `${path}.requiredVehicleClass`);
   }
+  if (mission.requiredCompanyLevel !== undefined) {
+    validator.positiveInteger(mission.requiredCompanyLevel, `${path}.requiredCompanyLevel`);
+  }
+}
+
+/** Whether `vehicle` may take `mission`: payload, body for the cargo and, if required, vehicle class (spec §29 step 4). */
+export function vehicleCanHaul(vehicle: VehicleDefinition, mission: MissionDefinition, cargo: CargoDefinition): boolean {
+  return (
+    vehicle.maxPayloadTons >= mission.cargoWeightTons &&
+    bodyCanHaul(vehicle.bodyType, cargo.requiredBody) &&
+    (mission.requiredVehicleClass === undefined || vehicle.vehicleClass === mission.requiredVehicleClass)
+  );
 }

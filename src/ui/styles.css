@@ -2,7 +2,12 @@
   color-scheme: dark;
   --rh-bg: #1b2430;
   --rh-fg: #e8edf2;
+  --rh-muted: #a9b4c0;
   --rh-overlay-bg: rgb(0 0 0 / 55%);
+  --rh-panel-bg: linear-gradient(180deg, rgb(30 38 48 / 94%), rgb(14 18 24 / 94%));
+  --rh-accent: #f2b233;
+  --rh-accent-dark: #d9901b;
+  --rh-good: #5fd38a;
   --rh-danger: #ff8a7a;
 }
 
@@ -33,7 +38,8 @@ body {
 
 .perf-overlay {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  /* Below the pause button. */
+  top: calc(env(safe-area-inset-top, 0px) + 68px);
   left: calc(env(safe-area-inset-left, 0px) + 8px);
   padding: 4px 8px;
   border-radius: 4px;
@@ -68,8 +74,6 @@ body {
 .touch-controls {
   --rh-control-bg: rgb(16 22 30 / 55%);
   --rh-control-line: rgb(255 255 255 / 80%);
-  --rh-gas: #3f8f5a;
-  --rh-brake: #b8483e;
   --rh-wheel-size: clamp(120px, 40vmin, 200px);
   --rh-pedal-width: clamp(58px, 12vmin, 84px);
   position: fixed;
@@ -91,34 +95,22 @@ body {
   position: absolute;
   left: calc(env(safe-area-inset-left, 0px) + 20px);
   bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  box-sizing: border-box;
   width: var(--rh-wheel-size);
   height: var(--rh-wheel-size);
-  border: calc(var(--rh-wheel-size) * 0.09) solid var(--rh-control-line);
   border-radius: 50%;
-  background:
-    /* Hub, horizontal spokes and the lower spoke. */
-    radial-gradient(circle, var(--rh-control-line) 0 14%, transparent 15%),
-    linear-gradient(var(--rh-control-line), var(--rh-control-line)) center / 100% 9% no-repeat,
-    linear-gradient(var(--rh-control-line), var(--rh-control-line)) 50% 100% / 9% 50% no-repeat,
-    var(--rh-control-bg);
+  opacity: 0.9;
+  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 40%));
   will-change: transform;
 }
 
-/* Top marker, so the wheel's rotation is visible at a glance. */
-.steering-wheel::after {
-  content: '';
-  position: absolute;
-  top: calc(var(--rh-wheel-size) * -0.09);
-  left: 50%;
-  width: 10%;
-  height: calc(var(--rh-wheel-size) * 0.09);
-  transform: translateX(-50%);
-  background: #f2b233;
+.steering-wheel__art {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .steering-wheel.is-held {
-  --rh-control-line: #ffffff;
+  opacity: 1;
 }
 
 .pedals {
@@ -130,36 +122,53 @@ body {
   gap: 14px;
 }
 
+/* Metal pedal plates with rubber ribs, ringed in green (gas) or red (brake). */
 .pedal {
+  --rh-pedal-accent: rgb(76 214 120 / 85%);
   width: var(--rh-pedal-width);
   height: calc(var(--rh-pedal-width) * 1.7);
-  border: 2px solid rgb(255 255 255 / 45%);
+  border: 0;
   border-radius: 14px;
-  background: repeating-linear-gradient(180deg, rgb(255 255 255 / 18%) 0 3px, transparent 3px 12px), var(--rh-gas);
-  transition: transform 60ms ease-out, filter 60ms ease-out;
+  background:
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 12%) 0 3px, transparent 3px 11px) 50% 50% / 76% 84% no-repeat,
+    linear-gradient(180deg, #555c66, #2a2e34 55%, #1c1f23);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 28%),
+    inset 0 -3px 0 rgb(0 0 0 / 35%),
+    0 0 0 2px var(--rh-pedal-accent),
+    0 6px 12px rgb(0 0 0 / 45%);
+  opacity: 0.92;
+  transition: transform 60ms ease-out, box-shadow 60ms ease-out;
 }
 
 .pedal--brake {
+  --rh-pedal-accent: rgb(238 86 70 / 85%);
   width: calc(var(--rh-pedal-width) * 1.2);
   height: calc(var(--rh-pedal-width) * 1.2);
-  background: repeating-linear-gradient(90deg, rgb(255 255 255 / 18%) 0 3px, transparent 3px 12px), var(--rh-brake);
 }
 
 .pedal.is-pressed {
-  transform: scale(0.93);
-  filter: brightness(1.25);
+  transform: translateY(2px) scale(0.94);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 20%),
+    inset 0 -2px 0 rgb(0 0 0 / 35%),
+    0 0 0 2px var(--rh-pedal-accent),
+    0 0 16px var(--rh-pedal-accent);
 }
 
 .dashboard {
   position: absolute;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 12px;
-  background: var(--rh-control-bg);
+  align-items: center;
+  gap: 10px;
+  padding: 4px 14px 6px 10px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgb(28 34 42 / 84%), rgb(10 13 17 / 84%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 14%),
+    0 6px 16px rgb(0 0 0 / 35%);
   transform: translateX(-50%);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -172,24 +181,121 @@ body {
   }
 }
 
+.dashboard__dial {
+  position: relative;
+  width: 104px;
+  height: 58px;
+}
+
+.dashboard__arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard__track,
+.dashboard__fill {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.dashboard__track {
+  stroke: rgb(255 255 255 / 14%);
+}
+
+.dashboard__fill {
+  stroke: url(#rh-dial);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 150ms linear;
+}
+
 .dashboard__speed {
-  min-width: 3ch;
-  font-size: 28px;
-  font-weight: 700;
-  text-align: right;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 60%);
 }
 
 .dashboard__unit {
-  font-size: 12px;
-  opacity: 0.8;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  opacity: 0.75;
 }
 
 .dashboard__gear {
-  margin-left: 8px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: rgb(255 255 255 / 16%);
-  font-weight: 700;
+  min-width: 2.2ch;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f2b233, #d9901b);
+  color: #1b1e22;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Fuel and damage: two small bars beside the gear badge. */
+.dashboard__gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard__gauge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: rgb(255 255 255 / 75%);
+}
+
+.dashboard__gauge-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.dashboard__gauge-bar {
+  width: 46px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 15%);
+}
+
+.dashboard__gauge-fill {
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms linear;
+}
+
+.dashboard__gauge--fuel .dashboard__gauge-fill {
+  background: #5fd38a;
+}
+
+.dashboard__gauge--damage .dashboard__gauge-fill {
+  background: #f2b233;
+}
+
+.dashboard__gauge--fuel.is-low {
+  color: var(--rh-danger);
+  animation: rh-flash 0.8s ease-in-out infinite;
+}
+
+.dashboard__gauge--fuel.is-low .dashboard__gauge-fill,
+.dashboard__gauge--damage.is-high .dashboard__gauge-fill {
+  background: var(--rh-danger);
 }
 
 .camera-button {
@@ -198,9 +304,10 @@ body {
   right: calc(env(safe-area-inset-right, 0px) + 12px);
   width: 48px;
   height: 48px;
-  border: 2px solid var(--rh-control-line);
+  border: 2px solid rgb(255 255 255 / 70%);
   border-radius: 50%;
-  background: var(--rh-control-bg);
+  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
 }
 
 /* A small camera drawn in CSS: body and lens. */
@@ -226,3 +333,1490 @@ body {
   border-radius: 50%;
   background: var(--rh-control-bg);
 }
+
+/* The horn, under the camera button: a round button with a horn's bell drawn in CSS. */
+.horn-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  width: 48px;
+  height: 48px;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  touch-action: none;
+}
+
+.horn-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 18px;
+  background: var(--rh-control-line);
+  clip-path: polygon(0 38%, 40% 38%, 100% 0, 100% 100%, 40% 62%, 0 62%);
+  transform: translate(-50%, -50%);
+}
+
+.horn-button.is-pressed {
+  border-color: var(--rh-accent);
+  transform: scale(0.94);
+}
+
+/* Upright phones: the mission HUD takes the width under the corner buttons, so the horn joins their row. */
+@media (orientation: portrait) {
+  .horn-button {
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    right: calc(env(safe-area-inset-right, 0px) + 70px);
+  }
+}
+
+/* ---- Shared screen pieces: overlays, panels, buttons, badges ---- */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 12px) calc(env(safe-area-inset-right, 0px) + 16px)
+    calc(env(safe-area-inset-bottom, 0px) + 12px) calc(env(safe-area-inset-left, 0px) + 16px);
+  box-sizing: border-box;
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(100%, 380px);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 18px 20px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: var(--rh-panel-bg);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 10%),
+    0 16px 40px rgb(0 0 0 / 45%);
+}
+
+.panel__title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.button {
+  min-height: 44px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 80ms ease-out, filter 80ms ease-out;
+}
+
+.button:active {
+  transform: scale(0.97);
+  filter: brightness(1.1);
+}
+
+.button[hidden] {
+  display: none;
+}
+
+.button--primary {
+  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
+  color: #1b1e22;
+  box-shadow: 0 4px 12px rgb(242 178 51 / 30%);
+}
+
+.button--secondary {
+  background: linear-gradient(180deg, rgb(70 80 94 / 95%), rgb(40 47 56 / 95%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%);
+}
+
+.button--ghost {
+  background: rgb(0 0 0 / 25%);
+  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 35%);
+}
+
+.button--danger {
+  background: linear-gradient(180deg, #d9543f, #a8392a);
+}
+
+.badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #10151b;
+}
+
+.badge--easy {
+  background: #7fdc9b;
+}
+
+.badge--normal {
+  background: #8cc4f2;
+}
+
+.badge--hard {
+  background: #f5b56a;
+}
+
+.badge--expert {
+  background: #f08a7c;
+}
+
+/* ---- Main menu (src/ui/menus/MainMenu.ts) ---- */
+
+.main-menu {
+  background:
+    radial-gradient(ellipse at 50% 45%, rgb(10 14 20 / 10%), rgb(10 14 20 / 70%) 75%),
+    linear-gradient(180deg, rgb(10 14 20 / 20%), rgb(10 14 20 / 55%));
+}
+
+.main-menu__logo {
+  margin: 0;
+  font-size: clamp(40px, 11vmin, 76px);
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-shadow: 0 4px 18px rgb(0 0 0 / 55%);
+}
+
+.main-menu__logo-accent {
+  color: var(--rh-accent);
+}
+
+.main-menu__tagline {
+  margin: 0 0 8px;
+  color: var(--rh-fg);
+  font-size: clamp(13px, 3.4vmin, 17px);
+  text-align: center;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.main-menu__play {
+  min-width: 200px;
+  min-height: 52px;
+  font-size: 20px;
+}
+
+.main-menu__message {
+  max-width: 420px;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 45%);
+  color: var(--rh-fg);
+  font-size: 14px;
+  text-align: center;
+}
+
+.main-menu__message[hidden] {
+  display: none;
+}
+
+.main-menu__language {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+
+.main-menu__small {
+  display: flex;
+  gap: 10px;
+}
+
+/* ---- Settings (src/ui/menus/SettingsDialog.ts) ---- */
+
+.settings {
+  /* A dialog over the main menu, which is a screen too. */
+  z-index: 12;
+  background: rgb(8 11 15 / 70%);
+}
+
+.settings__label {
+  margin: 4px 0 0;
+  font-size: 15px;
+}
+
+.settings__choices {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+/* Two choices (sound on, off) share the row the four graphics choices fill. */
+.settings__choices--pair {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.settings__choice {
+  min-height: 40px;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+.settings__note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+/* ---- Company HQ and job board (src/ui/hq/CompanyHq.ts) ---- */
+
+.hq {
+  display: grid;
+  grid-template-columns: minmax(210px, 260px) 1fr;
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 12px;
+  background: linear-gradient(180deg, rgb(12 16 22 / 88%), rgb(12 16 22 / 94%));
+}
+
+.hq[hidden] {
+  display: none;
+}
+
+.hq__side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hq__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.hq__company-name {
+  margin: 0;
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hq__level {
+  margin: 0;
+  color: var(--rh-accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hq__xp {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hq__figures {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.hq__credits {
+  color: var(--rh-accent);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hq__reputation {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hq__card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rh-muted);
+}
+
+.hq__gauge {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 2px 8px;
+  font-size: 13px;
+}
+
+.hq__gauge-title {
+  font-weight: 700;
+}
+
+.hq__gauge-value {
+  justify-self: end;
+  color: var(--rh-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hq__gauge .meter {
+  grid-column: 1 / -1;
+}
+
+.hq__service {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.hq__board-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.hq__tools {
+  display: flex;
+  gap: 8px;
+}
+
+.hq__tools .button {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.hq__board {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+/* Upright phones: one column; the whole HQ scrolls. */
+@media (orientation: portrait) {
+  .hq {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    overflow-y: auto;
+  }
+
+  /* Full height, no shrinking: otherwise the board would cover the side column's buttons. */
+  .hq__side,
+  .hq__board {
+    flex-shrink: 0;
+  }
+
+  .hq__side,
+  .hq__list {
+    overflow: visible;
+  }
+}
+
+/* A thin bar: XP, fuel, damage. */
+.meter {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.meter__fill {
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 250ms ease-out;
+}
+
+.meter--xp .meter__fill {
+  background: var(--rh-accent);
+}
+
+.meter--fuel .meter__fill {
+  background: var(--rh-good);
+}
+
+.meter--fuel.is-low .meter__fill {
+  background: var(--rh-danger);
+}
+
+.meter--damage .meter__fill {
+  background: #f0a04b;
+}
+
+.hq__list {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
+}
+
+.hq__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.hq__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgb(0 0 0 / 30%);
+}
+
+.hq__tab {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--rh-muted);
+  font-size: 14px;
+}
+
+.hq__tab.is-selected {
+  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
+  color: #1b1e22;
+}
+
+.hq__truck-name {
+  margin: 0 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hq__empty {
+  color: var(--rh-muted);
+}
+
+.job-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.job-card__top,
+.job-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.job-card__route {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.job-card__cargo {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+}
+
+.job-card__facts {
+  display: flex;
+  gap: 16px;
+  margin: 2px 0 4px;
+  font-size: 13px;
+}
+
+.job-card__fact {
+  display: flex;
+  gap: 5px;
+}
+
+.job-card__fact dt {
+  color: var(--rh-muted);
+}
+
+.job-card__fact dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.job-card__pay {
+  color: var(--rh-accent);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.job-card__accept {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+.job-card.is-locked {
+  opacity: 0.55;
+}
+
+.job-card__locked {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* ---- Garage and upgrade shop cards (src/ui/hq/garageCards.ts, upgradeCards.ts) ---- */
+
+.truck-card,
+.upgrade-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.truck-card.is-active {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    inset 0 0 0 2px var(--rh-accent);
+}
+
+.truck-card.is-locked {
+  opacity: 0.55;
+}
+
+.truck-card__top,
+.truck-card__bottom,
+.upgrade-card__top,
+.upgrade-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.truck-card__bottom,
+.upgrade-card__bottom {
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.truck-card__title,
+.upgrade-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.truck-card__body {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+}
+
+.truck-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 2px 0 4px;
+  font-size: 13px;
+}
+
+.truck-card__fact {
+  display: flex;
+  gap: 5px;
+}
+
+.truck-card__fact dt {
+  color: var(--rh-muted);
+}
+
+.truck-card__fact dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.truck-card__price,
+.upgrade-card__price {
+  color: var(--rh-accent);
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.truck-card__status,
+.upgrade-card__status {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.truck-card__action,
+.upgrade-card__action {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+.upgrade-card__effect {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.upgrade-card__next {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.upgrade-card__pips {
+  display: flex;
+  gap: 4px;
+}
+
+.pip {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 15%);
+}
+
+.pip.is-on {
+  background: var(--rh-accent);
+  box-shadow: 0 0 6px rgb(242 178 51 / 60%);
+}
+
+.badge--light {
+  background: #f0a877;
+}
+
+.badge--medium {
+  background: #8cc4f2;
+}
+
+.badge--heavy {
+  background: #f08a7c;
+}
+
+/* ---- Tutorial (src/ui/hud/TutorialHint.ts): one short hint, and a glow on the control it is about ---- */
+
+/* Over the road it floats under the mission HUD, clear of the pedals and the wheel. */
+.tutorial-hint {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 112px);
+  left: 50%;
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(92vw, 540px);
+  padding: 8px 10px 8px 16px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(62 52 28 / 96%), rgb(34 30 22 / 96%));
+  box-shadow:
+    0 6px 24px rgb(0 0 0 / 45%),
+    inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+  transform: translateX(-50%);
+}
+
+.tutorial-hint[hidden] {
+  display: none;
+}
+
+/* Upright phones: the mission HUD is lower and taller there (like the rest area counter). */
+@media (orientation: portrait) {
+  .tutorial-hint {
+    top: calc(env(safe-area-inset-top, 0px) + 178px);
+  }
+}
+
+/* In the HQ it sits above the list, in the flow, so it never covers a button. */
+.tutorial-hint--inline {
+  position: static;
+  width: auto;
+  max-width: none;
+  box-shadow: inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+  transform: none;
+}
+
+.hq__hint:empty {
+  display: none;
+}
+
+.tutorial-hint__text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.tutorial-hint__skip {
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+@keyframes tutorial-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(242 178 51 / 0%);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgb(242 178 51 / 60%);
+  }
+}
+
+html[data-tutorial-step='takeContract'] .hq__tab[data-tab='jobs']:not(.is-selected),
+html[data-tutorial-step='takeContract'] .hq__list[data-tab='jobs'] .job-card:first-child .job-card__accept,
+html[data-tutorial-step='buyUpgrade'] .hq__tab[data-tab='upgrades']:not(.is-selected),
+html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-card__action:not(:disabled) {
+  animation: tutorial-glow 1.4s ease-in-out infinite;
+}
+
+/* ---- Special events (src/ui/hq/eventCards.ts) and their marks on the job board ---- */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.event-card.is-running {
+  background: linear-gradient(180deg, rgb(58 50 30 / 96%), rgb(30 30 34 / 96%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    inset 0 0 0 2px rgb(242 178 51 / 55%);
+}
+
+.event-card.is-completed {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    inset 0 0 0 2px rgb(95 211 138 / 55%);
+}
+
+.event-card.is-upcoming,
+.event-card.is-over,
+.event-card.is-locked {
+  opacity: 0.6;
+}
+
+.event-card__top,
+.event-card__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-card__bottom {
+  margin-top: 2px;
+}
+
+.event-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.event-card__when {
+  flex: none;
+  color: var(--rh-accent);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.event-card__description,
+.event-card__terms {
+  margin: 0;
+  font-size: 13px;
+}
+
+.event-card__description {
+  color: var(--rh-muted);
+}
+
+.event-card__terms {
+  font-weight: 600;
+}
+
+.event-card__bonus {
+  margin: 0;
+  color: var(--rh-good);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.event-card__objective {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.meter--event .meter__fill {
+  background: var(--rh-accent);
+}
+
+.event-card__reward {
+  color: var(--rh-accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.event-card__status {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.event-card.is-completed .event-card__status {
+  color: var(--rh-good);
+}
+
+.job-card__events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.job-card__event {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(242 178 51 / 18%);
+  color: var(--rh-accent);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* ---- Rest area counter (src/ui/hud/RestAreaPanel.ts): under the mission HUD, clear of the truck ---- */
+
+.rest-area-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 92px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(92vw, 520px);
+  padding: 12px 16px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: var(--rh-panel-bg);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 40%);
+  transform: translateX(-50%);
+}
+
+.rest-area-panel[hidden] {
+  display: none;
+}
+
+.rest-area-panel__title {
+  margin: 0;
+  color: var(--rh-accent);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rest-area-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.rest-area-panel__action {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 15px;
+}
+
+/* Upright phones: below the mission HUD, above the truck. */
+@media (orientation: portrait) {
+  .rest-area-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 170px);
+  }
+}
+
+/* ---- Mission HUD (src/ui/hud/MissionHud.ts) ---- */
+
+.mission-hud {
+  --rh-target: #ffa726;
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(440px, calc(100vw - 2 * (env(safe-area-inset-left, 0px) + 76px)));
+  padding: 6px 12px 6px 8px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgb(28 34 42 / 86%), rgb(10 13 17 / 86%));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 14%),
+    inset 3px 0 0 var(--rh-target),
+    0 6px 16px rgb(0 0 0 / 35%);
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.mission-hud[hidden] {
+  display: none;
+}
+
+.mission-hud.is-delivery {
+  --rh-target: #3ddc84;
+}
+
+.mission-hud__direction {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+}
+
+.mission-hud__arrow {
+  width: 34px;
+  height: 34px;
+}
+
+.mission-hud__arrow circle {
+  fill: rgb(255 255 255 / 8%);
+  stroke: rgb(255 255 255 / 25%);
+  stroke-width: 1.5;
+}
+
+.mission-hud__arrow path {
+  fill: var(--rh-target);
+}
+
+.mission-hud__distance {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mission-hud__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mission-hud__objective,
+.mission-hud__hint {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mission-hud__objective {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mission-hud__hint {
+  color: var(--rh-target);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+/* The next turn: an arrow bent right (mirrored for left, a U to turn round) and when to take it. */
+.mission-hud__turn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mission-hud__turn[hidden] {
+  display: none;
+}
+
+.mission-hud__turn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mission-hud__turn-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: var(--rh-target);
+}
+
+.mission-hud__turn[data-turn='left'] .mission-hud__turn-icon {
+  transform: scaleX(-1);
+}
+
+.mission-hud__turn .mission-hud__turn-back,
+.mission-hud__turn[data-turn='turnAround'] .mission-hud__turn-bend {
+  display: none;
+}
+
+.mission-hud__turn[data-turn='turnAround'] .mission-hud__turn-back {
+  display: inline;
+}
+
+.mission-hud__hint[hidden],
+.mission-hud__progress[hidden],
+.mission-hud__timer[hidden],
+.mission-hud__cargo[hidden] {
+  display: none;
+}
+
+.mission-hud__progress {
+  width: 100%;
+  min-width: 60px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 15%);
+}
+
+.mission-hud__progress-fill {
+  height: 100%;
+  background: var(--rh-target);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.mission-hud__stats {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mission-hud__timer {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.mission-hud__timer.is-late {
+  color: var(--rh-danger);
+}
+
+.mission-hud__eta {
+  color: rgb(255 255 255 / 72%);
+  font-size: 12px;
+}
+
+/* Arriving at this pace would be late. */
+.mission-hud__eta.is-late {
+  color: var(--rh-danger);
+}
+
+.mission-hud.is-damaged .mission-hud__cargo {
+  color: var(--rh-danger);
+  animation: rh-flash 0.3s ease-in-out 4;
+}
+
+@keyframes rh-flash {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Upright phones: the HUD drops below the corner buttons and takes the full width. */
+@media (orientation: portrait) {
+  .mission-hud {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 480px;
+  }
+
+  /* Narrow: wrap instead of cutting words off. */
+  .mission-hud__objective,
+  .mission-hud__hint,
+  .mission-hud__turn {
+    white-space: normal;
+  }
+}
+
+/* Stacking: the driving controls, then the HUD and pause button, then full-screen menus. */
+.touch-controls {
+  z-index: 1;
+}
+
+.mission-hud,
+.pause-button {
+  z-index: 2;
+}
+
+.screen {
+  z-index: 10;
+}
+
+.perf-overlay {
+  z-index: 20;
+}
+
+/* ---- Pause button and menu (src/ui/menus/PauseMenu.ts) ---- */
+
+.pause-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  padding: 0;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  touch-action: manipulation;
+}
+
+/* Two bars. */
+.pause-button::before,
+.pause-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 16px;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 85%);
+  transform: translateY(-50%);
+}
+
+.pause-button::before {
+  left: calc(50% - 7px);
+}
+
+.pause-button::after {
+  left: calc(50% + 2px);
+}
+
+.pause-menu,
+.result-dialog {
+  background: rgb(8 11 15 / 55%);
+}
+
+.pause-menu__panel {
+  width: min(100%, 320px);
+}
+
+/* ---- New company (src/ui/menus/NewCompanyDialog.ts) ---- */
+
+.new-company {
+  /* A dialog over the main menu, which is a screen too. */
+  z-index: 12;
+  background: rgb(8 11 15 / 70%);
+}
+
+.new-company__label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.new-company__input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 2px solid rgb(255 255 255 / 25%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 35%);
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 17px;
+  /* The page blocks selection for gameplay; typing needs it back. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.new-company__input:focus {
+  border-color: var(--rh-accent);
+  outline: none;
+}
+
+.new-company__error {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--rh-danger);
+  font-size: 13px;
+}
+
+.new-company__warning {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.new-company__warning[hidden] {
+  display: none;
+}
+
+.new-company__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.new-company__buttons .button {
+  flex: 1;
+}
+
+/* ---- Notices (src/ui/hud/Toasts.ts) ---- */
+
+.toasts {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 84px);
+  left: 50%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(90vw, 420px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+@media (orientation: portrait) {
+  .toasts {
+    top: calc(env(safe-area-inset-top, 0px) + 150px);
+  }
+}
+
+/* In the HQ, purchases are confirmed at the bottom, clear of the cards being tapped. */
+html[data-game-state='companyHq'] .toasts {
+  top: auto;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+.toast {
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgb(14 18 24 / 90%);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  transition: opacity 0.5s ease-in;
+}
+
+.toast--success {
+  box-shadow: inset 0 0 0 2px var(--rh-good), 0 6px 16px rgb(0 0 0 / 35%);
+}
+
+.toast--warning {
+  box-shadow: inset 0 0 0 2px var(--rh-danger), 0 6px 16px rgb(0 0 0 / 35%);
+}
+
+.toast.is-leaving {
+  opacity: 0;
+}
+
+/* ---- Contract result (src/ui/menus/ResultDialog.ts) ---- */
+
+.result-dialog__panel.is-success .panel__title {
+  color: var(--rh-good);
+}
+
+.result-dialog__panel.is-failure .panel__title {
+  color: var(--rh-danger);
+}
+
+.result-dialog__mission,
+.result-dialog__facts,
+.result-dialog__reason {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.result-dialog__reason {
+  color: var(--rh-fg);
+  font-size: 16px;
+}
+
+.result-dialog__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-dialog__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.result-dialog__line dt,
+.result-dialog__line dd {
+  margin: 0;
+}
+
+.result-dialog__line.is-bonus dd {
+  color: var(--rh-good);
+}
+
+.result-dialog__line.is-penalty dd {
+  color: var(--rh-danger);
+}
+
+.result-dialog__line.is-total {
+  padding-top: 8px;
+  border-top: 1px solid rgb(255 255 255 / 15%);
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.result-dialog__line.is-total dd {
+  color: var(--rh-accent);
+}
+
+.result-dialog__line.is-progress dd {
+  color: #8cc4f2;
+}
+
+.result-dialog__level-up {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgb(242 178 51 / 25%), rgb(242 178 51 / 8%));
+  color: var(--rh-accent);
+  font-weight: 800;
+  text-align: center;
+}
+
+.result-dialog__event {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgb(242 178 51 / 10%);
+}
+
+.result-dialog__event.is-completed {
+  background: linear-gradient(90deg, rgb(95 211 138 / 25%), rgb(95 211 138 / 8%));
+}
+
+.result-dialog__event-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-weight: 700;
+}
+
+.result-dialog__event-bonus {
+  color: var(--rh-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.result-dialog__event-progress {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.result-dialog__event.is-completed .result-dialog__event-progress {
+  color: var(--rh-good);
+  font-weight: 800;
+}
+
+/* Short landscape phones: tighter panels. */
+@media (max-height: 420px) {
+  .panel {
+    gap: 7px;
+    padding: 12px 16px;
+  }
+
+  .panel__title {
+    font-size: 19px;
+  }
+
+  .button {
+    min-height: 40px;
+    padding: 8px 14px;
+    font-size: 15px;
+  }
+
+  .result-dialog__lines {
+    gap: 3px;
+  }
+}
+

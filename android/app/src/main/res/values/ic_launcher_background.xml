@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The game's amber (the accent in src/ui/styles.css), under the adaptive icon's truck (scripts/androidIcons.mjs). -->
+    <color name="ic_launcher_background">#F2B233</color>
+    <!-- The game's background, behind the icon while the app starts. -->
+    <color name="splash_background">#1B2430</color>
+</resources>

@@ -5,11 +5,21 @@ const STEER_RIGHT = new Set(['ArrowRight', 'KeyD']);
 const THROTTLE = new Set(['ArrowUp', 'KeyW']);
 const BRAKE = new Set(['ArrowDown', 'KeyS', 'Space']);
 const CAMERA_TOGGLE = 'KeyC';
+const PAUSE = new Set(['Escape', 'KeyP']);
+const HORN = 'KeyH';
+
+export interface KeyboardActions {
+  readonly onToggleCamera: () => void;
+  readonly onPause: () => void;
+  /** H held down (true) or let go (false). */
+  readonly onHorn: (pressed: boolean) => void;
+}
 
 /**
- * Desktop driving controls: arrows or WASD, Space brakes, C switches camera.
- * Uses physical key codes, so it works the same on Turkish Q/F and other
- * layouts. The truck's steering rate smooths the digital steering.
+ * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
+ * H sounds the horn, Escape or P pauses. Uses physical key codes, so it
+ * works the same on Turkish Q/F and other layouts. The truck's steering rate
+ * smooths the digital steering.
  */
 export class KeyboardInput {
   /** Current driver input from the keyboard; read it every fixed step. */
@@ -18,7 +28,7 @@ export class KeyboardInput {
 
   constructor(
     private readonly target: Window,
-    private readonly onToggleCamera: () => void,
+    private readonly actions: KeyboardActions,
   ) {
     target.addEventListener('keydown', this.onKeyDown);
     target.addEventListener('keyup', this.onKeyUp);
@@ -32,9 +42,22 @@ export class KeyboardInput {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.code === CAMERA_TOGGLE) {
+    if (isTyping(event)) {
+      return; // Letters typed into a form (the company name) are not driving.
+    }
+    if (event.code === CAMERA_TOGGLE || PAUSE.has(event.code)) {
       if (!event.repeat) {
-        this.onToggleCamera();
+        if (event.code === CAMERA_TOGGLE) {
+          this.actions.onToggleCamera();
+        } else {
+          this.actions.onPause();
+        }
+      }
+      return;
+    }
+    if (event.code === HORN) {
+      if (!event.repeat) {
+        this.actions.onHorn(true);
       }
       return;
     }
@@ -46,6 +69,9 @@ export class KeyboardInput {
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
+    if (event.code === HORN) {
+      this.actions.onHorn(false);
+    }
     if (this.pressed.delete(event.code)) {
       this.refresh();
     }
@@ -55,6 +81,7 @@ export class KeyboardInput {
   private readonly onBlur = (): void => {
     this.pressed.clear();
     this.refresh();
+    this.actions.onHorn(false);
   };
 
   private refresh(): void {
@@ -67,4 +94,10 @@ export class KeyboardInput {
 
 function isDrivingKey(code: string): boolean {
   return STEER_LEFT.has(code) || STEER_RIGHT.has(code) || THROTTLE.has(code) || BRAKE.has(code);
+}
+
+/** True while the player types into a text field. */
+export function isTyping(event: Event): boolean {
+  const target = event.target as { tagName?: string; isContentEditable?: boolean } | null;
+  return target !== null && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable === true);
 }

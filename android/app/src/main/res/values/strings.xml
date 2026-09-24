@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RoadHaul</string>
+    <string name="title_activity_main">RoadHaul</string>
+    <string name="package_name">io.github.keremcan534.roadhaul</string>
+    <string name="custom_url_scheme">io.github.keremcan534.roadhaul</string>
+</resources>

@@ -2,9 +2,20 @@ import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
 import { validateCityDefinition, type CityDefinition } from './definitions/CityDefinition';
+import { validateEventDefinition, type EventDefinition } from './definitions/EventDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
-import { validateMissionDefinition, type MissionDefinition } from './definitions/MissionDefinition';
+import {
+  validateMissionDefinition,
+  vehicleCanHaul,
+  type MissionDefinition,
+} from './definitions/MissionDefinition';
+import {
+  validateTrafficVehicleDefinition,
+  type TrafficVehicleDefinition,
+} from './definitions/TrafficVehicleDefinition';
+import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
+import { validateWeatherDefinition, type WeatherDefinition } from './definitions/WeatherDefinition';
 import type { GameContent } from './GameContent';
 
 /** Read-only lookup of one kind of definition by id. */
@@ -52,6 +63,10 @@ export class ContentCatalog {
   readonly cities: DefinitionTable<CityDefinition>;
   readonly missions: DefinitionTable<MissionDefinition>;
   readonly maps: DefinitionTable<MapDefinition>;
+  readonly upgrades: DefinitionTable<UpgradeDefinition>;
+  readonly trafficVehicles: DefinitionTable<TrafficVehicleDefinition>;
+  readonly weather: DefinitionTable<WeatherDefinition>;
+  readonly events: DefinitionTable<EventDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -59,6 +74,10 @@ export class ContentCatalog {
     this.cities = new DefinitionTable('city', content.cities);
     this.missions = new DefinitionTable('mission', content.missions);
     this.maps = new DefinitionTable('map', content.maps);
+    this.upgrades = new DefinitionTable('upgrade', content.upgrades);
+    this.trafficVehicles = new DefinitionTable('traffic vehicle', content.trafficVehicles);
+    this.weather = new DefinitionTable('weather', content.weather);
+    this.events = new DefinitionTable('event', content.events);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -79,7 +98,12 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'cities', content.cities, validateCityDefinition);
   validateTable(validator, 'missions', content.missions, validateMissionDefinition);
   validateTable(validator, 'maps', content.maps, validateMapDefinition);
+  validateTable(validator, 'upgrades', content.upgrades, validateUpgradeDefinition);
+  validateTable(validator, 'trafficVehicles', content.trafficVehicles, validateTrafficVehicleDefinition);
+  validateTable(validator, 'weather', content.weather, validateWeatherDefinition);
+  validateTable(validator, 'events', content.events, validateEventDefinition);
   validateMissionReferences(validator, content);
+  validateDepotReferences(validator, content);
   return validator.issues;
 }
 
@@ -87,7 +111,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
  * Content is typed, but future JSON packs are not: every check below must
  * survive null or primitive entries and report them instead of throwing.
  */
-function isObject(value: unknown): value is object {
+function isObject<T>(value: T): value is T & object {
   return typeof value === 'object' && value !== null;
 }
 
@@ -113,48 +137,70 @@ function validateTable<T extends { readonly id: string }>(
 }
 
 function validateMissionReferences(validator: Validator, content: GameContent): void {
-  if (![content.missions, content.cities, content.cargo, content.vehicles].every(Array.isArray)) {
+  if (![content.missions, content.cities, content.cargo, content.vehicles, content.maps].every(Array.isArray)) {
     return; // Already reported by validateTable.
   }
   // Non-object entries were reported by validateTable; skip them here.
   const cityIds = new Set(content.cities.filter(isObject).map((city) => city.id));
-  const cargoIds = new Set(content.cargo.filter(isObject).map((cargo) => cargo.id));
+  const cargoById = new Map(content.cargo.filter(isObject).map((cargo) => [cargo.id, cargo]));
   const vehicles = content.vehicles.filter(isObject);
+  const citiesWithDepots = new Set(
+    content.maps
+      .filter(isObject)
+      .flatMap((map) => (Array.isArray(map.depots) ? map.depots.filter(isObject).map((depot) => depot.cityId) : [])),
+  );
 
   content.missions.forEach((mission, index) => {
     if (!isObject(mission)) {
       return;
     }
     const path = `missions[${index}]`;
-    validator.check(
-      cityIds.has(mission.originCityId),
-      `${path}.originCityId`,
-      `unknown city "${mission.originCityId}"`,
-    );
-    validator.check(
-      cityIds.has(mission.destinationCityId),
-      `${path}.destinationCityId`,
-      `unknown city "${mission.destinationCityId}"`,
-    );
+    for (const key of ['originCityId', 'destinationCityId'] as const) {
+      const cityId = mission[key];
+      if (validator.check(cityIds.has(cityId), `${path}.${key}`, `unknown city "${cityId}"`)) {
+        validator.check(citiesWithDepots.has(cityId), `${path}.${key}`, `city "${cityId}" has no depot on any map`);
+      }
+    }
     validator.check(
       mission.originCityId !== mission.destinationCityId,
       `${path}.destinationCityId`,
       'must differ from originCityId',
     );
-    validator.check(cargoIds.has(mission.cargoId), `${path}.cargoId`, `unknown cargo "${mission.cargoId}"`);
+    const cargo = cargoById.get(mission.cargoId);
+    if (!validator.check(cargo !== undefined, `${path}.cargoId`, `unknown cargo "${mission.cargoId}"`)) {
+      return;
+    }
 
     // A contract that no truck can haul could never be completed (spec §29, step 4).
     const requiredClass = mission.requiredVehicleClass;
-    const haulable = vehicles.some(
-      (vehicle) =>
-        vehicle.maxPayloadTons >= mission.cargoWeightTons &&
-        (requiredClass === undefined || vehicle.vehicleClass === requiredClass),
-    );
+    const haulable = vehicles.some((vehicle) => vehicleCanHaul(vehicle, mission, cargo!));
     const vehicleKind = requiredClass === undefined ? 'vehicle' : `${requiredClass} vehicle`;
     validator.check(
       haulable,
       `${path}.cargoWeightTons`,
-      `no ${vehicleKind} can carry ${mission.cargoWeightTons} t`,
+      `no ${vehicleKind} with a body for ${cargo!.requiredBody} cargo can carry ${mission.cargoWeightTons} t`,
     );
+  });
+}
+
+function validateDepotReferences(validator: Validator, content: GameContent): void {
+  if (![content.maps, content.cities].every(Array.isArray)) {
+    return; // Already reported by validateTable.
+  }
+  const cityIds = new Set(content.cities.filter(isObject).map((city) => city.id));
+  const seenDepotIds = new Set<string>();
+  content.maps.forEach((map, mapIndex) => {
+    if (!isObject(map) || !Array.isArray(map.depots)) {
+      return;
+    }
+    map.depots.forEach((depot, index) => {
+      if (!isObject(depot)) {
+        return;
+      }
+      const path = `maps[${mapIndex}].depots[${index}]`;
+      validator.check(cityIds.has(depot.cityId), `${path}.cityId`, `unknown city "${depot.cityId}"`);
+      validator.check(!seenDepotIds.has(depot.id), `${path}.id`, `duplicate depot id "${depot.id}"`);
+      seenDepotIds.add(depot.id);
+    });
   });
 }
