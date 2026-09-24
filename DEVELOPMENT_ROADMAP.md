@@ -141,8 +141,8 @@ After playing the Pages build, the player asked for more ways to steer and see t
 |---|---|---|
 | Steering by tilting the phone or by buttons; control size | ✅ | Settings (main menu, and now the pause menu) |
 | A 2D map, and a minimap on the HUD | ✅ | The region's roads, cities, depots, rest areas, the truck and its route |
-| More cameras | ⬜ **next** | Hood, rear and top-down besides chase and cabin (spec §31); looking round in the cabin |
-| Truck paint | ⬜ | Colours per truck; save v7 |
+| More cameras | ✅ | Hood, rear and top views besides chase and cabin (spec §31); a real cab inside; looking round by dragging |
+| Truck paint | ⬜ **next** | Colours per truck; save v7 |
 | More world | ⬜ | Street lamps, signs, bridges, fields; more cargo and contracts |
 | A bigger map | ⬜ | A larger, Europe-like map needs decisions first: spec §20 and §85 want an original map, not a copy of a real one |
 
@@ -155,6 +155,9 @@ After playing the Pages build, the player asked for more ways to steer and see t
 - The minimap sits beside the pause button (on a phone held upright, at the right halfway down): 300 m round the truck, the way it heads up, the route in the GPS line's blue, the next bay's pin (or a pointer on the rim when it is further), rest areas and north. It repaints twelve times a second on a small canvas; the roads are drawn once into paths, in runs of up to 32 points, and only the runs in view are stroked. On its side, the mission HUD, the messages and the rest area counter move right to make room.
 - The full map opens from the minimap, the pause menu, the HQ (to see where contracts go) or M. It shows the whole region north up: roads by kind (the highway amber), yards and lots, buildings, city names, depots, the rest area, the truck, and the route with a Pickup or Delivery pin. Drag, pinch, the mouse wheel or the + − buttons zoom and move it; ◎ goes to the truck. The drive waits while it is open, and the 3D view is not drawn under it. Escape, M or Android's back button closes it.
 - The map is drawn from the world's data, so a larger map (the last item) gets a 2D map for free: the paths are culled by their bounds, so drawing cost stays with what is on screen.
+- Cameras: the camera button (or C) steps through chase, cabin, hood, rear and top, names each for a moment, and the phone keeps the last one. The rear camera looks down at the road behind for reversing into bays; its picture is mirrored like a reversing camera's, so the truck's right is on the screen's right and steering toward what you see works. The top view shows the yard from 28 m up.
+- The cabin is a cab now: dashboard with two gauges, windscreen pillars, roof edge, ceiling and sills (the painted walls face outward, so from inside they are not drawn), and a steering wheel that turns twelve times as far as the front wheels. The inside is unlit, so the sun never leaves it black, and dims at night. The driver looks a little into bends, and the head sways with braking and cornering.
+- Dragging across the road looks round: the head turns in the cabin (up to 108° each way), the chase and top cameras swing round the truck. The view turns back ahead 0.8 s after the finger lifts.
 
 ## Next step: 29 Device testing
 
