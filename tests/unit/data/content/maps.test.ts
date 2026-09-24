@@ -160,6 +160,30 @@ describe.each(MAPS)('map $id', (map) => {
     }
   });
 
+  it('keeps its roads, buildings, yards and lots on land, and ends the harbour road at the quay', () => {
+    if (world.sea === null) {
+      return;
+    }
+    for (const road of world.roads) {
+      for (let i = 0; i < road.pointCount; i++) {
+        expect(world.isWater(road.x(i), road.z(i), road.widthMeters / 2 + 10), road.id).toBe(false);
+      }
+    }
+    for (const building of map.buildings) {
+      expect(world.isWater(building.x - building.widthMeters / 2, building.z, 5)).toBe(false);
+    }
+    for (const rectangle of [...map.depots.map((depot) => depot.yard), ...map.restAreas.map((area) => area.lot)]) {
+      for (const [x, z] of rectangleCorners(rectangle)) {
+        expect(world.isWater(x, z, 10)).toBe(false);
+      }
+    }
+    // Some road reaches the quay: trucks can drive to the harbour.
+    expect(world.turningCircles.some((circle) => world.isOnQuay(circle.x, circle.z, circle.radiusMeters))).toBe(true);
+    // The boats lie off the quay or the shore; the cranes over the water's edge.
+    expect(world.sea.boats.length).toBeGreaterThan(0);
+    expect(world.sea.cranes.every((crane) => world.isOnQuay(crane.x, crane.z))).toBe(true);
+  });
+
   it('has every kind of road (spec §20)', () => {
     expect(new Set(map.roads.map((road) => road.kind))).toEqual(new Set(ROAD_KINDS));
   });

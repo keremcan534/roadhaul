@@ -6,6 +6,7 @@ import type { MapDefinition } from '../definitions/MapDefinition';
  *
  * - City A, Yeniliman (west): the starting town, where the high street
  *   crosses the harbour road. The company's home depot is on the high street.
+ *   The harbour road ends at the quay, on the sea along the map's west edge.
  * - City B, Demirkent (east): an industrial estate inside a ring road.
  * - City C, Başakova (north): a farm village on one street.
  * - The highway joins A's harbour road to B's ring road, with a rest area
@@ -240,6 +241,42 @@ export const MAPS: readonly MapDefinition[] = [
       { x: 1330, z: 430 },
       { x: 1250, z: 650 },
     ],
+    // The sea along the west edge. The harbour road ends at Yeniliman's quay, where a coaster lies under two cranes
+    // and a tug waits; fishing boats lie off the shore south of it and out in the bay.
+    sea: {
+      shoreline: [
+        [-2260, -2400],
+        [-2240, -2000],
+        [-2275, -1600],
+        [-2230, -1200],
+        [-2205, -900],
+        [-2190, -650],
+        [-2170, -480],
+        [-2150, -360],
+        [-2150, -340],
+        [-2150, -160],
+        [-2150, -140],
+        [-2168, -40],
+        [-2195, 150],
+        [-2235, 450],
+        [-2215, 800],
+        [-2260, 1250],
+        [-2235, 1700],
+        [-2270, 2100],
+        [-2250, 2400],
+      ],
+      quays: [{ fromZ: -340, toZ: -160, widthMeters: 55 }],
+      boats: [
+        { kind: 'coaster', x: -2157, z: -265, headingDegrees: 0 },
+        { kind: 'tug', x: -2157, z: -192, headingDegrees: 180 },
+        { kind: 'fishing', x: -2178, z: -60, headingDegrees: 120 },
+        { kind: 'fishing', x: -2320, z: -430, headingDegrees: 200 },
+      ],
+      cranes: [
+        { x: -2140, z: -285, headingDegrees: -90 },
+        { x: -2140, z: -245, headingDegrees: -90 },
+      ],
+    },
     // On A's high street, in the lane heading north past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     // Street lamps light the three towns' streets and B's ring road, on alternate sides.

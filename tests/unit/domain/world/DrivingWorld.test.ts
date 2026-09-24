@@ -5,7 +5,7 @@ import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import { DrivingWorld, type MovingObstacles } from '../../../../src/domain/world/DrivingWorld';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
-import { mapFixture, vehicleFixture } from '../../../support/contentFixtures';
+import { mapFixture, seaFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const truck = vehicleFixture();
 const footprint = createVehicleFootprint(truck.body);
@@ -504,6 +504,87 @@ describe('DrivingWorld', () => {
 
       expect(forest.resolveCollisions(state, footprint)).toBeGreaterThan(7);
       expect(Math.abs(state.speed)).toBeLessThan(1);
+    });
+  });
+
+  describe('by the sea', () => {
+    const coast = new DrivingWorld(
+      mapFixture({ sea: seaFixture(), scenery: { seed: 11, treesPerKilometer: 400, streetLampSpacingMeters: 12 } }),
+    );
+
+    it('is water west of the shore, paved on the quay and grass on the beach', () => {
+      expect(coast.isWater(-181, 100)).toBe(true);
+      expect(coast.isWater(-179, 100)).toBe(false);
+      expect(coast.isWater(-179, 100, 2)).toBe(true);
+      // The quay runs from z -30 to 30, 25 m back from the water's edge.
+      expect(coast.isOnQuay(-170, 0)).toBe(true);
+      expect(coast.isOnQuay(-150, 0)).toBe(false);
+      expect(coast.isOnQuay(-170, 50)).toBe(false);
+      expect(coast.surfaceAt(-170, 20)).toBe(ASPHALT);
+      expect(coast.surfaceAt(-170, 100)).toBe(GRASS);
+    });
+
+    it('stops the truck at the water\'s edge', () => {
+      // Driving west, its front circle already past the shore.
+      const state = truckAt(-181 + front, 100, -90, 10);
+
+      const impact = coast.resolveCollisions(state, footprint);
+
+      expect(impact).toBeCloseTo(10, 6);
+      expect(state.speed).toBeCloseTo(0, 9);
+      // Every footprint circle is back on land, a kerb's width short of the water.
+      for (const offset of footprint.offsets) {
+        const centreX = state.x + Math.sin(state.heading) * offset;
+        expect(centreX - footprint.radius).toBeGreaterThanOrEqual(-180 + 0.4 - 1e-9);
+      }
+    });
+
+    it('lets the truck drive along the shore', () => {
+      const state = truckAt(-180 + footprint.radius + 0.5, 100, 0, 10);
+
+      expect(coast.resolveCollisions(state, footprint)).toBe(0);
+      expect(state.speed).toBe(10);
+    });
+
+    it('lays boulders along the natural shore, either side of the waterline, and none along the quay', () => {
+      expect(coast.sea!.rocks.length).toBeGreaterThan(40);
+      for (const rock of coast.sea!.rocks) {
+        expect(Math.abs(rock.x + 180)).toBeLessThanOrEqual(1.4 + 1e-9);
+        expect(Math.abs(rock.z)).toBeGreaterThan(30);
+        expect(rock.size).toBeGreaterThan(0);
+      }
+    });
+
+    it('keeps trees and street lamps out of the sea, off the beach and off the quay', () => {
+      expect(coast.trees.length).toBeGreaterThan(0);
+      for (const tree of coast.trees) {
+        expect(coast.isWater(tree.x, tree.z, 13.9)).toBe(false);
+        expect(coast.isOnQuay(tree.x, tree.z, 5.9)).toBe(false);
+      }
+      expect(coast.streetLamps.length).toBeGreaterThan(0);
+      for (const lamp of coast.streetLamps) {
+        expect(coast.isWater(lamp.x, lamp.z, 2.9)).toBe(false);
+        expect(coast.isOnQuay(lamp.x, lamp.z)).toBe(false);
+      }
+    });
+
+    it('turns the boats and cranes to their headings, and stands the cranes on solid legs', () => {
+      const sea = coast.sea!;
+      expect(sea.boats).toEqual([{ kind: 'tug', x: -192, z: 0, heading: 0 }]);
+      expect(sea.cranes[0]!.heading).toBeCloseTo(-Math.PI / 2, 12);
+
+      // The crane at (-172, 10) reaches west: its legs stand 4 m either side of it in x, 3.2 m in z.
+      // Drive south at the leg at (-168, 13.2), the front circle just short of it.
+      const reach = front + footprint.radius + 0.5 - 0.2;
+      const state = truckAt(-168, 13.2 - reach, 0, 8);
+      expect(coast.resolveCollisions(state, footprint)).toBeGreaterThan(7);
+      expect(Math.abs(state.speed)).toBeLessThan(1);
+    });
+
+    it('has no sea on a map without one', () => {
+      expect(world.sea).toBeNull();
+      expect(world.isWater(-199, 0)).toBe(false);
+      expect(world.isOnQuay(-170, 0)).toBe(false);
     });
   });
 });

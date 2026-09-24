@@ -1,14 +1,20 @@
 import { clamp, clamp01, degreesToRadians } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import {
+  isInSea,
   rectangleContains,
+  shorelineXAt,
+  type BoatKind,
   type CitySignDefinition,
   type DepotDefinition,
   type FieldCrop,
   type FieldDefinition,
   type MapDefinition,
+  type Point2,
+  type QuayDefinition,
   type RectangleDefinition,
   type RestAreaDefinition,
+  type SeaDefinition,
 } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
@@ -73,6 +79,48 @@ export interface StreetLamp {
   readonly heading: number;
   /** Post radius used for collisions, meters. */
   readonly radius: number;
+}
+
+/** A boat moored in the harbour (scenery, out of reach in the water). */
+export interface Boat {
+  readonly kind: BoatKind;
+  readonly x: number;
+  readonly z: number;
+  /** Which way the bow points, radians (0 faces +Z, π/2 faces +X). */
+  readonly heading: number;
+}
+
+/**
+ * A harbour crane on a quay: a portal on four solid legs, its jib reaching
+ * out `heading` (radians, 0 faces +Z) over the water.
+ */
+export interface Crane {
+  readonly x: number;
+  readonly z: number;
+  readonly heading: number;
+}
+
+/** A boulder where the land meets the water, along the natural shore (scenery). */
+export interface ShoreRock {
+  readonly x: number;
+  readonly z: number;
+  /** About how wide it is, meters. */
+  readonly size: number;
+  /** How it is turned, radians. */
+  readonly turn: number;
+}
+
+/**
+ * The sea along the map's west edge (MapDefinition.sea): water west of the
+ * shoreline, paved quays along the shore, boats, cranes, and boulders along
+ * the natural shore. The shore is a wall the truck stops at.
+ */
+export interface Sea {
+  readonly shoreline: readonly Point2[];
+  readonly quays: readonly QuayDefinition[];
+  readonly boats: readonly Boat[];
+  readonly cranes: readonly Crane[];
+  readonly rocks: readonly ShoreRock[];
 }
 
 /**
@@ -164,6 +212,18 @@ const TURBINE_TOWER_RADIUS = 2.4;
 /** Trees keep out of fields (by this much) and this far from a turbine's tower. */
 const TREE_FIELD_CLEARANCE = 3;
 const TREE_TURBINE_CLEARANCE = 12;
+/** Trees keep this far back from the shore (a beach runs along it) and from quays; lamps from the water. */
+const TREE_SHORE_CLEARANCE = 14;
+const LAMP_SHORE_CLEARANCE = 3;
+/** The truck stops this far short of the water: the quay's kerb, the rocks. */
+const SHORE_WALL_MARGIN = 0.4;
+/** A crane's portal: its legs stand this far either side of its middle across the quay and along it. */
+export const CRANE_HALF_GAUGE_METERS = 4;
+export const CRANE_HALF_BASE_METERS = 3.2;
+const CRANE_LEG_RADIUS = 0.5;
+/** Boulders line the natural shore about this far apart, and this far either side of the waterline. */
+const SHORE_ROCK_SPACING_METERS = 6;
+const SHORE_ROCK_SCATTER_METERS = 1.4;
 /**
  * Contact angles (between the direction of travel and the obstacle's surface)
  * up to this one turn the truck fully along the obstacle: it glances off and
@@ -185,7 +245,7 @@ const AT_FAULT_SPEED = 0.5;
  * Everything the truck can drive on or into, built from a MapDefinition:
  * road paths, surfaces, buildings, the scenery (generated trees, street
  * lamps, the cities' name boards, farm fields with hay bales, wind
- * turbines) and the map boundary. Rendering reads the same data, so what
+ * turbines), the sea with its quays and cranes, and the map boundary. Rendering reads the same data, so what
  * you see is what you collide with.
  */
 export class DrivingWorld {
@@ -214,6 +274,8 @@ export class DrivingWorld {
   readonly servicePoints: readonly ServicePoint[];
   /** One at each dead end. */
   readonly turningCircles: readonly TurningCircle[];
+  /** The sea along the west edge, with its quays, boats and cranes; null when the map is all land. */
+  readonly sea: Sea | null;
   /**
    * The solid circles (tree trunks, lamp and sign posts, bales, turbine
    * towers), filed by grid cell as indices into the arrays below.
@@ -275,6 +337,7 @@ export class DrivingWorld {
     this.citySigns = map.citySigns.map((sign) => this.placeCitySign(sign));
     this.fields = map.fields.map((field) => this.placeField(field));
     this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
+    this.sea = map.sea === undefined ? null : createSea(map.sea, map.halfSizeMeters, map.scenery.seed);
     this.hayBales = placeHayBales(this.fields, map.scenery.seed);
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.streetLamps = this.placeStreetLamps(map.scenery.streetLampSpacingMeters);
@@ -284,6 +347,7 @@ export class DrivingWorld {
       ...this.citySigns.flatMap(signPosts),
       ...this.hayBales,
       ...this.windTurbines,
+      ...(this.sea?.cranes.flatMap(craneLegs) ?? []),
     ];
     this.circleX = Float64Array.from(circles, (circle) => circle.x);
     this.circleZ = Float64Array.from(circles, (circle) => circle.z);
@@ -307,6 +371,9 @@ export class DrivingWorld {
    */
   surfaceAt(x: number, z: number): Surface {
     if (this.roadGrid.onRoad(x, z)) {
+      return ASPHALT;
+    }
+    if (this.isOnQuay(x, z)) {
       return ASPHALT;
     }
     for (let i = 0; i < this.turningCircles.length; i++) {
@@ -338,6 +405,30 @@ export class DrivingWorld {
       }
     }
     return null;
+  }
+
+  /** Whether (x, z) is in the sea, or within `margin` meters of it. Always false on a map without one. */
+  isWater(x: number, z: number, margin = 0): boolean {
+    return this.sea !== null && isInSea(this.sea.shoreline, x, z, margin);
+  }
+
+  /** Whether (x, z) is on a quay (paved, like a yard), or within `margin` meters of one. */
+  isOnQuay(x: number, z: number, margin = 0): boolean {
+    const sea = this.sea;
+    if (sea === null) {
+      return false;
+    }
+    for (let i = 0; i < sea.quays.length; i++) {
+      const quay = sea.quays[i]!;
+      if (z < quay.fromZ - margin || z > quay.toZ + margin) {
+        continue;
+      }
+      const shore = shorelineXAt(sea.shoreline, z);
+      if (x >= shore - margin && x <= shore + quay.widthMeters + margin) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** The depot of `cityId` on this map, if it has one. */
@@ -476,11 +567,47 @@ export class DrivingWorld {
       cz = state.z + Math.cos(state.heading) * offset;
     }
 
+    if (this.sea !== null) {
+      this.collideShore(state, offset, radius, this.sea.shoreline);
+      cx = state.x + Math.sin(state.heading) * offset;
+      cz = state.z + Math.cos(state.heading) * offset;
+    }
+
     const edge = this.halfSizeMeters - radius;
     if (cx < -edge) this.pushOut(state, offset, 1, 0, -edge - cx);
     if (cx > edge) this.pushOut(state, offset, -1, 0, cx - edge);
     if (cz < -edge) this.pushOut(state, offset, 0, 1, -edge - cz);
     if (cz > edge) this.pushOut(state, offset, 0, -1, cz - edge);
+  }
+
+  /**
+   * The shore is a wall: keeps one footprint circle on the land side of every
+   * stretch of shoreline within its reach, SHORE_WALL_MARGIN short of the
+   * water. Allocation-free.
+   */
+  private collideShore(state: VehicleRuntimeState, offset: number, radius: number, shoreline: readonly Point2[]): void {
+    const reach = radius + SHORE_WALL_MARGIN;
+    for (let i = 0; i < shoreline.length - 1; i++) {
+      const cx = state.x + Math.sin(state.heading) * offset;
+      const cz = state.z + Math.cos(state.heading) * offset;
+      const [x0, z0] = shoreline[i]!;
+      const [x1, z1] = shoreline[i + 1]!;
+      if (z1 < cz - reach || z0 > cz + reach || cx - reach > Math.max(x0, x1)) {
+        continue;
+      }
+      const dx = x1 - x0;
+      const dz = z1 - z0;
+      const lengthSquared = dx * dx + dz * dz;
+      const length = Math.sqrt(lengthSquared);
+      // The shore runs toward +z with the land on its left: east of it.
+      const nx = dz / length;
+      const nz = -dx / length;
+      const t = clamp01(((cx - x0) * dx + (cz - z0) * dz) / lengthSquared);
+      const landward = (cx - (x0 + dx * t)) * nx + (cz - (z0 + dz * t)) * nz;
+      if (landward < reach) {
+        this.pushOut(state, offset, nx, nz, reach - landward);
+      }
+    }
   }
 
   /**
@@ -670,6 +797,9 @@ export class DrivingWorld {
     if (Math.abs(x) > limit || Math.abs(z) > limit) {
       return false;
     }
+    if (this.isWater(x, z, LAMP_SHORE_CLEARANCE) || this.isOnQuay(x, z, LAMP_BUILDING_CLEARANCE)) {
+      return false;
+    }
     if (this.hidesCitySign(x, z)) {
       return false;
     }
@@ -708,6 +838,9 @@ export class DrivingWorld {
     if (Math.abs(x) > limit || Math.abs(z) > limit) {
       return false;
     }
+    if (this.isWater(x, z, TREE_SHORE_CLEARANCE) || this.isOnQuay(x, z, TREE_YARD_CLEARANCE)) {
+      return false;
+    }
     if (this.hidesCitySign(x, z)) {
       return false;
     }
@@ -741,6 +874,53 @@ export class DrivingWorld {
         Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= TREE_BUILDING_CLEARANCE,
     );
   }
+}
+
+/**
+ * The sea from its definition: boats and cranes with their headings in
+ * radians, and boulders along the natural shore, every
+ * SHORE_ROCK_SPACING_METERS or so from the map's north edge to its south
+ * edge, straddling the waterline, none along the quays. The same seed
+ * always lays the same boulders.
+ */
+function createSea(sea: SeaDefinition, halfSize: number, seed: number): Sea {
+  const random = new SeededRandom(seed ^ 0x27d4eb2f);
+  const rocks: ShoreRock[] = [];
+  for (let z = -halfSize; z <= halfSize; z += SHORE_ROCK_SPACING_METERS) {
+    // Draw every number for every spot, so a skipped boulder does not shift the others.
+    const along = z + random.range(-2, 2);
+    const across = random.range(-SHORE_ROCK_SCATTER_METERS, SHORE_ROCK_SCATTER_METERS);
+    const size = random.range(1, 2.6);
+    const turn = random.range(0, Math.PI * 2);
+    const onQuay = sea.quays.some((quay) => along > quay.fromZ - 3 && along < quay.toZ + 3);
+    if (!onQuay) {
+      rocks.push({ x: shorelineXAt(sea.shoreline, along) + across, z: along, size, turn });
+    }
+  }
+  return {
+    shoreline: sea.shoreline,
+    quays: sea.quays,
+    boats: sea.boats.map(({ kind, x, z, headingDegrees }) => ({ kind, x, z, heading: degreesToRadians(headingDegrees) })),
+    cranes: sea.cranes.map(({ x, z, headingDegrees }) => ({ x, z, heading: degreesToRadians(headingDegrees) })),
+    rocks,
+  };
+}
+
+/** A crane's four legs: the portal's corners, across the quay (along the jib) and along it. */
+function craneLegs(crane: Crane): { x: number; z: number; radius: number }[] {
+  const jibX = Math.sin(crane.heading);
+  const jibZ = Math.cos(crane.heading);
+  const legs: { x: number; z: number; radius: number }[] = [];
+  for (const across of [-CRANE_HALF_GAUGE_METERS, CRANE_HALF_GAUGE_METERS]) {
+    for (const along of [-CRANE_HALF_BASE_METERS, CRANE_HALF_BASE_METERS]) {
+      legs.push({
+        x: crane.x + jibX * across + jibZ * along,
+        z: crane.z + jibZ * across - jibX * along,
+        radius: CRANE_LEG_RADIUS,
+      });
+    }
+  }
+  return legs;
 }
 
 /** A name board's two posts, either side of its middle across the way it faces. */

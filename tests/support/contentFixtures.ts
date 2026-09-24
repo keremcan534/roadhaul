@@ -1,7 +1,7 @@
 import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition';
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
-import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
+import type { MapDefinition, SeaDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
 import type { PaintDefinition } from '../../src/data/definitions/PaintDefinition';
 import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
@@ -94,6 +94,23 @@ export function missionFixture(overrides: Partial<MissionDefinition> = {}): Miss
  * mission's origin in the west, its destination in the east) and the truck
  * spawning at the origin facing +X.
  */
+/**
+ * The sea along the fixture map's west edge: the shore at x = -180, with a
+ * 60 m quay in the middle, a boat off it and a crane on it.
+ */
+export function seaFixture(overrides: Partial<SeaDefinition> = {}): SeaDefinition {
+  return {
+    shoreline: [
+      [-180, -200],
+      [-180, 200],
+    ],
+    quays: [{ fromZ: -30, toZ: 30, widthMeters: 25 }],
+    boats: [{ kind: 'tug', x: -192, z: 0, headingDegrees: 0 }],
+    cranes: [{ x: -172, z: 10, headingDegrees: -90 }],
+    ...overrides,
+  };
+}
+
 export function mapFixture(overrides: Partial<MapDefinition> = {}): MapDefinition {
   return {
     id: 'test_map',
