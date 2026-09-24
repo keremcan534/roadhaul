@@ -9,7 +9,7 @@ This document explains how the code is organised and why. The rules it describes
 - **Game rules run without a browser.** They are unit-testable in Node and reusable on a server if the game goes online (spec §66).
 - **Every change is verifiable** by typecheck, tests, build and a real-browser smoke test, in CI and in Claude Code sessions.
 
-Stack: TypeScript, three.js (WebGL2), Vite, Vitest and Playwright ([ADR 0001](docs/adr/0001-web-stack-typescript-threejs.md)). Vehicle physics is our own deterministic model rather than a physics engine ([ADR 0002](docs/adr/0002-custom-vehicle-model.md)). Capacitor wraps the same build into the Android app (§15).
+Stack: TypeScript, three.js (WebGL2), Vite, Vitest and Playwright ([ADR 0001](docs/adr/0001-web-stack-typescript-threejs.md)). Vehicle physics is our own deterministic model rather than a physics engine ([ADR 0002](docs/adr/0002-custom-vehicle-model.md)). Capacitor wraps the same build into the Android app (§16).
 
 ## 2. Layers
 
@@ -47,7 +47,7 @@ flowchart TD
 | domain | `src/domain` | Runtime state and pure rules: truck dynamics, road geometry and guidance, surfaces and collisions, mission rules (bays, stages, cargo damage, pay, XP), the wallet and costs, fuel and damage formulas, company levels, save data with migrations and validation, company name rules | core, data | anywhere |
 | systems | `src/systems` | Services that own runtime state, apply domain rules and publish `GameEvents` (game state, driving, missions, economy, fuel, damage, company, saves, the game session) | core, data, domain | anywhere |
 | app | `src/app` | Headless composition root: `GameBootstrapper`, `ServiceKeys` | core … systems | anywhere |
-| presentation | `src/presentation` | three.js renderer, environment, track, depot and truck views, cameras, visual effects | core … systems, `three` | browser |
+| presentation | `src/presentation` | three.js renderer, environment, track, depot and truck views, cameras, visual effects; the sound (Web Audio) | core … systems, `three` | browser |
 | ui | `src/ui` | DOM overlay: main menu, company HQ job board, mission HUD, touch driving controls, pause and result screens, string tables, debug overlay, styles | core … systems | browser |
 | platform | `src/platform` | Browser/device adapters: frame scheduler, keyboard input, URL flags, fatal error screen, localStorage, the device's graphics preset and settings; the Android app's back button and lifecycle | core … systems, `@capacitor/app` | browser, Android app |
 | entry | `src/main.ts` | Browser composition root | everything | browser |
@@ -281,7 +281,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - `CURRENT_SAVE_VERSION` (6) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
-- **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §15), memory in tests or when the browser forbids storage.
+- **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §16), memory in tests or when the browser forbids storage.
   - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
   - **Backup:** loading falls back to it when the latest save is unreadable.
   - **Corruption:** unreadable data is set aside and reported.
@@ -325,7 +325,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 | Architecture | `tests/architecture` | `npm test` | layer and package import rules, and the import scanner that checks them |
 | End-to-end (spec: PlayMode) | `tests/e2e` | `npm run build && npm run test:e2e` (Playwright) | on an emulated Pixel 7 with SwiftShader WebGL: boot into the menu, the job board, a whole delivery (with the `?debug` T key), abandoning, pausing, keyboard and touch driving, reverse, camera switch, layout in both orientations, the draw budget in the heaviest scenes, no console errors. The tests play on the high preset (`?quality=high`) unless they pick one, so what they count does not depend on the machine |
 
-Test helpers live in `tests/support`: `MemoryLogger`, the content fixtures, the driving loop helpers and the three.js resource helpers. CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, build and e2e on every pull request; a second job builds the Android debug APK (§15).
+Test helpers live in `tests/support`: `MemoryLogger`, the content fixtures, the driving loop helpers and the three.js resource helpers. CI (`.github/workflows/ci.yml`) runs typecheck, unit tests, build and e2e on every pull request; a second job builds the Android debug APK (§16).
 
 ## 13. Folder layout
 
@@ -336,7 +336,7 @@ src/
   domain/          company/ economy/ missions/ save/ vehicles/ world/
   systems/         company/ driving/ economy/ gameState/ missions/ save/ session/ vehicles/ GameEvents.ts
   app/             GameBootstrapper.ts ServiceKeys.ts
-  presentation/    RenderHost.ts cameras/ textures/ vehicles/ world/ (later: effects/)
+  presentation/    RenderHost.ts AdaptiveResolution.ts audio/ cameras/ navigation/ textures/ traffic/ vehicles/ weather/ world/
   ui/              controls/ debug/ hq/ hud/ i18n/ menus/ dom.ts styles.css
   platform/        browser/ input/ native/
   main.ts
@@ -358,8 +358,17 @@ Feature folders are created inside a layer when the feature arrives (`src/domain
 - **Localization.** Turkish and English string tables keyed by definition ids (`src/ui/i18n`). No text is stored in definitions; more languages are more tables.
 - **Multiplayer (V5+).** It is not part of V1. Keep new state serialisable and change it only through service methods, so it can be synchronised later.
 - **iOS.** Capacitor wraps the same build for iOS too (`cap add ios`); `capacitorShell` would serve it as it is.
+- **More sound.** Traffic, a gearbox, music and the radio (spec §37, V2) join `GameAudio` as more nodes fed from the same `SoundState` and events.
 
-## 15. The Android app
+## 15. Sound
+
+- **Made in code, no sound files** (`presentation/audio`), like the textures: Web Audio oscillators and noise, original by construction and nothing to download. It is spec §37's first version: engine, brakes, horn, ambience (tyres, wind, rain) and the interface.
+- **`GameAudio`** holds one graph for the whole session: the engine (a sawtooth at the six cylinders' firing rate, a rumble an octave down and filtered clatter, opened up by the load), road noise, brake friction, rain and a two-note horn. `update()` moves their levels and notes every frame from a `SoundState` the entry point fills (rpm, pedals, speed, rain); it allocates nothing. One-shots (a click, the delivery chime, a failure, a crash as loud as it was hard, the clunk of loading, the air brakes' hiss when the truck stops) make their few nodes as they play.
+- **The pure part is tested:** `soundModel.ts` turns rpm and pedal into the engine's note, loudness and brightness, and speed into road, brake and crash levels. The e2e tests check that sound starts, switches off and plays through a drive without an error.
+- **Browsers start sound only after a gesture.** The audio context is made at the first touch or key press that counts as one (`navigator.userActivation`), so nothing is refused with a warning. It sleeps while the page is hidden, and Settings switches it off (a device setting, beside the graphics).
+- **Levels** stay well below clipping: at full throttle with the horn the peak is about 0.6.
+
+## 16. The Android app
 
 - **Capacitor 8 wraps the production build** (`dist/`) into an Android app (`android/`, `capacitor.config.json`). The app serves the game from its own files at `https://localhost`: it runs offline and loads like the web build.
 - **`npm run android`** builds the game and copies it into the native project (`cap sync`); `./gradlew assembleDebug` in `android/` builds the APK. CI does both on every pull request and keeps the APK as an artifact for 14 days, numbering each build (`ROADHAUL_VERSION_CODE`); the version name is `package.json`'s.

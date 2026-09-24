@@ -159,9 +159,17 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | Graphics presets | data | `QUALITY_PRESETS`, `applyQualityPreset` in `src/data/config/GameConfig.ts` | Low, medium, high: pixel ratio cap, resolution floor, rain density, lamp glows, traffic | none | none |
-| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings, kept apart from the save | GameConfig, KeyValueStorage | none |
+| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, sound), kept apart from the save | GameConfig, KeyValueStorage | none |
 | AdaptiveResolution | presentation | `src/presentation/AdaptiveResolution.ts` | Lowers the resolution when frames run slow, raises it when they are quick again (a 30 FPS floor) | none | none |
-| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use | Strings | none |
+| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use; sound on or off | Strings | none |
+
+### Sound (Phase 7, spec §37)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Sound model | presentation | `src/presentation/audio/soundModel.ts` | The engine's note, loudness and brightness from rpm and pedal; road, brake and crash levels (pure, unit-tested) | none | none |
+| GameAudio | presentation | `src/presentation/audio/GameAudio.ts` | Web Audio from oscillators and noise, no sound files: engine, brakes and their air hiss, horn, tyres and wind, rain; clicks, delivery chime, failure, crash and loading sounds; starts at the first gesture, sleeps while hidden | Web Audio | fed by the entry point from `VehicleCollided` and the mission events |
+| Horn controls | ui, platform | `TouchControls` (horn button), `KeyboardInput` (H) | Hold to sound the horn | none | none |
 
 ### Android app (Phase 8, roadmap step 28)
 
@@ -180,8 +188,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
-| AudioService | presentation | ⬜ Phase 7 | Engine, brake, horn, ambience, UI sounds (spec §37) |
-| More settings, more languages | ui | ⬜ Phase 7 | Language and sound in Settings (graphics are there since step 27); more string tables |
+| More settings, more languages | ui | ⬜ Phase 7 | Language in Settings (graphics and sound are there); more string tables |
 
 ## Not in the MVP (spec §44)
 
