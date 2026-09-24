@@ -79,7 +79,7 @@ describe('validateMapDefinition', () => {
   it('validates sizes and scenery settings', () => {
     const map = mapFixture({
       buildings: [{ x: 0, z: 0, widthMeters: 0, depthMeters: 10, heightMeters: -1 }],
-      scenery: { seed: 1.5, treesPerKilometer: -3 },
+      scenery: { seed: 1.5, treesPerKilometer: -3, streetLampSpacingMeters: 4 },
     });
 
     expect(issuePaths(map)).toEqual([
@@ -87,7 +87,38 @@ describe('validateMapDefinition', () => {
       'map.buildings[0].heightMeters',
       'map.scenery.seed',
       'map.scenery.treesPerKilometer',
+      'map.scenery.streetLampSpacingMeters',
     ]);
+  });
+
+  it('checks where city name boards stand: on a known road, a distance along it, facing one way', () => {
+    const map = mapFixture({
+      citySigns: [
+        { cityId: 'test_origin', roadId: 'test_road', distanceMeters: 20, direction: 'forward' },
+        { cityId: 'Test Origin', roadId: 'no_road', distanceMeters: -1, direction: 'sideways' as 'forward' },
+        null as unknown as MapDefinition['citySigns'][number],
+      ],
+    });
+
+    expect(issuePaths(map)).toEqual([
+      'map.citySigns[1].cityId',
+      'map.citySigns[1].roadId',
+      'map.citySigns[1].distanceMeters',
+      'map.citySigns[1].direction',
+      'map.citySigns[2]',
+    ]);
+    expect(issuePaths(mapFixture({ citySigns: 'none' as unknown as MapDefinition['citySigns'] }))).toEqual(['map.citySigns']);
+  });
+
+  it('lights the city roads only when the map asks for street lamps', () => {
+    const lit = (streetLampSpacingMeters?: number): MapDefinition =>
+      mapFixture({ scenery: { seed: 1, treesPerKilometer: 0, ...(streetLampSpacingMeters === undefined ? {} : { streetLampSpacingMeters }) } });
+
+    expect(issuePaths(lit())).toEqual([]);
+    expect(issuePaths(lit(30))).toEqual([]);
+    for (const spacing of [9, 0, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(issuePaths(lit(spacing)), String(spacing)).toEqual(['map.scenery.streetLampSpacingMeters']);
+    }
   });
 
   it('reports depots that are not objects or have broken rectangles', () => {

@@ -69,9 +69,60 @@ export interface RestAreaDefinition {
   readonly lot: RectangleDefinition;
 }
 
+/** Which way along a road: toward its last control point, or back toward its first. */
+export const ROAD_DIRECTIONS = ['forward', 'backward'] as const;
+export type RoadDirection = (typeof ROAD_DIRECTIONS)[number];
+
+/**
+ * A city's name board where a road enters it. It stands `distanceMeters`
+ * along road `roadId` (from its first control point), beside the road on
+ * the right of traffic driving `direction`, and faces that traffic.
+ */
+export interface CitySignDefinition {
+  /** CityDefinition id: the name on the board. */
+  readonly cityId: string;
+  readonly roadId: string;
+  readonly distanceMeters: number;
+  readonly direction: RoadDirection;
+}
+
+/**
+ * What grows on a farm field: standing wheat, stubble with hay bales after
+ * the harvest, a young green crop, or ploughed earth.
+ */
+export const FIELD_CROPS = ['wheat', 'stubble', 'green', 'ploughed'] as const;
+export type FieldCrop = (typeof FIELD_CROPS)[number];
+
+/** A side of a road, seen looking toward its last control point. */
+export const ROAD_SIDES = ['left', 'right'] as const;
+export type RoadSide = (typeof ROAD_SIDES)[number];
+
+/**
+ * A farm field (scenery) beside a road: a rectangle along the road from
+ * `fromMeters` to `fromMeters + lengthMeters`, on `side`, starting
+ * `setbackMeters` past the road's edge (past its outermost bulge, where it
+ * bends) and reaching `depthMeters` back from it. Rows of `crop` run along
+ * the road. It drives like grass.
+ */
+export interface FieldDefinition {
+  readonly roadId: string;
+  readonly fromMeters: number;
+  readonly lengthMeters: number;
+  readonly side: RoadSide;
+  readonly setbackMeters: number;
+  readonly depthMeters: number;
+  readonly crop: FieldCrop;
+}
+
+/** A wind turbine (scenery): a tall tower whose rotor turns in the wind. The tower is solid. */
+export interface WindTurbineDefinition {
+  readonly x: number;
+  readonly z: number;
+}
+
 /**
  * A drivable area (spec §20, one region of the world): roads, buildings,
- * depots, rest areas, the truck's start and scenery.
+ * depots, rest areas, city name boards, the truck's start and scenery.
  */
 export interface MapDefinition {
   /** Stable snake_case id. */
@@ -82,11 +133,26 @@ export interface MapDefinition {
   readonly buildings: readonly BuildingDefinition[];
   readonly depots: readonly DepotDefinition[];
   readonly restAreas: readonly RestAreaDefinition[];
+  /** Name boards where roads enter the cities. */
+  readonly citySigns: readonly CitySignDefinition[];
+  readonly fields: readonly FieldDefinition[];
+  readonly windTurbines: readonly WindTurbineDefinition[];
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
-  readonly scenery: { readonly seed: number; readonly treesPerKilometer: number };
+  readonly scenery: {
+    readonly seed: number;
+    readonly treesPerKilometer: number;
+    /**
+     * Street lamps line the city roads (streets and ring roads) this far
+     * apart, on alternate sides. Absent: the roads are unlit.
+     */
+    readonly streetLampSpacingMeters?: number;
+  };
 }
+
+/** Street lamps stand at least this far apart along a road, meters. */
+export const MIN_STREET_LAMP_SPACING_METERS = 10;
 
 export function validateMapDefinition(map: MapDefinition, path: string, validator: Validator): void {
   validator.id(map.id, `${path}.id`);
@@ -126,6 +192,57 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       validateRectangle(restArea.lot, `${restAreaPath}.lot`, validator, inside);
     });
   }
+  const roadIds = new Set(
+    Array.isArray(map.roads) ? map.roads.filter((road) => typeof road === 'object' && road !== null).map((road) => road.id) : [],
+  );
+  if (validator.check(Array.isArray(map.citySigns), `${path}.citySigns`, 'must be a list')) {
+    map.citySigns.forEach((sign, index) => {
+      const signPath = `${path}.citySigns[${index}]`;
+      if (!validator.check(typeof sign === 'object' && sign !== null, signPath, 'must be an object')) {
+        return;
+      }
+      validator.id(sign.cityId, `${signPath}.cityId`);
+      validator.check(roadIds.has(sign.roadId), `${signPath}.roadId`, `unknown road "${String(sign.roadId)}"`);
+      validator.check(
+        Number.isFinite(sign.distanceMeters) && sign.distanceMeters >= 0,
+        `${signPath}.distanceMeters`,
+        'must be zero or more',
+      );
+      validator.oneOf(sign.direction, ROAD_DIRECTIONS, `${signPath}.direction`);
+    });
+  }
+  if (validator.check(Array.isArray(map.fields), `${path}.fields`, 'must be a list')) {
+    map.fields.forEach((field, index) => {
+      const fieldPath = `${path}.fields[${index}]`;
+      if (validator.check(typeof field === 'object' && field !== null, fieldPath, 'must be an object')) {
+        validator.check(roadIds.has(field.roadId), `${fieldPath}.roadId`, `unknown road "${String(field.roadId)}"`);
+        validator.check(
+          Number.isFinite(field.fromMeters) && field.fromMeters >= 0,
+          `${fieldPath}.fromMeters`,
+          'must be zero or more',
+        );
+        validator.positiveNumber(field.lengthMeters, `${fieldPath}.lengthMeters`);
+        validator.oneOf(field.side, ROAD_SIDES, `${fieldPath}.side`);
+        validator.check(
+          Number.isFinite(field.setbackMeters) && field.setbackMeters >= 0,
+          `${fieldPath}.setbackMeters`,
+          'must be zero or more',
+        );
+        validator.positiveNumber(field.depthMeters, `${fieldPath}.depthMeters`);
+        validator.oneOf(field.crop, FIELD_CROPS, `${fieldPath}.crop`);
+      }
+    });
+  }
+  if (validator.check(Array.isArray(map.windTurbines), `${path}.windTurbines`, 'must be a list')) {
+    map.windTurbines.forEach((turbine, index) => {
+      const turbinePath = `${path}.windTurbines[${index}]`;
+      validator.check(
+        typeof turbine === 'object' && turbine !== null && inside(turbine.x, turbine.z),
+        turbinePath,
+        'must be a point inside the map',
+      );
+    });
+  }
   const spawn = map.spawn;
   if (validator.check(typeof spawn === 'object' && spawn !== null, `${path}.spawn`, 'must be an object')) {
     validator.check(inside(spawn.x, spawn.z), `${path}.spawn`, 'must be inside the map');
@@ -139,6 +256,14 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       `${path}.scenery.treesPerKilometer`,
       'must be zero or more',
     );
+    const lampSpacing = scenery.streetLampSpacingMeters;
+    if (lampSpacing !== undefined) {
+      validator.check(
+        Number.isFinite(lampSpacing) && lampSpacing >= MIN_STREET_LAMP_SPACING_METERS,
+        `${path}.scenery.streetLampSpacingMeters`,
+        `must be at least ${MIN_STREET_LAMP_SPACING_METERS} m`,
+      );
+    }
   }
 }
 

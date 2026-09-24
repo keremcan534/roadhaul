@@ -3,6 +3,18 @@ import type { Point2, RoadDefinition, RoadKind } from '../../data/definitions/Ma
 /** Target distance between centreline samples, meters. */
 const DEFAULT_SPACING_METERS = 4;
 
+/** A point on a road's centreline, and the road's direction there (a unit vector). Written by RoadPath.pointAt(). */
+export interface RoadPoint {
+  x: number;
+  z: number;
+  directionX: number;
+  directionZ: number;
+}
+
+export function createRoadPoint(): RoadPoint {
+  return { x: 0, z: 0, directionX: 0, directionZ: 1 };
+}
+
 /**
  * A road's centreline as a dense polyline, sampled from a Catmull-Rom curve
  * through the road's control points (the curve passes through every point).
@@ -105,6 +117,43 @@ export class RoadPath {
     }
     const forward = ((along % this.lengthMeters) + this.lengthMeters) % this.lengthMeters;
     return forward <= this.lengthMeters / 2 ? forward : forward - this.lengthMeters;
+  }
+
+  /**
+   * Writes the centreline point `distanceMeters` along the road into `out`,
+   * with the road's direction there (toward the higher samples). Distances
+   * past an open road's ends stop at them; a closed road wraps round.
+   * Allocation-free.
+   */
+  pointAt(distanceMeters: number, out: RoadPoint): RoadPoint {
+    const length = this.lengthMeters;
+    const distance = this.closed
+      ? ((distanceMeters % length) + length) % length
+      : Math.max(0, Math.min(length, distanceMeters));
+    // The last sample at or before the distance.
+    let low = 0;
+    let high = this.pointCount - 1;
+    while (low < high) {
+      const middle = (low + high + 1) >> 1;
+      if (this.distances[middle]! <= distance) {
+        low = middle;
+      } else {
+        high = middle - 1;
+      }
+    }
+    const segment = Math.min(low, this.segmentCount - 1);
+    const next = (segment + 1) % this.pointCount;
+    const start = this.distances[segment]!;
+    const end = segment + 1 < this.pointCount ? this.distances[segment + 1]! : length;
+    const t = end > start ? Math.max(0, Math.min(1, (distance - start) / (end - start))) : 0;
+    const dx = this.x(next) - this.x(segment);
+    const dz = this.z(next) - this.z(segment);
+    const pieceLength = Math.hypot(dx, dz) || 1;
+    out.x = this.x(segment) + dx * t;
+    out.z = this.z(segment) + dz * t;
+    out.directionX = dx / pieceLength;
+    out.directionZ = dz / pieceLength;
+    return out;
   }
 
   /** The sample `steps` samples after `index` (before it for negative steps); a closed road wraps, an open one stops at its ends. */

@@ -29,6 +29,9 @@ export function roadWorld(roads: readonly RoadDefinition[], halfSizeMeters = 150
     buildings: [],
     depots: [],
     restAreas: [],
+    citySigns: [],
+    fields: [],
+    windTurbines: [],
     spawn: { x: 0, z: 0, headingDegrees: 0 },
     scenery: { seed: 1, treesPerKilometer: 0 },
   });

@@ -206,5 +206,13 @@ function validateDepotReferences(validator: Validator, content: GameContent): vo
       validator.check(!seenDepotIds.has(depot.id), `${path}.id`, `duplicate depot id "${depot.id}"`);
       seenDepotIds.add(depot.id);
     });
+    if (Array.isArray(map.citySigns)) {
+      map.citySigns.forEach((sign, index) => {
+        if (isObject(sign)) {
+          const path = `maps[${mapIndex}].citySigns[${index}].cityId`;
+          validator.check(cityIds.has(sign.cityId), path, `unknown city "${sign.cityId}"`);
+        }
+      });
+    }
   });
 }

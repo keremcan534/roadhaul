@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RoadDefinition } from '../../../../src/data/definitions/MapDefinition';
-import { RoadPath } from '../../../../src/domain/world/RoadPath';
+import { createRoadPoint, RoadPath } from '../../../../src/domain/world/RoadPath';
 
 const straight: RoadDefinition = {
   id: 'straight',
@@ -130,6 +130,32 @@ describe('RoadPath', () => {
     expect(open.stepIndex(5, 2)).toBe(7);
     expect(closed.stepIndex(0, -1)).toBe(closed.pointCount - 1);
     expect(closed.stepIndex(closed.pointCount - 1, 2)).toBe(1);
+  });
+
+  it('finds the point a distance along an open road, and its direction, stopping at the ends', () => {
+    const path = new RoadPath(straight);
+    const point = createRoadPoint();
+
+    expect(path.pointAt(0, point)).toMatchObject({ x: -150, z: 0, directionX: 1, directionZ: 0 });
+    expect(path.pointAt(123.4, point).x).toBeCloseTo(-26.6, 9);
+    expect(path.pointAt(-10, point).x).toBe(-150);
+    expect(path.pointAt(path.lengthMeters + 10, point)).toMatchObject({ x: 150, z: 0, directionX: 1 });
+  });
+
+  it('goes round a closed road, past its seam', () => {
+    const path = new RoadPath(loop);
+    const point = createRoadPoint();
+
+    for (const distance of [0, 17, path.lengthMeters / 3, path.lengthMeters - 1]) {
+      path.pointAt(distance, point);
+      // On the centreline, facing along it: a step ahead is still on the centreline.
+      expect(path.distanceTo(point.x, point.z), `${distance} m`).toBeLessThan(0.01);
+      expect(Math.hypot(point.directionX, point.directionZ)).toBeCloseTo(1, 9);
+      expect(path.distanceTo(point.x + point.directionX * 2, point.z + point.directionZ * 2)).toBeLessThan(0.1);
+    }
+    const start = { ...path.pointAt(0, point) };
+    expect(path.pointAt(path.lengthMeters, point)).toEqual(start);
+    expect(path.pointAt(-path.lengthMeters, point)).toEqual(start);
   });
 });
 

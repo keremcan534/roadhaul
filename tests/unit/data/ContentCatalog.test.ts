@@ -126,6 +126,25 @@ describe('ContentCatalog', () => {
     ]);
   });
 
+  it('reports city name boards of unknown cities', () => {
+    const map = mapFixture();
+    const content = contentFixture({
+      maps: [
+        {
+          ...map,
+          citySigns: [
+            { cityId: 'test_origin', roadId: 'test_road', distanceMeters: 10, direction: 'forward' },
+            { cityId: 'atlantis', roadId: 'test_road', distanceMeters: 290, direction: 'backward' },
+          ],
+        },
+      ],
+    });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'maps[0].citySigns[1].cityId', message: 'unknown city "atlantis"' },
+    ]);
+  });
+
   it('reports entries that are not objects instead of crashing on them', () => {
     const content = {
       vehicles: [null],

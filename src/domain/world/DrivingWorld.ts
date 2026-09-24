@@ -2,8 +2,12 @@ import { clamp, clamp01, degreesToRadians } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import {
   rectangleContains,
+  type CitySignDefinition,
   type DepotDefinition,
+  type FieldCrop,
+  type FieldDefinition,
   type MapDefinition,
+  type RectangleDefinition,
   type RestAreaDefinition,
 } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
@@ -11,7 +15,7 @@ import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
 import { cellKey, cellOf } from './gridCells';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork } from './RoadNetwork';
-import { RoadPath } from './RoadPath';
+import { createRoadPoint, RoadPath } from './RoadPath';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 
 export interface TreeObstacle {
@@ -21,6 +25,54 @@ export interface TreeObstacle {
   readonly radius: number;
   /** Visual size variation (about 0.8–1.3). */
   readonly scale: number;
+}
+
+/**
+ * A city's name board beside a road into it (MapDefinition.citySigns), on
+ * two posts either side of its middle, across the road's direction. The
+ * posts are solid.
+ */
+export interface CitySign {
+  readonly cityId: string;
+  /** The middle of the board, on the ground. */
+  readonly x: number;
+  readonly z: number;
+  /** Which way the board faces: toward the traffic it greets, radians (0 faces +Z, π/2 faces +X). */
+  readonly heading: number;
+}
+
+/** A farm field where it lies: its rows run along the area's heading. */
+export interface Field {
+  readonly area: RectangleDefinition;
+  readonly crop: FieldCrop;
+}
+
+/** A round hay bale lying on a harvested field. It is solid. */
+export interface HayBale {
+  readonly x: number;
+  readonly z: number;
+  /** Which way its axis lies, radians (0 along +Z). */
+  readonly heading: number;
+  /** Radius used for collisions, meters. */
+  readonly radius: number;
+}
+
+/** A wind turbine's tower (MapDefinition.windTurbines). It is solid. */
+export interface WindTurbine {
+  readonly x: number;
+  readonly z: number;
+  /** The tower's radius at its foot, used for collisions, meters. */
+  readonly radius: number;
+}
+
+/** A street lamp beside a city road. Its post is solid, like a tree's trunk. */
+export interface StreetLamp {
+  readonly x: number;
+  readonly z: number;
+  /** Which way its arm reaches out over the road, radians (0 faces +Z, π/2 faces +X, like headings). */
+  readonly heading: number;
+  /** Post radius used for collisions, meters. */
+  readonly radius: number;
 }
 
 /**
@@ -83,6 +135,35 @@ const TREE_BUILDING_CLEARANCE = 4;
 const TREE_YARD_CLEARANCE = 6;
 const TREE_SPAWN_CLEARANCE = 20;
 const TREE_BOUNDARY_MARGIN = 8;
+const LAMP_POST_RADIUS = 0.18;
+/** Street lamps stand this far beyond the edge of their road (just past its gravel shoulder)… */
+export const STREET_LAMP_SETBACK_METERS = 1.8;
+/** …closer than this to no other road's edge… */
+const LAMP_ROAD_CLEARANCE = 1.2;
+/** …this far from junctions, where trucks cut the corners… */
+const LAMP_JUNCTION_CLEARANCE = 16;
+/** …and from depot yards, rest area lots and turning circles, where they swing round… */
+const LAMP_YARD_CLEARANCE = 8;
+/** …and this far from buildings and the map's edge. */
+const LAMP_BUILDING_CLEARANCE = 1.5;
+const LAMP_BOUNDARY_MARGIN = 2;
+/** City name boards: how far their middle stands from the road's edge, and how far apart their posts are. */
+const CITY_SIGN_SETBACK_METERS = 4.6;
+export const CITY_SIGN_POST_SPACING_METERS = 4.8;
+const SIGN_POST_RADIUS = 0.12;
+/** Trees and lamps keep this far from a board's middle, so nothing hides it. */
+const SIGN_CLEARANCE_METERS = 9;
+/** Hay bales lie in rows this far apart across a stubble field, about this far apart along a row… */
+const BALE_ROW_SPACING_METERS = 22;
+const BALE_SPACING_METERS = 15;
+/** …some left out, and none closer than this to the field's edge. */
+const BALE_SKIP_CHANCE = 0.35;
+const BALE_EDGE_MARGIN_METERS = 6;
+const BALE_RADIUS = 0.8;
+const TURBINE_TOWER_RADIUS = 2.4;
+/** Trees keep out of fields (by this much) and this far from a turbine's tower. */
+const TREE_FIELD_CLEARANCE = 3;
+const TREE_TURBINE_CLEARANCE = 12;
 /**
  * Contact angles (between the direction of travel and the obstacle's surface)
  * up to this one turn the truck fully along the obstacle: it glances off and
@@ -102,8 +183,10 @@ const AT_FAULT_SPEED = 0.5;
 
 /**
  * Everything the truck can drive on or into, built from a MapDefinition:
- * road paths, surfaces, buildings, generated trees and the map boundary.
- * Rendering reads the same data, so what you see is what you collide with.
+ * road paths, surfaces, buildings, the scenery (generated trees, street
+ * lamps, the cities' name boards, farm fields with hay bales, wind
+ * turbines) and the map boundary. Rendering reads the same data, so what
+ * you see is what you collide with.
  */
 export class DrivingWorld {
   readonly id: string;
@@ -113,6 +196,14 @@ export class DrivingWorld {
   readonly network: RoadNetwork;
   readonly buildings: readonly BuildingObstacle[];
   readonly trees: readonly TreeObstacle[];
+  /** Lamps along the city roads, when the map lights them. */
+  readonly streetLamps: readonly StreetLamp[];
+  /** The cities' name boards beside the roads into them. */
+  readonly citySigns: readonly CitySign[];
+  /** Farm fields (they drive like grass), and the hay bales on the harvested ones. */
+  readonly fields: readonly Field[];
+  readonly hayBales: readonly HayBale[];
+  readonly windTurbines: readonly WindTurbine[];
   /** City depots: paved yards (driven like asphalt) with a loading bay each. */
   readonly depots: readonly DepotDefinition[];
   /** Paved lots beside the road where the truck can refuel and be repaired. */
@@ -123,7 +214,16 @@ export class DrivingWorld {
   readonly servicePoints: readonly ServicePoint[];
   /** One at each dead end. */
   readonly turningCircles: readonly TurningCircle[];
-  private readonly treeGrid = new Map<number, number[]>();
+  /**
+   * The solid circles (tree trunks, lamp and sign posts, bales, turbine
+   * towers), filed by grid cell as indices into the arrays below.
+   */
+  private readonly circleGrid = new Map<number, number[]>();
+  private readonly circleX: Float64Array;
+  private readonly circleZ: Float64Array;
+  private readonly circleRadius: Float64Array;
+  /** The largest circle's radius: how far round a footprint circle to look for them. */
+  private readonly maxCircleRadius: number;
   /** The road pieces by where they are: which ground a point is on, without visiting every road. */
   private readonly roadGrid: RoadGrid;
   /**
@@ -172,12 +272,28 @@ export class DrivingWorld {
         sampleIndex,
       };
     });
+    this.citySigns = map.citySigns.map((sign) => this.placeCitySign(sign));
+    this.fields = map.fields.map((field) => this.placeField(field));
+    this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
+    this.hayBales = placeHayBales(this.fields, map.scenery.seed);
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
-    this.trees.forEach((tree, index) => {
-      const key = cellKey(cellOf(tree.x), cellOf(tree.z));
-      const bucket = this.treeGrid.get(key);
+    this.streetLamps = this.placeStreetLamps(map.scenery.streetLampSpacingMeters);
+    const circles = [
+      ...this.trees,
+      ...this.streetLamps,
+      ...this.citySigns.flatMap(signPosts),
+      ...this.hayBales,
+      ...this.windTurbines,
+    ];
+    this.circleX = Float64Array.from(circles, (circle) => circle.x);
+    this.circleZ = Float64Array.from(circles, (circle) => circle.z);
+    this.circleRadius = Float64Array.from(circles, (circle) => circle.radius);
+    this.maxCircleRadius = Math.max(0, ...this.circleRadius);
+    circles.forEach((circle, index) => {
+      const key = cellKey(cellOf(circle.x), cellOf(circle.z));
+      const bucket = this.circleGrid.get(key);
       if (bucket === undefined) {
-        this.treeGrid.set(key, [index]);
+        this.circleGrid.set(key, [index]);
       } else {
         bucket.push(index);
       }
@@ -230,7 +346,7 @@ export class DrivingWorld {
   }
 
   /**
-   * Pushes the truck out of trees, buildings, the map boundary and moving
+   * Pushes the truck out of trees and posts, buildings, the map boundary and moving
    * `obstacles` (traffic), then responds to the hardest contact: a head-on
    * hit stops the truck, a glancing one turns it along the obstacle and it
    * carries on with the speed it had along the surface. Driving into a
@@ -302,7 +418,7 @@ export class DrivingWorld {
   }
 
   private collideCircle(state: VehicleRuntimeState, offset: number, radius: number): void {
-    const reach = radius + TREE_TRUNK_RADIUS;
+    const reach = radius + this.maxCircleRadius;
     let cx = state.x + Math.sin(state.heading) * offset;
     let cz = state.z + Math.cos(state.heading) * offset;
     const minCellX = cellOf(cx - reach);
@@ -311,15 +427,15 @@ export class DrivingWorld {
     const maxCellZ = cellOf(cz + reach);
     for (let gx = minCellX; gx <= maxCellX; gx++) {
       for (let gz = minCellZ; gz <= maxCellZ; gz++) {
-        const bucket = this.treeGrid.get(cellKey(gx, gz));
+        const bucket = this.circleGrid.get(cellKey(gx, gz));
         if (bucket === undefined) {
           continue;
         }
         for (let k = 0; k < bucket.length; k++) {
-          const tree = this.trees[bucket[k]!]!;
-          const dx = cx - tree.x;
-          const dz = cz - tree.z;
-          const minDistance = radius + tree.radius;
+          const index = bucket[k]!;
+          const dx = cx - this.circleX[index]!;
+          const dz = cz - this.circleZ[index]!;
+          const minDistance = radius + this.circleRadius[index]!;
           const distanceSquared = dx * dx + dz * dz;
           if (distanceSquared >= minDistance * minDistance || distanceSquared < 1e-12) {
             continue;
@@ -450,9 +566,155 @@ export class DrivingWorld {
     return trees;
   }
 
+  /**
+   * Lines the city roads (streets and ring roads) with lamps every
+   * `spacingMeters`, on alternate sides, their arms reaching over the road.
+   * Where a lamp would stand in the way (see isClearForLamp) it is left out.
+   */
+  private placeStreetLamps(spacingMeters: number | undefined): StreetLamp[] {
+    const lamps: StreetLamp[] = [];
+    if (spacingMeters === undefined) {
+      return lamps;
+    }
+    const point = createRoadPoint();
+    for (const road of this.roads) {
+      if (road.kind !== 'street' && road.kind !== 'ringRoad') {
+        continue;
+      }
+      const count = Math.floor(road.lengthMeters / spacingMeters);
+      for (let i = 0; i < count; i++) {
+        const { x: roadX, z: roadZ, directionX: ux, directionZ: uz } = road.pointAt((i + 0.5) * spacingMeters, point);
+        // Right of the direction of travel is (-uz, ux); every other lamp stands on the left.
+        const side = i % 2 === 0 ? 1 : -1;
+        const offset = side * (road.widthMeters / 2 + STREET_LAMP_SETBACK_METERS);
+        const x = roadX - uz * offset;
+        const z = roadZ + ux * offset;
+        if (this.isClearForLamp(x, z)) {
+          // The arm reaches back toward the centreline.
+          lamps.push({ x, z, heading: Math.atan2(uz * side, -ux * side), radius: LAMP_POST_RADIUS });
+        }
+      }
+    }
+    return lamps;
+  }
+
+  /** The road with `id`: map content names roads that exist (validated), so a missing one is a bug. */
+  private roadById(id: string): RoadPath {
+    const road = this.roads.find((candidate) => candidate.id === id);
+    if (road === undefined) {
+      throw new Error(`Unknown road "${id}": the content should have been validated.`);
+    }
+    return road;
+  }
+
+  /** Where a name board stands: beside its road, on the right of the traffic it greets, facing it. */
+  private placeCitySign(sign: CitySignDefinition): CitySign {
+    const road = this.roadById(sign.roadId);
+    const { x, z, directionX, directionZ } = road.pointAt(sign.distanceMeters, createRoadPoint());
+    const along = sign.direction === 'forward' ? 1 : -1;
+    // The traffic drives along (dx, dz); its right is (-dz, dx), and the board faces back at it.
+    const dx = directionX * along;
+    const dz = directionZ * along;
+    const offset = road.widthMeters / 2 + CITY_SIGN_SETBACK_METERS;
+    return { cityId: sign.cityId, x: x - dz * offset, z: z + dx * offset, heading: Math.atan2(-dx, -dz) };
+  }
+
+  /**
+   * A field's rectangle: along the chord of its stretch of road, set back
+   * from the road's edge where the road bulges furthest toward it, so a
+   * bend never runs into the field.
+   */
+  private placeField(field: FieldDefinition): Field {
+    const road = this.roadById(field.roadId);
+    const start = road.pointAt(field.fromMeters, createRoadPoint());
+    const end = road.pointAt(field.fromMeters + field.lengthMeters, createRoadPoint());
+    const chordX = end.x - start.x;
+    const chordZ = end.z - start.z;
+    const chord = Math.hypot(chordX, chordZ) || 1;
+    const ux = chordX / chord;
+    const uz = chordZ / chord;
+    // Toward the field: right of the road's direction is (-uz, ux).
+    const side = field.side === 'right' ? 1 : -1;
+    const nx = -uz * side;
+    const nz = ux * side;
+    const middleX = (start.x + end.x) / 2;
+    const middleZ = (start.z + end.z) / 2;
+    // The centreline is straight between samples, so it bulges furthest at one of them (or at an end).
+    let bulge = Math.max(
+      0,
+      (start.x - middleX) * nx + (start.z - middleZ) * nz,
+      (end.x - middleX) * nx + (end.z - middleZ) * nz,
+    );
+    for (let i = 0; i < road.pointCount; i++) {
+      const along = road.distances[i]! - field.fromMeters;
+      const within = road.closed ? ((along % road.lengthMeters) + road.lengthMeters) % road.lengthMeters : along;
+      if (within >= 0 && within <= field.lengthMeters) {
+        bulge = Math.max(bulge, (road.x(i) - middleX) * nx + (road.z(i) - middleZ) * nz);
+      }
+    }
+    const offset = bulge + road.widthMeters / 2 + field.setbackMeters + field.depthMeters / 2;
+    return {
+      crop: field.crop,
+      area: {
+        x: middleX + nx * offset,
+        z: middleZ + nz * offset,
+        headingDegrees: (Math.atan2(ux, uz) * 180) / Math.PI,
+        lengthMeters: chord,
+        widthMeters: field.depthMeters,
+      },
+    };
+  }
+
+  private isClearForLamp(x: number, z: number): boolean {
+    const limit = this.halfSizeMeters - LAMP_BOUNDARY_MARGIN;
+    if (Math.abs(x) > limit || Math.abs(z) > limit) {
+      return false;
+    }
+    if (this.hidesCitySign(x, z)) {
+      return false;
+    }
+    if (this.roadGrid.nearRoad(x, z, LAMP_ROAD_CLEARANCE)) {
+      return false; // On or beside another road.
+    }
+    if (this.network.junctions.some((junction) => Math.hypot(x - junction.x, z - junction.z) < LAMP_JUNCTION_CLEARANCE)) {
+      return false;
+    }
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, LAMP_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, LAMP_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (
+      this.turningCircles.some(
+        (circle) => Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + LAMP_YARD_CLEARANCE,
+      )
+    ) {
+      return false;
+    }
+    return this.buildings.every(
+      (box) =>
+        Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= LAMP_BUILDING_CLEARANCE,
+    );
+  }
+
+  /** Whether something standing at (x, z) would be in the way of a name board. */
+  private hidesCitySign(x: number, z: number): boolean {
+    return this.citySigns.some((sign) => Math.hypot(x - sign.x, z - sign.z) < SIGN_CLEARANCE_METERS);
+  }
+
   private isClearForTree(x: number, z: number): boolean {
     const limit = this.halfSizeMeters - TREE_BOUNDARY_MARGIN;
     if (Math.abs(x) > limit || Math.abs(z) > limit) {
+      return false;
+    }
+    if (this.hidesCitySign(x, z)) {
+      return false;
+    }
+    if (this.fields.some((field) => rectangleContains(field.area, x, z, TREE_FIELD_CLEARANCE))) {
+      return false;
+    }
+    if (this.windTurbines.some((turbine) => Math.hypot(x - turbine.x, z - turbine.z) < TREE_TURBINE_CLEARANCE)) {
       return false;
     }
     if (Math.hypot(x - this.spawn.x, z - this.spawn.z) < TREE_SPAWN_CLEARANCE) {
@@ -479,4 +741,53 @@ export class DrivingWorld {
         Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= TREE_BUILDING_CLEARANCE,
     );
   }
+}
+
+/** A name board's two posts, either side of its middle across the way it faces. */
+function signPosts(sign: CitySign): { x: number; z: number; radius: number }[] {
+  const acrossX = Math.cos(sign.heading) * (CITY_SIGN_POST_SPACING_METERS / 2);
+  const acrossZ = -Math.sin(sign.heading) * (CITY_SIGN_POST_SPACING_METERS / 2);
+  return [
+    { x: sign.x + acrossX, z: sign.z + acrossZ, radius: SIGN_POST_RADIUS },
+    { x: sign.x - acrossX, z: sign.z - acrossZ, radius: SIGN_POST_RADIUS },
+  ];
+}
+
+/**
+ * Round bales left in rows on the harvested (stubble) fields, where the
+ * baler dropped them: a row every BALE_ROW_SPACING_METERS across the field,
+ * a bale about every BALE_SPACING_METERS along it, some missing. The same
+ * seed always lays the same bales.
+ */
+function placeHayBales(fields: readonly Field[], seed: number): HayBale[] {
+  const random = new SeededRandom(seed ^ 0x5bd1e995);
+  const bales: HayBale[] = [];
+  for (const { area, crop } of fields) {
+    if (crop !== 'stubble') {
+      continue;
+    }
+    const heading = (area.headingDegrees * Math.PI) / 180;
+    const alongX = Math.sin(heading);
+    const alongZ = Math.cos(heading);
+    const halfWidth = area.widthMeters / 2 - BALE_EDGE_MARGIN_METERS;
+    const halfLength = area.lengthMeters / 2 - BALE_EDGE_MARGIN_METERS;
+    for (let across = -halfWidth; across <= halfWidth; across += BALE_ROW_SPACING_METERS) {
+      for (let along = -halfLength; along <= halfLength; along += BALE_SPACING_METERS) {
+        // Draw every number for every spot, so a skipped bale does not shift the others.
+        const skip = random.next() < BALE_SKIP_CHANCE;
+        const jitter = random.range(-3, 3);
+        const turn = random.range(-0.3, 0.3);
+        const at = Math.max(-halfLength, Math.min(halfLength, along + jitter));
+        if (!skip) {
+          bales.push({
+            x: area.x + alongX * at + alongZ * across,
+            z: area.z + alongZ * at - alongX * across,
+            heading: heading + turn,
+            radius: BALE_RADIUS,
+          });
+        }
+      }
+    }
+  }
+  return bales;
 }

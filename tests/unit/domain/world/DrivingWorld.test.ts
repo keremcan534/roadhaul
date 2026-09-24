@@ -231,6 +231,229 @@ describe('DrivingWorld', () => {
     });
   });
 
+  describe('street lamps', () => {
+    const lit = new DrivingWorld(mapFixture({ scenery: { seed: 1, treesPerKilometer: 0, streetLampSpacingMeters: 20 } }));
+    /** The fixture's street runs along the X axis, 10 m wide; lamps stand 1.8 m past its edges. */
+    const lampZ = 5 + 1.8;
+
+    it('only stand where the map asks for them', () => {
+      expect(world.streetLamps).toEqual([]);
+      expect(lit.streetLamps.length).toBeGreaterThan(5);
+    });
+
+    it('line the street at their spacing, on alternate sides, reaching over the road', () => {
+      const south = lit.streetLamps.filter((lamp) => lamp.z < 0);
+      const north = lit.streetLamps.filter((lamp) => lamp.z > 0);
+      expect(north.length).toBeGreaterThan(2);
+      expect(south.length).toBeGreaterThan(2);
+      for (const lamp of lit.streetLamps) {
+        expect(Math.abs(lamp.z)).toBeCloseTo(lampZ, 6);
+        expect(lit.surfaceAt(lamp.x, lamp.z)).toBe(GRASS);
+        // The arm points back across the road: south of it, north (+Z); north of it, south.
+        expect(Math.cos(lamp.heading)).toBeCloseTo(lamp.z < 0 ? 1 : -1, 6);
+      }
+      // The street runs east from x = -150; lamp n stands (n + 0.5) × 20 m along it, the first on the right
+      // (+Z, heading east), the sides taking turns.
+      for (const lamp of lit.streetLamps) {
+        const n = (lamp.x + 150) / 20 - 0.5;
+        expect(n).toBeCloseTo(Math.round(n), 6);
+        expect(lamp.z > 0).toBe(Math.round(n) % 2 === 0);
+      }
+    });
+
+    it('keep clear of depot yards and buildings, so trucks can manoeuvre there', () => {
+      for (const lamp of lit.streetLamps) {
+        for (const depot of lit.depots) {
+          expect(rectangleContains(depot.yard, lamp.x, lamp.z, 7.9)).toBe(false);
+        }
+        // The fixture's building stands 30 m back from the road: lamps may pass it, but not stand in it.
+        const box = lit.buildings[0]!;
+        expect(lamp.x >= box.minX && lamp.x <= box.maxX && lamp.z >= box.minZ && lamp.z <= box.maxZ).toBe(false);
+      }
+    });
+
+    it('are solid', () => {
+      const lamp = lit.streetLamps[0]!;
+      // The truck's front circle just short of the post, driving straight at it across the verge.
+      const heading = lamp.z > 0 ? 0 : Math.PI;
+      const reach = front + footprint.radius + lamp.radius - 0.2;
+      const state = truckAt(lamp.x, lamp.z - Math.cos(heading) * reach, 0, 8);
+      state.heading = heading;
+
+      expect(lit.resolveCollisions(state, footprint)).toBeGreaterThan(7);
+      expect(Math.abs(state.speed)).toBeLessThan(1);
+    });
+
+    it('light the towns of the shipped region, clear of its junctions, yards and other roads', () => {
+      const region = new DrivingWorld(MAPS[0]!);
+      expect(region.streetLamps.length).toBeGreaterThan(100);
+      for (const lamp of region.streetLamps) {
+        const distances = region.roads.map((road) => ({ road, edge: road.distanceTo(lamp.x, lamp.z) - road.widthMeters / 2 }));
+        const nearest = distances.reduce((best, entry) => (entry.edge < best.edge ? entry : best));
+        // Beside a street or the ring road, never the highway or a country road.
+        expect(['street', 'ringRoad']).toContain(nearest.road.kind);
+        expect(nearest.edge).toBeGreaterThan(1.7);
+        expect(nearest.edge).toBeLessThan(1.9);
+        for (const other of distances.filter((entry) => entry.road !== nearest.road)) {
+          expect(other.edge).toBeGreaterThan(1.2);
+        }
+        for (const junction of region.network.junctions) {
+          expect(Math.hypot(lamp.x - junction.x, lamp.z - junction.z)).toBeGreaterThan(15.9);
+        }
+        for (const depot of region.depots) {
+          expect(rectangleContains(depot.yard, lamp.x, lamp.z, 7.9)).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe('city name boards', () => {
+    const signed = new DrivingWorld(
+      mapFixture({
+        citySigns: [
+          { cityId: 'test_origin', roadId: 'test_road', distanceMeters: 20, direction: 'forward' },
+          { cityId: 'test_destination', roadId: 'test_road', distanceMeters: 290, direction: 'backward' },
+        ],
+      }),
+    );
+
+    it('stand beside their road, on the right of the traffic they greet, facing it', () => {
+      const [west, east] = signed.citySigns;
+      // Eastbound traffic (+X) has +Z on its right; the board faces back west at it.
+      expect(west!.cityId).toBe('test_origin');
+      expect(west!.x).toBeCloseTo(-130, 6);
+      expect(west!.z).toBeCloseTo(5 + 4.6, 6);
+      expect(Math.sin(west!.heading)).toBeCloseTo(-1, 6);
+      // Westbound traffic has -Z on its right.
+      expect(east!.x).toBeCloseTo(140, 6);
+      expect(east!.z).toBeCloseTo(-(5 + 4.6), 6);
+      expect(Math.sin(east!.heading)).toBeCloseTo(1, 6);
+      for (const sign of signed.citySigns) {
+        expect(signed.surfaceAt(sign.x, sign.z)).toBe(GRASS);
+      }
+    });
+
+    it('have solid posts', () => {
+      const sign = signed.citySigns[0]!;
+      // The board spans across the road's direction: its posts stand 2.4 m either side of its middle, the inner
+      // one 2.2 m from the road's edge. Drive east along the verge at that one.
+      const postZ = sign.z - 2.4;
+      const reach = front + footprint.radius + 0.12 - 0.2;
+      const state = truckAt(sign.x - reach, postZ, 90, 8);
+
+      expect(signed.resolveCollisions(state, footprint)).toBeGreaterThan(7);
+      expect(Math.abs(state.speed)).toBeLessThan(1);
+    });
+
+    it('are not hidden by trees or lamps', () => {
+      const region = new DrivingWorld(MAPS[0]!);
+      expect(region.citySigns.length).toBeGreaterThan(0);
+      for (const sign of region.citySigns) {
+        for (const other of [...region.trees, ...region.streetLamps]) {
+          expect(Math.hypot(other.x - sign.x, other.z - sign.z)).toBeGreaterThanOrEqual(9);
+        }
+      }
+    });
+  });
+
+  describe('farmland and wind turbines', () => {
+    // Beside the fixture's street, which runs east along z = 0, 10 m wide, from x = -150: right of it is +Z.
+    const stubble = {
+      roadId: 'test_road',
+      fromMeters: 90,
+      lengthMeters: 120,
+      side: 'right',
+      setbackMeters: 20,
+      depthMeters: 70,
+      crop: 'stubble',
+    } as const;
+    const wheat = { ...stubble, fromMeters: 230, lengthMeters: 50, setbackMeters: 8, depthMeters: 40, crop: 'wheat' } as const;
+    const farm = new DrivingWorld(
+      mapFixture({ fields: [stubble, wheat], windTurbines: [{ x: -150, z: -120 }], buildings: [] }),
+    );
+
+    it('lays each field beside its stretch of road, set back from the edge, rows along the road', () => {
+      const [stubbleField, wheatField] = farm.fields;
+      expect(stubbleField!.area).toMatchObject({ headingDegrees: 90, widthMeters: 70 });
+      expect(stubbleField!.area.lengthMeters).toBeCloseTo(120, 9);
+      expect(stubbleField!.area.x).toBeCloseTo(0, 9);
+      expect(stubbleField!.area.z).toBeCloseTo(5 + 20 + 35, 9);
+      expect(wheatField!.area.x).toBeCloseTo(105, 9);
+      expect(wheatField!.area.z).toBeCloseTo(5 + 8 + 20, 9);
+      expect(wheatField!.crop).toBe('wheat');
+    });
+
+    it('keeps a field clear of its road where the road bends toward it', () => {
+      const bend = new DrivingWorld(
+        mapFixture({
+          roads: [
+            {
+              id: 'bend',
+              kind: 'rural',
+              widthMeters: 8,
+              closed: false,
+              controlPoints: [
+                [-100, 0],
+                [0, 30],
+                [100, 0],
+              ],
+            },
+          ],
+          depots: [],
+          buildings: [],
+          fields: [{ roadId: 'bend', fromMeters: 0, lengthMeters: 400, side: 'right', setbackMeters: 6, depthMeters: 50, crop: 'green' }],
+        }),
+      );
+      const [field] = bend.fields;
+      const road = bend.roads[0]!;
+      // Nowhere does the road come closer to the field than its setback.
+      for (let i = 0; i < road.pointCount; i++) {
+        const insideBy = field!.area.z - field!.area.widthMeters / 2 - road.z(i);
+        expect(insideBy).toBeGreaterThanOrEqual(road.widthMeters / 2 + 6 - 1e-6);
+      }
+    });
+
+    it('lays hay bales in rows on the harvested fields only, clear of their edges, the same every time', () => {
+      const [stubbleField, wheatField] = farm.fields;
+      expect(farm.hayBales.length).toBeGreaterThan(10);
+      for (const bale of farm.hayBales) {
+        expect(rectangleContains(stubbleField!.area, bale.x, bale.z, -5.9)).toBe(true);
+        expect(rectangleContains(wheatField!.area, bale.x, bale.z)).toBe(false);
+      }
+      // Rows run along the field (east-west here), 22 m apart.
+      const rows = new Set(farm.hayBales.map((bale) => Math.round(bale.z * 1000) / 1000));
+      expect(rows.size).toBe(3);
+      expect(new DrivingWorld(mapFixture({ fields: [stubble, wheat], buildings: [] })).hayBales).toEqual(farm.hayBales);
+    });
+
+    it('makes bales and turbine towers solid, and fields drive like grass', () => {
+      const wheatArea = farm.fields[1]!.area;
+      expect(farm.surfaceAt(wheatArea.x, wheatArea.z)).toBe(GRASS);
+      for (const obstacle of [farm.hayBales[0]!, farm.windTurbines[0]!]) {
+        // The truck's front circle just short of it, driving north.
+        const reach = front + footprint.radius + obstacle.radius - 0.2;
+        const state = truckAt(obstacle.x, obstacle.z - reach, 0, 8);
+
+        expect(farm.resolveCollisions(state, footprint)).toBeGreaterThan(7);
+        expect(Math.abs(state.speed)).toBeLessThan(1);
+      }
+    });
+
+    it('keeps the region\'s trees out of its fields and away from its turbines', () => {
+      const region = new DrivingWorld(MAPS[0]!);
+      expect(region.fields.length).toBeGreaterThan(0);
+      expect(region.windTurbines.length).toBeGreaterThan(0);
+      for (const tree of region.trees) {
+        for (const field of region.fields) {
+          expect(rectangleContains(field.area, tree.x, tree.z, 2.9)).toBe(false);
+        }
+        for (const turbine of region.windTurbines) {
+          expect(Math.hypot(tree.x - turbine.x, tree.z - turbine.z)).toBeGreaterThan(11.9);
+        }
+      }
+    });
+  });
+
   describe('trees', () => {
     const map = MAPS[0]!;
     const forest = new DrivingWorld(map);
