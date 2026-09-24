@@ -33,11 +33,11 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | VehicleDefinition | data | `src/data/definitions/VehicleDefinition.ts` | Truck data: body, powertrain, handling; validated (no gearbox hunting) | Validator | none |
-| MapDefinition | data | `src/data/definitions/MapDefinition.ts` | Roads (with a kind), buildings, depots, rest areas, spawn, scenery seed | Validator | none |
+| MapDefinition | data | `src/data/definitions/MapDefinition.ts` | Roads (with a kind), buildings, depots, rest areas, name boards, fields, wind turbines, the sea (shoreline, quays, boats, cranes), spawn, scenery seed; `shorelineXAt`, `isInSea` | Validator | none |
 | VehicleDynamics | domain | `src/domain/vehicles/VehicleDynamics.ts` | Deterministic truck model: drivetrain, gearbox, governor, brakes, reverse, understeer (ADR 0002) | VehicleDefinition | none |
 | VehicleInput, VehicleRuntimeState | domain | `src/domain/vehicles/` | Device-independent driver input; live truck state | none | none |
 | RoadPath | domain | `src/domain/world/RoadPath.ts` | Catmull-Rom centreline shared by driving and rendering | MapDefinition | none |
-| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, street lamps along the town roads, the cities' name boards, farm fields beside their roads with seeded hay bales, wind turbines, buildings, depots, rest areas, service points, collisions (trunks, posts, bales and towers are solid circles filed by grid cell), map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
+| DrivingWorld | domain | `src/domain/world/DrivingWorld.ts` | Surfaces (roads, yards and rest area lots are paved), seeded trees, street lamps along the town roads, the cities' name boards, farm fields beside their roads with seeded hay bales, wind turbines, the sea (water west of the shoreline, paved quays, boats, cranes, seeded boulders along the shore), buildings, depots, rest areas, service points, collisions (trunks, posts, bales, towers and crane legs are solid circles filed by grid cell; the shore is a wall), map edge | RoadPath, RoadGrid, RoadNetwork, SeededRandom | none |
 | RoadGrid | domain | `src/domain/world/RoadGrid.ts`, `gridCells.ts` | The roads' centreline pieces filed by 20 m cell: on a road, or near one, from the few pieces round a point | RoadPath | none |
 | DrivingService | systems | `src/systems/driving/DrivingService.ts` | Owns the driven truck and world; steps them every fixed step; cargo mass, parking, recovery onto the road; the service point the truck stands at | ContentCatalog, EventBus | emits `VehicleCollided` |
 | EnvironmentView | presentation | `src/presentation/world/EnvironmentView.ts`, `world/lighting.ts` | Gradient sky with sun glow, clouds and horizon hills that follow the camera; twinkling stars and the moon at night; fog; sun and sky lights | three | none |
@@ -64,6 +64,8 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | StreetLampView | presentation | `src/presentation/world/StreetLampView.ts` | Street lamps: instanced posts and lenses (two draw calls); at night the lenses light, glow and throw pools of light on the road (two more, left out on the low preset) | DrivingWorld, LampGlows, three | none |
 | FarmlandView | presentation | `src/presentation/world/FarmlandView.ts` | Farm fields (pre-lit, one texture of crop rows tinted per crop: one draw call) and instanced hay bales (one) | DrivingWorld, three | none |
 | WindTurbineView | presentation | `src/presentation/world/WindTurbineView.ts` | Wind turbines: instanced towers and turning rotors (two draw calls); red warning lights blink at night (one more, left out on the low preset) | DrivingWorld, LampGlows, three | none |
+| SeaView | presentation | `src/presentation/world/SeaView.ts` | The sea: water that mirrors the sky (shared uniforms from EnvironmentView) with drifting ripples, glitter and foam, fogged; a pre-lit sandy beach; boulders instanced per 600 m of shore | DrivingWorld, EnvironmentView, three | none |
+| HarbourView | presentation | `src/presentation/world/HarbourView.ts` | The quays (pre-lit concrete; kerb, bollards and a yellow line), the portal cranes, merged, and the moored boats rocking gently; masthead and warning lights glow at night | DrivingWorld, LampGlows, three | none |
 | CitySignView | presentation | `src/presentation/world/CitySignView.ts` | The cities' name boards: posts and backs, and faces sharing one texture with a row per name in Turkish capitals (two draw calls); they glow a little by day, more at night | DrivingWorld, three | none |
 | MainMenu | ui | `src/ui/menus/MainMenu.ts` | Title screen and language switch | Strings | none |
 | CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, the contracts of the day first in each group and marked, with when the next ones come; blocked ones say what unlocks them | MissionService offers, DailyContracts, Strings | none |
@@ -105,7 +107,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| north_valley | data | `src/data/content/maps.ts` | Yeniliman (A), Demirkent (B, ring road), Başakova (C); the highway with a rest area; country roads; 11.5 km of road | MapDefinition | none |
+| north_valley | data | `src/data/content/maps.ts` | Yeniliman (A, on the sea, with a quay at the end of its harbour road), Demirkent (B, ring road), Başakova (C); the highway with a rest area; country roads; 11.5 km of road | MapDefinition | none |
 | Service points | domain, systems | `DrivingWorld.servicePointAt`, `DrivingService.servicePoint` | Depot yards and rest area lots: the only places with a pump and a workshop | DrivingWorld | none |
 | FuelService, DamageService (service rule) | systems | `src/systems/vehicles/` | Pump refuelling and repairs only at a service point; the fuel truck anywhere | DrivingService | as above |
 | RestAreaView | presentation | `src/presentation/world/RestAreaView.ts`, `groundDecals.ts` | Concrete lot, parking stalls, fuel canopy, pumps and price sign (three draw calls) | DrivingWorld, three | none |
@@ -192,7 +194,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| Map sketch, viewport | ui | `src/ui/map/mapSketch.ts`, `MapViewport.ts` | The world as a 2D map draws it: roads simplified into short runs with bounds, yards, lots, turning circles, fields, wind turbines, buildings, depots, rest areas and city name spots; the view's pan, zoom and turn (DOM-free, unit-tested) | DrivingWorld | none |
+| Map sketch, viewport | ui | `src/ui/map/mapSketch.ts`, `MapViewport.ts` | The world as a 2D map draws it: roads simplified into short runs with bounds, yards, lots, quays, turning circles, the sea, fields, wind turbines, buildings, depots, rest areas and city name spots; the view's pan, zoom and turn (DOM-free, unit-tested) | DrivingWorld | none |
 | MapPainter | ui | `src/ui/map/MapPainter.ts` | Paints a sketch on a canvas through a viewport: only the roads in view, the route to the next bay, pins, city names, the truck and north; allocation-free | MapSketch, DrivingService, NavigationService, MissionService | none |
 | Minimap | ui | `src/ui/hud/Minimap.ts` | The round map on the road, the truck heading up, twelve repaints a second; a tap opens the full map | MapPainter | none |
 | WorldMap | ui | `src/ui/map/WorldMap.ts` | The full-screen map from the minimap, the pause menu, the HQ or M: drag, pinch, wheel and buttons; repaints only after a change; the drive waits while it is open | MapPainter | none |
