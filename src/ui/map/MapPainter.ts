@@ -31,6 +31,7 @@ const FIELD_COLORS: Readonly<Record<FieldCrop, string>> = {
 };
 const COLORS = {
   ground: '#1b2923',
+  sea: '#1d4a66',
   turbine: '#9fb0bd',
   building: '#33443b',
   paved: '#46525c',
@@ -74,8 +75,10 @@ export class MapPainter {
   private readonly buildings = new Path2D();
   /** The fields, one path per crop. */
   private readonly fields: readonly { readonly color: string; readonly path: Path2D }[];
-  /** Depot yards, rest area lots and turning circles: paved ground off the roads. */
+  /** Depot yards, rest area lots, quays and turning circles: paved ground off the roads. */
   private readonly paved = new Path2D();
+  /** The sea, when the world has one. */
+  private readonly sea: Path2D | null;
   private readonly transform = createCanvasTransform();
   /** A box round one point, for MapViewport.sees without allocating. */
   private readonly pointBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
@@ -100,6 +103,7 @@ export class MapPainter {
           return { run, path };
         }),
     );
+    this.sea = sketch.sea === null ? null : polygonPath(sketch.sea.corners);
     for (const area of sketch.pavedAreas) {
       this.paved.moveTo(area.corners[0]!, area.corners[1]!);
       for (let i = 2; i < area.corners.length; i += 2) {
@@ -140,6 +144,10 @@ export class MapPainter {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    if (this.sea !== null) {
+      context.fillStyle = COLORS.sea;
+      context.fill(this.sea);
+    }
     for (let i = 0; i < this.fields.length; i++) {
       const field = this.fields[i]!;
       context.fillStyle = field.color;
@@ -374,4 +382,15 @@ function pin(context: CanvasRenderingContext2D, x: number, y: number, color: str
   context.strokeStyle = COLORS.truckEdge;
   context.stroke();
   disc(context, x, y - 15, 3.5, COLORS.truckEdge);
+}
+
+/** A closed path through a polygon's corners (x and z interleaved). */
+function polygonPath(corners: Float64Array): Path2D {
+  const path = new Path2D();
+  path.moveTo(corners[0]!, corners[1]!);
+  for (let i = 2; i < corners.length; i += 2) {
+    path.lineTo(corners[i]!, corners[i + 1]!);
+  }
+  path.closePath();
+  return path;
 }

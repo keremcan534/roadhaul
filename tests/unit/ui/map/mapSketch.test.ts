@@ -110,9 +110,25 @@ describe('sketchWorld', () => {
       expect(Math.hypot(city.x - depot.x, city.z - depot.z)).toBeLessThan(800);
     });
     expect(sketch.buildings).toHaveLength(world.buildings.length);
-    // Every yard and lot is paved on the map, and the turning circles too.
-    expect(sketch.pavedAreas).toHaveLength(world.depots.length + world.restAreas.length);
+    // Every yard, lot and quay is paved on the map, and the turning circles too.
+    expect(sketch.pavedAreas).toHaveLength(world.depots.length + world.restAreas.length + (world.sea?.quays.length ?? 0));
     expect(sketch.turningCircles).toHaveLength(world.turningCircles.length);
+  });
+
+  it('draws the sea west of the shore, reaching past the map, and the quay in the drawn area', () => {
+    const sea = sketch.sea!;
+    const shoreline = world.sea!.shoreline;
+    // Along the shore, then round by the far west.
+    expect(sea.corners.length / 2).toBe(shoreline.length + 4);
+    expect([sea.corners[2], sea.corners[3]]).toEqual([...shoreline[0]!]);
+    expect(sea.minX).toBeLessThan(-world.halfSizeMeters - 1000);
+    expect(sea.maxX).toBe(Math.max(...shoreline.map(([x]) => x)));
+    expect(sea.minZ).toBeLessThan(-world.halfSizeMeters);
+    expect(sea.maxZ).toBeGreaterThan(world.halfSizeMeters);
+    const quay = sketch.pavedAreas[sketch.pavedAreas.length - 1]!;
+    expect(quay.minX).toBeCloseTo(-2150, 6);
+    expect(quay.maxX - quay.minX).toBeCloseTo(world.sea!.quays[0]!.widthMeters, 6);
+    expect(sketch.bounds.minX).toBeLessThan(quay.minX);
   });
 
   it('has the farm fields with their crops, and the wind turbines', () => {

@@ -1,5 +1,5 @@
-import type { FieldCrop, RectangleDefinition, RoadKind } from '../../data/definitions/MapDefinition';
-import type { DrivingWorld } from '../../domain/world/DrivingWorld';
+import { shorelineXAt, type FieldCrop, type RectangleDefinition, type RoadKind } from '../../data/definitions/MapDefinition';
+import type { DrivingWorld, Sea } from '../../domain/world/DrivingWorld';
 
 /** Road runs keep at most this many points, so each run's bounds stay tight for culling. */
 export const MAX_RUN_POINTS = 32;
@@ -7,6 +7,8 @@ export const MAX_RUN_POINTS = 32;
 export const SIMPLIFY_TOLERANCE_METERS = 1.5;
 /** Blank ground round the drawn map, meters. */
 const MARGIN_METERS = 150;
+/** The sea's polygon reaches this far west of the map, past anything a map zooms out to. */
+const SEA_REACH_METERS = 20_000;
 
 /** An axis-aligned box on the ground, meters. */
 export interface MapBox {
@@ -71,8 +73,10 @@ export interface MapSketch {
   /** The drawn area: every road, building, yard and lot, with a margin. */
   readonly bounds: MapBox;
   readonly runs: readonly MapRoadRun[];
-  /** Depot yards and rest area lots. */
+  /** Depot yards, rest area lots and quays. */
   readonly pavedAreas: readonly MapPavedArea[];
+  /** The sea west of the shore, reaching far past the drawn area; null when the world has none. */
+  readonly sea: MapPavedArea | null;
   readonly fields: readonly MapField[];
   /** Where the wind turbines stand. */
   readonly windTurbines: readonly { readonly x: number; readonly z: number }[];
@@ -99,9 +103,12 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
   const depots = world.depots.map((depot) => ({ id: depot.id, cityId: depot.cityId, x: depot.yard.x, z: depot.yard.z }));
   const restAreas = world.restAreas.map((restArea) => ({ id: restArea.id, x: restArea.lot.x, z: restArea.lot.z }));
   const buildings = world.buildings.map(({ minX, maxX, minZ, maxZ }) => ({ minX, maxX, minZ, maxZ }));
-  const pavedAreas = [...world.depots.map((depot) => depot.yard), ...world.restAreas.map((restArea) => restArea.lot)].map(
-    rectangleCorners,
-  );
+  const pavedAreas = [
+    ...[...world.depots.map((depot) => depot.yard), ...world.restAreas.map((restArea) => restArea.lot)].map(
+      rectangleCorners,
+    ),
+    ...(world.sea === null ? [] : quayAreas(world.sea)),
+  ];
   const turningCircles = world.turningCircles.map(({ x, z, radiusMeters }) => ({ x, z, radiusMeters }));
   const fields = world.fields.map((field): MapField => ({ ...rectangleCorners(field.area), crop: field.crop }));
   const windTurbines = world.windTurbines.map(({ x, z }) => ({ x, z }));
@@ -131,6 +138,7 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     bounds: { minX: minX - MARGIN_METERS, maxX: maxX + MARGIN_METERS, minZ: minZ - MARGIN_METERS, maxZ: maxZ + MARGIN_METERS },
     runs,
     pavedAreas,
+    sea: world.sea === null ? null : seaArea(world.sea, world.halfSizeMeters),
     fields,
     windTurbines,
     turningCircles,
@@ -217,6 +225,47 @@ export function splitRuns(kind: RoadKind, widthMeters: number, points: Float64Ar
     runs.push({ kind, widthMeters, points: run, minX, maxX, minZ, maxZ });
   }
   return runs;
+}
+
+/** The sea as a polygon: along the shore from north to south, then round by the far west. */
+function seaArea(sea: Sea, halfSize: number): MapPavedArea {
+  const first = sea.shoreline[0]!;
+  const last = sea.shoreline[sea.shoreline.length - 1]!;
+  const west = -halfSize - SEA_REACH_METERS;
+  const north = first[1] - SEA_REACH_METERS;
+  const south = last[1] + SEA_REACH_METERS;
+  return polygon([
+    [first[0], north],
+    ...sea.shoreline,
+    [last[0], south],
+    [west, south],
+    [west, north],
+  ]);
+}
+
+/** Each quay as a polygon: along the water's edge, then back along its landward side. */
+function quayAreas(sea: Sea): MapPavedArea[] {
+  return sea.quays.map((quay) => {
+    const zs = [quay.fromZ, ...sea.shoreline.map(([, z]) => z).filter((z) => z > quay.fromZ && z < quay.toZ), quay.toZ];
+    const edge = zs.map((z): readonly [number, number] => [shorelineXAt(sea.shoreline, z), z]);
+    return polygon([...edge, ...edge.map(([x, z]): readonly [number, number] => [x + quay.widthMeters, z]).reverse()]);
+  });
+}
+
+/** A polygon from its corners, with its bounds. */
+function polygon(points: readonly (readonly [number, number])[]): MapPavedArea {
+  const corners = new Float64Array(points.flat());
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const [x, z] of points) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+  }
+  return { corners, minX, maxX, minZ, maxZ };
 }
 
 /** A rectangle's four corners, turned by its heading (0° = its length along +z, 90° = along +x). */
