@@ -18,11 +18,15 @@ export function jobCard(
 ): HTMLElement {
   const { mission, cargo } = offer;
   const card = element(document, 'article', offer.blockedBy === null ? 'job-card' : 'job-card is-locked');
+  card.classList.toggle('job-card--daily', offer.daily);
   card.dataset.missionId = mission.id;
 
   const top = element(document, 'div', 'job-card__top');
+  top.append(element(document, 'h3', 'job-card__title', strings.missionTitle(mission)));
+  if (offer.daily) {
+    top.append(element(document, 'span', 'badge badge--daily', strings.t('hq.daily')));
+  }
   top.append(
-    element(document, 'h3', 'job-card__title', strings.missionTitle(mission.id)),
     element(document, 'span', `badge badge--${mission.difficulty}`, strings.t(`difficulty.${mission.difficulty}`)),
   );
   const route = element(document, 'p', 'job-card__route', routeText(strings, mission));

@@ -126,6 +126,14 @@ describe('ContentCatalog', () => {
     ]);
   });
 
+  it('keeps the ids of generated contracts out of the game\'s own', () => {
+    const content = contentFixture({ missions: [missionFixture({ id: 'daily_1_1' })] });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'missions[0].id', message: 'ids starting with "daily_" are kept for generated contracts' },
+    ]);
+  });
+
   it('reports city name boards of unknown cities', () => {
     const map = mapFixture();
     const content = contentFixture({

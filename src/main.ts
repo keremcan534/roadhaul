@@ -109,6 +109,7 @@ async function start(): Promise<void> {
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
   const missions = services.resolve(ServiceKeys.missions);
+  const dailyContracts = services.resolve(ServiceKeys.dailyContracts);
   const navigation = services.resolve(ServiceKeys.navigation);
   const specialEvents = services.resolve(ServiceKeys.specialEvents);
   const tutorial = services.resolve(ServiceKeys.tutorial);
@@ -394,7 +395,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents },
+    { driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -528,14 +529,14 @@ async function start(): Promise<void> {
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
-    result.showCompleted(content.missions.get(delivery.missionId), delivery, economy.credits);
+    result.showCompleted(delivery.mission, delivery, economy.credits);
   });
-  events.on('MissionFailed', ({ missionId, reason, reputationLost }) => {
+  events.on('MissionFailed', ({ mission, reason, reputationLost }) => {
     audio.fail();
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
-    result.showFailed(content.missions.get(missionId), reason, reputationLost);
+    result.showFailed(mission, reason, reputationLost);
   });
   events.on('EventProgressed', ({ eventId, bonus, progress, reward }) => {
     const name = strings.eventName(eventId);

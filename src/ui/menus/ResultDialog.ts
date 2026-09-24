@@ -133,7 +133,7 @@ export class ResultDialog {
     this.panel.className = `panel result-dialog__panel ${outcome}`;
     this.panel.replaceChildren(
       element(document, 'h2', 'panel__title', title),
-      element(document, 'p', 'result-dialog__mission', `${strings.missionTitle(definition.id)} · ${routeText(strings, definition)}`),
+      element(document, 'p', 'result-dialog__mission', `${strings.missionTitle(definition)} · ${routeText(strings, definition)}`),
       ...body,
       button(document, 'button--primary', strings.t('result.continue'), 'continue', () => {
         this.hide();

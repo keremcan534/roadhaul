@@ -37,6 +37,11 @@ export interface GameConfig {
   readonly missions: {
     /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
     readonly loadingSeconds: number;
+    /**
+     * Contracts of the day (spec §28–29): how many the generator adds to the
+     * job board, and every how many hours a new batch replaces them.
+     */
+    readonly dailyContracts: { readonly count: number; readonly refreshHours: number };
   };
   readonly economy: {
     /** Price of a litre of diesel at a depot pump (spec §17: prices live in config, not in the world). */
@@ -159,6 +164,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   },
   missions: {
     loadingSeconds: 3,
+    dailyContracts: { count: 5, refreshHours: 6 },
   },
   economy: {
     fuelPricePerLiter: 12,
@@ -230,6 +236,17 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,
     'missions.loadingSeconds',
     'must be greater than 0 and at most 30',
+  );
+  const daily = missions.dailyContracts;
+  validator.check(
+    Number.isInteger(daily.count) && daily.count >= 0 && daily.count <= 12,
+    'missions.dailyContracts.count',
+    'must be a whole number from 0 to 12',
+  );
+  validator.check(
+    Number.isFinite(daily.refreshHours) && daily.refreshHours >= 1,
+    'missions.dailyContracts.refreshHours',
+    'must be at least 1',
   );
   validator.positiveInteger(economy.fuelPricePerLiter, 'economy.fuelPricePerLiter');
   validator.check(

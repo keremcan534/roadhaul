@@ -3,6 +3,7 @@ import { EventBus } from '../../../../src/core/events/EventBus';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import type { EventDefinition } from '../../../../src/data/definitions/EventDefinition';
+import type { MissionDefinition } from '../../../../src/data/definitions/MissionDefinition';
 import type { MissionReward } from '../../../../src/domain/missions/missionReward';
 import { CompanyService } from '../../../../src/systems/company/CompanyService';
 import { EconomyService } from '../../../../src/systems/economy/EconomyService';
@@ -21,7 +22,7 @@ function setup(events: readonly EventDefinition[] = [eventFixture()]) {
   const logger = new MemoryLogger();
   const bus = new EventBus<GameEvents>(logger);
   const content = ContentCatalog.create(
-    contentFixture({ events, missions: [missionFixture(), missionFixture({ id: 'heavy_mission', cargoWeightTons: 9 })] }),
+    contentFixture({ events, missions: Object.values(MISSIONS) }),
   );
   const economy = new EconomyService(bus, DEFAULT_GAME_CONFIG.economy, logger);
   const company = new CompanyService(bus, DEFAULT_GAME_CONFIG.company, logger);
@@ -31,6 +32,12 @@ function setup(events: readonly EventDefinition[] = [eventFixture()]) {
   bus.on('EventProgressed', (event) => progressed.push(event));
   return { bus, economy, company, clock, service, progressed };
 }
+
+/** The contracts on offer: the fixture's, 5 t, and a heavy one of 9 t. */
+const MISSIONS: Readonly<Record<string, MissionDefinition>> = {
+  test_mission: missionFixture(),
+  heavy_mission: missionFixture({ id: 'heavy_mission', cargoWeightTons: 9 }),
+};
 
 /** A delivery of the fixture mission (600 s limit) as MissionService reports it: 2000 credits, no XP. */
 function deliver(
@@ -47,7 +54,8 @@ function deliver(
     onTime,
     lateSeconds: onTime ? 0 : deliverySeconds - 600,
   };
-  bus.emit('MissionCompleted', { missionId, reward, deliverySeconds, cargoDamage, xp: 0, reputation: 0 });
+  const mission = MISSIONS[missionId]!;
+  bus.emit('MissionCompleted', { missionId, mission, reward, deliverySeconds, cargoDamage, xp: 0, reputation: 0 });
 }
 
 describe('EventService', () => {
@@ -127,7 +135,7 @@ describe('EventService', () => {
     deliver(bus, { missionId: 'heavy_mission' });
     expect(progressed).toEqual([]);
     expect(service.statuses()[0]!.locked).toBe(true);
-    expect(service.eventsForContract('heavy_mission')).toEqual([]);
+    expect(service.eventsForContract(MISSIONS['heavy_mission']!)).toEqual([]);
 
     company.award(DEFAULT_GAME_CONFIG.company.levelXp[1]!); // Level 2.
     deliver(bus, { missionId: 'heavy_mission' });
@@ -135,14 +143,14 @@ describe('EventService', () => {
 
     // 2000 paid and 1000 bonus toward the 5000.
     expect(progressed).toEqual([{ eventId: 'heavy_event', bonus: 1000, progress: 3000, target: 5000, reward: null }]);
-    expect(service.eventsForContract('heavy_mission').map((event) => event.id)).toEqual(['heavy_event']);
-    expect(service.eventsForContract('test_mission')).toEqual([]);
+    expect(service.eventsForContract(MISSIONS['heavy_mission']!).map((event) => event.id)).toEqual(['heavy_event']);
+    expect(service.eventsForContract(MISSIONS['test_mission']!)).toEqual([]);
   });
 
   it('marks no contract for events that only care how the delivery goes', () => {
     const { service } = setup();
 
-    expect(service.eventsForContract('test_mission')).toEqual([]);
+    expect(service.eventsForContract(MISSIONS['test_mission']!)).toEqual([]);
   });
 
   it('saves the progress of each event\'s latest run, and takes it back', () => {

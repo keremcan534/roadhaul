@@ -86,6 +86,17 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       return { ...save, version: 7, garage: { ...garage, vehicles } };
     },
   },
+  {
+    // v8 keeps a generated contract with the save: every contract before it was one of the game's own.
+    from: 7,
+    migrate: (save) => {
+      const missions = save['missions'];
+      if (!isJsonObject(missions) || !isJsonObject(missions['active'])) {
+        return { ...save, version: 8 };
+      }
+      return { ...save, version: 8, missions: { ...missions, active: { ...missions['active'], contract: null } } };
+    },
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {

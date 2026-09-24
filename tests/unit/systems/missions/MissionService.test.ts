@@ -4,9 +4,11 @@ import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import type { GameContent } from '../../../../src/data/GameContent';
 import type { RectangleDefinition } from '../../../../src/data/definitions/MapDefinition';
+import type { MissionDefinition } from '../../../../src/data/definitions/MissionDefinition';
 import { bayParkingPose } from '../../../../src/domain/missions/loadingBay';
 import { DrivingService } from '../../../../src/systems/driving/DrivingService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
+import type { ContractSource } from '../../../../src/systems/missions/DailyContracts';
 import { MissionService } from '../../../../src/systems/missions/MissionService';
 import {
   cargoFixture,
@@ -27,13 +29,21 @@ const EMPTY_MASS = 8000;
  * The fixture map: a straight road along X, the origin depot's bay at
  * (-100, -17) and the destination's at (100, -17), both running along X.
  */
-function setup(overrides: Partial<GameContent> = {}) {
+function setup(overrides: Partial<GameContent> = {}, daily: ContractSource | null = null) {
   const logger = new MemoryLogger();
   const events = new EventBus<GameEvents>(logger);
   const content = ContentCatalog.create(contentFixture(overrides));
   const driving = new DrivingService(content, events, logger);
   const company = { level: 1 };
-  const missions = new MissionService(content, driving, company, events, { loadingSeconds: LOADING_SECONDS }, logger);
+  const missions = new MissionService(
+    content,
+    driving,
+    company,
+    events,
+    { loadingSeconds: LOADING_SECONDS },
+    logger,
+    daily,
+  );
   const log: string[] = [];
   events.on('MissionStateChanged', ({ previous, current }) => log.push(`${previous} -> ${current}`));
   events.on('MissionFailed', ({ reason }) => log.push(`failed: ${reason}`));
@@ -64,6 +74,12 @@ function acceptAndLoad(context: ReturnType<typeof setup>) {
   missions.update(STEP_SECONDS);
   parkIn(driving, missions.target!.depot.bay);
   run(driving, missions, LOADING_SECONDS + 0.1);
+}
+
+/** Contracts of the day as DailyContracts hands them out: a batch that can change under the board. */
+function contractsOfTheDay(...contracts: MissionDefinition[]): ContractSource & { batch: readonly MissionDefinition[] } {
+  const source = { batch: contracts, current: () => source.batch };
+  return source;
 }
 
 describe('MissionService', () => {
@@ -346,7 +362,9 @@ describe('MissionService', () => {
 
     missions.accept('test_mission');
     missions.abandon();
-    expect(failures).toEqual([{ missionId: 'test_mission', reason: 'abandoned', reputationLost: 3 }]);
+    expect(failures).toEqual([
+      { missionId: 'test_mission', mission: missionFixture(), reason: 'abandoned', reputationLost: 3 },
+    ]);
   });
 
   it('saves the contract under way and resumes it, cargo and all', () => {
@@ -354,13 +372,15 @@ describe('MissionService', () => {
     acceptAndLoad(context);
     run(context.driving, context.missions, 1, 1);
     const saved = context.missions.snapshot();
-    expect(saved).toMatchObject({ missionId: 'test_mission', state: 'delivering' });
+    // One of the game's own contracts: the save names it, the content has the rest.
+    expect(saved).toMatchObject({ missionId: 'test_mission', state: 'delivering', contract: null });
 
     const resumed = setup();
     resumed.missions.restore(saved);
 
-    expect(resumed.missions.active).toEqual(saved);
-    expect(resumed.missions.active).not.toBe(saved);
+    expect(resumed.missions.snapshot()).toEqual(saved);
+    expect(resumed.missions.active).toMatchObject({ missionId: 'test_mission', state: 'delivering' });
+    expect(resumed.missions.active).not.toHaveProperty('contract');
     expect(resumed.missions.target).toMatchObject({ kind: 'delivery', depot: { id: 'test_destination_depot' } });
     expect(resumed.driving.totalMassKg).toBe(EMPTY_MASS + 5000);
 
@@ -410,5 +430,66 @@ describe('MissionService', () => {
     run(driving, missions, 0.15);
     expect(missions.active?.state).toBe('loaded');
     expect(DEFAULT_GAME_CONFIG.missions.loadingSeconds).toBe(3);
+  });
+
+  describe('contracts of the day', () => {
+    // From the destination depot back to the origin's: the other way from the fixture's own contract.
+    const daily = missionFixture({
+      id: 'daily_7_1',
+      originCityId: 'test_destination',
+      destinationCityId: 'test_origin',
+      baseReward: 1500,
+    });
+
+    it('come after the game\'s own on the board, marked, and can be taken', () => {
+      const { missions } = setup({}, contractsOfTheDay(daily));
+
+      expect(missions.jobBoard().map((offer) => [offer.mission.id, offer.daily])).toEqual([
+        ['test_mission', false],
+        ['daily_7_1', true],
+      ]);
+      expect(missions.accept('daily_7_1').ok).toBe(true);
+      missions.update(STEP_SECONDS);
+      expect(missions.activeDefinition).toBe(daily);
+      expect(missions.target).toMatchObject({ kind: 'pickup', depot: { cityId: 'test_destination' } });
+    });
+
+    it('are saved whole, so one resumes after its batch has gone', () => {
+      const context = setup({}, contractsOfTheDay(daily));
+      context.missions.accept('daily_7_1');
+      context.missions.update(STEP_SECONDS);
+      const saved = context.missions.snapshot();
+      expect(saved).toMatchObject({ missionId: 'daily_7_1', state: 'travellingToPickup', contract: daily });
+
+      const resumed = setup({}, contractsOfTheDay());
+      resumed.missions.restore(JSON.parse(JSON.stringify(saved)) as typeof saved);
+
+      expect(resumed.missions.activeDefinition).toEqual(daily);
+      expect(resumed.missions.snapshot()).toEqual(saved);
+      expect(resumed.missions.target).toMatchObject({ kind: 'pickup', depot: { cityId: 'test_destination' } });
+    });
+
+    it('are paid and reported like the game\'s own', () => {
+      const { driving, missions, completed } = setup({}, contractsOfTheDay(daily));
+      missions.accept('daily_7_1');
+      missions.update(STEP_SECONDS);
+      parkIn(driving, missions.target!.depot.bay);
+      run(driving, missions, LOADING_SECONDS + 0.1);
+      run(driving, missions, 1, 1);
+      parkIn(driving, missions.target!.depot.bay);
+      run(driving, missions, LOADING_SECONDS + 0.1);
+
+      expect(completed).toHaveLength(1);
+      expect(completed[0]).toMatchObject({ missionId: 'daily_7_1', mission: daily, reward: { basePay: 1500 } });
+      expect(missions.snapshot()).toBeNull();
+    });
+
+    it('cannot be taken once the batch has moved on', () => {
+      const source = contractsOfTheDay(daily);
+      const { missions } = setup({}, source);
+      source.batch = [];
+
+      expect(missions.accept('daily_7_1')).toEqual({ ok: false, error: 'notOffered' });
+    });
   });
 });

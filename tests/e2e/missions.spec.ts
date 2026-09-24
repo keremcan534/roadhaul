@@ -22,10 +22,13 @@ test('boots into the main menu and opens the job board', async ({ page }) => {
   await expect(page.locator('.hq__company-name')).toHaveText('Kuzey Lojistik');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   await expect(page.locator('.hq__level')).toHaveText('Level 1 · Rookie');
-  await expect(page.locator('.job-card')).toHaveCount(20);
+  // The game's own twenty, and five contracts of the day.
+  const own = page.locator('.job-card:not(.job-card--daily)');
+  await expect(own).toHaveCount(20);
+  await expect(page.locator('.job-card--daily')).toHaveCount(5);
   // Six need a higher company level; the other ten also need a bigger truck.
-  await expect(page.locator('.job-card.is-locked')).toHaveCount(16);
-  const first = page.locator('.job-card').first();
+  await expect(page.locator('.job-card.is-locked:not(.job-card--daily)')).toHaveCount(16);
+  const first = own.first();
   await expect(first.locator('.job-card__title')).toHaveText('First Package');
   await expect(first.locator('.job-card__route')).toHaveText('Yeniliman → Demirkent');
   await expect(first.locator('.job-card__pay')).toHaveText('900 credits');
@@ -75,10 +78,50 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await result.locator('[data-action="continue"]').click();
   await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
-  await expect(page.locator('.job-card')).toHaveCount(20);
+  await expect(page.locator('.job-card')).toHaveCount(25);
   // The truck waits in the delivery depot's yard, where it can be serviced.
   await expect(page.locator('.hq__truck-location')).toHaveText('At Demirkent depot');
   await expect(page.locator('.hq__service-note')).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test('offers contracts of the day, and keeps one under way across a reload', async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  const problems = watchForProblems(page);
+  await openCompanyHq(page, '?debug&lang=en');
+
+  // Five from the generator, the two easy ones first on the board; the rest wait for a level.
+  await expect(page.locator('.job-card--daily')).toHaveCount(5);
+  await expect(page.locator('.job-card').first()).toHaveClass(/job-card--daily/);
+  await expect(page.locator('.hq__list[data-tab="jobs"] .hq__note')).toContainText(
+    'Contracts of the day change every 6 hours',
+  );
+  const open = page.locator('.job-card--daily:not(.is-locked)');
+  await expect(open).toHaveCount(2);
+  const card = open.first();
+  await expect(card.locator('.badge--daily')).toHaveText('Today');
+  await expect(card.locator('.job-card__title')).toHaveText(/ delivery$/);
+  expect(await card.getAttribute('data-mission-id')).toMatch(/^daily_\d+_1$/);
+  await testInfo.attach('contracts of the day', { body: await page.screenshot(), contentType: 'image/png' });
+  await card.locator('[data-action="accept"]').click();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
+  await page.keyboard.press('KeyT');
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
+
+  // The save keeps the contract itself, whatever the board deals next.
+  await page.reload();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
+  await page.locator('[data-action="continue-game"]').click();
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded');
+  await page.locator('[data-action="free-drive"]').click();
+  await expect(page.locator('.mission-hud__objective')).toContainText('Deliver to');
+
+  await pullAway(page);
+  await page.keyboard.press('KeyT');
+  const result = page.locator('.result-dialog');
+  await expect(result).toBeVisible({ timeout: 15_000 });
+  await expect(result.locator('.panel__title')).toHaveText('Delivered!');
+  await expect(result.locator('.result-dialog__mission')).toContainText(' delivery · ');
   expect(problems).toEqual([]);
 });
 

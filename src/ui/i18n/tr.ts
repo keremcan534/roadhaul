@@ -16,6 +16,8 @@ export const TR: StringTable = {
   'hq.mainMenu': 'Ana menü',
   'hq.map': 'Harita',
   'hq.accept': 'İşi al',
+  'hq.daily': 'Günün işi',
+  'hq.dailyNote': 'Günün işleri {hours} saatte bir değişir: yenileri {time} sonra.',
   'hq.noJobs': 'Bu kamyon için şu an sözleşme yok.',
   'hq.distance': 'Mesafe',
   'hq.timeLimit': 'Süre',
@@ -297,6 +299,7 @@ export const TR: StringTable = {
   'cargo.medical_supplies.name': 'Tıbbi malzeme',
   'cargo.construction_materials.name': 'İnşaat malzemesi',
 
+  'mission.generated.title': '{cargo} sevkiyatı',
   'mission.first_package.title': 'İlk Paket',
   'mission.market_shipment.title': 'Market Sevkiyatı',
   'mission.factory_supplies.title': 'Fabrika Malzemesi',

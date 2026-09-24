@@ -3,6 +3,7 @@ import type { Logger } from '../../core/logging/Logger';
 import type { Clock } from '../../core/time/Clock';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { EventDefinition } from '../../data/definitions/EventDefinition';
+import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import { cargoQualifies, deliveryQualifies, eventBonus, objectiveStep, type DeliveryFacts } from '../../domain/events/eventRules';
 import { eventRunAt, isRunning, type EventRun } from '../../domain/events/eventSchedule';
 import type { EventRunSaveData } from '../../domain/save/SaveGameData';
@@ -65,13 +66,12 @@ export class EventService {
   }
 
   /**
-   * The running events the company takes part in that contract `missionId`
-   * counts toward because of its cargo alone (the job board marks them).
+   * The running events the company takes part in that `mission` counts
+   * toward because of its cargo alone (the job board marks them).
    * Allocates.
    */
-  eventsForContract(missionId: string): EventDefinition[] {
+  eventsForContract(mission: MissionDefinition): EventDefinition[] {
     const now = this.clock.now();
-    const mission = this.content.missions.get(missionId);
     const category = this.content.cargo.get(mission.cargoId).category;
     return this.content.events.all.filter(
       (definition) =>
@@ -100,7 +100,7 @@ export class EventService {
 
   private countDelivery(delivery: GameEvents['MissionCompleted']): void {
     const now = this.clock.now();
-    const mission = this.content.missions.get(delivery.missionId);
+    const mission = delivery.mission;
     const facts: DeliveryFacts = {
       onTime: delivery.reward.onTime,
       timeLeft: 1 - delivery.deliverySeconds / mission.timeLimitSeconds,

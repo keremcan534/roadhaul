@@ -10,6 +10,7 @@ import type { EconomyService } from '../systems/economy/EconomyService';
 import type { EventService } from '../systems/events/EventService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
+import type { DailyContracts } from '../systems/missions/DailyContracts';
 import type { MissionService } from '../systems/missions/MissionService';
 import type { NavigationService } from '../systems/navigation/NavigationService';
 import type { SaveService } from '../systems/save/SaveService';
@@ -37,6 +38,8 @@ export const ServiceKeys = Object.freeze({
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),
   missions: serviceKey<MissionService>('MissionService'),
+  /** The contracts of the day (spec §28–29), which MissionService adds to the job board. */
+  dailyContracts: serviceKey<DailyContracts>('DailyContracts'),
   navigation: serviceKey<NavigationService>('NavigationService'),
   economy: serviceKey<EconomyService>('EconomyService'),
   company: serviceKey<CompanyService>('CompanyService'),

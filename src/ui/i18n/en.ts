@@ -16,6 +16,8 @@ export const EN: StringTable = {
   'hq.mainMenu': 'Main menu',
   'hq.map': 'Map',
   'hq.accept': 'Take the job',
+  'hq.daily': 'Today',
+  'hq.dailyNote': 'Contracts of the day change every {hours} hours: the next ones come in {time}.',
   'hq.noJobs': 'No contracts for this truck right now.',
   'hq.distance': 'Distance',
   'hq.timeLimit': 'Time',
@@ -297,6 +299,7 @@ export const EN: StringTable = {
   'cargo.medical_supplies.name': 'Medical supplies',
   'cargo.construction_materials.name': 'Building materials',
 
+  'mission.generated.title': '{cargo} delivery',
   'mission.first_package.title': 'First Package',
   'mission.market_shipment.title': 'Market Shipment',
   'mission.factory_supplies.title': 'Factory Supplies',

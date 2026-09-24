@@ -46,7 +46,7 @@ describe('GameConfig', () => {
   it('reports out-of-range values', () => {
     const config = withChanges({
       simulation: { fixedStepSeconds: 0, maxStepsPerFrame: 0 },
-      missions: { loadingSeconds: 0 },
+      missions: { loadingSeconds: 0, dailyContracts: { count: 2.5, refreshHours: 0 } },
       newGame: { startingCredits: -100 },
     });
 
@@ -54,6 +54,8 @@ describe('GameConfig', () => {
       'simulation.fixedStepSeconds',
       'simulation.maxStepsPerFrame',
       'missions.loadingSeconds',
+      'missions.dailyContracts.count',
+      'missions.dailyContracts.refreshHours',
       'newGame.startingCredits',
     ]);
   });

@@ -3,7 +3,7 @@ import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
-import { contentFixture, vehicleFixture } from '../../../support/contentFixtures';
+import { contentFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const content = ContentCatalog.create(contentFixture());
 const MAX_LEVEL = 5;
@@ -48,6 +48,7 @@ describe('validateSaveGameData', () => {
           deliverySeconds: 42.5,
           cargoDamage: 0.05,
           failureReason: null,
+          contract: null,
         },
       },
     };
@@ -162,7 +163,15 @@ describe('validateSaveGameData', () => {
   });
 
   it('only keeps unfinished contracts of known missions', () => {
-    const active = { missionId: 'test_mission', state: 'loaded', handlingSeconds: 0, deliverySeconds: 3, cargoDamage: 0, failureReason: null };
+    const active = {
+      missionId: 'test_mission',
+      state: 'loaded',
+      handlingSeconds: 0,
+      deliverySeconds: 3,
+      cargoDamage: 0,
+      failureReason: null,
+      contract: null,
+    };
 
     expect(paths(withPart('missions.active', { ...active, missionId: 'ghost' }))).toEqual(['missions.active.missionId']);
     expect(paths(withPart('missions.active', { ...active, state: 'completed' }))).toEqual(['missions.active.state']);
@@ -172,6 +181,34 @@ describe('validateSaveGameData', () => {
     expect(paths(withPart('missions.active', { ...active, failureReason: 'abandoned' }))).toEqual([
       'missions.active.failureReason',
     ]);
+  });
+
+  it('keeps a generated contract whole: valid, under its own id, naming known cargo and cities', () => {
+    const contract = missionFixture({ id: 'daily_7_2', baseReward: 1250 });
+    const active = {
+      missionId: 'daily_7_2',
+      state: 'loaded',
+      handlingSeconds: 0,
+      deliverySeconds: 3,
+      cargoDamage: 0,
+      failureReason: null,
+      contract,
+    };
+
+    expect(paths(withPart('missions.active', active))).toEqual([]);
+    expect(paths(withPart('missions.active', { ...active, missionId: 'daily_7_3' }))).toEqual([
+      'missions.active.contract.id',
+    ]);
+    expect(
+      paths(withPart('missions.active', { ...active, contract: { ...contract, cargoId: 'gold', originCityId: 'atlantis' } })),
+    ).toEqual(['missions.active.contract.cargoId', 'missions.active.contract.originCityId']);
+    expect(paths(withPart('missions.active', { ...active, contract: { ...contract, timeLimitSeconds: -5 } }))).toEqual([
+      'missions.active.contract.timeLimitSeconds',
+    ]);
+    expect(paths(withPart('missions.active', { ...active, contract: 'daily' }))).toEqual(['missions.active.contract']);
+    // Without the field (a save of the wrong shape) it is not a contract either.
+    const { contract: _dropped, ...withoutContract } = active;
+    expect(paths(withPart('missions.active', withoutContract))).toEqual(['missions.active.contract']);
   });
 });
 

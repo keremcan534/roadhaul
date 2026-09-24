@@ -48,7 +48,9 @@ describe('string tables', () => {
         expect(strings.has(key), `${strings.language}: ${key}`).toBe(true);
       }
     }
-    expect(tr.missionTitle('first_package')).toBe('İlk Paket');
+    expect(tr.missionTitle({ id: 'first_package', cargoId: 'packaged_food' })).toBe('İlk Paket');
+    // A generated contract has no title of its own: it is named after its cargo.
+    expect(tr.missionTitle({ id: 'daily_81960_1', cargoId: 'farm_produce' })).toBe('Tarım ürünleri sevkiyatı');
     expect(en.cargoName('farm_produce')).toBe('Farm produce');
     expect(tr.cityName('city_b')).toBe('Demirkent');
   });

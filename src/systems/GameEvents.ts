@@ -1,4 +1,5 @@
 import type { EventReward } from '../data/definitions/EventDefinition';
+import type { MissionDefinition } from '../data/definitions/MissionDefinition';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
@@ -39,6 +40,8 @@ export interface GameEvents {
   /** The cargo was unloaded at its destination. EconomyService pays the reward, CompanyService adds the XP and reputation. */
   MissionCompleted: {
     readonly missionId: string;
+    /** The contract: one of the game's own, or a generated one. */
+    readonly mission: MissionDefinition;
     readonly reward: MissionReward;
     readonly deliverySeconds: number;
     readonly cargoDamage: Fraction;
@@ -47,6 +50,7 @@ export interface GameEvents {
   };
   MissionFailed: {
     readonly missionId: string;
+    readonly mission: MissionDefinition;
     readonly reason: MissionFailureReason;
     readonly reputationLost: number;
   };

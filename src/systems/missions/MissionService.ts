@@ -28,6 +28,7 @@ import { MAX_SAVING } from '../../domain/vehicles/upgradeBonuses';
 import { createRouteGuidance } from '../../domain/world/roadRoute';
 import type { DrivingService } from '../driving/DrivingService';
 import type { GameEvents } from '../GameEvents';
+import type { ContractSource } from './DailyContracts';
 
 export type AcceptMissionError = 'missionInProgress' | 'notOffered' | 'locked' | 'needsAnotherTruck';
 
@@ -53,6 +54,8 @@ export interface JobOffer {
   readonly requiredCompanyLevel: number;
   /** Trucks with the body and payload for it (spec §29 step 4). */
   readonly suitableVehicles: readonly VehicleDefinition[];
+  /** A contract of the day, from the generator, rather than one of the game's own. */
+  readonly daily: boolean;
   /**
    * Null when it can be taken now. Otherwise it is shown but cannot be taken:
    * the company's level is too low, or the truck being driven cannot haul it.
@@ -77,6 +80,8 @@ export interface MissionTarget {
 export class MissionService {
   private mission: MissionInstance | null = null;
   private definition: MissionDefinition | null = null;
+  /** The active contract was generated: the save keeps its definition. */
+  private generated = false;
   private currentTarget: MissionTarget | null = null;
   /** The truck stands in the target bay: the brake holds it instead of engaging reverse. */
   private holdingInBay = false;
@@ -89,8 +94,10 @@ export class MissionService {
     private readonly driving: DrivingService,
     private readonly company: CompanyLevelSource,
     private readonly events: EventBus<GameEvents>,
-    private readonly config: GameConfig['missions'],
+    private readonly config: Pick<GameConfig['missions'], 'loadingSeconds'>,
     private readonly logger: Logger,
+    /** The contracts of the day, besides the game's own; none without it. */
+    private readonly daily: ContractSource | null = null,
   ) {
     this.unsubscribeCollisions = events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) =>
       this.damageCargo(impactSpeedMetersPerSecond),
@@ -118,15 +125,21 @@ export class MissionService {
   }
 
   /**
-   * Every contract between two depots of this map (spec §28), with what keeps
+   * Every contract between two depots of this map (spec §28): the game's own,
+   * then the contracts of the day from the generator. Each says what keeps
    * the company from taking it: its level, or the truck being driven lacking
-   * the body or payload. Hand-authored for now; the mission generator comes
-   * later.
+   * the body or payload.
    */
   jobBoard(): readonly JobOffer[] {
     const offers: JobOffer[] = [];
     for (const mission of this.content.missions.all) {
-      const offer = this.offerFor(mission);
+      const offer = this.offerFor(mission, false);
+      if (offer !== null) {
+        offers.push(offer);
+      }
+    }
+    for (const mission of this.daily?.current() ?? []) {
+      const offer = this.offerFor(mission, true);
       if (offer !== null) {
         offers.push(offer);
       }
@@ -139,8 +152,9 @@ export class MissionService {
     if (this.mission !== null) {
       return err('missionInProgress');
     }
-    const definition = this.content.missions.find(missionId);
-    const offer = definition === undefined ? null : this.offerFor(definition);
+    const own = this.content.missions.find(missionId);
+    const definition = own ?? this.daily?.current().find((contract) => contract.id === missionId);
+    const offer = definition === undefined ? null : this.offerFor(definition, own === undefined);
     if (definition === undefined || offer === null) {
       return err('notOffered');
     }
@@ -153,6 +167,7 @@ export class MissionService {
     const mission = createMissionInstance(missionId);
     this.mission = mission;
     this.definition = definition;
+    this.generated = offer.daily;
     this.updateTarget();
     this.logger.info(`Accepted ${missionId}.`);
     this.events.emit('MissionStateChanged', { missionId, previous: null, current: mission.state });
@@ -167,6 +182,7 @@ export class MissionService {
     this.holdingInBay = false; // A new drive: its truck allows reverse.
     this.mission = null;
     this.definition = null;
+    this.generated = false;
     this.currentTarget = null;
     if (saved === null) {
       if (this.driving.isDriving) {
@@ -174,17 +190,19 @@ export class MissionService {
       }
       return;
     }
-    const definition = this.content.missions.get(saved.missionId);
-    this.mission = { ...saved };
+    const { contract, ...instance } = saved;
+    const definition = contract ?? this.content.missions.get(saved.missionId);
+    this.mission = { ...instance };
     this.definition = definition;
+    this.generated = contract !== null;
     this.updateTarget();
     this.driving.setCargoMass(isCargoAboard(this.mission) ? definition.cargoWeightTons * 1000 : 0);
     this.logger.info(`Resumed ${saved.missionId} (${saved.state}).`);
   }
 
-  /** The active contract as save data, or null. */
+  /** The active contract as save data, or null. A generated contract comes along whole. */
   snapshot(): ActiveMissionSaveData | null {
-    return this.mission === null ? null : { ...this.mission };
+    return this.mission === null ? null : { ...this.mission, contract: this.generated ? this.definition : null };
   }
 
   /** The active truck's suspension upgrade (GarageService): the share of collision damage kept from the cargo. */
@@ -194,8 +212,8 @@ export class MissionService {
 
   /** Gives up the active contract: it fails and the cargo is gone. Does nothing without one. */
   abandon(): void {
-    if (this.mission !== null) {
-      this.fail(this.mission, 'abandoned');
+    if (this.mission !== null && this.definition !== null) {
+      this.fail(this.mission, this.definition, 'abandoned');
     }
   }
 
@@ -241,7 +259,7 @@ export class MissionService {
     this.currentTarget = null;
   }
 
-  private offerFor(mission: MissionDefinition): JobOffer | null {
+  private offerFor(mission: MissionDefinition, daily: boolean): JobOffer | null {
     if (!this.driving.isDriving) {
       return null;
     }
@@ -276,6 +294,7 @@ export class MissionService {
       requiredCompanyLevel,
       suitableVehicles: this.content.vehicles.all.filter((vehicle) => vehicleCanHaul(vehicle, mission, cargo)),
       blockedBy,
+      daily,
     };
   }
 
@@ -321,7 +340,7 @@ export class MissionService {
     mission.cargoDamage = addCargoDamage(mission.cargoDamage, addedDamage);
     this.events.emit('CargoDamaged', { missionId: mission.missionId, addedDamage, cargoDamage: mission.cargoDamage });
     if (!isWithinTolerance(mission.cargoDamage, definition.damageTolerance)) {
-      this.fail(mission, 'cargoDamaged');
+      this.fail(mission, definition, 'cargoDamaged');
     }
   }
 
@@ -355,6 +374,7 @@ export class MissionService {
     this.events.emit('MissionStateChanged', { missionId: mission.missionId, previous, current: 'completed' });
     this.events.emit('MissionCompleted', {
       missionId: mission.missionId,
+      mission: definition,
       reward,
       deliverySeconds: mission.deliverySeconds,
       cargoDamage: mission.cargoDamage,
@@ -363,7 +383,7 @@ export class MissionService {
     });
   }
 
-  private fail(mission: MissionInstance, reason: MissionFailureReason): void {
+  private fail(mission: MissionInstance, definition: MissionDefinition, reason: MissionFailureReason): void {
     const previous = mission.state;
     failMission(mission, reason);
     this.clear();
@@ -371,6 +391,7 @@ export class MissionService {
     this.events.emit('MissionStateChanged', { missionId: mission.missionId, previous, current: 'failed' });
     this.events.emit('MissionFailed', {
       missionId: mission.missionId,
+      mission: definition,
       reason,
       reputationLost: FAILURE_REPUTATION_LOSS[reason],
     });
@@ -381,6 +402,7 @@ export class MissionService {
     this.holdInBay(false);
     this.mission = null;
     this.definition = null;
+    this.generated = false;
     this.currentTarget = null;
     if (this.driving.isDriving) {
       this.driving.setCargoMass(0);

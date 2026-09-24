@@ -5,6 +5,7 @@ import { validateCityDefinition, type CityDefinition } from './definitions/CityD
 import { validateEventDefinition, type EventDefinition } from './definitions/EventDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
 import {
+  GENERATED_MISSION_ID_PREFIX,
   validateMissionDefinition,
   vehicleCanHaul,
   type MissionDefinition,
@@ -159,6 +160,11 @@ function validateMissionReferences(validator: Validator, content: GameContent): 
       return;
     }
     const path = `missions[${index}]`;
+    validator.check(
+      typeof mission.id !== 'string' || !mission.id.startsWith(GENERATED_MISSION_ID_PREFIX),
+      `${path}.id`,
+      `ids starting with "${GENERATED_MISSION_ID_PREFIX}" are kept for generated contracts`,
+    );
     for (const key of ['originCityId', 'destinationCityId'] as const) {
       const cityId = mission[key];
       if (validator.check(cityIds.has(cityId), `${path}.${key}`, `unknown city "${cityId}"`)) {

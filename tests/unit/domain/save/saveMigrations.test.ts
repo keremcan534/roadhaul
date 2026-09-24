@@ -36,7 +36,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 7,
+        version: 8,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {}, paintId: null }],
@@ -104,12 +104,18 @@ describe('save migrations', () => {
     const moved = migrateSave(v3, { defaultMapId: 'north_valley' });
     const kept = migrateSave(elsewhere, { defaultMapId: 'north_valley' });
 
-    const added = { events: { runs: [] }, tutorial: { step: 'done' }, garage: inFactoryColours(v3.garage) };
+    const added = {
+      events: { runs: [] },
+      tutorial: { step: 'done' },
+      garage: inFactoryColours(v3.garage),
+      // The contract under way is one of the game's own.
+      missions: { active: { ...v3.missions.active, contract: null } },
+    };
     expect(moved).toEqual({
       ok: true,
-      value: { ...v3, version: 7, world: { mapId: 'north_valley', truck: null }, ...added },
+      value: { ...v3, version: 8, world: { mapId: 'north_valley', truck: null }, ...added },
     });
-    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 7, ...added } });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 8, ...added } });
   });
 
   it('starts the events of a v4 save with no progress, keeping the rest', () => {
@@ -127,7 +133,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v4, context)).toEqual({
       ok: true,
-      value: { ...v4, version: 7, events: { runs: [] }, tutorial: { step: 'done' }, garage: inFactoryColours(v4.garage) },
+      value: { ...v4, version: 8, events: { runs: [] }, tutorial: { step: 'done' }, garage: inFactoryColours(v4.garage) },
     });
   });
 
@@ -147,7 +153,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v5, context)).toEqual({
       ok: true,
-      value: { ...v5, version: 7, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage) },
+      value: { ...v5, version: 8, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage) },
     });
   });
 
@@ -171,8 +177,40 @@ describe('save migrations', () => {
 
     expect(migrateSave(v6, context)).toEqual({
       ok: true,
-      value: { ...v6, version: 7, garage: inFactoryColours(v6.garage) },
+      value: { ...v6, version: 8, garage: inFactoryColours(v6.garage) },
     });
+  });
+
+  it('keeps the contract under way of a v7 save as one of the game\'s own, and the rest as it was', () => {
+    const v7 = {
+      ...V1_SAVE,
+      version: 7,
+      garage: {
+        activeVehicleInstanceId: 'truck_001',
+        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {}, paintId: 'ocean_blue' }],
+      },
+      world: { mapId: 'north_valley', truck: { x: 1, z: 2, headingRadians: 3 } },
+      missions: {
+        active: {
+          missionId: 'first_package',
+          state: 'delivering',
+          handlingSeconds: 0,
+          deliverySeconds: 12,
+          cargoDamage: 0,
+          failureReason: null,
+        },
+      },
+      stats: { deliveriesCompleted: 3, deliveriesFailed: 0, creditsEarned: 4000, distanceDrivenMeters: 8000 },
+      events: { runs: [] },
+      tutorial: { step: 'done' },
+    };
+    const idle = { ...v7, missions: { active: null } };
+
+    expect(migrateSave(v7, context)).toEqual({
+      ok: true,
+      value: { ...v7, version: 8, missions: { active: { ...v7.missions.active, contract: null } } },
+    });
+    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 8 } });
   });
 
   it('migrates odd data without throwing, leaving it to validation', () => {

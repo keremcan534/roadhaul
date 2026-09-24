@@ -598,6 +598,11 @@ body {
   background: #f08a7c;
 }
 
+/* A contract of the day, from the generator (MissionService.jobBoard). */
+.badge--daily {
+  background: #6fe0d2;
+}
+
 /* ---- Main menu (src/ui/menus/MainMenu.ts) ---- */
 
 .main-menu {
@@ -993,6 +998,12 @@ body {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
 }
 
+.job-card--daily {
+  box-shadow:
+    inset 3px 0 0 #6fe0d2,
+    inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
 .job-card__top,
 .job-card__bottom {
   display: flex;
@@ -1278,7 +1289,7 @@ body {
 }
 
 html[data-tutorial-step='takeContract'] .hq__tab[data-tab='jobs']:not(.is-selected),
-html[data-tutorial-step='takeContract'] .hq__list[data-tab='jobs'] .job-card:first-child .job-card__accept,
+html[data-tutorial-step='takeContract'] .hq__list[data-tab='jobs'] .job-card--tutorial .job-card__accept,
 html[data-tutorial-step='buyUpgrade'] .hq__tab[data-tab='upgrades']:not(.is-selected),
 html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-card__action:not(:disabled) {
   animation: tutorial-glow 1.4s ease-in-out infinite;
