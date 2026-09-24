@@ -49,11 +49,13 @@ const DIAL_ART = `
 
 export interface TouchControlsOptions {
   readonly onToggleCamera: () => void;
+  /** The horn button held down (true) or let go (false). */
+  readonly onHorn: (pressed: boolean) => void;
 }
 
 /**
  * On-screen driving controls for phones (spec §30: steering wheel, gas,
- * brake), plus a camera button and a speed/gear readout. It is input only:
+ * brake), plus a camera button, a horn and a speed/gear readout. It is input only:
  * it writes `state`, which the entry point merges with the keyboard every
  * fixed step. Each control tracks its own fingers, so steering and pedals
  * work at the same time with two thumbs.
@@ -140,17 +142,21 @@ export class TouchControls {
     camera.type = 'button';
     camera.setAttribute('aria-label', 'Switch camera');
     camera.addEventListener('click', () => options.onToggleCamera());
+    const horn = element('button', 'horn-button');
+    horn.type = 'button';
+    horn.setAttribute('aria-label', 'Horn');
 
-    this.root.append(this.wheel, dashboard, pedals, camera);
+    this.root.append(this.wheel, dashboard, pedals, camera, horn);
     // Long presses must not open menus or select anything.
     this.root.addEventListener('contextmenu', (event) => event.preventDefault());
     this.bindWheel();
-    this.bindPedal(gas, (pressed) => {
+    this.bindHold(gas, (pressed) => {
       this.state.throttle = pressed ? 1 : 0;
     });
-    this.bindPedal(brake, (pressed) => {
+    this.bindHold(brake, (pressed) => {
       this.state.brake = pressed ? 1 : 0;
     });
+    this.bindHold(horn, options.onHorn);
     this.showTelemetry(0, 1);
     parent.append(this.root);
   }
@@ -265,25 +271,25 @@ export class TouchControls {
     }
   }
 
-  private bindPedal(pedal: HTMLButtonElement, setPressed: (pressed: boolean) => void): void {
-    // Every finger on the pedal: it stays down until the last one lifts.
+  /** A control held down, a pedal or the horn: it stays down until the last finger on it lifts. */
+  private bindHold(control: HTMLButtonElement, setPressed: (pressed: boolean) => void): void {
     const pointers = new Set<number>();
     const release = (): void => {
       pointers.clear();
-      pedal.classList.remove('is-pressed');
+      control.classList.remove('is-pressed');
       setPressed(false);
     };
     this.releaseAll.push(release);
 
-    pedal.addEventListener('pointerdown', (event) => {
+    control.addEventListener('pointerdown', (event) => {
       event.preventDefault();
       pointers.add(event.pointerId);
-      pedal.classList.add('is-pressed');
+      control.classList.add('is-pressed');
       setPressed(true);
-      capturePointer(pedal, event.pointerId);
+      capturePointer(control, event.pointerId);
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
-      pedal.addEventListener(type, (event) => {
+      control.addEventListener(type, (event) => {
         if (pointers.delete(event.pointerId) && pointers.size === 0) {
           release();
         }

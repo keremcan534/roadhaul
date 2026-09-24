@@ -334,6 +334,45 @@ body {
   background: var(--rh-control-bg);
 }
 
+/* The horn, under the camera button: a round button with a horn's bell drawn in CSS. */
+.horn-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  width: 48px;
+  height: 48px;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  touch-action: none;
+}
+
+.horn-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 18px;
+  background: var(--rh-control-line);
+  clip-path: polygon(0 38%, 40% 38%, 100% 0, 100% 100%, 40% 62%, 0 62%);
+  transform: translate(-50%, -50%);
+}
+
+.horn-button.is-pressed {
+  border-color: var(--rh-accent);
+  transform: scale(0.94);
+}
+
+/* Upright phones: the mission HUD takes the width under the corner buttons, so the horn joins their row. */
+@media (orientation: portrait) {
+  .horn-button {
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    right: calc(env(safe-area-inset-right, 0px) + 70px);
+  }
+}
+
 /* ---- Shared screen pieces: overlays, panels, buttons, badges ---- */
 
 .screen {
@@ -523,6 +562,11 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
+}
+
+/* Two choices (sound on, off) share the row the four graphics choices fill. */
+.settings__choices--pair {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .settings__choice {

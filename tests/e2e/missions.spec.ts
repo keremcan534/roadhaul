@@ -152,7 +152,7 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
     await expect(page.locator('.mission-hud')).toBeVisible();
 
     const hud = (await page.locator('.mission-hud').boundingBox())!;
-    for (const selector of ['.pause-button', '.camera-button', '.dashboard', '.steering-wheel', '.pedals']) {
+    for (const selector of ['.pause-button', '.camera-button', '.horn-button', '.dashboard', '.steering-wheel', '.pedals']) {
       const box = (await page.locator(selector).boundingBox())!;
       const overlap =
         hud.x < box.x + box.width && box.x < hud.x + hud.width && hud.y < box.y + box.height && box.y < hud.y + hud.height;

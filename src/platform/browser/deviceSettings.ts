@@ -4,17 +4,24 @@ import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfi
 /** Settings of this device, kept apart from the company's save: they belong to the phone, not the game. */
 export interface DeviceSettings {
   readonly quality: QualityChoice;
+  readonly sound: boolean;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
-const DEFAULTS: DeviceSettings = Object.freeze({ quality: 'auto' });
+const DEFAULTS: DeviceSettings = Object.freeze({ quality: 'auto', sound: true });
 
-/** The saved settings, or the defaults when there are none, they do not read, or storage fails. */
+/** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
 export function loadSettings(storage: KeyValueStorage): DeviceSettings {
   try {
     const parsed: unknown = JSON.parse(storage.getItem(SETTINGS_KEY) ?? 'null');
-    const quality = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>)['quality'] : undefined;
-    return isQualityChoice(quality) ? { quality } : DEFAULTS;
+    if (typeof parsed !== 'object' || parsed === null) {
+      return DEFAULTS;
+    }
+    const { quality, sound } = parsed as Record<string, unknown>;
+    return {
+      quality: isQualityChoice(quality) ? quality : DEFAULTS.quality,
+      sound: typeof sound === 'boolean' ? sound : DEFAULTS.sound,
+    };
   } catch {
     return DEFAULTS;
   }

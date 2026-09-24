@@ -6,17 +6,20 @@ const THROTTLE = new Set(['ArrowUp', 'KeyW']);
 const BRAKE = new Set(['ArrowDown', 'KeyS', 'Space']);
 const CAMERA_TOGGLE = 'KeyC';
 const PAUSE = new Set(['Escape', 'KeyP']);
+const HORN = 'KeyH';
 
 export interface KeyboardActions {
   readonly onToggleCamera: () => void;
   readonly onPause: () => void;
+  /** H held down (true) or let go (false). */
+  readonly onHorn: (pressed: boolean) => void;
 }
 
 /**
  * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
- * Escape or P pauses. Uses physical key codes, so it works the same on
- * Turkish Q/F and other layouts. The truck's steering rate smooths the
- * digital steering.
+ * H sounds the horn, Escape or P pauses. Uses physical key codes, so it
+ * works the same on Turkish Q/F and other layouts. The truck's steering rate
+ * smooths the digital steering.
  */
 export class KeyboardInput {
   /** Current driver input from the keyboard; read it every fixed step. */
@@ -52,6 +55,12 @@ export class KeyboardInput {
       }
       return;
     }
+    if (event.code === HORN) {
+      if (!event.repeat) {
+        this.actions.onHorn(true);
+      }
+      return;
+    }
     if (isDrivingKey(event.code)) {
       event.preventDefault(); // Arrows and Space would scroll the page.
       this.pressed.add(event.code);
@@ -60,6 +69,9 @@ export class KeyboardInput {
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
+    if (event.code === HORN) {
+      this.actions.onHorn(false);
+    }
     if (this.pressed.delete(event.code)) {
       this.refresh();
     }
@@ -69,6 +81,7 @@ export class KeyboardInput {
   private readonly onBlur = (): void => {
     this.pressed.clear();
     this.refresh();
+    this.actions.onHorn(false);
   };
 
   private refresh(): void {

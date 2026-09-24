@@ -19,6 +19,7 @@ import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { CameraRig } from './presentation/cameras/CameraRig';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
+import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
 import { DepotView } from './presentation/world/DepotView';
@@ -70,7 +71,8 @@ async function start(): Promise<void> {
   const query = new URLSearchParams(window.location.search);
   const { storage, persistent } = browserStorage(window);
   // Graphics: `?quality=`, else the player's setting, else what the device can carry. URL flags win over the preset.
-  const settings = loadSettings(storage);
+  // The phone's settings; sound can change while the game runs.
+  let settings = loadSettings(storage);
   const qualityChoice = qualitySetting(query.get('quality'), settings.quality, persistent);
   const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(deviceHints(navigator)));
   const config = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
@@ -132,6 +134,8 @@ async function start(): Promise<void> {
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
+  /** Whether sound plays, as last written to the page (e2e tests read it). */
+  let shownSound = '';
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
@@ -146,7 +150,11 @@ async function start(): Promise<void> {
       truck.setCabinView(cameraRig.toggleMode() === 'cabin');
     }
   };
-  const touch = new TouchControls(ui, { onToggleCamera: toggleCamera });
+  // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
+  const audio = new GameAudio(() => (typeof AudioContext === 'undefined' ? null : new AudioContext()), settings.sound);
+  const soundState = createSoundState();
+  const honk = (pressed: boolean): void => audio.setHorn(pressed);
+  const touch = new TouchControls(ui, { onToggleCamera: toggleCamera, onHorn: honk });
   const hud = new MissionHud(ui, strings, missions, navigation, driving);
   const toasts = new Toasts(ui);
 
@@ -224,6 +232,7 @@ async function start(): Promise<void> {
   });
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
+    onHorn: honk,
     onPause: () => {
       if (pauseMenu.isOpen) {
         resume();
@@ -279,7 +288,7 @@ async function start(): Promise<void> {
     },
     onSettings: () => settingsDialog.open(),
   });
-  const settingsDialog = new SettingsDialog(ui, strings, qualityChoice, quality, {
+  const settingsDialog = new SettingsDialog(ui, strings, { quality: qualityChoice, qualityInUse: quality, sound: settings.sound }, {
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
@@ -289,6 +298,11 @@ async function start(): Promise<void> {
         query.set('quality', choice);
       }
       window.location.search = query.toString();
+    },
+    onSound: (on) => {
+      settings = { ...settings, sound: on };
+      saveSettings(storage, settings);
+      audio.enabled = on;
     },
     onClose: () => settingsDialog.close(),
   });
@@ -357,18 +371,24 @@ async function start(): Promise<void> {
       restArea.refresh();
     }
   };
+  events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => audio.crash(impactSpeedMetersPerSecond));
   events.on('MissionStateChanged', ({ current }) => {
+    if (current === 'loaded') {
+      audio.clunk();
+    }
     syncMissionView();
     root.dataset.missionState = current;
   });
   events.on('CargoDamaged', () => hud.flashCargoDamage());
   events.on('MissionCompleted', (delivery) => {
+    audio.chime();
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
     result.showCompleted(content.missions.get(delivery.missionId), delivery, economy.credits);
   });
   events.on('MissionFailed', ({ missionId, reason, reputationLost }) => {
+    audio.fail();
     paused = true;
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
@@ -474,8 +494,25 @@ async function start(): Promise<void> {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       leave();
+      audio.suspend();
     } else {
       adaptiveResolution.restart();
+      audio.resume();
+    }
+  });
+  // Sound may start once the page has been touched or typed on: a touch counts when the finger lifts. Starting it
+  // earlier would only be refused, with a warning. A button pressed clicks (not the pedals or the horn: they are held).
+  const unlockSound = (): void => {
+    // Browsers without navigator.userActivation (older Safari and Firefox) get their chance at every gesture.
+    if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
+      audio.unlock();
+    }
+  };
+  window.addEventListener('pointerup', unlockSound, { capture: true });
+  window.addEventListener('keydown', unlockSound, { capture: true });
+  document.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button)') !== null) {
+      audio.click();
     }
   });
   window.addEventListener('pagehide', () => session.save());
@@ -610,6 +647,22 @@ async function start(): Promise<void> {
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
+        // In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives, the gas pedal brakes.
+        const reversing = vehicle.gear < 0;
+        soundState.driving = simulating;
+        soundState.engineRunning = driving.isEngineRunning;
+        soundState.engineRpm = vehicle.engineRpm;
+        soundState.idleRpm = driving.definition.powertrain.idleRpm;
+        soundState.maxRpm = driving.definition.powertrain.maxRpm;
+        soundState.drivePedal = reversing ? driverInput.brake : driverInput.throttle;
+        soundState.brakePedal = reversing ? driverInput.throttle : driverInput.brake;
+        soundState.speed = vehicle.speed;
+        soundState.rain = weather.rain;
+        audio.update(soundState);
+        if (audio.status !== shownSound) {
+          shownSound = audio.status;
+          root.dataset.sound = shownSound;
+        }
         perfOverlay?.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
       },
       onError: (error) => {
