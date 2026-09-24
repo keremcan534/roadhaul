@@ -81,6 +81,64 @@ describe('VehicleDynamics', () => {
     expect(state.speed).toBeGreaterThan(0);
   });
 
+  describe('with the gear lever (the touch controls\' D/R button)', () => {
+    it('reverses on the gas pedal once the lever is in R, and only brakes on the brake', () => {
+      const { dynamics, state } = setup();
+      const stoppedAtZ = state.z;
+
+      // In R at a standstill, the gearbox engages reverse at once and the gas pedal drives backwards.
+      dynamics.step(state, input({ lever: 'reverse' }), ASPHALT, STEP_SECONDS);
+      expect(state.gear).toBe(-1);
+      drive(dynamics, state, input({ lever: 'reverse', throttle: 1 }), 10);
+      expect(kmh(state)).toBeLessThan(-truck.handling.maxReverseSpeedKmh + 0.1);
+      expect(state.z).toBeLessThan(stoppedAtZ - 20);
+
+      // The brake stops it, and holding it keeps it stopped: it never drives.
+      drive(dynamics, state, input({ lever: 'reverse', brake: 1 }), 30, { until: (current) => current.speed === 0 });
+      const heldAtZ = state.z;
+      drive(dynamics, state, input({ lever: 'reverse', brake: 1 }), 3);
+      expect(state.speed).toBe(0);
+      expect(state.z).toBe(heldAtZ);
+    });
+
+    it('never reverses on the brake in D, however long it is held at a standstill', () => {
+      const { dynamics, state } = setup();
+      drive(dynamics, state, input({ lever: 'drive', throttle: 1 }), 5);
+
+      drive(dynamics, state, input({ lever: 'drive', brake: 1 }), 30);
+
+      expect(state.speed).toBe(0);
+      expect(state.gear).toBe(1);
+    });
+
+    it('brakes to a stop on the gas pedal when rolling against the lever, then drives the lever\'s way', () => {
+      const { dynamics, state } = setup();
+      drive(dynamics, state, input({ lever: 'drive', throttle: 1 }), 5);
+      const forward = state.speed;
+      expect(forward).toBeGreaterThan(3);
+
+      dynamics.step(state, input({ lever: 'reverse', throttle: 1 }), ASPHALT, STEP_SECONDS);
+      expect(state.gear).toBeGreaterThan(0);
+      expect(state.speed).toBeLessThan(forward);
+      drive(dynamics, state, input({ lever: 'reverse', throttle: 1 }), 30, { until: (current) => current.speed < 0 });
+      expect(state.gear).toBe(-1);
+
+      // Back to D while rolling backwards: the gas brakes, then pulls away forward.
+      drive(dynamics, state, input({ lever: 'drive', throttle: 1 }), 30, { until: (current) => current.speed > 0 });
+      expect(state.gear).toBe(1);
+    });
+
+    it('keeps the truck in forward gear where reverse is not allowed, the gas pedal holding it', () => {
+      const { dynamics, state } = setup();
+      dynamics.setReverseAllowed(false);
+
+      drive(dynamics, state, input({ lever: 'reverse', throttle: 1 }), 3);
+
+      expect(state.gear).toBe(1);
+      expect(state.speed).toBe(0);
+    });
+  });
+
   it('turns right (clockwise from above) when steering right, and left when steering left', () => {
     const right = setup();
     const left = setup();

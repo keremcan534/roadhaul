@@ -222,7 +222,7 @@ export const TR: StringTable = {
   'toast.eventCompleted': '{event} tamamlandı!',
 
   'tutorial.takeContract': 'İlk işini al: parlayan “İşi al” düğmesine dokun.',
-  'tutorial.driveToPickup': 'Sağ pedalla hızlan, direksiyonla dön. Mavi çizgiyi izle ve sarı alanda dur.',
+  'tutorial.driveToPickup': 'Sağ pedalla hızlan, direksiyonla dön; geri gitmek için R düğmesine dokun. Mavi çizgiyi izle ve sarı alanda dur.',
   'tutorial.deliver': 'Yük alındı! Mavi çizgiyi izleyerek teslimat deposuna git, alanında dur.',
   'tutorial.buyUpgrade': 'İlk kazancın geldi. Yükseltmeler sekmesinden kamyonunu güçlendir.',
   'tutorial.finished': 'Harika! Artık şirketin senin ellerinde.',

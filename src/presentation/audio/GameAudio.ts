@@ -17,6 +17,8 @@ export interface SoundState {
   speed: number;
   /** How hard it rains, 0..1. */
   rain: number;
+  /** In reverse gear: the reversing alarm beeps. */
+  reversing: boolean;
 }
 
 export function createSoundState(): SoundState {
@@ -30,6 +32,7 @@ export function createSoundState(): SoundState {
     brakePedal: 0,
     speed: 0,
     rain: 0,
+    reversing: false,
   };
 }
 
@@ -48,6 +51,10 @@ const NOISE_SECONDS = 2;
 /** The air brakes hiss when the truck stops (under this speed, m/s) after braking from at least HISS_FROM_SPEED. */
 const STOPPED_SPEED = 0.3;
 const HISS_FROM_SPEED = 3;
+/** The reversing alarm: this note, on for half of each beat, this many beats a second. */
+const ALARM_HZ = 1150;
+const ALARM_BEATS_PER_SECOND = 1.25;
+const ALARM_VOLUME = 0.07;
 /** A truck's dual-tone air horn: two notes a major third apart, Hz. */
 const HORN_NOTES = [196, 247] as const;
 
@@ -65,6 +72,7 @@ interface Graph {
   readonly brake: GainNode;
   readonly rain: GainNode;
   readonly horn: GainNode;
+  readonly alarm: GainNode;
 }
 
 /**
@@ -176,6 +184,9 @@ export class GameAudio {
     // The rain is heard behind the menus too, softer.
     follow(graph.rain.gain, clamp01(state.rain) * RAIN_VOLUME * (driving ? 1 : 0.5), now);
     follow(graph.horn.gain, driving && this.hornPressed ? HORN_VOLUME : 0, now);
+    // Beep, beep: on for the first half of each beat while in reverse.
+    const beeping = driving && state.reversing && (now * ALARM_BEATS_PER_SECOND) % 1 < 0.5;
+    follow(graph.alarm.gain, beeping ? ALARM_VOLUME : 0, now);
 
     const speed = Math.abs(state.speed);
     if (!driving || state.brakePedal < 0.5) {
@@ -350,5 +361,13 @@ function buildGraph(context: AudioContext): Graph {
     note.start();
   }
 
-  return { master, noise, fire, sub, engineFilter, clatter, engine, roadFilter, road, brake, rain, horn };
+  // The reversing alarm: one steady note, switched on and off by update().
+  const alarm = gainNode(context, 0);
+  const alarmNote = context.createOscillator();
+  alarmNote.type = 'sine';
+  alarmNote.frequency.value = ALARM_HZ;
+  alarmNote.connect(alarm).connect(master);
+  alarmNote.start();
+
+  return { master, noise, fire, sub, engineFilter, clatter, engine, roadFilter, road, brake, rain, horn, alarm };
 }

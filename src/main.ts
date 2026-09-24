@@ -9,7 +9,12 @@ import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
-import { combineVehicleInputs, createVehicleInput } from './domain/vehicles/VehicleInput';
+import {
+  brakePedalOf,
+  combineVehicleInputs,
+  createVehicleInput,
+  drivePedalOf,
+} from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
 import { browserStorage } from './platform/browser/browserStorage';
 import { applyConfigOverrides, requestedDateMs } from './platform/browser/configOverrides';
@@ -641,8 +646,9 @@ async function start(): Promise<void> {
     if (!drivingNow) {
       toasts.clear();
     } else {
-      // Each drive starts straight ahead the way the phone is held.
+      // Each drive starts straight ahead the way the phone is held, in D.
       tilt.recenter();
+      touch.gear = 'drive';
       if (tilt.status === 'locked') {
         toasts.show(strings.t('toast.tiltLocked'), 'info');
       }
@@ -830,7 +836,7 @@ async function start(): Promise<void> {
         effectsState.engineRpm = vehicle.engineRpm;
         effectsState.idleRpm = driving.definition.powertrain.idleRpm;
         effectsState.maxRpm = driving.definition.powertrain.maxRpm;
-        effectsState.drivePedal = vehicle.gear < 0 ? driverInput.brake : driverInput.throttle;
+        effectsState.drivePedal = drivePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, vehicle.gear < 0);
         effectsState.speed = vehicle.speed;
         effectsState.heading = pose.heading;
         effectsState.offRoad = driving.surface.name === 'grass';
@@ -860,15 +866,16 @@ async function start(): Promise<void> {
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
-        // In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives, the gas pedal brakes.
+        // The pedals as the truck reads them (VehicleDynamics): on auto they swap roles in reverse.
         const reversing = vehicle.gear < 0;
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
         soundState.engineRpm = vehicle.engineRpm;
         soundState.idleRpm = driving.definition.powertrain.idleRpm;
         soundState.maxRpm = driving.definition.powertrain.maxRpm;
-        soundState.drivePedal = reversing ? driverInput.brake : driverInput.throttle;
-        soundState.brakePedal = reversing ? driverInput.throttle : driverInput.brake;
+        soundState.drivePedal = drivePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
+        soundState.brakePedal = brakePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
+        soundState.reversing = reversing;
         soundState.speed = vehicle.speed;
         soundState.rain = weather.rain;
         audio.update(soundState);

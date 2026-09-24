@@ -222,7 +222,7 @@ export const EN: StringTable = {
   'toast.eventCompleted': '{event} completed!',
 
   'tutorial.takeContract': 'Take your first job: tap the glowing “Take the job” button.',
-  'tutorial.driveToPickup': 'Right pedal to go, the wheel to steer. Follow the blue line and stop in the yellow bay.',
+  'tutorial.driveToPickup': 'Right pedal to go, the wheel to steer, the R button to back up. Follow the blue line and stop in the yellow bay.',
   'tutorial.deliver': 'Loaded! Follow the blue line to the delivery depot and stop in its bay.',
   'tutorial.buyUpgrade': 'Your first pay is in. Spend it on your truck in the Upgrades tab.',
   'tutorial.finished': 'Well done! The company is yours to run now.',
