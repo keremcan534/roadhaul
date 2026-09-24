@@ -48,7 +48,7 @@ flowchart TD
 | systems | `src/systems` | Services that own runtime state, apply domain rules and publish `GameEvents` (game state, driving, missions, economy, fuel, damage, company, saves, the game session) | core, data, domain | anywhere |
 | app | `src/app` | Headless composition root: `GameBootstrapper`, `ServiceKeys` | core … systems | anywhere |
 | presentation | `src/presentation` | three.js renderer, environment, track, depot and truck views, cameras, visual effects; the sound (Web Audio) | core … systems, `three` | browser |
-| ui | `src/ui` | DOM overlay: main menu, company HQ job board, mission HUD, touch driving controls, pause and result screens, string tables, debug overlay, styles | core … systems | browser |
+| ui | `src/ui` | DOM overlay: main menu, the company panel over the road (job board, truck, garage, events) and the buttons that open it, mission HUD, touch driving controls, pause and result screens, string tables, debug overlay, styles | core … systems | browser |
 | platform | `src/platform` | Browser/device adapters: frame scheduler, keyboard input, URL flags, fatal error screen, localStorage, the device's graphics preset and settings; the Android app's back button and lifecycle | core … systems, `@capacitor/app` | browser, Android app |
 | entry | `src/main.ts` | Browser composition root | everything | browser |
 
@@ -78,7 +78,7 @@ flowchart TD
    5. runs `initialize()` on every service in registration order;
    6. moves the game state from `booting` to `mainMenu`.
 3. `src/main.ts` picks the language (`?lang=`, then the browser's), puts the starting truck at the start of the starting map, and creates the `RenderHost` (WebGL), `EnvironmentView`, `TrackView`, `DepotView`, `RestAreaView`, `TrafficView`, `GpsRouteView`, `RainView`, `TruckView`, `CameraRig`, keyboard and touch input, the menus, the HUD and, with `?debug`, the performance overlay. It wires the game flow (section 8) and starts the `GameLoop`. The game waits in the main menu, which offers Continue (with a saved game) and New company.
-4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event, `data-mission-state` every `MissionStateChanged`, `data-vehicle` the truck being driven, `data-traffic` the vehicles on the road and `data-weather` every `WeatherChanged`. The e2e tests wait for them.
+4. `<html data-boot-state>` becomes `ready`. `data-game-state` follows every `GameStateChanged` event, `data-panel` whether the company panel is open, `data-mission-state` every `MissionStateChanged`, `data-vehicle` the truck being driven, `data-truck-view` what the truck on screen is built from (model, paint, upgraded parts), `data-traffic` the vehicles on the road and `data-weather` every `WeatherChanged`. The e2e tests wait for them.
 
 Any failure shows the fatal error screen and sets `data-boot-state="error"`. A failed boot disposes every service it had already created.
 
@@ -148,8 +148,8 @@ tilt (platform/input) ─────┘                              │
   - a speed governor;
   - drag, rolling resistance and engine braking;
   - grip-limited traction and braking;
-  - brake-to-reverse: hold the brake at a standstill to reverse;
-  - understeer at the truck's cornering limit.
+  - reverse, two ways (`VehicleInput.lever`): on `auto` (the keyboard) hold the brake at a standstill to reverse; with the touch controls' D/R button (`drive`/`reverse`) the gas pedal drives the way the lever points, the brake only brakes, and the gearbox follows the lever at a standstill;
+  - understeer at the truck's cornering limit (`maxLateralAccelerationG`, 0.52–0.62 g: a junction at 30 km/h fits a 14 m radius).
 
   All of it is data in `VehicleDefinition`. `vehicleTuning.test.ts` keeps the shipped trucks feeling like trucks.
 - **`DrivingWorld`** (`src/domain/world`) is built from a `MapDefinition`:
@@ -169,7 +169,7 @@ tilt (platform/input) ─────┘                              │
 
   Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two. Traffic counts too (moving obstacles): the truck takes an impact only when it drives into a vehicle, and one it rear-ends carries it along at its speed.
 - **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. It also sets the cargo mass (a loaded truck is slower), parks the truck at a pose, and recovers a stuck truck into the right-hand lane of the nearest road. Presentation reads its state and never writes it.
-- **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C), touch controls (gas, brake, camera button, and the steering wheel or left/right buttons) and tilt steering are merged every fixed step: steering adds up, pedals take the stronger press.
+- **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C), touch controls (gas, brake, the D/R gear button, camera button, and the steering wheel, which reaches full lock at a quarter turn, or left/right buttons) and tilt steering are merged every fixed step: steering adds up, pedals take the stronger press, and the gear lever is the one of the device being pressed (`combineVehicleInputs`). A drive starts in D.
 - **Tilt steering** turns the phone into the steering wheel. `TiltSteering` (pure, unit-tested) measures how far the phone has turned about the screen's axis since it was calibrated, from the accelerometer's gravity: straight ahead is how the phone is held at the start of a drive, when the screen turns and when the tilt button is tapped. Only the angle between two readings counts, so it works in any screen orientation and with browsers that report gravity with the opposite sign. Tipped back far, the angle is read against half of gravity, so it stays steady down to a phone held flat. `TiltInput` (platform) feeds it from `devicemotion` only while tilt is the picked way of steering, and asks iOS for the sensor from a tap. The way of steering, tilt sensitivity and control size are device settings, like the graphics preset.
 
 ### Cameras
@@ -209,7 +209,7 @@ The tutorial (roadmap step 26, spec §41) teaches by playing and never blocks an
 
 - **`tutorialStepAfter`** (`src/domain/tutorial`) is the whole flow: take a contract, drive to the pickup bay, deliver, buy an upgrade, done. A failed contract starts the drive over.
 - **`TutorialService`** (`src/systems/tutorial`) follows the game's events to move the steps on, and can be skipped. It emits `TutorialStepChanged`, on which the session saves.
-- **`TutorialHint`** (`src/ui/hud`) shows one short hint for the step, where the step is played: in the HQ above the list (in the flow, so it covers nothing), on the road under the mission HUD. `<html data-tutorial-step>` makes the control the hint is about glow, in CSS.
+- **`TutorialHint`** (`src/ui/hud`) shows one short hint for the step, where the step is played: in the company panel above the list (in the flow, so it covers nothing), on the road under the HUD (`tutorialShows`: taking a contract and buying an upgrade are hinted in both places, driving only on the road). `<html data-tutorial-step>` makes the control the hint is about glow, in CSS: the road's Jobs or Garage button, then the tab and the button in the panel.
 
 ### Weather
 
@@ -223,9 +223,9 @@ Weather (roadmap step 24, spec §38–39) is data: each `WeatherDefinition` says
 Roadmap steps 09–13 turn driving into a job (spec §9, §12, §50):
 
 ```text
-main menu ─► company HQ (job board) ─► accept ─► drive to the pickup depot ─► stop in the bay: load
-                    ▲                                                                 │
-                    └── result (pay, or why it failed) ◄── stop in the bay: unload ◄──┘ drive to the delivery depot
+main menu ─► the road ─► Jobs: the job board over it ─► accept ─► drive to the pickup depot ─► stop in the bay: load
+                              ▲                                                                    │
+                              └── result (pay, or why it failed) ◄── stop in the bay: unload ◄─────┘ drive to the delivery depot
 ```
 
 - **Data.** Each city has a depot (`DepotDefinition` in the map): a paved yard beside the road with a loading bay. Cargo names the truck body it needs (`BodyType`: box, refrigerated, flatbed). Content validation checks that every mission's cities have depots and that some truck can haul it.
@@ -238,7 +238,7 @@ main menu ─► company HQ (job board) ─► accept ─► drive to the pickup
   - `world/RoadNetwork` gives the remaining distance by road and a point to steer toward. It computes the shortest routes to a target once (Dijkstra from the target) and caches them, so the HUD can ask every frame without allocating.
 - **`DailyContracts`** (`src/systems/missions`) deals the contracts of the day for the map being driven: a new batch every `GameConfig.missions.dailyContracts.refreshHours` of the clock (6), the same for everyone at the same time, so `?date=` fixes it for tests. Generated contracts' ids start with `daily_`, which the game's own must not use (content validation).
 - **`MissionService`** (`src/systems/missions`) offers the contracts the truck can haul (the job board: the game's own and the contracts of the day), accepts one at a time, and advances it every fixed step after `DrivingService.step()`: loading after `GameConfig.missions.loadingSeconds` in the pickup bay (the truck gets the cargo's weight), the delivery clock, cargo damage from `VehicleCollided`, and unloading and the reward at the destination. It publishes `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed` (the last two carry the contract itself, generated or not) and never touches the UI. A generated contract under way goes into the save whole, so it resumes after its batch has left the board.
-- **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay; `RestAreaView` draws the rest area's lot, stalls and fuel canopy. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the job board, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open, and the truck stays parked where it was left between contracts.
+- **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay; `RestAreaView` draws the rest area's lot, stalls and fuel canopy. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the company panel, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open; the result offers the next job or the road, and the truck stays where it was left between contracts.
 - **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`); a generated contract is named after its cargo. A unit test keeps both languages complete.
 
 ### Economy, the truck's upkeep and the company
@@ -253,7 +253,7 @@ Roadmap steps 14–17 give deliveries consequences (spec §13–18):
   - refuelling costs money at the pump of a depot or rest area or, dearer, from a fuel truck anywhere on the road;
   - a stranded company that cannot pay gets a little emergency fuel for free, so it can never get stuck.
 - **`DamageService`** turns collisions into truck damage in the spec §18 bands. Damage weakens the engine and brakes through `DrivingService.setPerformanceModifier` (upgrades add their own modifier), never to nothing. Repairs cost money, at a depot or rest area.
-- **The rest area** (spec §25) has a counter (`RestAreaPanel`): fuel, repair and continue, while the truck stands on its lot. During a contract the HQ is out of reach, so it is where to stop.
+- **The rest area** (spec §25) has a counter (`RestAreaPanel`): fuel, repair and continue, while the truck stands on its lot. The truck page's pump and workshop work at a depot or the rest area only, so during a contract it is where to stop.
 - **`CompanyService`** keeps the company's name, XP, the five levels (`GameConfig.company.levelXp`), reputation and statistics. Deliveries add XP and reputation (computed with the reward in `missionProgress.ts`); failures cost reputation. Contracts can require a company level, and the job board shows what unlocks them.
 
 ### The garage and upgrades
@@ -267,7 +267,15 @@ Roadmap steps 19–20 close the first-success loop (spec §80): deliver, earn, u
   - the tank size and fuel saving through `FuelService.setUpgradeBonuses`;
   - cargo protection through `MissionService.setCargoProtection`.
 - **`UpgradeService`** is the shop: the next level of each upgrade for the active truck, paid through the economy.
-- **The HQ** has three tabs: the job board, the garage and the upgrade shop. Every blocked contract, truck or upgrade says what unlocks it.
+- **Upgrades show on the truck.** Each upgrade names the part that shows it (`UpgradeDefinition.look`: exhaust, brakes, wheels, stance or fuel tank), and `truckLooks` turns a truck's fitted levels into each part's level. `TruckView` builds them: chrome and taller stacks (twin at level 2, a roof light bar at 3), a longer, chrome tank (a second at 3), polished, chrome or gold rims, yellow, orange or red calipers, and a lower body with mudflaps, a chrome bumper and grille bars.
+
+### The company panel
+
+Tester feedback asked to go straight into the game and to have the menus in it, with pictures. There is no HQ screen: starting or continuing a company goes onto the road (`GameState`: booting, mainMenu, driving), and the company HQ (spec §26) opens as a panel over the game.
+
+- **`HudDock`** (`src/ui/hud`): buttons on the road for the panel's four pages, each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to round buttons out of the mission HUD's way.
+- **`CompanyHq`** (`src/ui/hq`): the panel. At the right of a phone on its side, with its tabs in a rail; at the bottom of an upright one. At the top the company, its level, XP, reputation and credits, the map and the way back to the road; below the tabs everything scrolls as one list (`.hq__list`, `touch-action: pan-y`), which the e2e tests drag with real touch events. Four pages: the job board (each blocked contract says what unlocks it; a card per contract with its cargo's picture); the truck (`truckPage`: the truck, where it stands, fuel and damage with the pump and the workshop, its cargo, its fitted parts); the garage (paint, upgrades, trucks); and the special events.
+- **The showroom.** While the panel is open the truck waits (if it was moving, traffic and weather wait too; standing, the world goes on) and the camera circles it, framed in the part of the screen the panel leaves free (`CameraRig.frameBeside`: a view offset). Tapping a paint, an upgrade's Preview or a truck's Preview shows it on the truck before it is bought (`TruckPreview`; the entry point rebuilds the `TruckView` when its key changes), and the camera swings round to the part (`SHOWCASE_PART_ANGLES`). A purchase, a tab change or closing the panel ends the preview.
 
 ## 9. Data and content
 
@@ -386,8 +394,8 @@ Feature folders are created inside a layer when the feature arrives (`src/domain
 
 ## 15. Sound
 
-- **Made in code, no sound files** (`presentation/audio`), like the textures: Web Audio oscillators and noise, original by construction and nothing to download. It is spec §37's first version: engine, brakes, horn, ambience (tyres, wind, rain) and the interface.
-- **`GameAudio`** holds one graph for the whole session: the engine (a sawtooth at the six cylinders' firing rate, a rumble an octave down and filtered clatter, opened up by the load), road noise, brake friction, rain and a two-note horn. `update()` moves their levels and notes every frame from a `SoundState` the entry point fills (rpm, pedals, speed, rain); it allocates nothing. One-shots (a click, the delivery chime, a failure, a crash as loud as it was hard, the clunk of loading, the air brakes' hiss when the truck stops) make their few nodes as they play.
+- **Made in code, no sound files** (`presentation/audio`), like the textures: Web Audio oscillators and noise, original by construction and nothing to download. It is spec §37's first version: engine, brakes, horn, the reversing alarm, ambience (tyres, wind, rain) and the interface.
+- **`GameAudio`** holds one graph for the whole session: the engine (a sawtooth at the six cylinders' firing rate, a rumble an octave down and filtered clatter, opened up by the load), road noise, brake friction, rain, a two-note horn and the reversing alarm (a steady note switched on for half of each beat while in reverse). `update()` moves their levels and notes every frame from a `SoundState` the entry point fills (rpm, pedals, speed, rain); it allocates nothing. One-shots (a click, the delivery chime, a failure, a crash as loud as it was hard, the clunk of loading, the air brakes' hiss when the truck stops) make their few nodes as they play.
 - **The pure part is tested:** `soundModel.ts` turns rpm and pedal into the engine's note, loudness and brightness, and speed into road, brake and crash levels. The e2e tests check that sound starts, switches off and plays through a drive without an error.
 - **Browsers start sound only after a gesture.** The audio context is made at the first touch or key press that counts as one (`navigator.userActivation`), so nothing is refused with a warning. It sleeps while the page is hidden, and Settings switches it off (a device setting, beside the graphics).
 - **Levels** stay well below clipping: at full throttle with the horn the peak is about 0.6.
@@ -398,6 +406,6 @@ Feature folders are created inside a layer when the feature arrives (`src/domain
 - **`npm run android`** builds the game and copies it into the native project (`cap sync`); `./gradlew assembleDebug` in `android/` builds the APK. CI does both on every pull request and keeps the APK as an artifact for 14 days, numbering each build (`ROADHAUL_VERSION_CODE`); the version name is `package.json`'s.
 - **Saves** stay in the WebView's localStorage, inside the app's own data, under the `https://localhost` origin. Changing the app's scheme or hostname (`server.androidScheme`, `server.hostname`) would change the origin and lose every saved game.
 - **Debug builds are signed with `android/app/debug.keystore`,** kept in the repository, so every build installs over the last one and keeps the save. That key is public: a store release (step 30) needs its own key, kept out of the repository.
-- **The back button and the app's lifecycle** come from Capacitor's App plugin, wrapped by `platform/native/capacitorShell.ts`. `main.ts` loads that module only when the native bridge is there (`isNativeApp`), so the web build never downloads it. The back button closes the dialog that is open, pauses and resumes the drive, and takes the HQ back to the main menu (`ui/menus/backAction.ts`); at the main menu it puts the app away. Going to the background pauses the drive and saves, as a hidden browser tab does.
+- **The back button and the app's lifecycle** come from Capacitor's App plugin, wrapped by `platform/native/capacitorShell.ts`. `main.ts` loads that module only when the native bridge is there (`isNativeApp`), so the web build never downloads it. The back button closes the dialog or the company panel that is open, and pauses and resumes the game (`ui/menus/backAction.ts`); the pause menu leads to the main menu, where back puts the app away. Going to the background pauses the drive and saves, as a hidden browser tab does.
 - **Full screen:** `MainActivity` hides the status and navigation bars; a swipe from the edge shows them for a moment. Capacitor's SystemBars keeps the page's `env(safe-area-inset-*)` right round display cutouts, which the HUD's CSS already uses.
 - **Art:** the launcher icons (`scripts/androidIcons.mjs`: a dark box truck on the game's amber) and the splash (the icon on the game's background) are original. Capacitor's template images were removed.

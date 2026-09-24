@@ -1,9 +1,9 @@
 import { clamp, dampFactor } from '../../core/math/scalar';
 import type { ControlSize, SteeringMode, TiltStatus } from '../../data/config/controls';
-import { createVehicleInput, type VehicleInput } from '../../domain/vehicles/VehicleInput';
+import { createVehicleInput, type GearLever, type VehicleInput } from '../../domain/vehicles/VehicleInput';
 
-/** The on-screen wheel turns this far each way for full steering lock. */
-const MAX_WHEEL_ANGLE = (130 * Math.PI) / 180;
+/** The on-screen wheel turns this far each way for full steering lock: a quarter turn, easy for a thumb. */
+const MAX_WHEEL_ANGLE = (90 * Math.PI) / 180;
 /** How fast a released wheel returns to centre, 1/s. */
 const WHEEL_RETURN_RATE = 7;
 /** The speed dial's arc is full at this speed. */
@@ -69,7 +69,8 @@ export interface TouchControlsOptions {
 
 /**
  * On-screen driving controls for phones (spec §30: steering wheel, gas,
- * brake), plus a camera button, a horn and a speed/gear readout. It is input only:
+ * brake), plus a D/R gear button (in R the gas pedal drives backwards), a
+ * camera button, a horn and a speed/gear readout. It is input only:
  * it writes `state`, which the entry point merges with the keyboard every
  * fixed step. Each control tracks its own fingers, so steering and pedals
  * work at the same time with two thumbs.
@@ -92,6 +93,7 @@ export class TouchControls {
   private readonly damageGauge: HTMLDivElement;
   private readonly damageFill: HTMLDivElement;
   private readonly tiltButton: HTMLButtonElement;
+  private readonly gearButton: HTMLButtonElement;
   private mode: SteeringMode = 'wheel';
   private steerLeft = false;
   private steerRight = false;
@@ -137,6 +139,21 @@ export class TouchControls {
     gas.setAttribute('aria-label', 'Gas');
     const pedals = element('div', 'pedals');
     pedals.append(brake, gas);
+
+    // The gear lever: D drives forward, R backwards, both on the gas pedal. A tap switches.
+    this.gearButton = element('button', 'gear-button');
+    this.gearButton.type = 'button';
+    for (const [lever, letter] of [
+      ['drive', 'D'],
+      ['reverse', 'R'],
+    ] as const) {
+      const label = element('span', `gear-button__${lever}`);
+      label.textContent = letter;
+      this.gearButton.append(label);
+    }
+    this.gearButton.addEventListener('click', () => {
+      this.gear = this.state.lever === 'reverse' ? 'drive' : 'reverse';
+    });
 
     const dashboard = element('div', 'dashboard');
     const dial = element('div', 'dashboard__dial');
@@ -186,7 +203,7 @@ export class TouchControls {
     this.tiltButton.append(art('tilt-button__icon', '0 0 24 24', TILT_ICON));
     this.tiltButton.addEventListener('click', () => options.onTilt());
 
-    this.root.append(this.wheel, steerButtons, dashboard, pedals, this.tiltButton, camera, horn);
+    this.root.append(this.wheel, steerButtons, dashboard, pedals, this.gearButton, this.tiltButton, camera, horn);
     // Long presses must not open menus or select anything.
     this.root.addEventListener('contextmenu', (event) => event.preventDefault());
     this.bindWheel();
@@ -206,6 +223,7 @@ export class TouchControls {
     });
     this.bindHold(horn, options.onHorn);
     this.steering = 'wheel';
+    this.gear = 'drive';
     this.size = 'normal';
     this.showTilt('off');
     this.showTelemetry(0, 1);
@@ -231,6 +249,19 @@ export class TouchControls {
 
   set size(size: ControlSize) {
     this.root.dataset.size = size;
+  }
+
+  /** The gear lever, D or R (a new drive starts in D). */
+  get gear(): GearLever {
+    return this.state.lever ?? 'drive';
+  }
+
+  set gear(lever: GearLever) {
+    const picked = lever === 'reverse' ? 'reverse' : 'drive';
+    this.state.lever = picked;
+    this.root.dataset.gear = picked;
+    this.gearButton.setAttribute('aria-pressed', String(picked === 'reverse'));
+    this.gearButton.setAttribute('aria-label', picked === 'reverse' ? 'Gear: reverse (tap for drive)' : 'Gear: drive (tap for reverse)');
   }
 
   /** Tilt steering's state, on the tilt button: it glows while a tap is needed to allow the motion sensor. */

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openCompanyHq, openGame, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
+import { closePanel, openCompanyHq, openGame, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
 
 /** Pixels of a map canvas in one of its colours: the route's blue, or a street's grey. */
 async function pixelsOf(page: Page, selector: string, rgb: readonly [number, number, number]): Promise<number> {
@@ -97,7 +97,7 @@ test("draws the route to the contract's next bay on both maps", async ({ page })
   expect(problems).toEqual([]);
 });
 
-test('opens the map from the HQ and from the pause menu', async ({ page }) => {
+test('opens the map from the company panel and from the pause menu', async ({ page }) => {
   const problems = watchForProblems(page);
   await openCompanyHq(page);
   await expect(page.locator('.minimap')).toBeHidden();
@@ -105,9 +105,10 @@ test('opens the map from the HQ and from the pause menu', async ({ page }) => {
   await expect(page.locator('.world-map')).toBeVisible();
   await page.locator('[data-action="close-map"]').click();
   await expect(page.locator('.world-map')).toBeHidden();
-  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
+  // Back to the panel.
+  await expect(page.locator('html')).toHaveAttribute('data-panel', 'open');
 
-  await page.locator('[data-action="free-drive"]').click();
+  await closePanel(page);
   await page.locator('.pause-button').click();
   await page.locator('[data-action="pause-map"]').click();
   await expect(page.locator('.world-map')).toBeVisible();

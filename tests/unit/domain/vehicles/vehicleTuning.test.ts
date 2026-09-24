@@ -103,8 +103,14 @@ describe.each(VEHICLES)('tuning of $id ($vehicleClass)', (truck) => {
     expectWithin(turningRadius(truck), ranges.turningRadius);
   });
 
-  it('corners like a truck, not a car', () => {
-    expect(truck.handling.maxLateralAccelerationG).toBeLessThanOrEqual(0.5);
+  it('corners like a truck, not a car, yet takes a junction on a phone', () => {
+    // A car holds 0.8 g or more. A real truck would tip over past 0.35 to 0.45 g: the game gives a little more,
+    // so the turn into a junction at 30 km/h fits a street (a radius under 14 m).
+    expect(truck.handling.maxLateralAccelerationG).toBeLessThanOrEqual(0.65);
+    const lateral = Math.min(truck.handling.tireGrip, truck.handling.maxLateralAccelerationG) * 9.81;
+    const speed = 30 / 3.6;
+    const angle = Math.min(Math.atan((lateral * truck.body.wheelbaseMeters) / (speed * speed)), (truck.handling.maxSteerAngleDegrees * Math.PI) / 180);
+    expect(truck.body.wheelbaseMeters / Math.tan(angle)).toBeLessThan(14);
   });
 
   it('stays drivable but slow on grass', () => {

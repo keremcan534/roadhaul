@@ -2,7 +2,7 @@ import { approach, clamp, clamp01, degreesToRadians, finiteOr, kmhToMetersPerSec
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Surface } from '../world/Surface';
 import type { PerformanceFactors } from './performance';
-import type { VehicleInput } from './VehicleInput';
+import { brakePedalOf, drivePedalOf, type GearLever, type VehicleInput } from './VehicleInput';
 import type { VehicleRuntimeState } from './VehicleRuntimeState';
 
 const GRAVITY = 9.81;
@@ -37,8 +37,9 @@ const RPM_PER_RADIAN_PER_SECOND = 60 / (2 * Math.PI);
  * Deterministic arcade truck model (ADR 0002). It is a kinematic bicycle model
  * with a real drivetrain: torque/power curve, automatic gearbox, speed governor,
  * drag, rolling resistance, engine braking, brakes, grip-limited traction and
- * cornering, and brake-to-reverse. No tyre slip or body physics: trucks should
- * feel heavy and planted, not drift.
+ * cornering, and reverse: by brake at a standstill, or by the gear lever
+ * (VehicleInput.lever). No tyre slip or body physics: trucks should feel
+ * heavy and planted, not drift.
  *
  * Every step mutates the given state in place and allocates nothing.
  */
@@ -142,11 +143,12 @@ export class VehicleDynamics {
     const throttle = pedalTravel(input.throttle);
     const brake = pedalTravel(input.brake);
 
-    this.updateDirection(state, throttle, brake, dt);
+    const lever = input.lever ?? 'auto';
+    this.updateDirection(state, throttle, brake, lever, dt);
+    // On auto, in reverse the pedals swap roles; with a lever the gas drives its way and brakes against it.
     const reversing = state.gear < 0;
-    // In reverse the pedals swap roles: the brake pedal drives backwards, the gas pedal brakes.
-    const drivePedal = reversing ? brake : throttle;
-    const brakePedal = reversing ? throttle : brake;
+    const drivePedal = drivePedalOf(throttle, brake, lever, reversing);
+    const brakePedal = brakePedalOf(throttle, brake, lever, reversing);
 
     this.updateEngineSpeed(state);
     this.updateGear(state, drivePedal, dt);
@@ -154,8 +156,26 @@ export class VehicleDynamics {
     this.updateSteeringAndPosition(state, steerInput, surface, dt);
   }
 
-  private updateDirection(state: VehicleRuntimeState, throttle: number, brake: number, dt: number): void {
+  private updateDirection(
+    state: VehicleRuntimeState,
+    throttle: number,
+    brake: number,
+    lever: GearLever,
+    dt: number,
+  ): void {
     const standing = Math.abs(state.speed) < STANDSTILL_SPEED;
+    if (lever !== 'auto') {
+      // At a standstill the gearbox follows the lever at once.
+      state.directionChangeTimer = 0;
+      const wantsReverse = lever === 'reverse' && this.reverseAllowed && state.gear > 0;
+      const wantsForward = lever === 'drive' && state.gear < 0;
+      if (standing && (wantsReverse || wantsForward)) {
+        state.gear = wantsReverse ? -1 : 1;
+        state.shiftTimer = 0;
+        state.timeInGear = 0;
+      }
+      return;
+    }
     const wantsReverse = this.reverseAllowed && state.gear > 0 && brake > 0 && throttle === 0;
     const wantsForward = state.gear < 0 && throttle > 0 && brake === 0;
     if (!standing || !(wantsReverse || wantsForward)) {

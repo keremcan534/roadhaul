@@ -6,11 +6,15 @@ import type { UpgradeDefinition } from '../definitions/UpgradeDefinition';
  * first deliveries (spec §41: "the first upgrade unlocks"); higher levels wait
  * for company levels. Names come from the string tables (`upgrade.<id>.name`).
  *
+ * Each shows on the truck (`look`): the engine in its exhaust stacks, the
+ * tyres in their rims, the suspension in the truck's stance.
+ *
  * The gearbox and cabin upgrades of spec §16 come later.
  */
 export const UPGRADES: readonly UpgradeDefinition[] = [
   {
     id: 'engine',
+    look: 'exhaust',
     levels: [
       {
         cost: 3000,
@@ -39,6 +43,7 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
   },
   {
     id: 'brakes',
+    look: 'brakes',
     levels: [
       { cost: 2000, modifiers: [{ stat: 'brakingPower', bonus: 0.1 }] },
       { cost: 4000, requiredCompanyLevel: 2, modifiers: [{ stat: 'brakingPower', bonus: 0.2 }] },
@@ -47,6 +52,7 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
   },
   {
     id: 'tires',
+    look: 'wheels',
     levels: [
       { cost: 2500, modifiers: [{ stat: 'grip', bonus: 0.06 }] },
       { cost: 5000, requiredCompanyLevel: 2, modifiers: [{ stat: 'grip', bonus: 0.12 }] },
@@ -55,6 +61,7 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
   },
   {
     id: 'suspension',
+    look: 'stance',
     levels: [
       {
         cost: 3000,
@@ -84,6 +91,7 @@ export const UPGRADES: readonly UpgradeDefinition[] = [
   },
   {
     id: 'fuel_tank',
+    look: 'fuelTank',
     levels: [
       { cost: 1500, modifiers: [{ stat: 'fuelCapacity', bonus: 0.2 }] },
       { cost: 3000, requiredCompanyLevel: 2, modifiers: [{ stat: 'fuelCapacity', bonus: 0.4 }] },

@@ -8,7 +8,8 @@ export interface PauseMenuActions {
   readonly onRecover: () => void;
   readonly onRoadsideFuel: () => void;
   readonly onAbandon: () => void;
-  readonly onCompanyHq: () => void;
+  /** Back to the main menu: the game is saved, a contract under way included. */
+  readonly onMainMenu: () => void;
   /** Opens the settings over the menu (steering, controls, sound), which stays open under them. */
   readonly onSettings: () => void;
   /** Opens the map over the menu, the same way. */
@@ -19,16 +20,15 @@ export interface PauseMenuActions {
 export type RoadsideFuelOffer = { readonly cost: string } | 'emergency' | null;
 
 /**
- * The pause button shown while driving, and the menu it opens: resume, put a
- * stuck truck back on the road, abandon the contract, or go back to the HQ
- * (only without a contract, so a job is never dropped by accident), the map
- * and the settings.
+ * The pause button shown on the road, and the menu it opens: resume, put a
+ * stuck truck back on the road, call a fuel truck, abandon the contract, the
+ * map, the settings, and the main menu (the game is saved, so a contract
+ * waits there for Continue).
  */
 export class PauseMenu {
   private readonly pauseButton: HTMLButtonElement;
   private readonly overlay: HTMLDivElement;
   private readonly abandonButton: HTMLButtonElement;
-  private readonly hqButton: HTMLButtonElement;
   private readonly fuelButton: HTMLButtonElement;
 
   constructor(
@@ -56,7 +56,6 @@ export class PauseMenu {
       'abandon',
       closeThen(actions.onAbandon),
     );
-    this.hqButton = button(document, 'button--secondary', strings.t('pause.hq'), 'company-hq', closeThen(actions.onCompanyHq));
     this.fuelButton = button(document, 'button--secondary', '', 'roadside-fuel', closeThen(actions.onRoadsideFuel));
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('pause.title')),
@@ -64,9 +63,9 @@ export class PauseMenu {
       button(document, 'button--secondary', strings.t('pause.recover'), 'recover', closeThen(actions.onRecover)),
       this.fuelButton,
       this.abandonButton,
-      this.hqButton,
       button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap),
       button(document, 'button--ghost', strings.t('pause.settings'), 'pause-settings', actions.onSettings),
+      button(document, 'button--ghost', strings.t('pause.mainMenu'), 'pause-main-menu', closeThen(actions.onMainMenu)),
     );
     this.overlay.append(panel);
     parent.append(this.pauseButton, this.overlay);
@@ -76,18 +75,17 @@ export class PauseMenu {
     return !this.overlay.hidden;
   }
 
-  /** The pause button is offered while driving. */
+  /** The pause button is offered on the road. */
   set buttonVisible(visible: boolean) {
     this.pauseButton.hidden = !visible;
   }
 
   /**
-   * Shows the menu. With a contract running, it offers abandoning it instead
-   * of going back to the HQ. `fuel` offers a fuel truck when the tank is not full.
+   * Shows the menu. With a contract running, it offers abandoning it. `fuel`
+   * offers a fuel truck when the tank is not full.
    */
   open(hasContract: boolean, fuel: RoadsideFuelOffer): void {
     this.abandonButton.hidden = !hasContract;
-    this.hqButton.hidden = hasContract;
     this.fuelButton.hidden = fuel === null;
     if (fuel !== null) {
       this.fuelButton.textContent =

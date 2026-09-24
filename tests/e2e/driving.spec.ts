@@ -56,6 +56,32 @@ test('engages reverse when the brake is held at a standstill', async ({ page }) 
   expect(problems).toEqual([]);
 });
 
+test('reverses on the gas pedal once the gear button is in R, and drives forward again in D', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page);
+  const gear = page.locator('.gear-button');
+  const gas = await centreOf(page, '.pedal--gas');
+
+  // Each drive starts in D.
+  await expect(gear).toHaveAttribute('aria-pressed', 'false');
+  await gear.click();
+  await expect(gear).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.move(gas.x, gas.y);
+  await page.mouse.down();
+  await expect(page.locator('.dashboard__gear')).toHaveText('R', { timeout: 10_000 });
+  await expect.poll(() => shownSpeed(page), { timeout: 10_000 }).toBeGreaterThan(3);
+  await page.mouse.up();
+
+  await gear.click();
+  await expect(gear).toHaveAttribute('aria-pressed', 'false');
+  await page.mouse.move(gas.x, gas.y);
+  await page.mouse.down();
+  await expect(page.locator('.dashboard__gear')).toHaveText(/^D\d$/, { timeout: 15_000 });
+  await expect.poll(() => shownSpeed(page), { timeout: 15_000 }).toBeGreaterThan(3);
+  await page.mouse.up();
+  expect(problems).toEqual([]);
+});
+
 test('drives with the on-screen gas pedal and steering wheel', async ({ page }) => {
   const problems = watchForProblems(page);
   await openGame(page);
@@ -150,7 +176,7 @@ test('steps through the cameras with the button, names each, and keeps the last 
   await page.reload();
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
   await page.locator('[data-action="continue-game"]').click();
-  await page.locator('[data-action="free-drive"]').click();
+  await expect(html).toHaveAttribute('data-game-state', 'driving');
   await expect(html).toHaveAttribute('data-camera', 'cabin');
   expect(problems).toEqual([]);
 });

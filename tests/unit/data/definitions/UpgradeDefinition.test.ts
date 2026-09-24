@@ -41,6 +41,13 @@ describe('validateUpgradeDefinition', () => {
     expect(Math.min(...openAtLevel1.map((upgrade) => upgrade.levels[0]!.cost))).toBeLessThanOrEqual(2000);
   });
 
+  it('shows every built-in upgrade on its own part of the truck, and requires a known part', () => {
+    expect(new Set(UPGRADES.map((upgrade) => upgrade.look)).size).toBe(UPGRADES.length);
+    expect(issues(upgradeFixture({ look: 'spoiler' as UpgradeDefinition['look'] })).map((issue) => issue.path)).toEqual([
+      'upgrade.look',
+    ]);
+  });
+
   it('requires at least one level', () => {
     expect(issues(upgradeFixture({ levels: [] }))).toEqual([{ path: 'upgrade.levels', message: 'must be a non-empty list' }]);
     expect(issues(upgradeFixture({ levels: null as unknown as UpgradeLevelDefinition[] })).map((issue) => issue.path)).toEqual([

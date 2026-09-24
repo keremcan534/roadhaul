@@ -18,7 +18,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 | 02 | Git + CLAUDE.md | 0 | ✅ | Project rules, spec in `docs/`, ADR 0001 (web stack) |
 | 03 | Bootstrap architecture | 0 | ✅ | Service container, event bus, logging, config, game loop, GameBootstrapper, GameStateService, placeholder definitions, SaveGameData v1, layering test |
 | 04 | Vehicle data | 1 | ✅ | Body, powertrain and handling data, validated; VehicleRuntimeState |
-| 05 | Vehicle controller | 1 | ✅ | Deterministic truck model (ADR 0002): gearbox, governor, brakes, brake-to-reverse, understeer; keyboard |
+| 05 | Vehicle controller | 1 | ✅ | Deterministic truck model (ADR 0002): gearbox, governor, brakes, reverse (brake-to-reverse, or the D/R lever), understeer; keyboard |
 | 06 | Camera | 1 | ✅ | Chase + cabin cameras |
 | 07 | Mobile controls | 1 | ✅ | On-screen steering wheel, gas, brake, camera button, speed/gear readout |
 | 08 | Small test road | 1 | ✅ | 2.4 km data-driven loop: asphalt/grass, seeded trees, depot buildings, collisions |
@@ -171,6 +171,26 @@ After playing the Pages build, the player asked for more ways to steer and see t
 - Yeniliman is a harbour town now: the sea runs along the map's west edge, and the harbour road ends at a concrete quay with bollards and a yellow line along the water, two portal cranes over a small cargo ship with containers on its hatches, a tug beside it, and fishing boats off the shore and out in the bay, all rocking gently; at night their masthead lights and the cranes' warning lights glow. The water mirrors the sky, so it turns orange at dusk and dark under the moon; small waves drift across it, the sun glitters on it and foam breaks along the shore. North and south of the quay a sandy beach with boulders runs along the water. The truck stops at the water's edge. The 2D map shows the sea and the quay. The sea is data (`MapDefinition.sea`: a shoreline from the north edge to the south edge, quays, boats, cranes), checked with the map; trees and lamps keep clear of it. About 9 draw calls near the harbour.
 - Small touches: in the rain the asphalt darkens and shines, mirroring the sky more the flatter it is seen, so the road ahead gleams; crows circle over the fields and gulls over the harbour by day (one draw call; they roost at night and in the rain); and the chase, cabin and hood cameras widen their view by up to 6° between 30 and 90 km/h, eased, so speed is felt.
 - Paint: the garage paints any of the company's trucks, wherever it stands, in one of nine colours (1,500 to 2,500 credits; amber from level 2, purple and teal from level 3); the cab, the livery's stripe and the rear doors take the colour. A tap on a swatch only picks it: the button under the swatches names the price and paints. The factory colour comes back for free. Save v7 keeps each truck's paint; older saves' trucks keep their factory colours (migration and test).
+
+### Tester feedback (between steps 28 and 29)
+
+A tester played the Pages build on a phone: the truck could not take a sharp turn, reversing was hard to find, the game opened on a wall of text, the menus (events, garage) were not part of the game or visual, the truck's state belonged in the game, and the HQ's text did not scroll.
+
+| Item | Status | Notes |
+|---|---|---|
+| Sharper turns | ✅ | Cornering limits 0.52–0.62 g (a junction at 30 km/h fits a 14 m radius); the on-screen wheel reaches full lock at a quarter turn |
+| A reverse gear you can see | ✅ | A D/R button over the gas pedal; a reversing alarm; the driving hint names it |
+| Straight into the game | ✅ | New company and Continue go onto the road; Jobs, Truck, Garage and Events buttons open the company panel over it |
+| Menus in the game, with pictures | ✅ | The panel keeps the world in sight; pictures for cargo, trucks, parts and events; the garage shows paint, upgrades and trucks on the truck before they are bought |
+| The truck's state in the game | ✅ | The truck page: fuel, damage, cargo, parts, the pump and the workshop |
+| Text that scrolls | ✅ | One scrolling list per page; e2e swipes it with real touch events, on its side, upright and narrow upright |
+
+- The gear lever is part of `VehicleInput`: `auto` keeps the keyboard's brake-to-reverse; with the touch controls' D/R button the gas pedal drives the way it points and the brake only brakes. The gearbox changes direction at a standstill. A drive starts in D. The truck beeps in reverse (a 1,150 Hz note, 1.25 beats a second).
+- There is no HQ screen any more: `GameState` is booting, mainMenu and driving. The company panel opens over the road: at the right of a phone on its side, its tabs in a rail on the left, and at the bottom (two thirds) of an upright one. While it is open the truck waits where it is; if it was moving, traffic and the weather wait too. The camera circles the truck in the part of the screen the panel leaves free. Escape, the close button or Android's back button close it.
+- Without a contract the road's buttons sit where the mission HUD goes, Jobs lit; during a contract Jobs goes and Truck, Garage and Events shrink to round buttons (under the minimap on a phone on its side, at the left halfway down upright). The result screen offers the next job or the road; the pause menu has the main menu instead of the HQ.
+- The garage page holds the paint, the upgrades and the trucks. A tap on a paint, an upgrade's Preview or a truck's Preview shows it on the truck, and the camera turns to the part; nothing is spent until the buy button. Each upgrade shows on the truck (`UpgradeDefinition.look`): chrome and taller exhaust stacks (twin at level 2, a roof light bar at 3), a longer and chrome fuel tank (a second at 3), polished, chrome or gold rims, yellow, orange or red brake calipers, a lower body with mudflaps, then a chrome bumper and grille bars. A fully upgraded truck costs two more draw calls (chrome, calipers).
+- Tutorial: the first hint is on the road now and makes the Jobs button glow; after the first delivery the Garage button glows, then its first affordable upgrade.
+- As before, none of this has been in real hands yet: step 29 tries it on phones.
 
 ## Next step: 29 Device testing
 

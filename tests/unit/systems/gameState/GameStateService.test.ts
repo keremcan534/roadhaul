@@ -22,16 +22,14 @@ describe('GameStateService', () => {
     const { service, changes } = createService();
 
     service.transitionTo('mainMenu');
-    service.transitionTo('companyHq');
     service.transitionTo('driving');
-    service.transitionTo('companyHq');
+    service.transitionTo('mainMenu');
 
-    expect(service.current).toBe('companyHq');
+    expect(service.current).toBe('mainMenu');
     expect(changes).toEqual([
       { previous: 'booting', current: 'mainMenu' },
-      { previous: 'mainMenu', current: 'companyHq' },
-      { previous: 'companyHq', current: 'driving' },
-      { previous: 'driving', current: 'companyHq' },
+      { previous: 'mainMenu', current: 'driving' },
+      { previous: 'driving', current: 'mainMenu' },
     ]);
   });
 
@@ -56,7 +54,7 @@ describe('GameStateService', () => {
     const { service } = createService();
 
     expect(service.canTransitionTo('mainMenu')).toBe(true);
-    expect(service.canTransitionTo('companyHq')).toBe(false);
+    expect(service.canTransitionTo('driving')).toBe(false);
   });
 
   it('has a transition table in which every state is reachable and can be left', () => {

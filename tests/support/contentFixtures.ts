@@ -200,6 +200,7 @@ export function trafficVehicleFixture(overrides: Partial<TrafficVehicleDefinitio
 export function upgradeFixture(overrides: Partial<UpgradeDefinition> = {}): UpgradeDefinition {
   return {
     id: 'test_upgrade',
+    look: 'brakes',
     levels: [
       { cost: 1000, modifiers: [{ stat: 'enginePower', bonus: 0.1 }] },
       { cost: 2000, requiredCompanyLevel: 2, modifiers: [{ stat: 'enginePower', bonus: 0.2 }] },

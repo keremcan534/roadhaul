@@ -1,12 +1,14 @@
+import type { DeliveryCondition } from '../../data/definitions/EventDefinition';
 import type { EventStatus } from '../../systems/events/EventService';
 import { element } from '../dom';
 import type { Strings } from '../i18n';
+import { icon, type IconName } from '../icons';
 import { conditionText, objectiveText, rewardText } from './eventText';
 
 /**
- * A special event on the HQ's events tab (spec §22): what it asks, which
- * deliveries count and their bonus, how far along the company is, the
- * reward, and when it ends or starts.
+ * A special event on the company panel's events page (spec §22): a picture
+ * of what it rewards, what it asks, which deliveries count and their bonus,
+ * how far along the company is, the reward, and when it ends or starts.
  */
 export function eventCard(document: Document, strings: Strings, status: EventStatus): HTMLElement {
   const { definition, running, locked, completed, progress } = status;
@@ -16,7 +18,10 @@ export function eventCard(document: Document, strings: Strings, status: EventSta
   card.dataset.state = state;
 
   const top = element(document, 'div', 'event-card__top');
+  const picture = element(document, 'span', 'event-card__icon');
+  picture.append(icon(document, eventIcon(definition.qualifyingDelivery)));
   top.append(
+    picture,
     element(document, 'h3', 'event-card__title', strings.eventName(definition.id)),
     element(document, 'span', 'event-card__when', whenText(strings, status)),
   );
@@ -33,7 +38,9 @@ export function eventCard(document: Document, strings: Strings, status: EventSta
   fill.style.transform = `scaleX(${Math.min(1, progress / definition.objective.target)})`;
   meter.append(fill);
   const bottom = element(document, 'div', 'event-card__bottom');
-  bottom.append(element(document, 'span', 'event-card__reward', rewardText(strings, definition.reward)));
+  const reward = element(document, 'span', 'event-card__reward');
+  reward.append(icon(document, 'trophy'), element(document, 'span', '', rewardText(strings, definition.reward)));
+  bottom.append(reward);
   const note = statusNote(strings, status);
   if (note !== null) {
     bottom.append(element(document, 'span', 'event-card__status', note));
@@ -63,4 +70,18 @@ function statusNote(strings: Strings, status: EventStatus): string | null {
     return strings.t('hq.locked', { level: status.definition.requiredCompanyLevel ?? 1 });
   }
   return status.completed ? strings.t('event.completed') : null;
+}
+
+/** What an event rewards, as a picture: fast deliveries, careful ones, heavy loads, or any delivery. */
+function eventIcon(condition: DeliveryCondition): IconName {
+  if (condition.minTimeLeft !== undefined) {
+    return 'express';
+  }
+  if (condition.maxCargoDamage !== undefined) {
+    return 'careful';
+  }
+  if (condition.minCargoWeightTons !== undefined) {
+    return 'heavy';
+  }
+  return 'events';
 }

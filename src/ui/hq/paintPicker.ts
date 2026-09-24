@@ -10,16 +10,18 @@ export interface PaintPickerState {
 }
 
 /**
- * The paint shop on an owned truck's garage card: a swatch per colour, the
+ * The paint shop for the truck being driven: a swatch per colour, the
  * factory colour first (free), then the paints; colours for bigger companies
- * shown locked. Tapping a swatch picks it; the button under them paints the
- * truck, for the price it names, so a stray tap never costs anything.
+ * shown locked. Tapping a swatch picks it, and `onPick` shows it on the
+ * truck; the button under them paints the truck, for the price it names, so
+ * a stray tap never costs anything.
  */
 export function paintPicker(
   document: Document,
   strings: Strings,
   state: PaintPickerState,
   onPaint: (instanceId: string, paintId: string | null) => void,
+  onPick?: (paintId: string | null) => void,
 ): HTMLElement {
   const { truck } = state;
   const current = truck.paint?.id ?? null;
@@ -67,7 +69,10 @@ export function paintPicker(
       node.disabled = true;
       node.classList.add('is-locked');
     } else {
-      node.addEventListener('click', () => pick(paintId));
+      node.addEventListener('click', () => {
+        pick(paintId);
+        onPick?.(paintId);
+      });
     }
     choices.push({ paintId, price, node });
     swatches.append(node);

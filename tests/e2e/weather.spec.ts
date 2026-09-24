@@ -42,7 +42,6 @@ function brightness(color: SceneColor): number {
 async function driveIn(page: Page, weather: string): Promise<void> {
   await openMainMenu(page, `?weather=${weather}`);
   await page.locator('[data-action="continue-game"]').click();
-  await page.locator('[data-action="free-drive"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   await waitForFrames(page, 10);
 }

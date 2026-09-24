@@ -1,4 +1,10 @@
-import { VEHICLE_STATS, type UpgradeDefinition, type VehicleStat } from '../../data/definitions/UpgradeDefinition';
+import {
+  UPGRADE_LOOKS,
+  VEHICLE_STATS,
+  type UpgradeDefinition,
+  type UpgradeLook,
+  type VehicleStat,
+} from '../../data/definitions/UpgradeDefinition';
 import type { PerformanceFactors } from './performance';
 
 /**
@@ -44,6 +50,22 @@ export function statBonuses(fitted: FittedUpgrades, upgrades: readonly UpgradeDe
 export function fittedUpgradeLevel(fitted: FittedUpgrades, upgrade: UpgradeDefinition): number {
   const level = Object.hasOwn(fitted, upgrade.id) ? fitted[upgrade.id] : 0;
   return Number.isInteger(level) && level! >= 1 && level! <= upgrade.levels.length ? level! : 0;
+}
+
+/** How far along each part of the truck shows its upgrades: look → level, 0 for none. */
+export type TruckLooks = Readonly<Record<UpgradeLook, number>>;
+
+/**
+ * What a truck's fitted upgrades look like (UpgradeDefinition.look): each
+ * part at the fitted level of the upgrade it shows, the highest if two show
+ * on the same part.
+ */
+export function truckLooks(fitted: FittedUpgrades, upgrades: readonly UpgradeDefinition[]): TruckLooks {
+  const looks = Object.fromEntries(UPGRADE_LOOKS.map((look) => [look, 0])) as Record<UpgradeLook, number>;
+  for (const upgrade of upgrades) {
+    looks[upgrade.look] = Math.max(looks[upgrade.look], fittedUpgradeLevel(fitted, upgrade));
+  }
+  return looks;
 }
 
 /** How the bonuses change the way the truck drives. */

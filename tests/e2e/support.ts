@@ -41,12 +41,12 @@ export async function openMainMenu(page: Page, query = '', options: OpenOptions 
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
 }
 
-/** Founds a company from the main menu, which opens its HQ. */
+/** Founds a company from the main menu, which goes straight into the game: the truck waits on the road. */
 export async function foundCompany(page: Page, name = 'Test Lojistik'): Promise<void> {
   await page.locator('[data-action="new-company"]').click();
   await page.locator('.new-company__input').fill(name);
   await page.locator('[data-action="start-company"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
 }
 
 /** One owned truck as the game saves it. */
@@ -79,7 +79,7 @@ export function savedCompany(
   });
 }
 
-/** Opens the game with `save` in storage and continues it: its HQ. */
+/** Opens the game with `save` in storage and continues it: into the game. */
 export async function continueSavedCompany(page: Page, save: string, query = '', options: OpenOptions = {}): Promise<void> {
   await page.addInitScript((json) => {
     if (sessionStorage.getItem('roadhaul.e2e.seeded') === null) {
@@ -89,25 +89,54 @@ export async function continueSavedCompany(page: Page, save: string, query = '',
   }, save);
   await openMainMenu(page, query, options);
   await page.locator('[data-action="continue-game"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
 }
 
-/** Opens the game and founds a new company: its HQ. */
+/** The company panel's pages. */
+export type PanelTab = 'jobs' | 'truck' | 'garage' | 'events';
+
+/**
+ * Opens the company panel on `tab`: from its button on the road, or (with a
+ * contract under way, when the job board's button is gone, or with the panel
+ * open) through its tabs.
+ */
+export async function openPanel(page: Page, tab: PanelTab = 'jobs'): Promise<void> {
+  const html = page.locator('html');
+  if ((await html.getAttribute('data-panel')) !== 'open') {
+    const button = page.locator(`[data-action="dock-${tab}"]`);
+    await (tab === 'jobs' && !(await button.isVisible()) ? page.locator('[data-action="dock-truck"]') : button).click();
+    await expect(html).toHaveAttribute('data-panel', 'open');
+  }
+  const tabButton = page.locator(`.hq__tab[data-tab="${tab}"]`);
+  if ((await tabButton.getAttribute('aria-selected')) !== 'true') {
+    await tabButton.click();
+  }
+  await expect(tabButton).toHaveAttribute('aria-selected', 'true');
+}
+
+/** Closes the company panel: back on the road. */
+export async function closePanel(page: Page): Promise<void> {
+  await page.locator('[data-action="close-hq"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-panel', 'none');
+}
+
+/** Opens the game, founds a new company and opens its job board over the road. */
 export async function openCompanyHq(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
+  await openMainMenu(page, query, options);
+  await foundCompany(page);
+  await openPanel(page, 'jobs');
+}
+
+/** Opens the game with a new company: on the road, without a contract. */
+export async function openGame(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
   await openMainMenu(page, query, options);
   await foundCompany(page);
 }
 
-/** Opens the game and drives off without a contract: Play, then Free drive. */
-export async function openGame(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
-  await openCompanyHq(page, query, options);
-  await page.locator('[data-action="free-drive"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
-}
-
-/** Takes a contract from the job board by its mission id. */
+/** Takes a contract from the job board by its mission id: the panel closes, and the truck is on its way. */
 export async function takeContract(page: Page, missionId: string): Promise<void> {
   await page.locator(`.job-card[data-mission-id="${missionId}"] [data-action="accept"]`).click();
+  await expect(page.locator('html')).toHaveAttribute('data-panel', 'none');
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
 }
 

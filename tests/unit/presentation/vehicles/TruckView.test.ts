@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { CameraRig } from '../../../../src/presentation/cameras/CameraRig';
-import { TruckView } from '../../../../src/presentation/vehicles/TruckView';
+import { TruckView, truckViewKey } from '../../../../src/presentation/vehicles/TruckView';
 import { gpuResources, watchDisposal } from '../../../support/threeResources';
 
 function wheelsOf(scene: Scene): InstancedMesh {
@@ -388,5 +388,70 @@ describe('TruckView bodies', () => {
     });
 
     expect(new Set(shapes).size).toBe(VEHICLES.length);
+  });
+});
+
+describe('TruckView upgrades', () => {
+  const truck = VEHICLES[0]!;
+  const allAtTop = { exhaust: 3, brakes: 3, wheels: 3, stance: 3, fuelTank: 3 } as const;
+  const vertices = (scene: Scene): number => {
+    let count = 0;
+    scene.traverse((object) => {
+      if (object instanceof Mesh) {
+        count += object.geometry.getAttribute('position').count;
+      }
+    });
+    return count;
+  };
+
+  it('shows upgraded parts: more to see, calipers on every wheel, taller stacks, a lower body', () => {
+    const plainScene = new Scene();
+    const plain = new TruckView(plainScene, truck);
+    const scene = new Scene();
+    const upgraded = new TruckView(scene, truck, { looks: allAtTop });
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    plain.update({ x: 0, z: 0, heading: 0 }, state, 0);
+    upgraded.update({ x: 0, z: 0, heading: 0 }, state, 0);
+
+    expect(vertices(scene)).toBeGreaterThan(vertices(plainScene));
+    expect(plainScene.getObjectByName('brake-calipers')).toBeUndefined();
+    const calipers = scene.getObjectByName('brake-calipers');
+    expect(calipers).toBeInstanceOf(InstancedMesh);
+    expect((calipers as InstancedMesh).count).toBe(wheelsOf(plainScene).count);
+    // Each caliper sits on the outside of its wheel.
+    const at = new Vector3();
+    const matrix = new Matrix4();
+    for (let i = 0; i < (calipers as InstancedMesh).count; i++) {
+      (calipers as InstancedMesh).getMatrixAt(i, matrix);
+      at.setFromMatrixPosition(matrix);
+      expect(Math.abs(at.x)).toBeGreaterThan(truck.body.widthMeters / 2 - 0.2);
+    }
+    // Taller stacks, even on a body sitting lower.
+    expect(upgraded.exhaustOutlet(new Vector3()).y).toBeGreaterThan(plain.exhaustOutlet(new Vector3()).y + 0.1);
+    expect(upgraded.key).toMatch(/:33333:/);
+    expect(plain.key).toMatch(/:00000:/);
+  });
+
+  it('names what it is built from in its key, levels out of range included', () => {
+    expect(truckViewKey(truck)).toBe(truckViewKey(truck, { paint: truck.factoryColor, looks: { exhaust: 0 } }));
+    expect(truckViewKey(truck, { looks: { exhaust: 7 } })).toBe(truckViewKey(truck, { looks: { exhaust: 3 } }));
+    expect(truckViewKey(truck, { looks: { brakes: Number.NaN } })).toBe(truckViewKey(truck));
+    expect(truckViewKey(truck, { paint: 0x2b6cb0 })).toMatch(/^rh_h1:2b6cb0:/);
+    expect(truckViewKey(truck, { lampGlows: false })).not.toBe(truckViewKey(truck));
+    for (const other of VEHICLES.slice(1)) {
+      expect(truckViewKey(other)).not.toBe(truckViewKey(truck));
+    }
+  });
+
+  it('releases the upgraded parts on dispose', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck, { looks: allAtTop });
+    const resources = gpuResources(scene);
+    const disposed = watchDisposal(resources);
+
+    view.dispose();
+
+    expect([...resources].filter((resource) => !disposed.has(resource))).toEqual([]);
+    expect(scene.children).toEqual([]);
   });
 });
