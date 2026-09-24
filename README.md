@@ -8,6 +8,7 @@ Mobile-first logistics and truck simulation game: take a contract, load the carg
 - **Progress:** XP, company levels that unlock better contracts, and reputation.
 - **Garage:** three trucks: the light H1 box truck you start with, the H2 refrigerated truck and the H3 heavy flatbed. Twenty contracts, half of them for the bigger trucks.
 - **Upgrades:** engine, brakes, tyres, suspension and fuel tank, three levels each, fitted to each truck.
+- **Paint:** nine colours at the garage, some for bigger companies; the factory colour back for free.
 - **Upkeep:** watch the fuel and the truck's damage; refuel and repair at a depot or the rest area, or call a fuel truck when stranded.
 - **Saving:** the game saves itself; Continue picks up where you left off.
 

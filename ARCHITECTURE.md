@@ -283,13 +283,14 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - since v3: the upgrades fitted to each truck;
 - v4 has the same shape: the test track is retired, and saves on it move to the region's spawn;
 - since v5: the progress in each special event's latest run;
-- since v6: the tutorial's step.
+- since v6: the tutorial's step;
+- since v7: each truck's paint (null for its model's factory colour).
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (6) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (7) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
-- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage and fitted upgrades, and names the active one.
+- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage, fitted upgrades and paint, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §16), memory in tests or when the browser forbids storage.
   - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
   - **Backup:** loading falls back to it when the latest save is unreadable.
