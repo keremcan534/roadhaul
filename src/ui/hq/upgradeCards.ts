@@ -2,11 +2,20 @@ import type { StatModifier } from '../../data/definitions/UpgradeDefinition';
 import type { UpgradeOffer } from '../../systems/vehicles/UpgradeService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
+import { icon, upgradeIcon } from '../icons';
+
+/** The garage's preview of an upgrade's next level on the truck (CompanyHq). */
+export interface UpgradePreview {
+  /** This card's next level is the one shown on the truck. */
+  readonly previewing: boolean;
+  readonly onPreview: (upgradeId: string) => void;
+}
 
 /**
  * An upgrade in the shop (spec §16), for the truck the player drives: the
- * fitted level and its effect, and the next level with its price, or what
- * unlocks it.
+ * part it improves, the fitted level and its effect, and the next level with
+ * its price, or what unlocks it. Preview shows the next level on the truck
+ * before it is bought.
  */
 export function upgradeCard(
   document: Document,
@@ -14,20 +23,25 @@ export function upgradeCard(
   offer: UpgradeOffer,
   canAfford: boolean,
   onBuy: (upgradeId: string) => void,
+  preview?: UpgradePreview,
 ): HTMLElement {
   const { upgrade, fittedLevel, next } = offer;
   const maxLevel = upgrade.levels.length;
   const card = element(document, 'article', 'upgrade-card');
   card.dataset.upgradeId = upgrade.id;
   card.dataset.level = String(fittedLevel);
+  card.dataset.previewKey = `upgrade:${upgrade.id}`;
+  card.classList.toggle('is-previewing', preview?.previewing === true);
 
   const top = element(document, 'div', 'upgrade-card__top');
+  const picture = element(document, 'span', 'upgrade-card__icon');
+  picture.append(icon(document, upgradeIcon(upgrade.look)));
   const pips = element(document, 'span', 'upgrade-card__pips');
   pips.setAttribute('aria-label', strings.t('hq.upgrades.level', { level: fittedLevel, max: maxLevel }));
   for (let level = 1; level <= maxLevel; level++) {
     pips.append(element(document, 'span', level <= fittedLevel ? 'pip is-on' : 'pip'));
   }
-  top.append(element(document, 'h3', 'upgrade-card__title', strings.upgradeName(upgrade.id)), pips);
+  top.append(picture, element(document, 'h3', 'upgrade-card__title', strings.upgradeName(upgrade.id)), pips);
 
   const now = element(
     document,
@@ -47,6 +61,9 @@ export function upgradeCard(
       strings.t('hq.upgrades.next', { level: next.level, effect: effectText(strings, next.modifiers) }),
     );
     card.append(top, now, upcoming);
+    if (preview !== undefined) {
+      bottom.append(previewButton(document, strings, 'preview-upgrade', preview.previewing, () => preview.onPreview(upgrade.id)));
+    }
     if (next.locked) {
       bottom.append(element(document, 'span', 'upgrade-card__price', strings.money(next.cost)));
       bottom.append(element(document, 'span', 'upgrade-card__status', strings.t('hq.locked', { level: next.requiredCompanyLevel })));
@@ -69,4 +86,18 @@ export function upgradeCard(
 /** "Engine power +16% · Fuel use −5%". */
 export function effectText(strings: Strings, modifiers: readonly StatModifier[]): string {
   return modifiers.map(({ stat, bonus }) => strings.t(`stat.${stat}`, { percent: strings.percent(bonus) })).join(' · ');
+}
+
+/** The eye button that shows something on the truck in the showroom; pressed while it is shown. */
+export function previewButton(
+  document: Document,
+  strings: Strings,
+  action: string,
+  pressed: boolean,
+  onPreview: () => void,
+): HTMLButtonElement {
+  const node = button(document, 'button--ghost hq__preview', '', action, onPreview);
+  node.append(icon(document, 'eye'), element(document, 'span', '', strings.t('hq.preview')));
+  node.setAttribute('aria-pressed', String(pressed));
+  return node;
 }

@@ -3,11 +3,13 @@ import type { MissionDefinition } from '../../data/definitions/MissionDefinition
 import type { JobOffer } from '../../systems/missions/MissionService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
+import { cargoIcon, icon } from '../icons';
 
 /**
- * A contract on the job board (spec §28): route, cargo, distance, time and
- * pay; the running `events` it counts toward, with their bonus; what blocks
- * it, or the button to take it.
+ * A contract on the job board (spec §28): its cargo's picture, route, cargo,
+ * distance, time and pay; the running `events` it counts toward, with their
+ * bonus; what blocks it, or the button to take it. While another contract is
+ * `busy`, it says to finish that one first.
  */
 export function jobCard(
   document: Document,
@@ -15,21 +17,29 @@ export function jobCard(
   offer: JobOffer,
   onAccept: (missionId: string) => void,
   events: readonly EventDefinition[] = [],
+  busy = false,
 ): HTMLElement {
   const { mission, cargo } = offer;
   const card = element(document, 'article', offer.blockedBy === null ? 'job-card' : 'job-card is-locked');
   card.classList.toggle('job-card--daily', offer.daily);
   card.dataset.missionId = mission.id;
+  card.dataset.cargoCategory = cargo.category;
 
   const top = element(document, 'div', 'job-card__top');
-  top.append(element(document, 'h3', 'job-card__title', strings.missionTitle(mission)));
+  const picture = element(document, 'span', 'job-card__icon');
+  picture.append(icon(document, cargoIcon(cargo.category)));
+  const heading = element(document, 'div', 'job-card__heading');
+  const badges = element(document, 'div', 'job-card__badges');
   if (offer.daily) {
-    top.append(element(document, 'span', 'badge badge--daily', strings.t('hq.daily')));
+    badges.append(element(document, 'span', 'badge badge--daily', strings.t('hq.daily')));
   }
-  top.append(
+  badges.append(
     element(document, 'span', `badge badge--${mission.difficulty}`, strings.t(`difficulty.${mission.difficulty}`)),
   );
-  const route = element(document, 'p', 'job-card__route', routeText(strings, mission));
+  heading.append(element(document, 'h3', 'job-card__title', strings.missionTitle(mission)), badges);
+  top.append(picture, heading);
+  const route = element(document, 'p', 'job-card__route');
+  route.append(icon(document, 'route'), element(document, 'span', '', routeText(strings, mission)));
   const load = element(
     document,
     'p',
@@ -57,6 +67,8 @@ export function jobCard(
   bottom.append(element(document, 'span', 'job-card__pay', strings.money(offer.basePay)));
   if (offer.blockedBy !== null) {
     bottom.append(element(document, 'span', 'job-card__locked', blockerText(strings, offer)));
+  } else if (busy) {
+    bottom.append(element(document, 'span', 'job-card__locked', strings.t('hq.garage.busy')));
   } else {
     bottom.append(
       button(document, 'button--primary job-card__accept', strings.t('hq.accept'), 'accept', () => onAccept(mission.id)),

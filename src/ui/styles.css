@@ -794,117 +794,338 @@ body {
   }
 }
 
-/* ---- Company HQ and job board (src/ui/hq/CompanyHq.ts) ---- */
+/* ---- Company panel over the game (src/ui/hq/CompanyHq.ts) ---- */
 
+/* The world stays in sight: the panel stands at the right of a phone on its side, at the bottom of an upright one. */
 .hq {
-  display: grid;
-  grid-template-columns: minmax(210px, 260px) 1fr;
-  align-items: stretch;
-  justify-content: stretch;
-  gap: 12px;
-  background: linear-gradient(180deg, rgb(12 16 22 / 88%), rgb(12 16 22 / 94%));
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
 }
 
 .hq[hidden] {
   display: none;
 }
 
-.hq__side {
+.hq__sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 0;
-  overflow-y: auto;
+  width: min(640px, 70vw);
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 10px) calc(env(safe-area-inset-right, 0px) + 12px)
+    calc(env(safe-area-inset-bottom, 0px) + 6px) 12px;
+  box-sizing: border-box;
+  background: linear-gradient(180deg, rgb(22 28 36 / 95%), rgb(11 15 20 / 96%));
+  box-shadow: -14px 0 34px rgb(0 0 0 / 40%);
+  pointer-events: auto;
+  animation: hq-slide-in 160ms ease-out;
 }
 
-.hq__card {
+@keyframes hq-slide-in {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+}
+
+@keyframes hq-slide-up {
+  from {
+    transform: translateY(28px);
+    opacity: 0;
+  }
+}
+
+@media (orientation: portrait) {
+  .hq__sheet {
+    top: auto;
+    left: 0;
+    width: auto;
+    height: 66%;
+    padding:
+      12px calc(env(safe-area-inset-right, 0px) + 12px) calc(env(safe-area-inset-bottom, 0px) + 6px)
+      calc(env(safe-area-inset-left, 0px) + 12px);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -14px 34px rgb(0 0 0 / 40%);
+    animation-name: hq-slide-up;
+  }
+}
+
+/* The company, its money, the map and the way back to the road. */
+.hq__header {
   display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.hq__company {
+  display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  gap: 3px;
+  min-width: 0;
 }
 
 .hq__company-name {
   margin: 0;
   overflow: hidden;
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.hq__progress {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
+  font-size: 12px;
+}
+
+.hq__progress .meter {
+  flex: 1 1 50px;
+  max-width: 120px;
+}
+
 .hq__level {
-  margin: 0;
   color: var(--rh-accent);
-  font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .hq__xp {
   color: var(--rh-muted);
-  font-size: 12px;
   font-variant-numeric: tabular-nums;
-}
-
-.hq__figures {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 2px;
-}
-
-.hq__credits {
-  color: var(--rh-accent);
-  font-size: 18px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .hq__reputation {
   color: var(--rh-muted);
-  font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.hq__card-title {
-  margin: 0;
+.hq__money {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: rgb(242 178 51 / 14%);
+  color: var(--rh-accent);
+}
+
+.hq__credits {
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hq__icon-button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 9%);
+  color: var(--rh-fg);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hq__icon-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.hq__icon-button:active {
+  transform: scale(0.94);
+}
+
+/* The four pages, each with its picture. */
+.hq__tabs {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 14px;
+  background: rgb(0 0 0 / 32%);
+}
+
+.hq__tab {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--rh-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hq__tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hq__tab.is-selected {
+  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
+  color: #1b1e22;
+}
+
+/* Narrow: the picture over its name, so every name fits. */
+@media (max-width: 520px) {
+  .hq__tab {
+    flex-direction: column;
+    gap: 2px;
+    min-height: 50px;
+    padding: 5px 4px;
+    font-size: 12px;
+  }
+}
+
+/* A narrow upright phone: the company's name gets the header's first line, the money and buttons the second. */
+@media (max-width: 520px) {
+  .hq__header {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .hq__company {
+    flex-basis: 100%;
+  }
+
+  .hq__money {
+    margin-right: auto;
+  }
+}
+
+/* On its side the phone is short: the pages stand in a rail at the panel's left, so the list keeps the height. */
+@media (orientation: landscape) {
+  .hq__sheet {
+    display: grid;
+    grid-template-areas:
+      'tabs header'
+      'tabs hint'
+      'tabs list';
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px 10px;
+  }
+
+  .hq__header {
+    grid-area: header;
+  }
+
+  .hq__tabs {
+    flex-direction: column;
+    grid-area: tabs;
+  }
+
+  .hq__tab {
+    flex: none;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 60px;
+    padding: 6px 2px;
+    font-size: 12px;
+  }
+
+  .hq__hint {
+    grid-area: hint;
+  }
+
+  .hq__list {
+    grid-area: list;
+  }
+}
+
+/* The one part that scrolls: everything below the tabs, dragged anywhere with a finger. */
+.hq__list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 2px 2px 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: rgb(255 255 255 / 28%) transparent;
+  scrollbar-width: thin;
+}
+
+.hq__list[data-tab='jobs'],
+.hq__list[data-tab='events'] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  align-content: start;
+}
+
+.hq__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 10px;
+}
+
+.hq__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hq__section-title {
+  margin: 4px 0 0;
+  color: var(--rh-muted);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--rh-muted);
 }
 
-.hq__gauge {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 2px 8px;
+.hq__note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--rh-muted);
   font-size: 13px;
 }
 
-.hq__gauge-title {
-  font-weight: 700;
+.hq__current-job {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgb(61 220 132 / 12%);
+  color: var(--rh-fg);
+  font-weight: 600;
 }
 
-.hq__gauge-value {
-  justify-self: end;
+.hq__empty {
   color: var(--rh-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.hq__gauge .meter {
-  grid-column: 1 / -1;
-}
-
-.hq__service {
-  min-height: 36px;
-  padding: 6px 10px;
-  font-size: 14px;
 }
 
 .button:disabled {
@@ -912,51 +1133,38 @@ body {
   cursor: default;
 }
 
-.hq__board-header {
-  display: flex;
-  flex-wrap: wrap;
+.hq__service {
+  min-height: 38px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+/* Shows something on the truck before it is bought; lit while it is shown. */
+.hq__preview {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-}
-
-.hq__tools {
-  display: flex;
-  gap: 8px;
-}
-
-.hq__tools .button {
-  min-height: 36px;
+  gap: 6px;
+  min-height: 40px;
   padding: 6px 12px;
   font-size: 14px;
 }
 
-.hq__board {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-height: 0;
+.hq__preview .icon {
+  width: 18px;
+  height: 18px;
 }
 
-/* Upright phones: one column; the whole HQ scrolls. */
-@media (orientation: portrait) {
-  .hq {
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    overflow-y: auto;
-  }
+.hq__preview[aria-pressed='true'] {
+  background: rgb(111 224 210 / 18%);
+  box-shadow: inset 0 0 0 1.5px #6fe0d2;
+  color: #6fe0d2;
+}
 
-  /* Full height, no shrinking: otherwise the board would cover the side column's buttons. */
-  .hq__side,
-  .hq__board {
-    flex-shrink: 0;
-  }
-
-  .hq__side,
-  .hq__list {
-    overflow: visible;
-  }
+.upgrade-card.is-previewing,
+.truck-card.is-previewing {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    inset 0 0 0 2px #6fe0d2;
 }
 
 /* A thin bar: XP, fuel, damage. */
@@ -965,6 +1173,11 @@ body {
   overflow: hidden;
   border-radius: 3px;
   background: rgb(255 255 255 / 12%);
+}
+
+.meter--big {
+  height: 10px;
+  border-radius: 5px;
 }
 
 .meter__fill {
@@ -990,55 +1203,290 @@ body {
   background: #f0a04b;
 }
 
-.hq__list {
-  display: grid;
-  flex: 1;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  align-content: start;
-  gap: 10px;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding-bottom: 8px;
+/* Line icons (src/ui/icons.ts): stroked in the text colour. */
+.icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
 }
 
-.hq__note {
-  grid-column: 1 / -1;
+/* ---- The truck page (src/ui/hq/truckPage.ts) ---- */
+
+.truck-page__head,
+.truck-gauge,
+.truck-page__cargo {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+}
+
+.truck-page__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.truck-silhouette {
+  flex: none;
+  width: 124px;
+  height: auto;
+}
+
+.truck-page__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hq__truck-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.hq__truck-location {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   margin: 0;
   color: var(--rh-muted);
   font-size: 13px;
 }
 
-.hq__tabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border-radius: 12px;
-  background: rgb(0 0 0 / 30%);
+.hq__truck-location .icon {
+  width: 16px;
+  height: 16px;
 }
 
-.hq__tab {
-  min-height: 36px;
-  padding: 6px 12px;
-  border-radius: 9px;
-  background: transparent;
+.hq__service-note {
+  margin: 0;
   color: var(--rh-muted);
-  font-size: 14px;
+  font-size: 12px;
 }
 
-.hq__tab.is-selected {
+.truck-page__gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.truck-gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.truck-gauge__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.truck-gauge--fuel .truck-gauge__top .icon {
+  color: var(--rh-good);
+}
+
+.truck-gauge--wrench .truck-gauge__top .icon {
+  color: #f0a04b;
+}
+
+.truck-gauge__title {
+  font-weight: 800;
+}
+
+.truck-gauge__value {
+  margin-left: auto;
+  color: var(--rh-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.truck-page__cargo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.truck-page__cargo-icon {
+  width: 42px;
+  height: 42px;
+  padding: 9px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: rgb(242 178 51 / 14%);
+  color: var(--rh-accent);
+}
+
+.truck-page__cargo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.truck-page__cargo-text .hq__section-title {
+  margin: 0;
+}
+
+.truck-page__cargo-line {
+  margin: 0;
+  font-weight: 700;
+}
+
+.truck-page__cargo-note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.truck-page__parts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.truck-page__part-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.truck-part {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 5%);
+  color: var(--rh-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.truck-part.is-fitted {
+  background: rgb(242 178 51 / 10%);
+  color: var(--rh-fg);
+}
+
+.truck-part .upgrade-card__pips {
+  margin-left: auto;
+}
+
+.truck-part .pip {
+  width: 9px;
+  height: 9px;
+}
+
+/* ---- The road's buttons to the company panel (src/ui/hud/HudDock.ts) ---- */
+
+/* Without a contract: where the mission HUD would be, "take a job" lit. */
+.hud-dock {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  transform: translateX(-50%);
+}
+
+.hud-dock[hidden],
+.hud-dock__button[hidden] {
+  display: none;
+}
+
+.hud-dock__button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 13px 6px 10px;
+  border: 2px solid rgb(255 255 255 / 60%);
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgb(46 54 64 / 88%), rgb(16 20 26 / 88%));
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  color: var(--rh-fg);
+  font: 700 14px / 1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.hud-dock__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.hud-dock__label {
+  white-space: nowrap;
+}
+
+.hud-dock__button--jobs {
+  border-color: var(--rh-accent);
   background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
   color: #1b1e22;
 }
 
-.hq__truck-name {
-  margin: 0 0 2px;
-  font-size: 14px;
-  font-weight: 700;
+.hud-dock__button:active {
+  transform: scale(0.95);
 }
 
-.hq__empty {
-  color: var(--rh-muted);
+/* With a contract under way: round buttons without names, under the minimap, out of the mission HUD's way. */
+.hud-dock[data-mode='compact'] {
+  top: calc(env(safe-area-inset-top, 0px) + 116px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  transform: none;
+}
+
+.hud-dock[data-mode='compact'] .hud-dock__button {
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
+
+.hud-dock[data-mode='compact'] .hud-dock__label {
+  display: none;
+}
+
+@media (orientation: landscape) {
+  .hud-dock {
+    left: calc(50% + 55px);
+  }
+}
+
+/* Upright: a row under the corner buttons, each picture over its name; with a contract, a column at the left. */
+@media (orientation: portrait) {
+  .hud-dock {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 480px;
+  }
+
+  .hud-dock__button {
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 52px;
+    padding: 5px 4px;
+    border-radius: 16px;
+    font-size: 13px;
+  }
+
+  .hud-dock[data-mode='compact'] {
+    top: calc(50% - 76px);
+    flex-direction: column;
+    width: auto;
+  }
+
+  .hud-dock[data-mode='compact'] .hud-dock__button {
+    flex: none;
+    min-height: 0;
+    border-radius: 50%;
+  }
 }
 
 .job-card {
@@ -1065,16 +1513,85 @@ body {
   gap: 8px;
 }
 
+.job-card__top {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+/* The title, and under it whether it is today's and how hard it is. */
+.job-card__heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.job-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .job-card__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 17px;
   font-weight: 800;
 }
 
+/* The picture of what a card is about: the cargo, the truck's part, the event's terms. */
+.job-card__icon,
+.upgrade-card__icon,
+.event-card__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: rgb(242 178 51 / 14%);
+  color: var(--rh-accent);
+}
+
+.job-card__icon .icon,
+.upgrade-card__icon .icon,
+.event-card__icon .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.job-card[data-cargo-category='frozenFood'] .job-card__icon {
+  background: rgb(127 211 255 / 15%);
+  color: #7fd3ff;
+}
+
+.job-card[data-cargo-category='medical'] .job-card__icon,
+.job-card[data-cargo-category='hazardous'] .job-card__icon {
+  background: rgb(255 138 122 / 15%);
+  color: var(--rh-danger);
+}
+
+.job-card[data-cargo-category='agriculture'] .job-card__icon,
+.job-card[data-cargo-category='food'] .job-card__icon {
+  background: rgb(95 211 138 / 15%);
+  color: var(--rh-good);
+}
+
 .job-card__route {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   font-size: 15px;
   font-weight: 600;
+}
+
+.job-card__route .icon {
+  width: 17px;
+  height: 17px;
+  color: var(--rh-muted);
 }
 
 .job-card__cargo {
@@ -1171,9 +1688,18 @@ body {
 
 .truck-card__title,
 .upgrade-card__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 17px;
   font-weight: 800;
+}
+
+.truck-card .truck-silhouette {
+  align-self: center;
+  width: 100%;
+  max-width: 210px;
+  margin: 2px 0;
 }
 
 .truck-card__body {
@@ -1304,13 +1830,18 @@ body {
   }
 }
 
-/* In the HQ it sits above the list, in the flow, so it never covers a button. */
+/* In the company panel it sits above the list, in the flow, so it never covers a button. */
 .tutorial-hint--inline {
   position: static;
   width: auto;
   max-width: none;
+  padding: 5px 6px 5px 12px;
   box-shadow: inset 0 0 0 1.5px rgb(242 178 51 / 65%);
   transform: none;
+}
+
+.tutorial-hint--inline .tutorial-hint__text {
+  font-size: 14px;
 }
 
 .hq__hint:empty {
@@ -1341,10 +1872,12 @@ body {
   }
 }
 
+html[data-tutorial-step='takeContract'] .hud-dock__button--jobs,
 html[data-tutorial-step='takeContract'] .hq__tab[data-tab='jobs']:not(.is-selected),
 html[data-tutorial-step='takeContract'] .hq__list[data-tab='jobs'] .job-card--tutorial .job-card__accept,
-html[data-tutorial-step='buyUpgrade'] .hq__tab[data-tab='upgrades']:not(.is-selected),
-html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-card__action:not(:disabled) {
+html[data-tutorial-step='buyUpgrade'] .hud-dock__button--garage,
+html[data-tutorial-step='buyUpgrade'] .hq__tab[data-tab='garage']:not(.is-selected),
+html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card__action:not(:disabled) {
   animation: tutorial-glow 1.4s ease-in-out infinite;
 }
 
@@ -1392,6 +1925,8 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-ca
 }
 
 .event-card__title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 17px;
   font-weight: 800;
@@ -1438,9 +1973,17 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-ca
 }
 
 .event-card__reward {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--rh-accent);
   font-size: 13px;
   font-weight: 800;
+}
+
+.event-card__reward .icon {
+  width: 17px;
+  height: 17px;
 }
 
 .event-card__status {
@@ -1877,10 +2420,21 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='upgrades'] .upgrade-ca
   }
 }
 
-/* In the HQ, purchases are confirmed at the bottom, clear of the cards being tapped. */
-html[data-game-state='companyHq'] .toasts {
+/* With the company panel open, purchases are confirmed over the world beside it, clear of the cards being tapped. */
+html[data-panel='open'] .toasts {
   top: auto;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  left: calc((100vw - min(640px, 70vw)) / 2);
+  width: min(420px, calc(100vw - min(640px, 70vw) - 24px));
+}
+
+@media (orientation: portrait) {
+  html[data-panel='open'] .toasts {
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    bottom: auto;
+    left: 50%;
+    width: min(90vw, 420px);
+  }
 }
 
 .toast {
@@ -1914,6 +2468,17 @@ html[data-game-state='companyHq'] .toasts {
 
 .result-dialog__panel.is-failure .panel__title {
   color: var(--rh-danger);
+}
+
+/* The way on: the next job, or back on the road. */
+.result-dialog__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.result-dialog__choices .button {
+  flex: 1 1 140px;
 }
 
 .result-dialog__mission,
@@ -2179,9 +2744,6 @@ html[data-game-state='companyHq'] .toasts {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 4px;
-  padding-top: 10px;
-  border-top: 1px solid rgb(255 255 255 / 10%);
 }
 
 .paint-picker__label {

@@ -1,8 +1,9 @@
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
-import type { OwnedTruck, PaintOffer, TruckOffer } from '../../systems/vehicles/GarageService';
+import type { OwnedTruck, TruckOffer } from '../../systems/vehicles/GarageService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
-import { paintPicker } from './paintPicker';
+import { truckSilhouette } from './truckSilhouette';
+import { previewButton } from './upgradeCards';
 
 /** What the garage card of a model offers the player. */
 export interface TruckCardState {
@@ -11,36 +12,42 @@ export interface TruckCardState {
   readonly owned: OwnedTruck | undefined;
   /** A contract is under way: trucks cannot be switched. */
   readonly busy: boolean;
-  /** Whether the company has `price` credits (the truck, or a paint). */
+  /** Whether the company has `price` credits. */
   readonly canAfford: (price: number) => boolean;
-  /** The paint shop's colours, for the truck the company owns. */
-  readonly paints: readonly PaintOffer[];
+  /** This model is the one shown in the showroom. */
+  readonly previewing: boolean;
 }
 
 export interface TruckCardActions {
   readonly onBuy: (definitionId: string) => void;
   readonly onSwitch: (instanceId: string) => void;
-  readonly onPaint: (instanceId: string, paintId: string | null) => void;
+  /** Shows this model in the showroom (again: back to the truck being driven). */
+  readonly onPreview: (definitionId: string) => void;
 }
 
 /**
- * A truck model in the garage (spec §15): what it carries and costs, and
- * whether the company drives it, owns it, can buy it, or must level up first.
- * A truck the company owns can be painted here (paintPicker).
+ * A truck model in the garage (spec §15): a picture of it in its colours,
+ * what it carries and costs, and whether the company drives it, owns it, can
+ * buy it, or must level up first. Any model but the one being driven can be
+ * shown in the showroom before it is bought or driven.
  */
 export function truckCard(document: Document, strings: Strings, state: TruckCardState, actions: TruckCardActions): HTMLElement {
   const { offer, owned } = state;
   const { definition } = offer;
+  const active = owned?.active === true;
   const card = element(document, 'article', 'truck-card');
   card.dataset.vehicleId = definition.id;
-  card.classList.toggle('is-active', owned?.active === true);
+  card.dataset.previewKey = `truck:${definition.id}`;
+  card.classList.toggle('is-active', active);
   card.classList.toggle('is-locked', owned === undefined && offer.locked);
+  card.classList.toggle('is-previewing', state.previewing);
 
   const top = element(document, 'div', 'truck-card__top');
   top.append(
     element(document, 'h3', 'truck-card__title', strings.vehicleName(definition.id)),
     element(document, 'span', `badge badge--${definition.vehicleClass}`, strings.t(`vehicleClass.${definition.vehicleClass}`)),
   );
+  const picture = truckSilhouette(document, definition, owned?.paint?.color ?? definition.factoryColor);
   const body = element(document, 'p', 'truck-card__body', strings.t(`body.${definition.bodyType}`));
   const facts = element(document, 'dl', 'truck-card__facts');
   for (const [label, value] of truckFacts(strings, definition)) {
@@ -50,7 +57,10 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
   }
 
   const bottom = element(document, 'div', 'truck-card__bottom');
-  if (owned?.active === true) {
+  if (!active) {
+    bottom.append(previewButton(document, strings, 'preview-truck', state.previewing, () => actions.onPreview(definition.id)));
+  }
+  if (active) {
     bottom.append(element(document, 'span', 'truck-card__status', strings.t('hq.garage.inUse')));
   } else if (owned !== undefined) {
     const drive = button(document, 'button--primary truck-card__action', strings.t('hq.garage.drive'), 'switch-truck', () =>
@@ -75,10 +85,7 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
     buy.disabled = !state.canAfford(offer.price);
     bottom.append(buy);
   }
-  card.append(top, body, facts, bottom);
-  if (owned !== undefined) {
-    card.append(paintPicker(document, strings, { truck: owned, offers: state.paints, canAfford: state.canAfford }, actions.onPaint));
-  }
+  card.append(top, picture, body, facts, bottom);
   return card;
 }
 

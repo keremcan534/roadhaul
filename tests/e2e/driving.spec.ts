@@ -176,7 +176,7 @@ test('steps through the cameras with the button, names each, and keeps the last 
   await page.reload();
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
   await page.locator('[data-action="continue-game"]').click();
-  await page.locator('[data-action="free-drive"]').click();
+  await expect(html).toHaveAttribute('data-game-state', 'driving');
   await expect(html).toHaveAttribute('data-camera', 'cabin');
   expect(problems).toEqual([]);
 });

@@ -18,6 +18,7 @@ const COMMON_CONTROLS = [
   '.horn-button',
   '.pause-button',
   '.minimap',
+  '.hud-dock',
 ];
 /** The controls each way of steering (Settings) adds. */
 const STEERING_CONTROLS = {

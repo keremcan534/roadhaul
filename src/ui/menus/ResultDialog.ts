@@ -7,9 +7,13 @@ import { button, element } from '../dom';
 import { routeText } from '../hq/jobCards';
 import type { Strings } from '../i18n';
 
+/** Where the player goes from the result: back on the road, or to the job board for the next contract. */
+export type ResultChoice = 'road' | 'jobs';
+
 /**
  * The end of a contract (spec §12): the itemised pay of a delivery, or why
- * the contract failed. Continue returns to the HQ.
+ * the contract failed. From it the player takes the next job (spec §9: next
+ * contract) or carries on driving.
  */
 export class ResultDialog {
   private readonly overlay: HTMLDivElement;
@@ -18,7 +22,7 @@ export class ResultDialog {
   constructor(
     parent: HTMLElement,
     private readonly strings: Strings,
-    private readonly onContinue: () => void,
+    private readonly onContinue: (choice: ResultChoice) => void,
   ) {
     const document = parent.ownerDocument;
     this.overlay = element(document, 'div', 'screen result-dialog');
@@ -123,6 +127,21 @@ export class ResultDialog {
     this.overlay.hidden = true;
   }
 
+  /** The way on: the next job, or back on the road. The banners added later go above them. */
+  private choices(): HTMLElement {
+    const document = this.overlay.ownerDocument;
+    const choose = (choice: ResultChoice) => () => {
+      this.hide();
+      this.onContinue(choice);
+    };
+    const row = element(document, 'div', 'result-dialog__choices');
+    row.append(
+      button(document, 'button--primary', this.strings.t('result.newJob'), 'result-jobs', choose('jobs')),
+      button(document, 'button--secondary', this.strings.t('result.continue'), 'continue', choose('road')),
+    );
+    return row;
+  }
+
   dispose(): void {
     this.overlay.remove();
   }
@@ -135,10 +154,7 @@ export class ResultDialog {
       element(document, 'h2', 'panel__title', title),
       element(document, 'p', 'result-dialog__mission', `${strings.missionTitle(definition)} · ${routeText(strings, definition)}`),
       ...body,
-      button(document, 'button--primary', strings.t('result.continue'), 'continue', () => {
-        this.hide();
-        this.onContinue();
-      }),
+      this.choices(),
     );
     this.overlay.hidden = false;
   }

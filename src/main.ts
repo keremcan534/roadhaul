@@ -9,6 +9,7 @@ import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
+import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import {
   brakePedalOf,
   combineVehicleInputs,
@@ -24,11 +25,11 @@ import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError } from './platform/browser/fatalError';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
-import { CameraRig } from './presentation/cameras/CameraRig';
+import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { RenderHost } from './presentation/RenderHost';
-import { TruckView } from './presentation/vehicles/TruckView';
+import { TruckView, truckViewKey } from './presentation/vehicles/TruckView';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
@@ -50,13 +51,15 @@ import type { GameState } from './systems/gameState/GameState';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
-import { CompanyHq } from './ui/hq/CompanyHq';
+import { CompanyHq, type TruckPreview } from './ui/hq/CompanyHq';
+import type { HqTab } from './ui/hq/hqTabs';
 import { objectiveText } from './ui/hq/eventText';
+import { HudDock } from './ui/hud/HudDock';
 import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
-import { TutorialHint, tutorialPlace } from './ui/hud/TutorialHint';
+import { TutorialHint, tutorialShows, type TutorialPlace } from './ui/hud/TutorialHint';
 import { chooseLanguage, stringsFor } from './ui/i18n';
 import { MapPainter } from './ui/map/MapPainter';
 import { sketchWorld } from './ui/map/mapSketch';
@@ -72,15 +75,19 @@ import './ui/styles.css';
 /**
  * Browser entry point and composition root. It boots the headless game
  * services, then adds rendering, input, the menus, the HUD, the frame loop
- * and debug tooling, and wires the game flow: main menu → company HQ (job
- * board, garage, upgrades, fuel, repairs) → driving the contract → result →
- * HQ. A company is started or continued from the main menu and saves itself
- * as it goes.
+ * and debug tooling, and wires the game flow: main menu → the world, where
+ * the truck waits → the company panel over it (job board, truck, garage,
+ * events) → driving the contract → result → the next contract or the road.
+ * A company is started or continued from the main menu and saves itself as
+ * it goes.
  *
  * `<html data-boot-state>` (booting | ready | error), `data-game-state`,
- * `data-mission-state`, `data-vehicle`, `data-traffic` and `data-weather`
- * let the end-to-end tests follow progress.
+ * `data-panel`, `data-mission-state`, `data-vehicle`, `data-traffic` and
+ * `data-weather` let the end-to-end tests follow progress.
  */
+/** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
+const PANEL_STANDSTILL_SPEED = 0.5;
+
 async function start(): Promise<void> {
   const root = document.documentElement;
   const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
@@ -195,7 +202,11 @@ async function start(): Promise<void> {
 
   /** The simulation stands still while a menu or the result is open over the road. */
   let paused = false;
+  /** The truck was moving when the company panel opened: traffic and weather hold still with it until it closes. */
+  let worldHeld = false;
   const isDriving = (): boolean => gameState.current === 'driving';
+  /** On the road: in the game with no company panel over it. */
+  const onRoad = (): boolean => isDriving() && !hq.isOpen;
 
   const ui = document.body;
   /** The camera in use, shown: the cab's inside from the driver's seat, the rear camera's picture mirrored. */
@@ -207,7 +218,7 @@ async function start(): Promise<void> {
   };
   /** The camera button (or C): the next camera, named for a moment, and kept for next time. */
   const toggleCamera = (): void => {
-    if (isDriving() && !paused) {
+    if (isDriving() && !paused && !hq.isOpen) {
       const mode = cameraRig.toggleMode();
       lookAround.reset();
       showCamera(true);
@@ -238,9 +249,13 @@ async function start(): Promise<void> {
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
-  const result = new ResultDialog(ui, strings, () => {
+  // From the result: the next contract, or back on the road.
+  const result = new ResultDialog(ui, strings, (choice) => {
     paused = false;
-    gameState.transitionTo('companyHq');
+    showHud();
+    if (choice === 'jobs') {
+      openPanel('jobs');
+    }
   });
   const refuel = (roadside: boolean): void => {
     const filled = fuel.refuel(roadside);
@@ -279,7 +294,7 @@ async function start(): Promise<void> {
     return { cost: strings.money(Math.min(fuel.fillUpCost(true), economy.credits)) };
   };
   const pause = (): void => {
-    if (isDriving() && !paused && !result.isOpen) {
+    if (isDriving() && !paused && !result.isOpen && !hq.isOpen) {
       paused = true;
       pauseMenu.open(missions.active !== null, roadsideFuelOffer());
     }
@@ -305,9 +320,9 @@ async function start(): Promise<void> {
       paused = false;
       missions.abandon(); // MissionFailed opens the result.
     },
-    onCompanyHq: () => {
+    onMainMenu: () => {
       paused = false;
-      gameState.transitionTo('companyHq');
+      gameState.transitionTo('mainMenu');
     },
     onSettings: () => settingsDialog.open(),
     onMap: () => openMap(),
@@ -318,7 +333,7 @@ async function start(): Promise<void> {
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
-      } else if (!settingsDialog.isOpen && !newCompany.isOpen && !result.isOpen && (isDriving() || gameState.current === 'companyHq')) {
+      } else if (!settingsDialog.isOpen && !newCompany.isOpen && !result.isOpen && isDriving()) {
         openMap();
       }
     },
@@ -327,6 +342,8 @@ async function start(): Promise<void> {
         settingsDialog.close(); // Over the pause menu, which stays.
       } else if (worldMap.isOpen) {
         closeMap();
+      } else if (hq.isOpen) {
+        closePanel();
       } else if (pauseMenu.isOpen) {
         resume();
       } else {
@@ -336,24 +353,48 @@ async function start(): Promise<void> {
   });
 
   const menuMessage = (): string | null => (persistent ? null : strings.t('menu.storageOff'));
-  /** Shows the truck being driven: a new model or a new coat of paint gets its own view, and the camera follows it. */
-  const showActiveTruck = (): void => {
-    const paint = garage.activeTruck.paint?.color ?? driving.definition.factoryColor;
-    if (truck.definition.id !== driving.definition.id || truck.paint !== paint) {
-      truck.dispose();
-      truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, paint });
-      cameraRig.setBody(driving.definition.body);
-      showCamera(isDriving());
+  /** What the garage shows on the truck before it is bought (the company panel's previews); null for nothing. */
+  let truckPreview: TruckPreview | null = null;
+  /**
+   * Shows the truck being driven, with its paint and upgraded parts, or with
+   * what the garage previews on it: another look gets its own view, and the
+   * camera follows it.
+   */
+  const showTruck = (): void => {
+    const active = garage.activeTruck;
+    let definition = driving.definition;
+    let paint = active.paint?.color ?? definition.factoryColor;
+    let fitted = active.upgrades;
+    if (truckPreview?.kind === 'paint') {
+      paint = truckPreview.paintId === null ? definition.factoryColor : content.paints.get(truckPreview.paintId).color;
+    } else if (truckPreview?.kind === 'upgrade') {
+      const upgrade = content.upgrades.get(truckPreview.upgradeId);
+      fitted = { ...fitted, [upgrade.id]: Math.min(upgrade.levels.length, (fitted[upgrade.id] ?? 0) + 1) };
+    } else if (truckPreview?.kind === 'truck') {
+      const model = content.vehicles.get(truckPreview.definitionId);
+      const owned = garage.trucks.find((candidate) => candidate.definition.id === model.id);
+      definition = model;
+      paint = owned?.paint?.color ?? model.factoryColor;
+      fitted = owned?.upgrades ?? {};
     }
-    truck.setLoaded(driving.cargoMassKg > 0);
+    const options = { lampGlows, paint, looks: truckLooks(fitted, content.upgrades.all) };
+    if (truck.key !== truckViewKey(definition, options)) {
+      truck.dispose();
+      truck = new TruckView(renderHost.scene, definition, options);
+      cameraRig.setBody(definition.body);
+      showCamera(onRoad());
+    }
+    truck.setLoaded(truckPreview?.kind !== 'truck' && driving.cargoMassKg > 0);
     root.dataset.vehicle = driving.definition.id;
-    root.dataset.paint = garage.activeTruck.paint?.id ?? 'factory';
+    root.dataset.paint = active.paint?.id ?? 'factory';
+    root.dataset.truckView = truck.key;
   };
   const enterCompany = (): void => {
-    showActiveTruck();
+    truckPreview = null;
+    showTruck();
     syncMissionView();
     root.dataset.tutorialStep = tutorial.step;
-    gameState.transitionTo('companyHq');
+    gameState.transitionTo('driving');
   };
   const newCompany = new NewCompanyDialog(ui, strings, {
     onStart: (companyName) => {
@@ -424,12 +465,12 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts },
+    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
         if (accepted.ok) {
-          gameState.transitionTo('driving');
+          closePanel();
         } else {
           logger.warn(`Could not take ${missionId}: ${accepted.error}.`);
         }
@@ -475,11 +516,48 @@ async function start(): Promise<void> {
           logger.warn(`Could not fit ${upgradeId}: ${fitted.error}.`);
         }
       },
-      onFreeDrive: () => gameState.transitionTo('driving'),
-      onMainMenu: () => gameState.transitionTo('mainMenu'),
+      onPreview: (preview) => {
+        truckPreview = preview;
+        showTruck();
+        // The showroom turns to what is previewed.
+        if (preview?.kind === 'upgrade') {
+          cameraRig.turnShowcaseTo(SHOWCASE_PART_ANGLES[content.upgrades.get(preview.upgradeId).look]);
+        } else if (preview?.kind === 'paint') {
+          cameraRig.turnShowcaseTo(SHOWCASE_PAINT_ANGLE);
+        }
+      },
       onOpenMap: () => openMap(),
+      onClose: () => closePanel(),
     },
   );
+  // The company's pages from the road.
+  const dock = new HudDock(ui, strings, (tab) => openPanel(tab));
+  /**
+   * Opens the company panel on `tab` over the road. The truck waits; if it
+   * was moving, traffic and weather wait with it, else the world goes on.
+   */
+  const openPanel = (tab: HqTab): void => {
+    if (!isDriving() || paused || result.isOpen) {
+      return;
+    }
+    if (hq.isOpen) {
+      hq.selectTab(tab);
+      return;
+    }
+    worldHeld = Math.abs(driving.vehicle.speed) > PANEL_STANDSTILL_SPEED;
+    lookAround.reset();
+    hq.open(tab);
+    showHud();
+  };
+  /** Back on the road: straight ahead the way the phone is held now. */
+  const closePanel = (): void => {
+    if (!hq.isOpen) {
+      return;
+    }
+    hq.close();
+    showHud();
+    tilt.recenter();
+  };
   /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
   let pausedForMap = false;
   const openMap = (): void => {
@@ -528,6 +606,19 @@ async function start(): Promise<void> {
   root.dataset.tilt = tilt.status;
   applySteering(settings.steering);
   const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
+  /**
+   * Where the tutorial's hint would show now: in the panel, over the road, or
+   * nowhere (menus, pause, a result, or the rest area's counter in its place).
+   */
+  const hintPlace = (): TutorialPlace | null => {
+    if (!isDriving() || paused || result.isOpen) {
+      return null;
+    }
+    if (hq.isOpen) {
+      return 'panel';
+    }
+    return restArea.isOpen ? null : 'road';
+  };
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
   const syncMissionView = (): void => {
@@ -617,45 +708,56 @@ async function start(): Promise<void> {
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
-  events.on('UpgradePurchased', refreshHq);
-  events.on('VehiclePainted', () => {
-    showActiveTruck();
-    refreshHq();
-  });
-  events.on('ActiveVehicleChanged', () => {
-    showActiveTruck();
-    refreshHq();
-  });
+  // A purchase ends any preview (refreshHq), then the truck shows what was bought.
+  for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged'] as const) {
+    events.on(name, () => {
+      refreshHq();
+      showTruck();
+    });
+  }
 
+  /** The showroom frames the truck beside the panel; on the road and behind the menus the view has the whole screen. */
+  const frameShowroom = (): void => {
+    const covered = hq.coveredShare();
+    cameraRig.frameBeside(covered.right, covered.bottom);
+  };
+  /**
+   * What shows over the world: on the road the controls, the HUD and the
+   * company's buttons; with the panel open only the panel, and the truck in
+   * its showroom light beside it; behind the main menu the circling camera.
+   */
+  const showHud = (): void => {
+    const road = onRoad();
+    touch.visible = road;
+    hud.visible = road;
+    minimap.visible = road;
+    dock.visible = road;
+    pauseMenu.buttonVisible = road && !result.isOpen;
+    lookAround.enabled = road;
+    cameraRig.showcase = !road;
+    showCamera(road);
+    root.dataset.panel = hq.isOpen ? 'open' : 'none';
+    frameShowroom();
+  };
   const showState = (state: GameState): void => {
     root.dataset.gameState = state;
     const drivingNow = state === 'driving';
-    touch.visible = drivingNow;
-    hud.visible = drivingNow;
-    minimap.visible = drivingNow;
-    pauseMenu.buttonVisible = drivingNow;
     mainMenu.visible = state === 'mainMenu';
     if (state === 'mainMenu') {
       mainMenu.update(session.hasSavedGame(), menuMessage());
     }
-    if (state === 'companyHq') {
-      hq.show();
-    } else {
-      hq.hide();
-    }
     if (!drivingNow) {
+      hq.close();
       toasts.clear();
     } else {
-      // Each drive starts straight ahead the way the phone is held, in D.
+      // Into the game: straight ahead the way the phone is held, in D.
       tilt.recenter();
       touch.gear = 'drive';
       if (tilt.status === 'locked') {
         toasts.show(strings.t('toast.tiltLocked'), 'info');
       }
     }
-    cameraRig.showcase = !drivingNow;
-    lookAround.enabled = drivingNow;
-    showCamera(drivingNow);
+    showHud();
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
@@ -710,6 +812,7 @@ async function start(): Promise<void> {
     const action = backAction({
       gameState: gameState.current,
       menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
+      panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
     });
@@ -719,14 +822,14 @@ async function start(): Promise<void> {
         newCompany.close();
         closeMap();
         break;
+      case 'closePanel':
+        closePanel();
+        break;
       case 'pause':
         pause();
         break;
       case 'resume':
         resume();
-        break;
-      case 'mainMenu':
-        gameState.transitionTo('mainMenu');
         break;
       case 'stay':
         break;
@@ -744,7 +847,7 @@ async function start(): Promise<void> {
   if (config.debug.showPerfOverlay) {
     // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area.
     window.addEventListener('keydown', (event) => {
-      if (event.repeat || !isDriving() || paused) {
+      if (event.repeat || !onRoad() || paused) {
         return;
       }
       const target = missions.target;
@@ -763,6 +866,9 @@ async function start(): Promise<void> {
   const resize = (): void => {
     renderHost.setSize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio);
     fitRain();
+    if (hq.isOpen) {
+      frameShowroom();
+    }
   };
   resize();
   new ResizeObserver(resize).observe(canvas);
@@ -777,14 +883,14 @@ async function start(): Promise<void> {
     new FixedTimestep(config.simulation.fixedStepSeconds, config.simulation.maxStepsPerFrame),
     {
       fixedUpdate: (stepSeconds) => {
-        if (paused) {
+        if (paused || (hq.isOpen && worldHeld)) {
           return;
         }
-        // Traffic moves first, so the truck collides with where it is now. It drives behind the menus too,
-        // under the weather.
+        // Traffic moves first, so the truck collides with where it is now. It drives behind the menus and the
+        // panel too, under the weather, while the truck waits.
         traffic.update(stepSeconds);
         weather.update(stepSeconds);
-        if (!isDriving()) {
+        if (!onRoad()) {
           return;
         }
         combineVehicleInputs(controlsInput, keyboard.state, touch.state);
@@ -796,7 +902,8 @@ async function start(): Promise<void> {
         session.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
-        const simulating = isDriving() && !paused;
+        const simulating = onRoad() && !paused;
+        const worldStill = paused || (hq.isOpen && worldHeld);
         touch.update(deltaSeconds);
         tilt.update(deltaSeconds);
         const vehicle = driving.vehicle;
@@ -816,7 +923,7 @@ async function start(): Promise<void> {
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
-        trafficView.update(traffic.simulation, paused ? 1 : alpha);
+        trafficView.update(traffic.simulation, worldStill ? 1 : alpha);
         gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
         const vehicles = traffic.simulation?.vehicleCount ?? 0;
         if (vehicles !== shownTraffic) {
@@ -846,11 +953,12 @@ async function start(): Promise<void> {
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);
         worldMap.frame();
-        const tutorialStep = tutorial.step;
-        const tutorialAt = tutorialPlace(tutorialStep);
-        tutorialHint.show(tutorialAt === gameState.current && !paused && !result.isOpen ? tutorialStep : null, tutorialAt);
         restArea.visible = simulating;
         restArea.update();
+        const tutorialStep = tutorial.step;
+        const tutorialAt = hintPlace();
+        tutorialHint.show(tutorialAt !== null && tutorialShows(tutorialStep, tutorialAt) ? tutorialStep : null, tutorialAt);
+        dock.busy = missions.active !== null;
         toasts.update(deltaSeconds);
         // Slow frames on the road: fewer pixels (the rain's streaks keep their width in pixels). The menus,
         // drawn at half rate, are no measure.
@@ -858,9 +966,9 @@ async function start(): Promise<void> {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitRain();
         }
-        // Behind the menus the scene is a backdrop: every other frame is enough, and saves the battery. The full
-        // map hides it all.
-        menuFrames = isDriving() ? 0 : menuFrames + 1;
+        // Behind the menus and the panel the scene is a backdrop: every other frame is enough, and saves the
+        // battery. The full map hides it all.
+        menuFrames = onRoad() ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.render();
         }

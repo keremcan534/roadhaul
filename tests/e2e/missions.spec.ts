@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { foundCompany, openCompanyHq, openGame, openMainMenu, takeContract, watchForProblems } from './support';
+import {
+  closePanel,
+  foundCompany,
+  openCompanyHq,
+  openGame,
+  openMainMenu,
+  openPanel,
+  takeContract,
+  watchForProblems,
+} from './support';
 
 const html = (page: Page) => page.locator('html');
 
@@ -10,7 +19,7 @@ async function pullAway(page: Page): Promise<void> {
   await page.keyboard.up('ArrowUp');
 }
 
-test('boots into the main menu and opens the job board', async ({ page }) => {
+test('boots into the main menu, goes straight into the game, and opens the job board from its button', async ({ page }) => {
   const problems = watchForProblems(page);
   await openMainMenu(page, '?lang=en');
 
@@ -18,6 +27,15 @@ test('boots into the main menu and opens the job board', async ({ page }) => {
   await expect(page.locator('.touch-controls')).toBeHidden();
   await expect(page.locator('[data-action="continue-game"]')).toBeHidden(); // Nothing saved yet.
   await foundCompany(page, 'Kuzey Lojistik');
+
+  // On the road at once, the truck under the player's hands, the company's pages a tap away.
+  await expect(page.locator('.touch-controls')).toBeVisible();
+  await expect(page.locator('.hq')).toBeHidden();
+  await expect(page.locator('.hud-dock')).toBeVisible();
+  await expect(page.locator('[data-action="dock-jobs"]')).toHaveText('Jobs');
+  await page.locator('[data-action="dock-jobs"]').click();
+  await expect(html(page)).toHaveAttribute('data-panel', 'open');
+  await expect(page.locator('.touch-controls')).toBeHidden();
 
   await expect(page.locator('.hq__company-name')).toHaveText('Kuzey Lojistik');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
@@ -75,11 +93,15 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(result.locator('.result-dialog__line').last()).toContainText(`${(5000 + total).toLocaleString('en-GB')} credits`);
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
 
-  await result.locator('[data-action="continue"]').click();
-  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  // Straight on to the next job.
+  await result.locator('[data-action="result-jobs"]').click();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
+  await expect(html(page)).toHaveAttribute('data-panel', 'open');
+  await expect(page.locator('.hq__tab[data-tab="jobs"]')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
   await expect(page.locator('.job-card')).toHaveCount(25);
   // The truck waits in the delivery depot's yard, where it can be serviced.
+  await openPanel(page, 'truck');
   await expect(page.locator('.hq__truck-location')).toHaveText('At Demirkent depot');
   await expect(page.locator('.hq__service-note')).toBeHidden();
   expect(problems).toEqual([]);
@@ -113,7 +135,7 @@ test('offers contracts of the day, and keeps one under way across a reload', asy
   await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
   await page.locator('[data-action="continue-game"]').click();
   await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded');
-  await page.locator('[data-action="free-drive"]').click();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await expect(page.locator('.mission-hud__objective')).toContainText('Deliver to');
 
   await pullAway(page);
@@ -125,28 +147,33 @@ test('offers contracts of the day, and keeps one under way across a reload', asy
   expect(problems).toEqual([]);
 });
 
-test('abandoning a contract from the pause menu fails it and returns to the HQ', async ({ page }) => {
+test('abandoning a contract from the pause menu fails it, and the road is back with the job board', async ({ page }) => {
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?lang=en');
   await takeContract(page, 'market_shipment');
+  // Under way: no job board button, the others shrink out of the mission HUD's way.
+  await expect(page.locator('[data-action="dock-jobs"]')).toBeHidden();
+  await expect(page.locator('.hud-dock')).toHaveAttribute('data-mode', 'compact');
 
   await page.locator('[data-action="pause"]').click();
   const pause = page.locator('.pause-menu');
   await expect(pause).toBeVisible();
-  await expect(pause.locator('[data-action="company-hq"]')).toBeHidden();
+  await expect(pause.locator('[data-action="pause-main-menu"]')).toBeVisible();
   await pause.locator('[data-action="abandon"]').click();
 
   const result = page.locator('.result-dialog');
   await expect(result.locator('.panel__title')).toHaveText('Contract failed');
   await expect(result.locator('.result-dialog__reason')).toHaveText('You abandoned the contract.');
   await result.locator('[data-action="continue"]').click();
-  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
+  await expect(html(page)).toHaveAttribute('data-panel', 'none');
+  await expect(page.locator('[data-action="dock-jobs"]')).toBeVisible();
+  await expect(page.locator('.pause-button')).toBeVisible();
   expect(problems).toEqual([]);
 });
 
 test('pausing stops the truck, and Escape resumes', async ({ page }) => {
-  await openCompanyHq(page, '?lang=en');
-  await page.locator('[data-action="free-drive"]').click();
+  await openGame(page, '?lang=en');
   await page.keyboard.down('ArrowUp');
   await expect.poll(async () => Number(await page.locator('.dashboard__speed').textContent())).toBeGreaterThan(10);
 
@@ -166,8 +193,7 @@ test('pauses the drive when the player leaves the game: another tab, or the app 
   page,
 }) => {
   const problems = watchForProblems(page);
-  await openCompanyHq(page, '?lang=en');
-  await page.locator('[data-action="free-drive"]').click();
+  await openGame(page, '?lang=en');
   await expect(page.locator('.pause-menu')).toBeHidden();
 
   await page.evaluate(() => {
@@ -195,7 +221,16 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
     await expect(page.locator('.mission-hud')).toBeVisible();
 
     const hud = (await page.locator('.mission-hud').boundingBox())!;
-    for (const selector of ['.pause-button', '.camera-button', '.horn-button', '.dashboard', '.steering-wheel', '.pedals', '.minimap']) {
+    for (const selector of [
+      '.pause-button',
+      '.camera-button',
+      '.horn-button',
+      '.dashboard',
+      '.steering-wheel',
+      '.pedals',
+      '.minimap',
+      '.hud-dock',
+    ]) {
       const box = (await page.locator(selector).boundingBox())!;
       const overlap =
         hud.x < box.x + box.width && box.x < hud.x + hud.width && hud.y < box.y + box.height && box.y < hud.y + hud.height;
@@ -223,13 +258,14 @@ test('continues the saved company after the page reloads', async ({ page }) => {
   await page.locator('[data-action="pause"]').click();
   await page.locator('.pause-menu [data-action="abandon"]').click();
   await page.locator('.result-dialog [data-action="continue"]').click();
-  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
 
   await page.reload();
   await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
   await page.locator('[data-action="continue-game"]').click();
 
-  await expect(html(page)).toHaveAttribute('data-game-state', 'companyHq');
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
+  await openPanel(page, 'jobs');
   await expect(page.locator('.hq__company-name')).toHaveText('Test Lojistik');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   expect(problems).toEqual([]);
@@ -253,30 +289,29 @@ test('checks the company name before founding it', async ({ page }) => {
 test('burns fuel while driving, and refuels only at a depot or rest area', async ({ page }) => {
   const problems = watchForProblems(page);
   // fuelScale burns fuel as fast as the old test track did, so the gauge moves within seconds.
-  await openCompanyHq(page, '?lang=en&debug&fuelScale=60');
+  await openGame(page, '?lang=en&debug&fuelScale=60');
+  await openPanel(page, 'truck');
   await expect(page.locator('[data-action="refuel"]')).toHaveText('Tank full');
   await expect(page.locator('[data-action="refuel"]')).toBeDisabled();
 
-  await page.locator('[data-action="free-drive"]').click();
+  await closePanel(page);
   await page.keyboard.down('ArrowUp');
   await expect
     .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
     .toBeLessThan(100);
   await page.keyboard.up('ArrowUp');
 
-  // Out on the road there is no pump: the HQ says where to go.
-  await page.locator('[data-action="pause"]').click();
-  await page.locator('.pause-menu [data-action="company-hq"]').click();
+  // Out on the road there is no pump: the truck page says where to go.
+  await page.locator('[data-action="dock-truck"]').click();
   const refuel = page.locator('[data-action="refuel"]');
   await expect(page.locator('.hq__truck-location')).toHaveText('On the road');
   await expect(refuel).toBeDisabled();
   await expect(page.locator('.hq__service-note')).toBeVisible();
 
   // Parked at the rest area (debug Y), it can fill up.
-  await page.locator('[data-action="free-drive"]').click();
+  await closePanel(page);
   await page.keyboard.press('KeyY');
-  await page.locator('[data-action="pause"]').click();
-  await page.locator('.pause-menu [data-action="company-hq"]').click();
+  await page.locator('[data-action="dock-truck"]').click();
   await expect(page.locator('.hq__truck-location')).toHaveText('At the rest area');
   await expect(page.locator('.hq__service-note')).toBeHidden();
   await expect(refuel).toBeEnabled();

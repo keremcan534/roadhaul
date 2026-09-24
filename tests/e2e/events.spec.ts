@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
-import { openCompanyHq, takeContract, watchForProblems } from './support';
+import { openCompanyHq, openPanel, takeContract, watchForProblems } from './support';
 
 /** Wednesday 2026-09-23, 09:00 UTC: Safe Driver and Heavy Cargo run; Express Week starts on Monday. */
 const SAFE_DRIVER_WEEK = '2026-09-23T09:00:00Z';
@@ -8,13 +8,13 @@ async function credits(locator: Locator): Promise<number> {
   return Number((await locator.textContent())!.replace(/\D/g, ''));
 }
 
-test('shows the events in the HQ, and pays a careful delivery the Safe Driver bonus', async ({ page }, testInfo) => {
+test('shows the events in the company panel, and pays a careful delivery the Safe Driver bonus', async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?debug&lang=en', { date: SAFE_DRIVER_WEEK });
   const card = (eventId: string): Locator => page.locator(`.event-card[data-event-id="${eventId}"]`);
 
-  await page.locator('.hq__tab[data-tab="events"]').click();
+  await openPanel(page, 'events');
   await expect(page.locator('.event-card')).toHaveCount(3);
   await expect(card('safe_driver')).toHaveAttribute('data-state', 'running');
   await expect(card('safe_driver').locator('.event-card__terms')).toHaveText('Deliver the cargo without a scratch');
@@ -26,7 +26,7 @@ test('shows the events in the HQ, and pays a careful delivery the Safe Driver bo
   await testInfo.attach('events', { body: await page.screenshot(), contentType: 'image/png' });
 
   // Parked into both bays with the debug key: the cargo arrives without a scratch.
-  await page.locator('.hq__tab[data-tab="jobs"]').click();
+  await openPanel(page, 'jobs');
   await takeContract(page, 'first_package');
   await page.keyboard.press('KeyT');
   const html = page.locator('html');
@@ -50,7 +50,7 @@ test('shows the events in the HQ, and pays a careful delivery the Safe Driver bo
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
 
   await result.locator('[data-action="continue"]').click();
-  await page.locator('.hq__tab[data-tab="events"]').click();
+  await page.locator('[data-action="dock-events"]').click();
   await expect(card('safe_driver').locator('.event-card__objective')).toHaveText('1 / 3 deliveries');
   expect(problems).toEqual([]);
 });
