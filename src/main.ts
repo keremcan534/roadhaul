@@ -33,6 +33,8 @@ import { RainView } from './presentation/weather/RainView';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { FarmlandView } from './presentation/world/FarmlandView';
+import { HarbourView } from './presentation/world/HarbourView';
+import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
@@ -145,6 +147,19 @@ async function start(): Promise<void> {
     prelit,
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  // The sea mirrors the sky, so it follows the weather with it.
+  const coast = driving.world.sea;
+  const seaView =
+    coast === null
+      ? null
+      : new SeaView(renderHost.scene, coast, driving.world.halfSizeMeters, environment.sky, {
+          anisotropy: renderHost.anisotropy,
+          prelit,
+        });
+  const harbour =
+    coast === null
+      ? null
+      : new HarbourView(renderHost.scene, coast, { anisotropy: renderHost.anisotropy, prelit, lampGlows });
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
     anisotropy: renderHost.anisotropy,
   });
@@ -781,6 +796,9 @@ async function start(): Promise<void> {
         citySigns.setLamps(lamps);
         windTurbines.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
+        harbour?.setLamps(lamps);
+        harbour?.update(paused ? 0 : deltaSeconds);
+        seaView?.update(paused ? 0 : deltaSeconds);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);

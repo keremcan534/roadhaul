@@ -71,6 +71,21 @@ export function gravelImage(size = 128, seed = 31): PixelImage {
   return image;
 }
 
+/** Tileable beach sand: pale and fine-grained, with faint ripples the waves left and damper patches. */
+export function sandImage(size = 128, seed = 73): PixelImage {
+  const image = createImage(size, size, [226, 210, 172]);
+  shade(image, (x, y) => {
+    const u = x / size;
+    const v = y / size;
+    // Whole waves across the tile, bent by noise, so the ripples tile too.
+    const ripples = 0.96 + 0.04 * Math.sin((u * 5 + 0.8 * fractalNoise(u, v, 4, 2, seed)) * Math.PI * 2);
+    const patches = 0.92 + 0.12 * fractalNoise(u, v, 6, 3, seed + 1);
+    const fine = 0.93 + 0.12 * grain(x, y, seed + 2);
+    return ripples * patches * fine;
+  });
+  return image;
+}
+
 /**
  * Concrete yard slabs, 2 × 2 slabs per tile: pale, mottled, with a few oil
  * stains and dark joints between the slabs.

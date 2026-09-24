@@ -75,6 +75,14 @@ const MOON_COLOR = 0xeef2ff;
 const TWINKLE_PERIOD_SECONDS = 3600;
 const Z_AXIS = new Vector3(0, 0, 1);
 
+/** The sky as other shaders see it (the sea mirrors it): its colours and the sun, kept up to date by applyWeather(). */
+export interface SkyUniforms {
+  readonly zenith: { readonly value: Color };
+  readonly horizon: { readonly value: Color };
+  readonly sunColor: { readonly value: Color };
+  readonly sunDirection: { readonly value: Vector3 };
+}
+
 /**
  * Sky, horizon and light: a gradient dome with a sun glow, low-poly clouds,
  * a ring of hazy hills, fog, and the sun and sky lights; at night the stars
@@ -223,6 +231,11 @@ export class EnvironmentView {
     this.clouds.count = Math.round(CLOUD_COUNT * mix(from.cloudCover, to.cloudCover, blend));
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
+  }
+
+  /** The sky's colours and the sun as shader uniforms: share them, and they follow the weather. */
+  get sky(): SkyUniforms {
+    return this.skyUniforms;
   }
 
   /** Keeps the backdrop centred on the camera, and twinkles the stars `deltaSeconds` on. Allocation-free. */
