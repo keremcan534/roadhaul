@@ -32,6 +32,7 @@ import { TrafficView } from './presentation/traffic/TrafficView';
 import { RainView } from './presentation/weather/RainView';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
+import { BirdsView } from './presentation/world/BirdsView';
 import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { SeaView } from './presentation/world/SeaView';
@@ -137,7 +138,11 @@ async function start(): Promise<void> {
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
   const environment = new EnvironmentView(renderHost.scene);
-  const track = new TrackView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
+  const track = new TrackView(renderHost.scene, driving.world, {
+    anisotropy: renderHost.anisotropy,
+    prelit,
+    sky: environment.sky,
+  });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
@@ -160,6 +165,7 @@ async function start(): Promise<void> {
     coast === null
       ? null
       : new HarbourView(renderHost.scene, coast, { anisotropy: renderHost.anisotropy, prelit, lampGlows });
+  const birds = new BirdsView(renderHost.scene, driving.world, prelit);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
     anisotropy: renderHost.anisotropy,
   });
@@ -792,6 +798,7 @@ async function start(): Promise<void> {
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         const lamps = weather.lamps;
         track.setLamps(lamps);
+        track.setWetness(weather.rain);
         streetLamps.setLamps(lamps);
         citySigns.setLamps(lamps);
         windTurbines.setLamps(lamps);
@@ -799,6 +806,7 @@ async function start(): Promise<void> {
         harbour?.setLamps(lamps);
         harbour?.update(paused ? 0 : deltaSeconds);
         seaView?.update(paused ? 0 : deltaSeconds);
+        birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);

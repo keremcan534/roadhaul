@@ -29,7 +29,7 @@ import { toTexture } from '../textures/toTexture';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
 
 /** The quay's slabs: one texture tile covers this many meters; a layer over the beach, under the roads. */
-const QUAY_TILE_METERS = 8;
+const QUAY_TILE_METERS = 14;
 const QUAY_Y = 0.02;
 /** Along the water's edge: a concrete kerb, bollards every so often, and a yellow line a step back. */
 const KERB_WIDTH = 0.5;
