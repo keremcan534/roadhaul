@@ -2,15 +2,21 @@ import type { Validator } from '../../core/validation/Validator';
 import type { Fraction } from '../units';
 
 /**
- * A kind of weather (spec §38: clear, cloudy, rain, night). It changes how
- * the truck grips and how fast traffic drives, and how the world looks.
- * Colours are 0xRRGGBB; light levels are shares of a clear day's.
+ * A kind of weather (spec §38: clear, cloudy, rain, night), or a time of day
+ * (spec §39: morning, day, evening, night). It changes how the truck grips
+ * and how fast traffic drives, and how the world looks. Colours are
+ * 0xRRGGBB; light levels are shares of a clear day's.
  */
 export interface WeatherDefinition {
   /** Stable snake_case id. */
   readonly id: string;
   /** How likely the weather turns to this next, relative to the others. */
   readonly weight: number;
+  /**
+   * The weathers this one may turn into, by id (their weights decide which):
+   * how the day goes round, dusk to night to dawn. Any other when absent.
+   */
+  readonly next?: readonly string[];
   /** It lasts a random time between these, seconds. */
   readonly minSeconds: number;
   readonly maxSeconds: number;
@@ -39,11 +45,24 @@ export interface WeatherLook {
   readonly rain: Fraction;
   /** Headlights and lit lamps (0: day). */
   readonly lamps: Fraction;
+  /** How high the sun (or the moon) stands: 1 as high as on a clear day, 0 on the horizon. */
+  readonly sunHeight: Fraction;
 }
 
 export function validateWeatherDefinition(weather: WeatherDefinition, path: string, validator: Validator): void {
   validator.id(weather.id, `${path}.id`);
   validator.positiveNumber(weather.weight, `${path}.weight`);
+  if (weather.next !== undefined) {
+    const next = weather.next;
+    if (validator.check(Array.isArray(next) && next.length > 0, `${path}.next`, 'must list at least one weather')) {
+      next.forEach((id, index) => {
+        if (validator.id(id, `${path}.next[${index}]`)) {
+          validator.check(id !== weather.id, `${path}.next[${index}]`, 'must be another weather');
+          validator.check(next.indexOf(id) === index, `${path}.next[${index}]`, `"${id}" is listed twice`);
+        }
+      });
+    }
+  }
   validator.positiveNumber(weather.minSeconds, `${path}.minSeconds`);
   validator.check(
     Number.isFinite(weather.maxSeconds) && weather.maxSeconds >= weather.minSeconds,
@@ -76,7 +95,7 @@ export function validateWeatherDefinition(weather: WeatherDefinition, path: stri
     `${path}.look.fogDensity`,
     'must be greater than 0 and at most 0.02',
   );
-  for (const key of ['sunlight', 'skylight', 'cloudCover', 'cloudBrightness', 'rain', 'lamps'] as const) {
+  for (const key of ['sunlight', 'skylight', 'cloudCover', 'cloudBrightness', 'rain', 'lamps', 'sunHeight'] as const) {
     validator.fraction(look[key], `${path}.look.${key}`);
   }
 }

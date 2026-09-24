@@ -176,7 +176,9 @@ export const EN: StringTable = {
   'weather.clear.message': 'The sky is clearing. Enjoy the drive!',
   'weather.cloudy.message': 'Clouds are rolling in.',
   'weather.rain.message': 'Rain! The road is getting slippery: brake earlier.',
+  'weather.dusk.message': 'The sun is going down. Night is not far off.',
   'weather.night.message': 'Night is falling: headlights on, drive carefully.',
+  'weather.dawn.message': 'Dawn is breaking. The road wakes up.',
 
   'hq.tab.events': 'Events',
   'hq.events.note': 'Events run by the calendar. Deliveries that meet their terms pay extra and count toward the reward.',

@@ -11,6 +11,7 @@ import {
   mapFixture,
   missionFixture,
   vehicleFixture,
+  weatherFixture,
 } from '../../support/contentFixtures';
 
 function issuePaths(content: Parameters<typeof validateGameContent>[0]): string[] {
@@ -123,6 +124,15 @@ describe('ContentCatalog', () => {
       { path: 'missions[0].destinationCityId', message: 'city "lonely_town" has no depot on any map' },
       { path: 'maps[0].depots[2].cityId', message: 'unknown city "atlantis"' },
       { path: 'maps[0].depots[3].id', message: 'duplicate depot id "test_origin_depot"' },
+    ]);
+  });
+
+  it('reports weathers that would turn into one that does not exist', () => {
+    const content = contentFixture({ weather: [weatherFixture({ next: ['test_rain', 'blizzard'] })] });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'weather[0].next[0]', message: 'unknown weather "test_rain"' },
+      { path: 'weather[0].next[1]', message: 'unknown weather "blizzard"' },
     ]);
   });
 

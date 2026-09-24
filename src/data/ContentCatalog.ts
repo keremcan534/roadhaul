@@ -109,7 +109,23 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'paints', content.paints, validatePaintDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
+  validateWeatherSuccessions(validator, content);
   return validator.issues;
+}
+
+/** Every weather a weather may turn into exists. */
+function validateWeatherSuccessions(validator: Validator, content: GameContent): void {
+  if (!Array.isArray(content.weather)) {
+    return; // Already reported by validateTable.
+  }
+  const ids = new Set(content.weather.filter(isObject).map((weather) => weather.id));
+  content.weather.forEach((weather, index) => {
+    if (isObject(weather) && Array.isArray(weather.next)) {
+      (weather.next as readonly string[]).forEach((id: string, nextIndex: number) => {
+        validator.check(ids.has(id), `weather[${index}].next[${nextIndex}]`, `unknown weather "${id}"`);
+      });
+    }
+  });
 }
 
 /**

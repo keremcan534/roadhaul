@@ -1,4 +1,15 @@
-import { Color, DirectionalLight, FogExp2, HemisphereLight, InstancedMesh, MeshBasicMaterial, Scene } from 'three';
+import {
+  Color,
+  DirectionalLight,
+  FogExp2,
+  HemisphereLight,
+  InstancedMesh,
+  Mesh,
+  MeshBasicMaterial,
+  Scene,
+  ShaderMaterial,
+  type Vector3,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { WEATHER } from '../../../../src/data/content/weather';
 import type { WeatherLook } from '../../../../src/data/definitions/WeatherDefinition';
@@ -67,6 +78,39 @@ describe('EnvironmentView', () => {
     view.applyWeather(clear, rain, 0.5, prelit);
     expect(fog.density).toBeCloseTo((clear.fogDensity + rain.fogDensity) / 2, 12);
     expect(clouds!.count).toBe(Math.round(48 * (clear.cloudCover + rain.cloudCover) / 2));
+  });
+
+  it('lowers the sun at dusk and dawn: warm, low light, a glowing horizon, and less of it on flat ground', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const prelit = new PrelitMaterials();
+    const ground = prelit.add(new MeshBasicMaterial({ color: 0xffffff }));
+    const sun = scene.children.find((child) => child instanceof DirectionalLight)!;
+    let dome: Mesh | undefined;
+    scene.traverse((object) => {
+      if (object instanceof Mesh && object.material instanceof ShaderMaterial) dome = object;
+    });
+    const uniforms = (dome!.material as ShaderMaterial).uniforms;
+
+    view.applyWeather(look('clear'), look('clear'), 1, prelit);
+    const noonGround = ground.color.clone();
+    expect(uniforms['sunLow']!.value).toBe(0);
+    expect(sun.position.clone().normalize().y).toBeCloseTo(SUN_DIRECTION.y, 6);
+
+    view.applyWeather(look('dusk'), look('dusk'), 1, prelit);
+    const low = sun.position.clone().normalize();
+    // A few degrees over the horizon, in the same quarter of the sky.
+    expect(low.y).toBeLessThan(0.15);
+    expect(low.y).toBeGreaterThan(0.03);
+    expect(Math.sign(low.x)).toBe(Math.sign(SUN_DIRECTION.x));
+    expect(Math.sign(low.z)).toBe(Math.sign(SUN_DIRECTION.z));
+    const skySun = uniforms['sunDirection']!.value as Vector3;
+    expect(skySun.distanceTo(low)).toBeLessThan(1e-9);
+    expect(uniforms['sunLow']!.value).toBeGreaterThan(0.7);
+    // The glow is the evening light's colour: more red than blue.
+    const glow = uniforms['sunColor']!.value as Color;
+    expect(glow.r).toBeGreaterThan(glow.b * 2);
+    expect(ground.color.g).toBeLessThan(noonGround.g * 0.8);
   });
 
   it('does nothing while the weather looks the same', () => {

@@ -14,9 +14,10 @@ const WEATHER_SEED = 38;
 const GRIP_STEP = 0.01;
 
 /**
- * The weather (spec §38, the WeatherManager). It runs a seeded schedule:
- * each weather lasts a while, then turns into another, chosen by weight,
- * over `transitionSeconds`. Meanwhile it applies the effects, blended: the
+ * The weather and the time of day (spec §38–39, the WeatherManager). It runs
+ * a seeded schedule: each weather lasts a while, then turns into another it
+ * may turn into (dusk only into night, say), chosen by weight, over
+ * `transitionSeconds`. Meanwhile it applies the effects, blended: the
  * truck's grip (a DrivingService performance modifier) and how fast traffic
  * drives. Presentation reads `previous`, `current` and `blend` (and the
  * blended `rain` and `lamps`) to draw it. Call update() every fixed step.
@@ -120,9 +121,12 @@ export class WeatherService {
     this.events.emit('WeatherChanged', { weatherId: next.id, previousId: this.previousWeather.id });
   }
 
-  /** Another weather than the current one, by weight. */
+  /** Another weather than the current one, one it may turn into (the day's order), by weight. */
   private pickNext(): WeatherDefinition {
-    const choices = this.content.weather.all.filter((weather) => weather !== this.currentWeather);
+    const allowed = this.currentWeather.next;
+    const choices = this.content.weather.all.filter(
+      (weather) => weather !== this.currentWeather && (allowed === undefined || allowed.includes(weather.id)),
+    );
     if (choices.length === 0) {
       return this.currentWeather;
     }

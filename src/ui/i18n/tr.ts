@@ -176,7 +176,9 @@ export const TR: StringTable = {
   'weather.clear.message': 'Hava açıyor. İyi yolculuklar!',
   'weather.cloudy.message': 'Hava bulutlanıyor.',
   'weather.rain.message': 'Yağmur başladı! Yol kayganlaşıyor: erken fren yap.',
+  'weather.dusk.message': 'Güneş batıyor. Gece yaklaşıyor.',
   'weather.night.message': 'Gece oluyor: farlar yandı, dikkatli sür.',
+  'weather.dawn.message': 'Şafak söküyor. Yollar uyanıyor.',
 
   'hq.tab.events': 'Etkinlikler',
   'hq.events.note': 'Etkinlikler takvime göre döner. Koşullarını karşılayan teslimatlar fazladan kazandırır ve ödüle sayılır.',

@@ -1,14 +1,18 @@
 import type { WeatherDefinition } from '../definitions/WeatherDefinition';
 
 /**
- * The region's weather (spec §38). Clear days are the most common; rain and
- * night come now and then and ask more of the driver: the road is slippery
- * in the rain, and at night the headlights only reach so far.
+ * The region's weather (spec §38) and the time of day (spec §39). Clear days
+ * are the most common; rain and night come now and then and ask more of the
+ * driver: the road is slippery in the rain, and at night the headlights only
+ * reach so far. The day goes round in order: a dry day turns to dusk now
+ * and then, dusk to night, night to dawn, and dawn to a new day. The sun
+ * stands low at dawn and dusk, and the sky glows round it.
  */
 export const WEATHER: readonly WeatherDefinition[] = [
   {
     id: 'clear',
     weight: 5,
+    next: ['cloudy', 'rain', 'dusk'],
     minSeconds: 240,
     maxSeconds: 420,
     gripFactor: 1,
@@ -24,11 +28,13 @@ export const WEATHER: readonly WeatherDefinition[] = [
       cloudBrightness: 1,
       rain: 0,
       lamps: 0,
+      sunHeight: 1,
     },
   },
   {
     id: 'cloudy',
     weight: 3,
+    next: ['clear', 'rain', 'dusk'],
     minSeconds: 180,
     maxSeconds: 360,
     gripFactor: 1,
@@ -44,11 +50,13 @@ export const WEATHER: readonly WeatherDefinition[] = [
       cloudBrightness: 0.72,
       rain: 0,
       lamps: 0,
+      sunHeight: 1,
     },
   },
   {
     id: 'rain',
     weight: 2,
+    next: ['clear', 'cloudy'],
     minSeconds: 150,
     maxSeconds: 300,
     gripFactor: 0.78,
@@ -64,11 +72,36 @@ export const WEATHER: readonly WeatherDefinition[] = [
       cloudBrightness: 0.5,
       rain: 1,
       lamps: 0.35,
+      sunHeight: 1,
+    },
+  },
+  {
+    // Evening (spec §39): the sun low in the sky, warm light, and the lamps coming on.
+    id: 'dusk',
+    weight: 2,
+    next: ['night'],
+    minSeconds: 100,
+    maxSeconds: 160,
+    gripFactor: 1,
+    trafficSpeedFactor: 1,
+    look: {
+      zenithColor: 0x33467e,
+      horizonColor: 0xf09a62,
+      fogDensity: 0.0027,
+      sunlight: 0.75,
+      skylight: 0.8,
+      lightColor: 0xffbf8a,
+      cloudCover: 0.5,
+      cloudBrightness: 0.85,
+      rain: 0,
+      lamps: 0.6,
+      sunHeight: 0.1,
     },
   },
   {
     id: 'night',
     weight: 2,
+    next: ['dawn'],
     minSeconds: 180,
     maxSeconds: 300,
     gripFactor: 1,
@@ -84,6 +117,30 @@ export const WEATHER: readonly WeatherDefinition[] = [
       cloudBrightness: 0.12,
       rain: 0,
       lamps: 1,
+      sunHeight: 0.7,
+    },
+  },
+  {
+    // Morning (spec §39): a pale, rosy sky, the sun just up, a little haze.
+    id: 'dawn',
+    weight: 2,
+    next: ['clear', 'cloudy'],
+    minSeconds: 100,
+    maxSeconds: 160,
+    gripFactor: 1,
+    trafficSpeedFactor: 0.95,
+    look: {
+      zenithColor: 0x5a7bb3,
+      horizonColor: 0xf3c4a6,
+      fogDensity: 0.0034,
+      sunlight: 0.7,
+      skylight: 0.72,
+      lightColor: 0xffcfae,
+      cloudCover: 0.4,
+      cloudBrightness: 0.9,
+      rain: 0,
+      lamps: 0.25,
+      sunHeight: 0.14,
     },
   },
 ];

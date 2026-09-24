@@ -210,6 +210,7 @@ export function weatherFixture(overrides: Partial<WeatherDefinition> = {}): Weat
       cloudBrightness: 1,
       rain: 0,
       lamps: 0,
+      sunHeight: 1,
     },
     ...overrides,
   };

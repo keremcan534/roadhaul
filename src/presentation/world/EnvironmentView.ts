@@ -43,8 +43,18 @@ const HILL_RADIUS = 640;
 const CLOUD_COUNT = 48;
 const CLOUD_COLOR = 0xf6f8fb;
 const CLOUD_EMISSIVE = 0x6d7a88;
+/** How far the clouds' shaded sides take the horizon's glow with the sun down on it (at the look's sunHeight 0). */
+const CLOUD_GLOW = 0.7;
 /** The ground below the horizon is the horizon's colour, this much darker. */
 const GROUND_HAZE_SHADE = 0.86;
+/**
+ * Where the sun stands: always in the same quarter of the sky, as high as
+ * SUN_DIRECTION on a clear day (a look's sunHeight 1) and this high above
+ * the horizon at sunHeight 0, radians.
+ */
+const SUN_AZIMUTH = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
+const DAY_SUN_ELEVATION = Math.asin(SUN_DIRECTION.y);
+const HORIZON_SUN_ELEVATION = (3 * Math.PI) / 180;
 
 /**
  * Sky, horizon and light: a gradient dome with a sun glow, low-poly clouds,
@@ -66,6 +76,9 @@ export class EnvironmentView {
     readonly horizon: { value: Color };
     readonly groundHaze: { value: Color };
     readonly sunColor: { value: Color };
+    readonly sunDirection: { value: Vector3 };
+    /** 0 with the sun high, toward 1 as it nears the horizon: the sky round it glows. */
+    readonly sunLow: { value: number };
   };
   private readonly clouds: InstancedMesh;
   private readonly cloudMaterial: MeshLambertMaterial;
@@ -95,6 +108,8 @@ export class EnvironmentView {
       horizon: { value: new Color(HORIZON) },
       groundHaze: { value: new Color(GROUND_HAZE) },
       sunColor: { value: new Color(SUN_COLOR) },
+      sunDirection: { value: new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z) },
+      sunLow: { value: 0 },
     };
     this.cloudMaterial = this.track(
       new MeshLambertMaterial({ color: CLOUD_COLOR, emissive: CLOUD_EMISSIVE, flatShading: true, fog: false }),
@@ -125,7 +140,19 @@ export class EnvironmentView {
     uniforms.zenith.value.setHex(from.zenithColor).lerp(this.scratch.setHex(to.zenithColor), blend);
     uniforms.horizon.value.setHex(from.horizonColor).lerp(this.scratch.setHex(to.horizonColor), blend);
     uniforms.groundHaze.value.copy(uniforms.horizon.value).multiplyScalar(GROUND_HAZE_SHADE);
-    uniforms.sunColor.value.setHex(SUN_COLOR).multiplyScalar(sunlight);
+    // The sun's glow takes the light's colour: orange at dusk, pale blue for the moon.
+    uniforms.sunColor.value.setHex(SUN_COLOR).multiply(this.tint).multiplyScalar(sunlight);
+    const sunHeight = mix(from.sunHeight, to.sunHeight, blend);
+    const elevation = HORIZON_SUN_ELEVATION + (DAY_SUN_ELEVATION - HORIZON_SUN_ELEVATION) * sunHeight;
+    const sun = uniforms.sunDirection.value.set(
+      Math.sin(SUN_AZIMUTH) * Math.cos(elevation),
+      Math.sin(elevation),
+      Math.cos(SUN_AZIMUTH) * Math.cos(elevation),
+    );
+    uniforms.sunLow.value = (1 - sunHeight) * (1 - sunHeight);
+    this.sunLight.position.copy(sun).multiplyScalar(300);
+    // Flat ground catches less of a low sun, and its baked shadows fade with it.
+    const groundSun = (sunlight * Math.sin(elevation)) / Math.sin(DAY_SUN_ELEVATION);
     this.background.copy(uniforms.horizon.value);
     this.fog.color.copy(uniforms.horizon.value);
     this.fog.density = mix(from.fogDensity, to.fogDensity, blend);
@@ -137,10 +164,14 @@ export class EnvironmentView {
 
     const brightness = mix(from.cloudBrightness, to.cloudBrightness, blend);
     this.cloudMaterial.color.setHex(CLOUD_COLOR).multiplyScalar(brightness);
-    this.cloudMaterial.emissive.setHex(CLOUD_EMISSIVE).multiplyScalar(brightness);
+    // A low sun lights the clouds from below: their shaded sides glow with the horizon.
+    this.cloudMaterial.emissive
+      .setHex(CLOUD_EMISSIVE)
+      .lerp(uniforms.horizon.value, uniforms.sunLow.value * CLOUD_GLOW)
+      .multiplyScalar(brightness);
     this.clouds.count = Math.round(CLOUD_COUNT * mix(from.cloudCover, to.cloudCover, blend));
 
-    prelit?.setLight(relativeGroundLight(sunlight, skylight, this.tint, this.groundLight), sunlight);
+    prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
   }
 
   /** Keeps the backdrop centred on the camera. Allocation-free. */
@@ -163,10 +194,7 @@ export class EnvironmentView {
         side: BackSide,
         depthWrite: false,
         fog: false,
-        uniforms: {
-          ...this.skyUniforms,
-          sunDirection: { value: new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z) },
-        },
+        uniforms: { ...this.skyUniforms },
         vertexShader: /* glsl */ `
           varying vec3 vDirection;
           void main() {
@@ -180,6 +208,7 @@ export class EnvironmentView {
           uniform vec3 groundHaze;
           uniform vec3 sunColor;
           uniform vec3 sunDirection;
+          uniform float sunLow;
           varying vec3 vDirection;
           void main() {
             vec3 direction = normalize(vDirection);
@@ -187,7 +216,12 @@ export class EnvironmentView {
             vec3 sky = mix(horizon, zenith, pow(max(up, 0.0), 0.5));
             sky = mix(sky, groundHaze, clamp(-up * 6.0, 0.0, 1.0));
             float toSun = max(dot(direction, sunDirection), 0.0);
-            sky += sunColor * (pow(toSun, 900.0) * 3.0 + pow(toSun, 24.0) * 0.18);
+            sky += sunColor * (pow(toSun, 900.0) * 3.0 + pow(toSun, 24.0) * (0.18 + 0.4 * sunLow));
+            // A low sun sets the sky along the horizon aglow on its side.
+            vec2 bearing = normalize(direction.xz + vec2(1e-5));
+            vec2 sunBearing = normalize(sunDirection.xz + vec2(1e-5));
+            float sunSide = max(dot(bearing, sunBearing), 0.0);
+            sky += sunColor * sunLow * sunSide * sunSide * pow(1.0 - clamp(up, 0.0, 1.0), 5.0) * 0.6;
             gl_FragColor = vec4(sky, 1.0);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>
