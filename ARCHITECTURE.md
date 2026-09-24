@@ -315,7 +315,7 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - **Bundle:** three.js ships in its own chunk (about 545 kB, 135 kB gzipped), so it stays cached across game updates; the game code is about 270 kB (85 kB gzipped).
 - **Per-frame code must not allocate.** Keep scratch vectors and matrices as fields.
 - **Profiling:** Chrome DevTools, on a phone through remote debugging. The Performance panel shows where frame time goes; Memory → "Allocation sampling" shows what allocates while driving. Profile with `npm run dev`, whose modules keep their file names.
-- The `?debug` overlay shows FPS, draw calls, triangles and the effective pixel ratio, plus the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering).
+- The performance display (`?debug`, or Settings → Performance display, which also works in the Android app) shows FPS, draw calls, triangles and the effective pixel ratio, the truck's position and heading (for placing things on maps; the e2e tests read the heading to check steering), and the graphics preset and GPU, for test reports. Only `?debug` adds the debug keys.
 
 ## 12. Testing
 

@@ -24,7 +24,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | GameStateService | systems | `src/systems/gameState/` | Owns the top-level flow: booting, mainMenu, companyHq, driving | EventBus, Logger | emits `GameStateChanged` |
 | GameBootstrapper | app | `src/app/GameBootstrapper.ts` | Headless composition root: create, validate, initialize, enter main menu | everything above | none |
 | RenderHost | presentation | `src/presentation/RenderHost.ts` | WebGL renderer, scene, camera, capped pixel ratio scaled by AdaptiveResolution (one drawing-buffer resize per change), tone mapping, software-rendering fallback | three | none |
-| PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | `?debug` FPS / draw calls / triangles / pixel ratio, truck position and heading | none | none |
+| PerfOverlay | ui | `src/ui/debug/PerfOverlay.ts` | The performance display (`?debug`, or switched on in Settings): FPS / draw calls / triangles / pixel ratio, truck position and heading, the graphics preset and GPU | none | none |
 | Browser adapters | platform | `src/platform/browser/` | rAF scheduler, URL config flags (`?debug`, `?log`, `?fuelScale`, `?traffic`, `?weather`, `?date`, `?quality`), fatal error screen, localStorage (or memory when forbidden) | core, data | none |
 | Browser entry | entry | `src/main.ts` | Boots services; attaches rendering, input, menus, HUD and the loop; wires the game flow (menu → HQ → driving → result), pausing (also when the player leaves) and the back button; rebuilds the truck view when the player drives another truck; hands the weather to the views | everything | listens `GameStateChanged`, the mission events, `ActiveVehicleChanged` and `WeatherChanged` |
 
@@ -159,9 +159,9 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | Graphics presets | data | `QUALITY_PRESETS`, `applyQualityPreset` in `src/data/config/GameConfig.ts` | Low, medium, high: pixel ratio cap, resolution floor, rain density, lamp glows, traffic | none | none |
-| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, sound), kept apart from the save | GameConfig, KeyValueStorage | none |
+| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, sound, the performance display), kept apart from the save | GameConfig, KeyValueStorage | none |
 | AdaptiveResolution | presentation | `src/presentation/AdaptiveResolution.ts` | Lowers the resolution when frames run slow, raises it when they are quick again (a 30 FPS floor) | none | none |
-| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use; sound on or off | Strings | none |
+| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use; sound and the performance display on or off | Strings | none |
 
 ### Sound (Phase 7, spec §37)
 

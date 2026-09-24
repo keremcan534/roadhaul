@@ -131,6 +131,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Android's back button closes the dialog that is open, pauses and resumes the drive, takes the HQ back to the main menu, and at the main menu puts the app away. Going to the background pauses the drive and saves; a hidden browser tab now does the same.
 - Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
 - Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
+- For step 29, Settings has a performance display switch: FPS, draw calls, the pixel ratio, the graphics preset and the GPU, in the browser and the app, without `?debug`.
 
 ## Next step: 29 Device testing
 
