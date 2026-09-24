@@ -87,6 +87,15 @@ export class RenderHost {
   }
 
   /**
+   * Shows the picture left to right the other way, like a reversing
+   * camera's (the rear camera), so the truck's right is on the screen's
+   * right. Only the canvas flips: the controls and menus over it do not.
+   */
+  set mirrored(mirrored: boolean) {
+    this.renderer.domElement.style.transform = mirrored ? 'scaleX(-1)' : '';
+  }
+
+  /**
    * Resizes the drawing buffer, once: setPixelRatio() and setSize() would do
    * it twice. A resize waits for the GPU to finish what it was drawing (a
    * hitch), even to the same size, so an unchanged size is left alone.

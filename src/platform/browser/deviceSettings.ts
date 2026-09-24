@@ -1,8 +1,10 @@
 import type { KeyValueStorage } from '../../core/storage/KeyValueStorage';
 import {
+  isCameraMode,
   isControlSize,
   isSteeringMode,
   isTiltSensitivity,
+  type CameraMode,
   type ControlSize,
   type SteeringMode,
   type TiltSensitivity,
@@ -20,6 +22,8 @@ export interface DeviceSettings {
   readonly tiltSensitivity: TiltSensitivity;
   /** How big the driving controls are drawn. */
   readonly controlSize: ControlSize;
+  /** The driving camera last picked with the camera button. */
+  readonly camera: CameraMode;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
@@ -30,6 +34,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   steering: 'wheel',
   tiltSensitivity: 'normal',
   controlSize: 'normal',
+  camera: 'chase',
 });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
@@ -39,7 +44,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { quality, sound, stats, steering, tiltSensitivity, controlSize } = parsed as Record<string, unknown>;
+    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera } = parsed as Record<string, unknown>;
     return {
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
       sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
@@ -47,6 +52,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
       steering: isSteeringMode(steering) ? steering : DEFAULT_SETTINGS.steering,
       tiltSensitivity: isTiltSensitivity(tiltSensitivity) ? tiltSensitivity : DEFAULT_SETTINGS.tiltSensitivity,
       controlSize: isControlSize(controlSize) ? controlSize : DEFAULT_SETTINGS.controlSize,
+      camera: isCameraMode(camera) ? camera : DEFAULT_SETTINGS.camera,
     };
   } catch {
     return DEFAULT_SETTINGS;

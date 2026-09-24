@@ -218,6 +218,11 @@ export const TR: StringTable = {
   'tutorial.skip': 'Geç',
 
   'menu.settings': 'Ayarlar',
+  'camera.chase': 'Takip kamerası',
+  'camera.cabin': 'Kabin',
+  'camera.hood': 'Kaput kamerası',
+  'camera.rear': 'Arka kamera (ayna)',
+  'camera.top': 'Üstten görünüm',
   'map.title': 'Harita',
   'map.close': 'Kapat',
   'map.open': 'Haritayı aç',

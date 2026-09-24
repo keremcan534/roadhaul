@@ -44,11 +44,17 @@ function glowsOf(scene: Scene): Points {
   return glows;
 }
 
-/** The self-lit lamps' material: the one unlit, opaque material painted per vertex. */
+/** The self-lit lamps' material: the one unlit, opaque material painted per vertex outside the cab. */
 function lampMaterialOf(scene: Scene): MeshBasicMaterial {
   const materials = new Set<MeshBasicMaterial>();
+  const insideTheCab = new Set(['cab-interior', 'steering-wheel']);
   scene.traverse((object) => {
-    if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && !object.material.transparent) {
+    if (
+      object instanceof Mesh &&
+      object.material instanceof MeshBasicMaterial &&
+      !object.material.transparent &&
+      !insideTheCab.has(object.name)
+    ) {
       materials.add(object.material);
     }
   });
@@ -138,7 +144,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     }
   });
 
-  it('swaps the windshield for a dashboard in cabin view', () => {
+  it("swaps the windshield for the cab's inside in cabin view", () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
     const visible = (): Set<unknown> => {
@@ -150,39 +156,50 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
 
     view.setCabinView(true);
     const inside = visible();
-    expect(inside.size).toBe(outside.size);
-    expect([...inside].filter((object) => !outside.has(object))).toHaveLength(1);
+    // Out: the windshield. In: the dashboard, gauges and pillars, and the steering wheel on its column.
+    expect([...outside].filter((object) => !inside.has(object))).toHaveLength(1);
+    const added = [...inside].filter((object) => !outside.has(object));
+    expect(added.filter((object) => object instanceof Mesh).map((mesh) => (mesh as Mesh).name).sort()).toEqual([
+      'cab-interior',
+      'steering-wheel',
+    ]);
 
     view.setCabinView(false);
     expect(visible()).toEqual(outside);
   });
 
+  /** The cabin camera of a rig at the driver's seat, and the truck at rest there. */
+  function driverSeat(scene: Scene): { camera: PerspectiveCamera; look: () => void } {
+    const camera = new PerspectiveCamera(72, 2, 0.1, 500);
+    const rig = new CameraRig(camera, truck.body);
+    rig.currentMode = 'cabin';
+    const atRest = { speed: 0, steerAngle: 0, longitudinalAcceleration: 0, lateralAcceleration: 0 };
+    return {
+      camera,
+      look: () => {
+        // The head does not sway here: only the truck's body moves.
+        rig.update({ x: 0, z: 0, heading: 0 }, atRest, 1 / 60);
+        scene.updateMatrixWorld(true);
+        camera.updateMatrixWorld(true);
+      },
+    };
+  }
+
   it('keeps the cabin dashboard steady in front of the driver while the body leans', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
-    const chaseObjects = new Set<unknown>();
-    scene.traverseVisible((object) => chaseObjects.add(object));
     view.setCabinView(true);
-    let dashboard: Mesh | undefined;
-    scene.traverseVisible((object) => {
-      if (!chaseObjects.has(object) && object instanceof Mesh) {
-        dashboard = object;
-      }
-    });
-    const camera = new PerspectiveCamera(72, 2, 0.1, 500);
-    const rig = new CameraRig(camera, truck.body);
-    rig.toggleMode();
+    const dashboard = scene.getObjectByName('cab-interior') as Mesh;
+    const { camera, look } = driverSeat(scene);
     const pose = { x: 0, z: 0, heading: 0 };
     const state = new VehicleDynamics(truck).createState(0, 0, 0);
-    /** Screen height (-1 bottom … 1 top) of the dashboard's top front edge, as the driver sees it. */
+    /** Screen height (-1 bottom … 1 top) of a point at the front of the cab's inside, as the driver sees it. */
     const dashboardTop = (): number => {
-      rig.update(pose, state.speed, 1 / 60);
-      scene.updateMatrixWorld(true);
-      camera.updateMatrixWorld(true);
-      const geometry = dashboard!.geometry;
+      look();
+      const geometry = dashboard.geometry;
       geometry.computeBoundingBox();
-      const edge = new Vector3(0, geometry.boundingBox!.max.y, geometry.boundingBox!.max.z);
-      return dashboard!.localToWorld(edge).project(camera).y;
+      const edge = new Vector3(0, geometry.boundingBox!.max.y - 0.2, geometry.boundingBox!.max.z);
+      return dashboard.localToWorld(edge).project(camera).y;
     };
     view.update(pose, state, 1 / 60);
     const atRest = dashboardTop();
@@ -195,6 +212,29 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
       }
       expect(dashboardTop()).toBeCloseTo(atRest, 3);
     }
+  });
+
+  it('turns the steering wheel in sight of the driver: clockwise, as the driver sees it, for a right turn', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    view.setCabinView(true);
+    const wheel = scene.getObjectByName('steering-wheel') as Mesh;
+    const { camera, look } = driverSeat(scene);
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    /** Where the mark at the top of the rim is on the driver's screen (-1 … 1 each way). */
+    const mark = (steerAngle: number): Vector3 => {
+      state.steerAngle = steerAngle;
+      view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
+      look();
+      return wheel.localToWorld(new Vector3(0, 0.2, 0)).project(camera);
+    };
+
+    const ahead = mark(0);
+    expect(Math.abs(ahead.x)).toBeLessThan(1);
+    expect(ahead.y).toBeGreaterThan(-1); // On screen, at the bottom.
+    expect(ahead.y).toBeLessThan(-0.3);
+    expect(mark(0.1).x).toBeGreaterThan(ahead.x + 0.05);
+    expect(mark(-0.1).x).toBeLessThan(ahead.x - 0.05);
   });
 
   it('shows a flatbed\'s load only while it is loaded, and never a closed body\'s', () => {

@@ -116,18 +116,60 @@ test('turns the truck right when the on-screen wheel turns clockwise', async ({ 
   expect(problems).toEqual([]);
 });
 
-test('switches between the chase and cabin cameras', async ({ page }) => {
+test('steps through the cameras with the button, names each, and keeps the last one picked', async ({ page }) => {
+  test.setTimeout(90_000); // Six views drawn in software, and a reload.
   const problems = watchForProblems(page);
-  await openGame(page);
+  await openGame(page, '?lang=en&traffic=0');
+  const html = page.locator('html');
+  const canvas = page.locator('#game-canvas');
+  await expect(html).toHaveAttribute('data-camera', 'chase');
   await waitForFrames(page, 5);
-  const chase = await sceneScreenshot(page);
+  let previous = await sceneScreenshot(page);
 
+  for (const [mode, name] of [
+    ['cabin', 'Cabin'],
+    ['hood', 'Hood camera'],
+    ['rear', 'Rear camera (mirrored)'],
+    ['top', 'Top view'],
+    ['chase', 'Chase camera'],
+  ] as const) {
+    await page.locator('.camera-button').click();
+    await expect(html).toHaveAttribute('data-camera', mode);
+    await expect(page.locator('.toast').last()).toHaveText(name);
+    // The rear camera's picture is mirrored, like a reversing camera's, so the truck's right is on the right.
+    await expect(canvas).toHaveCSS('transform', mode === 'rear' ? 'matrix(-1, 0, 0, 1, 0, 0)' : 'none');
+    await waitForFrames(page, 5);
+    const view = await sceneScreenshot(page);
+    expect(view.equals(previous), `the ${mode} camera shows what the one before did`).toBe(false);
+    previous = view;
+  }
+
+  // Kept on the phone: the next drive starts with the camera last picked.
   await page.locator('.camera-button').click();
+  await expect(html).toHaveAttribute('data-camera', 'cabin');
+  await page.reload();
+  await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
+  await page.locator('[data-action="continue-game"]').click();
+  await page.locator('[data-action="free-drive"]').click();
+  await expect(html).toHaveAttribute('data-camera', 'cabin');
+  expect(problems).toEqual([]);
+});
+
+test('looks round by dragging across the road', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page, '?traffic=0');
   await waitForFrames(page, 5);
-  const cabin = await sceneScreenshot(page);
-  await page.locator('.camera-button').click();
+  const ahead = await sceneScreenshot(page);
+  const box = (await page.locator('#game-canvas').boundingBox())!;
 
-  expect(chase.equals(cabin), 'the camera did not change').toBe(false);
+  await page.mouse.move(box.width * 0.5, box.height * 0.55);
+  await page.mouse.down();
+  await page.mouse.move(box.width * 0.8, box.height * 0.55, { steps: 8 });
+  await waitForFrames(page, 10);
+  const turned = await sceneScreenshot(page);
+  await page.mouse.up();
+
+  expect(turned.equals(ahead), 'dragging did not turn the view').toBe(false);
   expect(problems).toEqual([]);
 });
 

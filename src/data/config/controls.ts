@@ -23,6 +23,18 @@ export type TiltStatus = 'off' | 'locked' | 'waiting' | 'on' | 'unavailable';
 export const CONTROL_SIZES = ['small', 'normal', 'large'] as const;
 export type ControlSize = (typeof CONTROL_SIZES)[number];
 
+/**
+ * The driving cameras (spec §31: third person, cabin, hood and rear), plus a
+ * view from high above for parking. The camera button steps through them in
+ * this order.
+ */
+export const CAMERA_MODES = ['chase', 'cabin', 'hood', 'rear', 'top'] as const;
+export type CameraMode = (typeof CAMERA_MODES)[number];
+
+export function isCameraMode(value: unknown): value is CameraMode {
+  return (CAMERA_MODES as readonly unknown[]).includes(value);
+}
+
 export function isSteeringMode(value: unknown): value is SteeringMode {
   return (STEERING_MODES as readonly unknown[]).includes(value);
 }

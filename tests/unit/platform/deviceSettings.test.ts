@@ -9,6 +9,7 @@ const DEFAULTS: DeviceSettings = {
   steering: 'wheel',
   tiltSensitivity: 'normal',
   controlSize: 'normal',
+  camera: 'chase',
 };
 
 describe('device settings', () => {
@@ -23,6 +24,7 @@ describe('device settings', () => {
       steering: 'tilt',
       tiltSensitivity: 'high',
       controlSize: 'large',
+      camera: 'rear',
     };
     expect(saveSettings(storage, picked)).toBe(true);
 
@@ -35,7 +37,7 @@ describe('device settings', () => {
       '{',
       'null',
       '[]',
-      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge"}',
+      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone"}',
     ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);

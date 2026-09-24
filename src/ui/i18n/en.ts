@@ -218,6 +218,11 @@ export const EN: StringTable = {
   'tutorial.skip': 'Skip',
 
   'menu.settings': 'Settings',
+  'camera.chase': 'Chase camera',
+  'camera.cabin': 'Cabin',
+  'camera.hood': 'Hood camera',
+  'camera.rear': 'Rear camera (mirrored)',
+  'camera.top': 'Top view',
   'map.title': 'Map',
   'map.close': 'Close',
   'map.open': 'Open the map',

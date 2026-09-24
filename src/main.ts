@@ -34,6 +34,7 @@ import { RestAreaView } from './presentation/world/RestAreaView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
 import type { GameState } from './systems/gameState/GameState';
+import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { CompanyHq } from './ui/hq/CompanyHq';
@@ -145,15 +146,31 @@ async function start(): Promise<void> {
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
+  cameraRig.currentMode = settings.camera;
+  // Dragging across the road looks round, within what the current camera allows.
+  const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
 
   /** The simulation stands still while a menu or the result is open over the road. */
   let paused = false;
   const isDriving = (): boolean => gameState.current === 'driving';
 
   const ui = document.body;
+  /** The camera in use, shown: the cab's inside from the driver's seat, the rear camera's picture mirrored. */
+  const showCamera = (drivingNow: boolean): void => {
+    const mode = cameraRig.currentMode;
+    truck.setCabinView(drivingNow && mode === 'cabin');
+    renderHost.mirrored = drivingNow && mode === 'rear';
+    root.dataset.camera = mode;
+  };
+  /** The camera button (or C): the next camera, named for a moment, and kept for next time. */
   const toggleCamera = (): void => {
     if (isDriving() && !paused) {
-      truck.setCabinView(cameraRig.toggleMode() === 'cabin');
+      const mode = cameraRig.toggleMode();
+      lookAround.reset();
+      showCamera(true);
+      settings = { ...settings, camera: mode };
+      saveSettings(storage, settings);
+      toasts.show(strings.t(`camera.${mode}`), 'info');
     }
   };
   // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
@@ -282,7 +299,7 @@ async function start(): Promise<void> {
       truck.dispose();
       truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
       cameraRig.setBody(driving.definition.body);
-      truck.setCabinView(isDriving() && cameraRig.currentMode === 'cabin');
+      showCamera(isDriving());
     }
     truck.setLoaded(driving.cargoMassKg > 0);
     root.dataset.vehicle = driving.definition.id;
@@ -576,7 +593,8 @@ async function start(): Promise<void> {
       }
     }
     cameraRig.showcase = !drivingNow;
-    truck.setCabinView(drivingNow && cameraRig.currentMode === 'cabin');
+    lookAround.enabled = drivingNow;
+    showCamera(drivingNow);
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
@@ -735,7 +753,9 @@ async function start(): Promise<void> {
           shownTraffic = vehicles;
           root.dataset.traffic = String(vehicles);
         }
-        cameraRig.update(pose, vehicle.speed, deltaSeconds);
+        lookAround.update(deltaSeconds);
+        cameraRig.look(lookAround.yaw, lookAround.pitch);
+        cameraRig.update(pose, vehicle, deltaSeconds);
         environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
         environment.update(renderHost.camera.position);
         const eye = renderHost.camera.position;
