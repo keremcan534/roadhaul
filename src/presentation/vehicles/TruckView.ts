@@ -52,6 +52,9 @@ const STEERING_WHEEL_TILT = 0.83;
 const TIRE_WIDTH = 0.36;
 /** A heavy truck's two rear axles stand this far either side of the rear axle the physics uses. */
 const TANDEM_HALF_SPACING = 0.68;
+/** The exhaust stack behind the cab on the right: its radius, and how far its top stands over the cab roof. */
+const STACK_RADIUS = 0.075;
+const STACK_OVER_ROOF = 0.42;
 /** Colours of the flatbed's load: pallets, bricks and ratchet straps. */
 const PALLET_COLOR = 0x9c7a4f;
 const BRICK_COLOR = 0xa94f35;
@@ -124,6 +127,9 @@ export class TruckView {
   private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
+  /** In the model: the exhaust stack's outlet, and just behind the last rear wheel on the left (+x) side. */
+  private readonly exhaustAt: readonly [number, number, number];
+  private readonly behindRearWheelAt: readonly [number, number, number];
   private wheelSpin = 0;
   private pitch = 0;
   private roll = 0;
@@ -215,6 +221,15 @@ export class TruckView {
     box('dark', [W * 0.7, 0.24, L * 0.9], [0, frameY, centreZ]);
     add('metal', new CylinderGeometry(0.28, 0.28, 1.1, 16).rotateX(Math.PI / 2).translate(halfW - 0.32, frameY - 0.05, B * 0.45));
     box('dark', [0.5, 0.45, 0.7], [-(halfW - 0.3), frameY - 0.08, B * 0.45]);
+    // The exhaust stack stands at the cab's rear corner on the right, up past the roof.
+    const stackTop = cabTop + STACK_OVER_ROOF;
+    const stackX = -(halfW + STACK_RADIUS + 0.02);
+    const stackZ = cabRear + 0.15;
+    add(
+      'metal',
+      new CylinderGeometry(STACK_RADIUS, STACK_RADIUS, stackTop - frameY, 10).translate(stackX, (stackTop + frameY) / 2, stackZ),
+    );
+    this.exhaustAt = [stackX, stackTop + 0.05, stackZ];
     const guardLength = 2 * R + 0.3 + (tandem ? 2 * TANDEM_HALF_SPACING : 0);
     for (const side of [1, -1] as const) {
       box('dark', [TIRE_WIDTH + 0.08, 0.05, guardLength], [side * (halfW - 0.2), 2 * R + 0.05, 0]);
@@ -371,6 +386,7 @@ export class TruckView {
     // Front wheels first: they steer.
     const trackHalf = halfW - 0.2;
     const rearAxles = tandem ? [TANDEM_HALF_SPACING, -TANDEM_HALF_SPACING] : [0];
+    this.behindRearWheelAt = [trackHalf, R * 0.5, Math.min(...rearAxles) - R * 1.05];
     this.wheelPositions = [
       [trackHalf, R, B],
       [-trackHalf, R, B],
@@ -431,6 +447,22 @@ export class TruckView {
     this.pitch += (targetPitch - this.pitch) * response;
     this.roll += (targetRoll - this.roll) * response;
     this.body.rotation.set(this.pitch, 0, this.roll);
+  }
+
+  /** Where the exhaust stack's outlet is in the world, as of the last update(). Writes into `out`. */
+  exhaustOutlet(out: Vector3): Vector3 {
+    const [x, y, z] = this.exhaustAt;
+    return this.toWorld(x, y, z, out);
+  }
+
+  /**
+   * Just behind the last rear wheel on `side` (1: left, -1: right), low down,
+   * in the world as of the last update(): where it throws dust and spray.
+   * Writes into `out`.
+   */
+  behindRearWheel(side: 1 | -1, out: Vector3): Vector3 {
+    const [x, y, z] = this.behindRearWheelAt;
+    return this.toWorld(x * side, y, z, out);
   }
 
   /** Shows or hides a flatbed's load. Closed bodies keep their load out of sight. */
@@ -553,6 +585,14 @@ export class TruckView {
 
   private texture<T extends Texture>(texture: T): T {
     return this.track(texture);
+  }
+
+  /** A point in the model to the world, by the pose of the last update() (the body's lean left out). */
+  private toWorld(x: number, y: number, z: number, out: Vector3): Vector3 {
+    const heading = this.root.rotation.y;
+    const cos = Math.cos(heading);
+    const sin = Math.sin(heading);
+    return out.set(this.root.position.x + x * cos + z * sin, y, this.root.position.z - x * sin + z * cos);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {

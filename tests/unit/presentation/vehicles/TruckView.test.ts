@@ -98,6 +98,34 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     }
   });
 
+  it('stands an exhaust stack behind the cab on the right, and says where its outlet and the rear wheels are', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    view.update({ x: 0, z: 0, heading: 0 }, state, 0);
+    const { widthMeters, heightMeters, wheelbaseMeters, wheelRadiusMeters } = truck.body;
+
+    // Heading 0 faces +z, so the right is −x: the stack stands beside the cab, over its roof, under the box's.
+    const outlet = view.exhaustOutlet(new Vector3());
+    expect(outlet.x).toBeLessThan(-widthMeters / 2);
+    expect(outlet.y).toBeGreaterThan(heightMeters * 0.7);
+    expect(outlet.y).toBeLessThanOrEqual(heightMeters + 0.1);
+    expect(outlet.z).toBeGreaterThan(wheelbaseMeters / 2);
+    const left = view.behindRearWheel(1, new Vector3());
+    const right = view.behindRearWheel(-1, new Vector3());
+    expect(left.x).toBeGreaterThan(0);
+    expect(left.x).toBeCloseTo(-right.x, 9);
+    expect(left.z).toBeLessThan(-wheelRadiusMeters);
+    expect(left.y).toBeLessThan(wheelRadiusMeters);
+
+    // Both follow the truck round: a quarter turn to the left faces +x.
+    view.update({ x: 100, z: 50, heading: Math.PI / 2 }, state, 0);
+    const turned = view.exhaustOutlet(new Vector3());
+    expect(turned.x).toBeCloseTo(100 + outlet.z, 6);
+    expect(turned.z).toBeCloseTo(50 - outlet.x, 6);
+    expect(turned.y).toBeCloseTo(outlet.y, 9);
+  });
+
   it('keeps the whole truck within its body dimensions', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);

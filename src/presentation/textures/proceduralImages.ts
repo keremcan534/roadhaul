@@ -211,6 +211,25 @@ export function glowImage(size = 64): PixelImage {
 }
 
 /**
+ * A puff of smoke, dust or spray: white (the particle's colour tints it), its
+ * alpha a soft round cloud, lumpy with noise, clear at the square's edge.
+ */
+export function puffImage(size = 64, seed = 71): PixelImage {
+  const image = createImage(size, size, [255, 255, 255], 0);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = (x + 0.5) / size;
+      const v = (y + 0.5) / size;
+      const r = Math.hypot(u - 0.5, v - 0.5) * 2;
+      const body = (1 - smoothstep(0.15, 1, r)) ** 1.5;
+      const lumps = 0.55 + 0.45 * fractalNoise(u, v, 4, 3, seed);
+      image.data[(y * size + x) * 4 + 3] = Math.round(255 * Math.min(1, body * lumps * 1.25));
+    }
+  }
+  return image;
+}
+
+/**
  * The full moon, filling the square but for a pixel round it: pale highlands,
  * darker seas, a little grain, and a rim a shade darker than the middle. The
  * corners are transparent (in the highlands' colour, so filtering leaves no

@@ -24,6 +24,7 @@ import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView } from './presentation/vehicles/TruckView';
+import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
@@ -152,6 +153,8 @@ async function start(): Promise<void> {
   });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity);
+  const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
+  const effectsState = createTruckEffectsState();
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
@@ -795,6 +798,18 @@ async function start(): Promise<void> {
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         const eye = renderHost.camera.position;
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
+        // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
+        effectsState.driving = simulating;
+        effectsState.engineRunning = driving.isEngineRunning;
+        effectsState.engineRpm = vehicle.engineRpm;
+        effectsState.idleRpm = driving.definition.powertrain.idleRpm;
+        effectsState.maxRpm = driving.definition.powertrain.maxRpm;
+        effectsState.drivePedal = vehicle.gear < 0 ? driverInput.brake : driverInput.throttle;
+        effectsState.speed = vehicle.speed;
+        effectsState.heading = pose.heading;
+        effectsState.offRoad = driving.surface.name === 'grass';
+        effectsState.rain = weather.rain;
+        truckEffects.update(paused ? 0 : deltaSeconds, truck, effectsState, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);

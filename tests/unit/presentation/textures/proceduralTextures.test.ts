@@ -9,6 +9,7 @@ import {
   lightPoolImage,
   liveryImage,
   moonImage,
+  puffImage,
   officeFacadeImage,
   officeWindowLightsImage,
   rearDoorsImage,
@@ -264,6 +265,21 @@ describe('procedural images', () => {
     expect(corner[3]).toBe(0);
     expect(corner[0]).toBeGreaterThan(200);
     expect(moonImage(32)).toEqual(moon);
+  });
+
+  it('draw a puff as a soft, lumpy white cloud, clear at the edges', () => {
+    const puff = puffImage(32);
+
+    expect(pixel(puff, 16, 16)[3]).toBeGreaterThan(150);
+    expect(pixel(puff, 0, 16)[3]).toBe(0);
+    expect(pixel(puff, 0, 0)[3]).toBe(0);
+    expect(pixel(puff, 16, 16).slice(0, 3)).toEqual([255, 255, 255]);
+    // Lumpy: a ring halfway out is not all the same.
+    const ring = Array.from({ length: 16 }, (_, i) => {
+      const angle = (i / 16) * Math.PI * 2;
+      return pixel(puff, Math.round(16 + Math.cos(angle) * 7), Math.round(16 + Math.sin(angle) * 7))[3]!;
+    });
+    expect(Math.max(...ring) - Math.min(...ring)).toBeGreaterThan(10);
   });
 
   it('fade the soft shadow from the centre to transparent edges', () => {
