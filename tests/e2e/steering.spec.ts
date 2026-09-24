@@ -57,11 +57,17 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
   await seedSettings(page, { steering: 'tilt', tiltSensitivity: 'high' });
   await openGame(page, '?debug');
   await expect(page.locator('html')).toHaveAttribute('data-tilt', 'waiting');
-  /** Heading change over a second, degrees: about none while the truck runs straight, 9° or more with a third of full lock. */
+  /** The heading once the overlay (refreshed twice a second) shows it anew: never a reading from before the call. */
+  const freshHeading = async (): Promise<number> => {
+    const overlay = page.locator('.perf-overlay');
+    await expect(overlay).not.toHaveText((await overlay.textContent()) ?? '', { timeout: 5_000 });
+    return shownHeading(page);
+  };
+  /** Heading change over a second or so, degrees: about none while the truck runs straight, 9° or more with a third of full lock. */
   const drift = async (): Promise<number> => {
-    const before = await shownHeading(page);
+    const before = await freshHeading();
     await page.waitForTimeout(1_000);
-    return Math.abs(headingChange(before, await shownHeading(page)));
+    return Math.abs(headingChange(before, await freshHeading()));
   };
 
   // Held turned 20° to the right from the start: that is straight ahead. The truck rolls on slowly, so it keeps
@@ -70,7 +76,7 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
   await page.keyboard.down('ArrowUp');
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
   await page.keyboard.up('ArrowUp');
-  expect(await drift()).toBeLessThan(4);
+  expect(await drift()).toBeLessThan(3);
 
   // Turned back 8° from there: a gentle left turn, until the tilt button makes this straight ahead.
   const before = await shownHeading(page);
@@ -79,7 +85,7 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
   await page.locator('.tilt-button').click();
   await tiltPhone(page, 12);
   await page.waitForTimeout(300); // The wheels straighten.
-  expect(await drift()).toBeLessThan(4);
+  expect(await drift()).toBeLessThan(3);
   expect(await shownSpeed(page), 'still rolling, so the heading could have turned').toBeGreaterThan(3);
   expect(problems).toEqual([]);
 });
