@@ -137,10 +137,10 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| WeatherDefinition, weather | data | `src/data/definitions/WeatherDefinition.ts`, `src/data/content/weather.ts` | Clear, cloudy, rain, night (spec §38): how likely and how long, grip, traffic speed, and the look (sky, haze, light, clouds, rain, lamps) | Validator | none |
+| WeatherDefinition, weather | data | `src/data/definitions/WeatherDefinition.ts`, `src/data/content/weather.ts` | Clear, cloudy, rain, dusk, night, dawn (spec §38–39): how likely and how long, what each may turn into, grip, traffic speed, and the look (sky, haze, light, the sun's height, clouds, rain, lamps) | Validator | none |
 | GameConfig.weather | data | `src/data/config/GameConfig.ts` | The first weather, whether it changes, how long a change takes; `?weather=id` fixes it | ContentCatalog | none |
-| WeatherService | systems | `src/systems/weather/WeatherService.ts` | Seeded schedule of weathers, blended changes; the truck's grip (a DrivingService performance modifier) and traffic speed; blended rain and lamps for the views | DrivingService, TrafficService, ContentCatalog | emits `WeatherChanged` |
-| Weather look | presentation | `EnvironmentView.applyWeather`, `world/lighting.ts` (`PrelitMaterials`) | Sky, haze, sun and sky light, clouds; relights the pre-lit ground and fades baked shadows | three | none |
+| WeatherService | systems | `src/systems/weather/WeatherService.ts` | Seeded schedule of weathers, each drawn from the ones the last may turn into (so the day goes round in order), blended changes; the truck's grip (a DrivingService performance modifier) and traffic speed; blended rain and lamps for the views | DrivingService, TrafficService, ContentCatalog | emits `WeatherChanged` |
+| Weather look | presentation | `EnvironmentView.applyWeather`, `world/lighting.ts` (`PrelitMaterials`) | Sky, haze, sun and sky light, clouds; the sun low at dusk and dawn, the sky glowing round it and the clouds catching the glow; relights the pre-lit ground and fades baked shadows | three | none |
 | RainView | presentation | `src/presentation/weather/RainView.ts` | Rain streaks round the camera, animated on the GPU, one draw call; more of them the harder it rains | three | none |
 | Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps`, `StreetLampView.setLamps`, `CitySignView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows, street lamps and their light on the road, name boards in the headlights | three | none |
 
