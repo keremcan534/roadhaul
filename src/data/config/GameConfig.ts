@@ -31,6 +31,8 @@ export interface GameConfig {
     readonly minResolutionScale: Fraction;
     /** Share of the rain's streaks drawn. */
     readonly rainDensity: Fraction;
+    /** Share of the exhaust, dust and spray puffs the truck throws. */
+    readonly particleDensity: Fraction;
     /** Glows round lit lamps at night. */
     readonly lampGlows: boolean;
   };
@@ -126,18 +128,40 @@ export interface QualityPreset {
   readonly maxPixelRatio: number;
   readonly minResolutionScale: Fraction;
   readonly rainDensity: Fraction;
+  readonly particleDensity: Fraction;
   readonly lampGlows: boolean;
   /** NPC vehicles around the truck. */
   readonly trafficVehicles: number;
 }
 
 export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = frozenCopy({
-  low: { maxPixelRatio: 1, minResolutionScale: 0.7, rainDensity: 0.5, lampGlows: false, trafficVehicles: 8 },
-  medium: { maxPixelRatio: 1.25, minResolutionScale: 0.6, rainDensity: 0.75, lampGlows: true, trafficVehicles: 12 },
-  high: { maxPixelRatio: 1.5, minResolutionScale: 0.6, rainDensity: 1, lampGlows: true, trafficVehicles: 16 },
+  low: {
+    maxPixelRatio: 1,
+    minResolutionScale: 0.7,
+    rainDensity: 0.5,
+    particleDensity: 0.5,
+    lampGlows: false,
+    trafficVehicles: 8,
+  },
+  medium: {
+    maxPixelRatio: 1.25,
+    minResolutionScale: 0.6,
+    rainDensity: 0.75,
+    particleDensity: 0.75,
+    lampGlows: true,
+    trafficVehicles: 12,
+  },
+  high: {
+    maxPixelRatio: 1.5,
+    minResolutionScale: 0.6,
+    rainDensity: 1,
+    particleDensity: 1,
+    lampGlows: true,
+    trafficVehicles: 16,
+  },
 });
 
-/** `config` with the graphics preset `level`: resolution, rain, glows and how much traffic. */
+/** `config` with the graphics preset `level`: resolution, rain, smoke and dust, glows and how much traffic. */
 export function applyQualityPreset(config: GameConfig, level: QualityLevel): GameConfig {
   const { trafficVehicles, ...rendering } = QUALITY_PRESETS[level];
   return {
@@ -160,6 +184,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     antialias: false,
     minResolutionScale: 0.6,
     rainDensity: 1,
+    particleDensity: 1,
     lampGlows: true,
   },
   missions: {
@@ -231,6 +256,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'must be greater than 0 and at most 1',
   );
   validator.fraction(rendering.rainDensity, 'rendering.rainDensity');
+  validator.fraction(rendering.particleDensity, 'rendering.particleDensity');
   validator.boolean(rendering.lampGlows, 'rendering.lampGlows');
   validator.check(
     Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,
