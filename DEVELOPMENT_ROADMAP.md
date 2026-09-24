@@ -133,6 +133,26 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
 - For step 29, Settings has a performance display switch: FPS, draw calls, the pixel ratio, the graphics preset and the GPU, in the browser and the app, without `?debug`.
 
+### Player feedback (between steps 28 and 29)
+
+After playing the Pages build, the player asked for more ways to steer and see the road, a map, and more world. Like the sound, these are not numbered steps of §81; they come before the phones test everything in step 29.
+
+| Item | Status | Notes |
+|---|---|---|
+| Steering by tilting the phone or by buttons; control size | ✅ | Settings (main menu, and now the pause menu) |
+| A 2D map, and a minimap on the HUD | ⬜ **next** | The region's roads, cities, depots, the truck and its route |
+| More cameras | ⬜ | Hood, rear and top-down besides chase and cabin (spec §31); looking round in the cabin |
+| Truck paint | ⬜ | Colours per truck; save v7 |
+| More world | ⬜ | Street lamps, signs, bridges, fields; more cargo and contracts |
+| A bigger map | ⬜ | A larger, Europe-like map needs decisions first: spec §20 and §85 want an original map, not a copy of a real one |
+
+- Tilt steering: turn the phone like a steering wheel. Full lock takes 45°, 32° or 22° of turn (low, normal, high sensitivity), with a 2° dead zone; the steering follows the phone within about a tenth of a second. Straight ahead is how the phone is held when a drive starts, when the screen turns between portrait and landscape, and when the tilt button is tapped. Tipped back past about 55°, turns count a little less, down to a phone held flat, where a gentle rock steers gently instead of wildly.
+- With tilt, both thumbs are free: the brake moves to the bottom left, next to the tilt button. iOS shares the motion sensor only after a tap: the game asks at the first one, and the tilt button glows until then. Without a motion sensor (or if it is refused), steering goes back to the wheel, with a message.
+- Buttons steer like the keyboard: full lock while held, eased in by the truck's steering rate.
+- Control size scales the wheel, pedals and buttons to 85% or 120%, capped so the bottom row fits a 360 px wide phone. `tests/e2e/touchControls.spec.ts` checks every way of steering in every size, on a phone on its side, upright and a narrow one upright, for controls off screen or on top of each other.
+- Settings open from the pause menu too, over it. On a phone on its side they fit in two columns, with Close beside the title.
+- Nothing here ran on a phone yet: the tilt maths is unit-tested for portrait, both landscapes, upside down and flipped gravity, and the e2e tests steer the truck with synthetic motion events. Step 29 tries it in real hands.
+
 ## Next step: 29 Device testing
 
 Suggested request:

@@ -46,7 +46,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Detailed cab-over truck from body data (windows, grille, lights, mirrors, livery, rims), merged per material; box, refrigerated (cooling unit) or flatbed body (deck, headboard, a load shown while loaded); tandem rear axle for heavy trucks; steering and rolling wheels; pitch and roll; cabin dashboard | VehicleDefinition, three | none |
 | CameraRig | presentation | `src/presentation/cameras/CameraRig.ts` | Chase and cabin cameras (spec §31), fitted to the truck's size; a camera circling the parked truck behind the menus | three | none |
 | KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera), Escape/P (pause) → `VehicleInput` | VehicleInput | none |
-| TouchControls | ui | `src/ui/controls/TouchControls.ts` | SVG steering wheel, gas and brake pedals, camera button, speed dial and gear readout | VehicleInput | none |
+| TouchControls | ui | `src/ui/controls/TouchControls.ts` | SVG steering wheel, gas and brake pedals, camera button, speed dial and gear readout; the way of steering picked in Settings (the wheel, the tilt button with the brake under the left thumb, or left/right buttons) and the control size | VehicleInput, controls settings | none |
 
 ### Mission loop (Phase 2, roadmap steps 09–13)
 
@@ -62,7 +62,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | MainMenu | ui | `src/ui/menus/MainMenu.ts` | Title screen and language switch | Strings | none |
 | CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, blocked ones say what unlocks them | MissionService offers, Strings | none |
 | MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, next turn, arrival time, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30, §63) | MissionService, NavigationService, DrivingService | none |
-| PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ); the itemised result or the failure reason | Strings | none |
+| PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ, settings); the itemised result or the failure reason | Strings | none |
 | String tables | ui | `src/ui/i18n/` | Turkish and English text, number, money, distance and time formats; language choice | none | none |
 
 ### Economy, upkeep, progression and saving (Phase 3, roadmap steps 14–18)
@@ -159,9 +159,9 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | Graphics presets | data | `QUALITY_PRESETS`, `applyQualityPreset` in `src/data/config/GameConfig.ts` | Low, medium, high: pixel ratio cap, resolution floor, rain density, lamp glows, traffic | none | none |
-| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, sound, the performance display), kept apart from the save | GameConfig, KeyValueStorage | none |
+| Device quality, device settings | platform | `src/platform/browser/deviceQuality.ts`, `deviceSettings.ts` | The preset a device can carry (cores, memory, phone or not); which one to play (`?quality=`, the setting, the device); the phone's own settings (graphics, steering, tilt sensitivity, control size, sound, the performance display), kept apart from the save | GameConfig, controls settings, KeyValueStorage | none |
 | AdaptiveResolution | presentation | `src/presentation/AdaptiveResolution.ts` | Lowers the resolution when frames run slow, raises it when they are quick again (a 30 FPS floor) | none | none |
-| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu: the graphics preset (auto, low, medium, high) and the one in use; sound and the performance display on or off | Strings | none |
+| SettingsDialog | ui | `src/ui/menus/SettingsDialog.ts` | Settings from the main menu and the pause menu: the graphics preset (auto, low, medium, high) and the one in use; how to steer, tilt sensitivity and control size; sound and the performance display on or off | Strings | none |
 
 ### Sound (Phase 7, spec §37)
 
@@ -170,6 +170,14 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Sound model | presentation | `src/presentation/audio/soundModel.ts` | The engine's note, loudness and brightness from rpm and pedal; road, brake and crash levels (pure, unit-tested) | none | none |
 | GameAudio | presentation | `src/presentation/audio/GameAudio.ts` | Web Audio from oscillators and noise, no sound files: engine, brakes and their air hiss, horn, tyres and wind, rain; clicks, delivery chime, failure, crash and loading sounds; starts at the first gesture, sleeps while hidden | Web Audio | fed by the entry point from `VehicleCollided` and the mission events |
 | Horn controls | ui, platform | `TouchControls` (horn button), `KeyboardInput` (H) | Hold to sound the horn | none | none |
+
+### Controls (player feedback, roadmap step 29)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Controls settings | data | `src/data/config/controls.ts` | The ways of steering (wheel, tilt, buttons), tilt sensitivities, control sizes and tilt steering's states | none | none |
+| TiltSteering | platform | `src/platform/input/TiltSteering.ts` | Turning the phone like a steering wheel → steering: calibrates straight ahead, any screen orientation, either gravity sign, steady down to a flat phone, dead zone, easing (pure, unit-tested) | controls settings | none |
+| TiltInput | platform | `src/platform/input/TiltInput.ts` | Feeds TiltSteering from `devicemotion` while tilt is picked; asks iOS for the motion sensor from a tap; recentres when the screen turns | TiltSteering, VehicleInput | none |
 
 ### Android app (Phase 8, roadmap step 28)
 
@@ -188,7 +196,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
-| More settings, more languages | ui | ⬜ Phase 7 | Language in Settings (graphics and sound are there); more string tables |
+| More settings, more languages | ui | ⬜ Phase 7 | Language in Settings (graphics, controls and sound are there); more string tables |
 
 ## Not in the MVP (spec §44)
 
