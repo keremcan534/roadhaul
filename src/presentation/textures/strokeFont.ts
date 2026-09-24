@@ -20,9 +20,39 @@ function arc(cx: number, cy: number, rx: number, ry: number, fromDegrees: number
   return points;
 }
 
+/** A dot (a stroke of no length draws a round dot). */
+function dot(x: number, y: number): Point[] {
+  return [
+    [x, y],
+    [x, y],
+  ];
+}
+
+/** A cedilla hanging under the baseline at `x` (Ç, Ş). */
+function cedilla(x: number): Point[] {
+  return [
+    [x, 0],
+    [x, -0.1],
+    [x + 0.09, -0.16],
+    [x - 0.03, -0.27],
+  ];
+}
+
+const C_STROKE = arc(0.35, 0.5, 0.35, 0.5, 42, 318);
+const G_STROKE = [...arc(0.35, 0.5, 0.35, 0.5, 42, 360), [0.4, 0.5] as Point];
+const I_STROKE: Point[] = [
+  [0, 0],
+  [0, 1],
+];
+const O_STROKE = arc(0.35, 0.5, 0.35, 0.5, 0, 360);
+const S_STROKE = [...arc(0.29, 0.75, 0.27, 0.25, 25, 270), ...arc(0.29, 0.25, 0.3, 0.25, 90, -155)];
+const U_STROKE: Point[] = [[0, 1], [0, 0.32], ...arc(0.3, 0.32, 0.3, 0.32, 180, 360), [0.6, 1]];
+
 /**
- * A tiny geometric stroke font: just the letters the game's own logos need.
- * Unknown characters render as a space.
+ * A small geometric stroke font: the capital letters of the English and
+ * Turkish alphabets, for the game's logos and signs. Diacritics reach above
+ * the cap height and below the baseline. Unknown characters render as a
+ * space.
  */
 const GLYPHS: Readonly<Record<string, Glyph>> = {
   A: {
@@ -39,7 +69,47 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
       ],
     ],
   },
+  B: {
+    width: 0.58,
+    strokes: [
+      [[0, 0.52], [0.27, 0.52], ...arc(0.27, 0.76, 0.24, 0.24, -90, 90), [0, 1], [0, 0], [0.29, 0]],
+      arc(0.29, 0.26, 0.28, 0.26, -90, 90),
+    ],
+  },
+  C: { width: 0.66, strokes: [C_STROKE] },
+  Ç: { width: 0.66, strokes: [C_STROKE, cedilla(0.36)] },
   D: { width: 0.6, strokes: [[[0, 0], [0, 1], [0.24, 1], ...arc(0.24, 0.5, 0.36, 0.5, 90, -90), [0, 0]]] },
+  E: {
+    width: 0.52,
+    strokes: [
+      [
+        [0.52, 1],
+        [0, 1],
+        [0, 0],
+        [0.52, 0],
+      ],
+      [
+        [0, 0.52],
+        [0.44, 0.52],
+      ],
+    ],
+  },
+  F: {
+    width: 0.5,
+    strokes: [
+      [
+        [0.5, 1],
+        [0, 1],
+        [0, 0],
+      ],
+      [
+        [0, 0.52],
+        [0.42, 0.52],
+      ],
+    ],
+  },
+  G: { width: 0.7, strokes: [G_STROKE] },
+  Ğ: { width: 0.7, strokes: [G_STROKE, arc(0.35, 1.3, 0.15, 0.12, 180, 360)] },
   H: {
     width: 0.6,
     strokes: [
@@ -57,6 +127,26 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
       ],
     ],
   },
+  I: { width: 0, strokes: [I_STROKE] },
+  İ: { width: 0, strokes: [I_STROKE, dot(0, 1.25)] },
+  J: { width: 0.5, strokes: [[[0.5, 1], [0.5, 0.3], ...arc(0.25, 0.3, 0.25, 0.3, 0, -180)]] },
+  K: {
+    width: 0.58,
+    strokes: [
+      [
+        [0, 0],
+        [0, 1],
+      ],
+      [
+        [0.56, 1],
+        [0, 0.4],
+      ],
+      [
+        [0.19, 0.6],
+        [0.58, 0],
+      ],
+    ],
+  },
   L: {
     width: 0.5,
     strokes: [
@@ -67,7 +157,42 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
       ],
     ],
   },
-  O: { width: 0.7, strokes: [arc(0.35, 0.5, 0.35, 0.5, 0, 360)] },
+  M: {
+    width: 0.74,
+    strokes: [
+      [
+        [0, 0],
+        [0, 1],
+        [0.37, 0.32],
+        [0.74, 1],
+        [0.74, 0],
+      ],
+    ],
+  },
+  N: {
+    width: 0.62,
+    strokes: [
+      [
+        [0, 0],
+        [0, 1],
+        [0.62, 0],
+        [0.62, 1],
+      ],
+    ],
+  },
+  O: { width: 0.7, strokes: [O_STROKE] },
+  Ö: { width: 0.7, strokes: [O_STROKE, dot(0.2, 1.25), dot(0.5, 1.25)] },
+  P: { width: 0.58, strokes: [[[0, 0], [0, 1], [0.3, 1], ...arc(0.3, 0.75, 0.27, 0.25, 90, -90), [0, 0.5]]] },
+  Q: {
+    width: 0.7,
+    strokes: [
+      O_STROKE,
+      [
+        [0.44, 0.22],
+        [0.74, -0.06],
+      ],
+    ],
+  },
   R: {
     width: 0.6,
     strokes: [
@@ -78,7 +203,83 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
       ],
     ],
   },
-  U: { width: 0.6, strokes: [[[0, 1], [0, 0.32], ...arc(0.3, 0.32, 0.3, 0.32, 180, 360), [0.6, 1]]] },
+  S: { width: 0.59, strokes: [S_STROKE] },
+  Ş: { width: 0.59, strokes: [S_STROKE, cedilla(0.3)] },
+  T: {
+    width: 0.62,
+    strokes: [
+      [
+        [0, 1],
+        [0.62, 1],
+      ],
+      [
+        [0.31, 1],
+        [0.31, 0],
+      ],
+    ],
+  },
+  U: { width: 0.6, strokes: [U_STROKE] },
+  Ü: { width: 0.6, strokes: [U_STROKE, dot(0.15, 1.25), dot(0.45, 1.25)] },
+  V: {
+    width: 0.64,
+    strokes: [
+      [
+        [0, 1],
+        [0.32, 0],
+        [0.64, 1],
+      ],
+    ],
+  },
+  W: {
+    width: 0.9,
+    strokes: [
+      [
+        [0, 1],
+        [0.22, 0],
+        [0.45, 0.72],
+        [0.68, 0],
+        [0.9, 1],
+      ],
+    ],
+  },
+  X: {
+    width: 0.62,
+    strokes: [
+      [
+        [0, 1],
+        [0.62, 0],
+      ],
+      [
+        [0.62, 1],
+        [0, 0],
+      ],
+    ],
+  },
+  Y: {
+    width: 0.64,
+    strokes: [
+      [
+        [0, 1],
+        [0.32, 0.48],
+        [0.64, 1],
+      ],
+      [
+        [0.32, 0.48],
+        [0.32, 0],
+      ],
+    ],
+  },
+  Z: {
+    width: 0.6,
+    strokes: [
+      [
+        [0, 1],
+        [0.6, 1],
+        [0, 0],
+        [0.6, 0],
+      ],
+    ],
+  },
 };
 
 const SPACE_WIDTH = 0.45;
@@ -93,6 +294,11 @@ export interface TextStyle {
   /** Italic shear: x shifts by `slant × y`. */
   readonly slant: number;
   readonly color: Rgb;
+}
+
+/** Whether `character` has a glyph (anything else draws as a space). */
+export function hasGlyph(character: string): boolean {
+  return Object.hasOwn(GLYPHS, character);
 }
 
 /** Width of `text` in pixels when drawn with `style`. */

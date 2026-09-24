@@ -115,6 +115,18 @@ describe('sketchWorld', () => {
     expect(sketch.turningCircles).toHaveLength(world.turningCircles.length);
   });
 
+  it('has the farm fields with their crops, and the wind turbines', () => {
+    expect(sketch.fields.map((field) => field.crop)).toEqual(world.fields.map((field) => field.crop));
+    sketch.fields.forEach((field, index) => {
+      const { area } = world.fields[index]!;
+      // Four corners round the field's middle.
+      expect(field.corners).toHaveLength(8);
+      expect((field.minX + field.maxX) / 2).toBeCloseTo(area.x, 6);
+      expect((field.minZ + field.maxZ) / 2).toBeCloseTo(area.z, 6);
+    });
+    expect(sketch.windTurbines).toEqual(world.windTurbines.map(({ x, z }) => ({ x, z })));
+  });
+
   it('frames everything it draws', () => {
     const { bounds } = sketch;
     const inside = (x: number, z: number): boolean => x > bounds.minX && x < bounds.maxX && z > bounds.minZ && z < bounds.maxZ;

@@ -30,7 +30,11 @@ import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { RainView } from './presentation/weather/RainView';
 import { PrelitMaterials } from './presentation/world/lighting';
+import { CitySignView } from './presentation/world/CitySignView';
+import { FarmlandView } from './presentation/world/FarmlandView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { StreetLampView } from './presentation/world/StreetLampView';
+import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
 import type { GameState } from './systems/gameState/GameState';
@@ -133,6 +137,15 @@ async function start(): Promise<void> {
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
+  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows });
+  new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
+    anisotropy: renderHost.anisotropy,
+    prelit,
+  });
+  const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
+    anisotropy: renderHost.anisotropy,
+  });
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
   });
@@ -760,6 +773,10 @@ async function start(): Promise<void> {
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         const lamps = weather.lamps;
         track.setLamps(lamps);
+        streetLamps.setLamps(lamps);
+        citySigns.setLamps(lamps);
+        windTurbines.setLamps(lamps);
+        windTurbines.update(paused ? 0 : deltaSeconds);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);

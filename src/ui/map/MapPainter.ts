@@ -1,4 +1,4 @@
-import type { RoadKind } from '../../data/definitions/MapDefinition';
+import { FIELD_CROPS, type FieldCrop, type RoadKind } from '../../data/definitions/MapDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
@@ -22,8 +22,16 @@ const ROAD_STYLES: readonly { readonly kind: RoadKind; readonly minPixels: numbe
 ];
 /** The edge adds this much to a road's width on screen, px. */
 const EDGE_PIXELS = 2;
+/** Fields, muted so the roads stand out on them. */
+const FIELD_COLORS: Readonly<Record<FieldCrop, string>> = {
+  wheat: '#5e5a2e',
+  stubble: '#4f5236',
+  green: '#2c4a2a',
+  ploughed: '#4a3a2c',
+};
 const COLORS = {
   ground: '#1b2923',
+  turbine: '#9fb0bd',
   building: '#33443b',
   paved: '#46525c',
   route: '#2e9bff',
@@ -64,6 +72,8 @@ export interface PaintOptions {
 export class MapPainter {
   private readonly runPaths: readonly (readonly { readonly run: MapRoadRun; readonly path: Path2D }[])[];
   private readonly buildings = new Path2D();
+  /** The fields, one path per crop. */
+  private readonly fields: readonly { readonly color: string; readonly path: Path2D }[];
   /** Depot yards, rest area lots and turning circles: paved ground off the roads. */
   private readonly paved = new Path2D();
   private readonly transform = createCanvasTransform();
@@ -104,6 +114,17 @@ export class MapPainter {
     for (const building of sketch.buildings) {
       this.buildings.rect(building.minX, building.minZ, building.maxX - building.minX, building.maxZ - building.minZ);
     }
+    this.fields = FIELD_CROPS.map((crop) => {
+      const path = new Path2D();
+      for (const field of sketch.fields.filter((candidate) => candidate.crop === crop)) {
+        path.moveTo(field.corners[0]!, field.corners[1]!);
+        for (let i = 2; i < field.corners.length; i += 2) {
+          path.lineTo(field.corners[i]!, field.corners[i + 1]!);
+        }
+        path.closePath();
+      }
+      return { color: FIELD_COLORS[crop], path };
+    });
     this.cityNames = sketch.cities.map((city) => strings.cityName(city.cityId));
     this.pickupText = strings.t('map.pickup');
     this.deliveryText = strings.t('map.delivery');
@@ -119,6 +140,11 @@ export class MapPainter {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    for (let i = 0; i < this.fields.length; i++) {
+      const field = this.fields[i]!;
+      context.fillStyle = field.color;
+      context.fill(field.path);
+    }
     context.fillStyle = COLORS.paved;
     context.fill(this.paved);
     context.fillStyle = COLORS.building;
@@ -179,6 +205,24 @@ export class MapPainter {
 
   private paintPlaces(context: CanvasRenderingContext2D, view: MapViewport, options: PaintOptions): void {
     const sketch = this.sketch;
+    // Wind turbines: three blades round a hub.
+    context.strokeStyle = COLORS.turbine;
+    context.lineWidth = 2;
+    context.lineCap = 'round';
+    for (let i = 0; i < sketch.windTurbines.length; i++) {
+      const turbine = sketch.windTurbines[i]!;
+      if (view.sees(this.around(turbine.x, turbine.z), 8)) {
+        const x = view.screenX(turbine.x, turbine.z);
+        const y = view.screenY(turbine.x, turbine.z);
+        context.beginPath();
+        for (let blade = 0; blade < 3; blade++) {
+          const angle = (blade * Math.PI * 2) / 3 - Math.PI / 2;
+          context.moveTo(x, y);
+          context.lineTo(x + Math.cos(angle) * 6, y + Math.sin(angle) * 6);
+        }
+        context.stroke();
+      }
+    }
     for (let i = 0; i < sketch.restAreas.length; i++) {
       const restArea = sketch.restAreas[i]!;
       if (view.sees(this.around(restArea.x, restArea.z), 12)) {

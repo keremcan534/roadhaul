@@ -210,6 +210,58 @@ export function glowImage(size = 64): PixelImage {
   return image;
 }
 
+/**
+ * The cities' name boards, one row per name from the bottom up: dark blue
+ * capitals on a white board inside a blue frame. Names too long for the
+ * board are drawn smaller. A board's face maps onto its row (see
+ * CitySignView).
+ */
+export function citySignImage(names: readonly string[], width = 512, rowHeight = 160): PixelImage {
+  const image = createImage(width, Math.max(1, names.length) * rowHeight, [246, 247, 243]);
+  const frame: Rgb = [30, 70, 140];
+  const inset = rowHeight * 0.05;
+  const thickness = rowHeight * 0.045;
+  names.forEach((name, row) => {
+    const bottom = row * rowHeight;
+    const top = bottom + rowHeight;
+    fillRect(image, inset, bottom + inset, width - inset, bottom + inset + thickness, frame);
+    fillRect(image, inset, top - inset - thickness, width - inset, top - inset, frame);
+    fillRect(image, inset, bottom + inset, inset + thickness, top - inset, frame);
+    fillRect(image, width - inset - thickness, bottom + inset, width - inset, top - inset, frame);
+    const fit = { height: rowHeight * 0.44, weight: 0.17, spacing: 0.3, slant: 0, color: [22, 42, 84] as Rgb };
+    const style = { ...fit, height: fit.height * Math.min(1, (width * 0.84) / measureText(name, fit)) };
+    drawText(image, name, (width - measureText(name, style)) / 2, bottom + (rowHeight - style.height) / 2, style);
+  });
+  shade(image, (x, y) => 0.97 + 0.03 * fractalNoise(x / width, y / image.height, 6, 2, 17));
+  return image;
+}
+
+/**
+ * Crop rows for the farm fields, tileable: `rows` light ridges and dark
+ * furrows across the tile (along u), with fine grain. Grey, so each field
+ * tints it with its crop's colour.
+ */
+export function fieldRowsImage(size = 64, rows = 4, seed = 61): PixelImage {
+  const image = createImage(size, size, [255, 255, 255]);
+  shade(image, (x, y) => {
+    const ridge = 0.5 + 0.5 * Math.cos(((x + 0.5) / size) * rows * Math.PI * 2);
+    return 0.7 + 0.24 * ridge + 0.06 * grain(x, y, seed);
+  });
+  return image;
+}
+
+/** A street lamp's pool of light on the ground: white, brightest under the lamp, fading smoothly to the rim. */
+export function lightPoolImage(size = 64): PixelImage {
+  const image = createImage(size, size, [255, 255, 255], 0);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const r = Math.hypot((x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5) * 2;
+      image.data[(y * size + x) * 4 + 3] = Math.round(255 * (1 - smoothstep(0, 1, r)) ** 1.6);
+    }
+  }
+  return image;
+}
+
 /** A soft round shadow (black with falling-off alpha) for trees and the truck. */
 export function softShadowImage(size = 64): PixelImage {
   const image = createImage(size, size, [0, 0, 0], 0);

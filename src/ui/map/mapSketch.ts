@@ -1,4 +1,4 @@
-import type { RectangleDefinition, RoadKind } from '../../data/definitions/MapDefinition';
+import type { FieldCrop, RectangleDefinition, RoadKind } from '../../data/definitions/MapDefinition';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 
 /** Road runs keep at most this many points, so each run's bounds stay tight for culling. */
@@ -42,6 +42,11 @@ export interface MapPavedArea extends MapBox {
   readonly corners: Float64Array;
 }
 
+/** A farm field, as a polygon like a paved area, coloured by its crop. */
+export interface MapField extends MapPavedArea {
+  readonly crop: FieldCrop;
+}
+
 /** A paved circle where a road ends, for turning round. */
 export interface MapCircle {
   readonly x: number;
@@ -68,6 +73,9 @@ export interface MapSketch {
   readonly runs: readonly MapRoadRun[];
   /** Depot yards and rest area lots. */
   readonly pavedAreas: readonly MapPavedArea[];
+  readonly fields: readonly MapField[];
+  /** Where the wind turbines stand. */
+  readonly windTurbines: readonly { readonly x: number; readonly z: number }[];
   readonly turningCircles: readonly MapCircle[];
   readonly buildings: readonly MapBox[];
   readonly depots: readonly MapDepot[];
@@ -95,6 +103,8 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     rectangleCorners,
   );
   const turningCircles = world.turningCircles.map(({ x, z, radiusMeters }) => ({ x, z, radiusMeters }));
+  const fields = world.fields.map((field): MapField => ({ ...rectangleCorners(field.area), crop: field.crop }));
+  const windTurbines = world.windTurbines.map(({ x, z }) => ({ x, z }));
 
   let minX = Infinity;
   let maxX = -Infinity;
@@ -121,6 +131,8 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     bounds: { minX: minX - MARGIN_METERS, maxX: maxX + MARGIN_METERS, minZ: minZ - MARGIN_METERS, maxZ: maxZ + MARGIN_METERS },
     runs,
     pavedAreas,
+    fields,
+    windTurbines,
     turningCircles,
     buildings,
     depots,
