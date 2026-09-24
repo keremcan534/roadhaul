@@ -4,6 +4,9 @@ export default defineConfig({
   // Relative asset URLs so the same build works from a sub-path (static hosting)
   // and from the local file system (a future Capacitor Android wrapper).
   base: './',
+  // android/ holds copies of the build and Gradle's output: the dev server neither scans nor watches them.
+  optimizeDeps: { entries: ['index.html'] },
+  server: { watch: { ignored: ['**/android/**'] } },
   build: {
     target: 'es2022',
     // three.js with the geometry-merging addon is ~540 kB minified (~140 kB gzip):
