@@ -72,6 +72,20 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 5,
     migrate: (save) => ({ ...save, version: 6, tutorial: { step: 'done' } }),
   },
+  {
+    // v7 records each truck's paint: older trucks keep their factory colour.
+    from: 6,
+    migrate: (save) => {
+      const garage = save['garage'];
+      if (!isJsonObject(garage) || !Array.isArray(garage['vehicles'])) {
+        return { ...save, version: 7 };
+      }
+      const vehicles = (garage['vehicles'] as unknown[]).map((vehicle) =>
+        isJsonObject(vehicle) ? { ...vehicle, paintId: null } : vehicle,
+      );
+      return { ...save, version: 7, garage: { ...garage, vehicles } };
+    },
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {

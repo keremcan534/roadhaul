@@ -15,6 +15,7 @@ export const VEHICLES: readonly VehicleDefinition[] = [
   {
     id: 'rh_h1',
     vehicleClass: 'light',
+    factoryColor: 0xe0622a,
     bodyType: 'box',
     maxPayloadTons: 5,
     fuelCapacityLiters: 150,
@@ -54,6 +55,7 @@ export const VEHICLES: readonly VehicleDefinition[] = [
   {
     id: 'rh_h2',
     vehicleClass: 'medium',
+    factoryColor: 0x2f6fb5,
     bodyType: 'refrigerated',
     maxPayloadTons: 10,
     fuelCapacityLiters: 250,
@@ -94,6 +96,7 @@ export const VEHICLES: readonly VehicleDefinition[] = [
   {
     id: 'rh_h3',
     vehicleClass: 'heavy',
+    factoryColor: 0xb3262e,
     bodyType: 'flatbed',
     maxPayloadTons: 18,
     fuelCapacityLiters: 400,

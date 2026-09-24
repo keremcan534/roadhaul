@@ -31,7 +31,7 @@ describe('createNewSaveGameData', () => {
       economy: { credits: 5000 },
       garage: {
         activeVehicleInstanceId: 'truck_001',
-        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150, damage: 0, upgrades: {} }],
+        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150, damage: 0, upgrades: {}, paintId: null }],
       },
       world: { mapId: 'north_valley', truck: null },
       missions: { active: null },

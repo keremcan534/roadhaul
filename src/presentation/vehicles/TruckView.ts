@@ -25,7 +25,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, dampFactor } from '../../core/math/scalar';
-import type { VehicleClass, VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
@@ -35,11 +35,6 @@ import { cabGeometry } from './cabGeometry';
 import { LampGlows } from './LampGlows';
 
 /** Cab paint and livery accent per truck class: original colours, no real-world liveries. */
-const CLASS_PAINT: Readonly<Record<VehicleClass, number>> = {
-  light: 0xe0622a,
-  medium: 0x2f6fb5,
-  heavy: 0xb3262e,
-};
 /** The cab's inside is drawn unlit, in these colours (the sun would leave it black), and dimmer at night. */
 const DASHBOARD_COLOR = 0x4a525b;
 const BINNACLE_COLOR = 0x353b42;
@@ -116,6 +111,8 @@ export class TruckView {
   /** Turns with the front wheels. */
   private readonly steeringWheel: Mesh;
   private readonly cabinMaterial: MeshBasicMaterial;
+  /** The colour it is painted in, 0xRRGGBB. */
+  readonly paint: number;
   /** The flatbed's visible load; null for closed bodies, whose load is out of sight. */
   private readonly load: Mesh | null = null;
   private readonly wheels: InstancedMesh;
@@ -137,14 +134,19 @@ export class TruckView {
   private readonly euler = new Euler(0, 0, 0, 'YXZ');
   private readonly unitScale = new Vector3(1, 1, 1);
 
-  /** `lampGlows: false` leaves the lamps without their glow at night (weaker devices). */
+  /**
+   * `lampGlows: false` leaves the lamps without their glow at night (weaker
+   * devices). `paint` (0xRRGGBB) colours the cab and the livery's stripe and
+   * doors instead of the model's factory colour.
+   */
   constructor(
     private readonly scene: Scene,
     readonly definition: VehicleDefinition,
-    private readonly options: { readonly lampGlows?: boolean } = {},
+    private readonly options: { readonly lampGlows?: boolean; readonly paint?: number } = {},
   ) {
     const { lengthMeters: L, widthMeters: W, heightMeters: H, wheelbaseMeters: B, wheelRadiusMeters: R } = definition.body;
-    const paint = CLASS_PAINT[definition.vehicleClass];
+    const paint = options.paint ?? definition.factoryColor;
+    this.paint = paint;
     // Heights: the box floor clears the wheels; the cab sits on top of the front axle (cab-over). The cameras
     // share these (cabGeometry): the driver's eye sits behind the steering wheel, the hood camera on the roof.
     const cab = cabGeometry(definition.body);

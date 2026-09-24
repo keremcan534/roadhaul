@@ -37,6 +37,7 @@ export interface CompanyHqActions {
   readonly onRepair: () => void;
   readonly onBuyTruck: (definitionId: string) => void;
   readonly onSwitchTruck: (instanceId: string) => void;
+  readonly onPaintTruck: (instanceId: string, paintId: string | null) => void;
   readonly onBuyUpgrade: (upgradeId: string) => void;
   readonly onFreeDrive: () => void;
   readonly onMainMenu: () => void;
@@ -265,6 +266,8 @@ export class CompanyHq {
       case 'garage': {
         const owned = garage.trucks;
         const busy = missions.active !== null;
+        const paints = garage.paintShop();
+        const canAfford = (price: number): boolean => economy.canAfford(price);
         return garage.dealer().map((offer) =>
           truckCard(
             document,
@@ -273,9 +276,10 @@ export class CompanyHq {
               offer,
               owned: owned.find((truck) => truck.definition.id === offer.definition.id),
               busy,
-              canAfford: economy.canAfford(offer.price),
+              canAfford,
+              paints,
             },
-            { onBuy: actions.onBuyTruck, onSwitch: actions.onSwitchTruck },
+            { onBuy: actions.onBuyTruck, onSwitch: actions.onSwitchTruck, onPaint: actions.onPaintTruck },
           ),
         );
       }

@@ -110,6 +110,14 @@ describe('validateSaveGameData', () => {
     expect(paths(withPart('garage.activeVehicleInstanceId', 'truck_002'))).toEqual(['garage.activeVehicleInstanceId']);
   });
 
+  it('checks each truck\'s paint: its factory colour, or a known one', () => {
+    expect(paths(withPart('garage.vehicles.0.paintId', null))).toEqual([]);
+    expect(paths(withPart('garage.vehicles.0.paintId', 'test_red'))).toEqual([]);
+    for (const paintId of ['chrome', 7, undefined, '']) {
+      expect(paths(withPart('garage.vehicles.0.paintId', paintId)), String(paintId)).toEqual(['garage.vehicles[0].paintId']);
+    }
+  });
+
   it('checks each truck\'s upgrades, and lets a bigger tank hold more fuel', () => {
     // The fixture upgrade adds engine power only; test_truck has a 300 L tank.
     expect(paths(withPart('garage.vehicles.0.upgrades', { test_upgrade: 2 }))).toEqual([]);

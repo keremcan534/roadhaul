@@ -16,8 +16,9 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   start of the 3-city region.
  * - v5: adds events (the progress in each event's latest run).
  * - v6: adds the tutorial's step.
+ * - v7: adds each truck's paint.
  */
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 7;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -73,6 +74,8 @@ export interface VehicleSaveData {
   readonly damage: Fraction;
   /** UpgradeDefinition id → fitted level (1 is the first). Upgrades not listed are not fitted. */
   readonly upgrades: Readonly<Record<string, number>>;
+  /** PaintDefinition id; null for the model's factory colour. */
+  readonly paintId: string | null;
 }
 
 export interface WorldSaveData {

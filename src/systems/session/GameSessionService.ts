@@ -68,6 +68,7 @@ export class GameSessionService {
       events.on('VehicleRepaired', saveNow),
       events.on('VehiclePurchased', saveNow),
       events.on('UpgradePurchased', saveNow),
+      events.on('VehiclePainted', saveNow),
       events.on('ActiveVehicleChanged', saveNow),
       events.on('TutorialStepChanged', saveNow),
       events.on('GameStateChanged', ({ previous }) => {

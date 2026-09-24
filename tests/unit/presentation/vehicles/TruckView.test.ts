@@ -4,6 +4,7 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  MeshPhongMaterial,
   PerspectiveCamera,
   Points,
   Quaternion,
@@ -142,6 +143,27 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     for (const rear of directions.slice(2)) {
       expect(rear).toBeCloseTo(0, 9);
     }
+  });
+
+  it('paints the cab in the colour given, or else in its model\'s factory colour', () => {
+    const phongColours = (scene: Scene): Set<number> => {
+      const colours = new Set<number>();
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.material instanceof MeshPhongMaterial && object.material.map === null) {
+          colours.add(object.material.color.getHex());
+        }
+      });
+      return colours;
+    };
+    const factoryScene = new Scene();
+    expect(new TruckView(factoryScene, truck).paint).toBe(truck.factoryColor);
+    expect(phongColours(factoryScene).has(truck.factoryColor)).toBe(true);
+
+    const paintedScene = new Scene();
+    const painted = new TruckView(paintedScene, truck, { paint: 0x6b3fa0 });
+    expect(painted.paint).toBe(0x6b3fa0);
+    expect(phongColours(paintedScene).has(0x6b3fa0)).toBe(true);
+    expect(phongColours(paintedScene).has(truck.factoryColor)).toBe(false);
   });
 
   it("swaps the windshield for the cab's inside in cabin view", () => {

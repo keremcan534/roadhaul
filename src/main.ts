@@ -293,16 +293,18 @@ async function start(): Promise<void> {
   });
 
   const menuMessage = (): string | null => (persistent ? null : strings.t('menu.storageOff'));
-  /** Shows the truck being driven: a new model gets its own view, and the camera follows it. */
+  /** Shows the truck being driven: a new model or a new coat of paint gets its own view, and the camera follows it. */
   const showActiveTruck = (): void => {
-    if (truck.definition.id !== driving.definition.id) {
+    const paint = garage.activeTruck.paint?.color ?? driving.definition.factoryColor;
+    if (truck.definition.id !== driving.definition.id || truck.paint !== paint) {
       truck.dispose();
-      truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
+      truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, paint });
       cameraRig.setBody(driving.definition.body);
       showCamera(isDriving());
     }
     truck.setLoaded(driving.cargoMassKg > 0);
     root.dataset.vehicle = driving.definition.id;
+    root.dataset.paint = garage.activeTruck.paint?.id ?? 'factory';
   };
   const enterCompany = (): void => {
     showActiveTruck();
@@ -399,6 +401,17 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
         } else {
           logger.warn(`Could not buy ${definitionId}: ${bought.error}.`);
+        }
+      },
+      onPaintTruck: (instanceId, paintId) => {
+        const painted = garage.paint(instanceId, paintId);
+        if (painted.ok) {
+          const paint = paintId === null ? strings.t('hq.garage.factoryPaint') : strings.t(`paint.${paintId}.name`);
+          toasts.show(strings.t('toast.painted', { truck: strings.vehicleName(painted.value.definition.id), paint }), 'success');
+        } else if (painted.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not paint ${instanceId} ${paintId}: ${painted.error}.`);
         }
       },
       onSwitchTruck: (instanceId) => {
@@ -562,6 +575,10 @@ async function start(): Promise<void> {
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
   events.on('UpgradePurchased', refreshHq);
+  events.on('VehiclePainted', () => {
+    showActiveTruck();
+    refreshHq();
+  });
   events.on('ActiveVehicleChanged', () => {
     showActiveTruck();
     refreshHq();

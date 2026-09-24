@@ -13,6 +13,7 @@ import {
   validateTrafficVehicleDefinition,
   type TrafficVehicleDefinition,
 } from './definitions/TrafficVehicleDefinition';
+import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import { validateWeatherDefinition, type WeatherDefinition } from './definitions/WeatherDefinition';
@@ -67,6 +68,7 @@ export class ContentCatalog {
   readonly trafficVehicles: DefinitionTable<TrafficVehicleDefinition>;
   readonly weather: DefinitionTable<WeatherDefinition>;
   readonly events: DefinitionTable<EventDefinition>;
+  readonly paints: DefinitionTable<PaintDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -78,6 +80,7 @@ export class ContentCatalog {
     this.trafficVehicles = new DefinitionTable('traffic vehicle', content.trafficVehicles);
     this.weather = new DefinitionTable('weather', content.weather);
     this.events = new DefinitionTable('event', content.events);
+    this.paints = new DefinitionTable('paint', content.paints);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -102,6 +105,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'trafficVehicles', content.trafficVehicles, validateTrafficVehicleDefinition);
   validateTable(validator, 'weather', content.weather, validateWeatherDefinition);
   validateTable(validator, 'events', content.events, validateEventDefinition);
+  validateTable(validator, 'paints', content.paints, validatePaintDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   return validator.issues;

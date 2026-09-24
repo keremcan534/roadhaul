@@ -87,6 +87,12 @@ export interface GameEvents {
     readonly instanceId: string;
     readonly definitionId: string;
   };
+  /** A truck was painted; paintId null brought its factory colour back. */
+  VehiclePainted: {
+    readonly instanceId: string;
+    readonly paintId: string | null;
+    readonly price: Credits;
+  };
   /** An upgrade level was fitted to the active truck (spec §16). */
   UpgradePurchased: {
     readonly instanceId: string;

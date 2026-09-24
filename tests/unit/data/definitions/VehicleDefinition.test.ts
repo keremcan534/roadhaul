@@ -33,6 +33,14 @@ describe('validateVehicleDefinition', () => {
     expect(issues(vehicleFixture({ purchasePrice: 0, requiredCompanyLevel: 3 }))).toEqual([]);
   });
 
+  it('requires a factory colour', () => {
+    for (const factoryColor of [-1, 0x1000000, 0.5]) {
+      expect(issues(vehicleFixture({ factoryColor })).map((issue) => issue.path), String(factoryColor)).toEqual([
+        'vehicle.factoryColor',
+      ]);
+    }
+  });
+
   it('requires a known body type', () => {
     const vehicle = vehicleFixture({ bodyType: 'tanker' as VehicleDefinition['bodyType'] });
 

@@ -3,6 +3,7 @@ import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
 import type { MapDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
+import type { PaintDefinition } from '../../src/data/definitions/PaintDefinition';
 import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from '../../src/data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
@@ -15,6 +16,7 @@ export function vehicleFixture(overrides: Partial<VehicleDefinition> = {}): Vehi
   return {
     id: 'test_truck',
     vehicleClass: 'medium',
+    factoryColor: 0x2f6fb5,
     bodyType: 'box',
     maxPayloadTons: 10,
     fuelCapacityLiters: 300,
@@ -149,8 +151,14 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
       }),
     ],
     events: [eventFixture()],
+    paints: [paintFixture(), paintFixture({ id: 'test_gold', color: 0xd4af37, price: 3000, requiredCompanyLevel: 2 })],
     ...overrides,
   };
+}
+
+/** A red paint for 1,000 credits, open from level 1. */
+export function paintFixture(overrides: Partial<PaintDefinition> = {}): PaintDefinition {
+  return { id: 'test_red', color: 0xcc2222, price: 1000, ...overrides };
 }
 
 export function trafficVehicleFixture(overrides: Partial<TrafficVehicleDefinition> = {}): TrafficVehicleDefinition {
