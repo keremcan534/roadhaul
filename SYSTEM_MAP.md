@@ -45,7 +45,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | TrackView | presentation | `src/presentation/world/TrackView.ts` | Pre-lit textured ground; every road in four draw calls, with markings by road kind that stop at junctions; two tree species in 600 m instanced tiles the camera culls; buildings with facades and roofs; soft shadow decals | DrivingWorld, three | none |
 | TruckView | presentation | `src/presentation/vehicles/TruckView.ts` | Detailed cab-over truck from body data (windows, grille, lights, mirrors, livery, rims), merged per material; box, refrigerated (cooling unit) or flatbed body (deck, headboard, a load shown while loaded); tandem rear axle for heavy trucks; steering and rolling wheels; pitch and roll; cabin dashboard | VehicleDefinition, three | none |
 | CameraRig | presentation | `src/presentation/cameras/CameraRig.ts` | Chase and cabin cameras (spec §31), fitted to the truck's size; a camera circling the parked truck behind the menus | three | none |
-| KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera), Escape/P (pause) → `VehicleInput` | VehicleInput | none |
+| KeyboardInput | platform | `src/platform/input/KeyboardInput.ts` | Arrows/WASD, Space, C (camera), H (horn), M (map), Escape/P (pause) → `VehicleInput` | VehicleInput | none |
 | TouchControls | ui | `src/ui/controls/TouchControls.ts` | SVG steering wheel, gas and brake pedals, camera button, speed dial and gear readout; the way of steering picked in Settings (the wheel, the tilt button with the brake under the left thumb, or left/right buttons) and the control size | VehicleInput, controls settings | none |
 
 ### Mission loop (Phase 2, roadmap steps 09–13)
@@ -62,7 +62,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | MainMenu | ui | `src/ui/menus/MainMenu.ts` | Title screen and language switch | Strings | none |
 | CompanyHq | ui | `src/ui/hq/CompanyHq.ts`, `jobCards.ts` | Job board (spec §26, §28): open contracts first, blocked ones say what unlocks them | MissionService offers, Strings | none |
 | MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, next turn, arrival time, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30, §63) | MissionService, NavigationService, DrivingService | none |
-| PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ, settings); the itemised result or the failure reason | Strings | none |
+| PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, abandon, HQ, map, settings); the itemised result or the failure reason | Strings | none |
 | String tables | ui | `src/ui/i18n/` | Turkish and English text, number, money, distance and time formats; language choice | none | none |
 
 ### Economy, upkeep, progression and saving (Phase 3, roadmap steps 14–18)
@@ -178,6 +178,15 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Controls settings | data | `src/data/config/controls.ts` | The ways of steering (wheel, tilt, buttons), tilt sensitivities, control sizes and tilt steering's states | none | none |
 | TiltSteering | platform | `src/platform/input/TiltSteering.ts` | Turning the phone like a steering wheel → steering: calibrates straight ahead, any screen orientation, either gravity sign, steady down to a flat phone, dead zone, easing (pure, unit-tested) | controls settings | none |
 | TiltInput | platform | `src/platform/input/TiltInput.ts` | Feeds TiltSteering from `devicemotion` while tilt is picked; asks iOS for the motion sensor from a tap; recentres when the screen turns | TiltSteering, VehicleInput | none |
+
+### 2D maps (player feedback)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Map sketch, viewport | ui | `src/ui/map/mapSketch.ts`, `MapViewport.ts` | The world as a 2D map draws it: roads simplified into short runs with bounds, yards, lots, turning circles, buildings, depots, rest areas and city name spots; the view's pan, zoom and turn (DOM-free, unit-tested) | DrivingWorld | none |
+| MapPainter | ui | `src/ui/map/MapPainter.ts` | Paints a sketch on a canvas through a viewport: only the roads in view, the route to the next bay, pins, city names, the truck and north; allocation-free | MapSketch, DrivingService, NavigationService, MissionService | none |
+| Minimap | ui | `src/ui/hud/Minimap.ts` | The round map on the road, the truck heading up, twelve repaints a second; a tap opens the full map | MapPainter | none |
+| WorldMap | ui | `src/ui/map/WorldMap.ts` | The full-screen map from the minimap, the pause menu, the HQ or M: drag, pinch, wheel and buttons; repaints only after a change; the drive waits while it is open | MapPainter | none |
 
 ### Android app (Phase 8, roadmap step 28)
 

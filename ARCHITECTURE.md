@@ -165,6 +165,10 @@ tilt (platform/input) ─────┘                              │
 - **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C), touch controls (gas, brake, camera button, and the steering wheel or left/right buttons) and tilt steering are merged every fixed step: steering adds up, pedals take the stronger press.
 - **Tilt steering** turns the phone into the steering wheel. `TiltSteering` (pure, unit-tested) measures how far the phone has turned about the screen's axis since it was calibrated, from the accelerometer's gravity: straight ahead is how the phone is held at the start of a drive, when the screen turns and when the tilt button is tapped. Only the angle between two readings counts, so it works in any screen orientation and with browsers that report gravity with the opposite sign. Tipped back far, the angle is read against half of gravity, so it stays steady down to a phone held flat. `TiltInput` (platform) feeds it from `devicemotion` only while tilt is the picked way of steering, and asks iOS for the sensor from a tap. The way of steering, tilt sensitivity and control size are device settings, like the graphics preset.
 
+### The 2D maps
+
+The minimap and the full-screen map draw the same `MapSketch`: the world's roads simplified (Ramer–Douglas–Peucker, 1.5 m) and cut into runs of up to 32 points, each with its bounds, plus yards, lots, turning circles, buildings, depots, rest areas and where city names go. `MapPainter` turns each run into a `Path2D` once and strokes only the runs a `MapViewport` sees, under the canvas transform, so a repaint allocates nothing. The viewport is DOM-free and unit-tested: north up for the full map, the truck's heading up for the minimap. The full map repaints only after a pan, zoom or resize, and the entry point pauses the drive and skips the 3D render while it is open.
+
 ### Traffic
 
 NPC traffic (roadmap step 22, spec §19) is waypoint-based and kinematic: vehicles move along paths and are never pushed.

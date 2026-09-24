@@ -16,7 +16,8 @@ It plays in a region of three cities joined by a highway, a ring road and countr
 **Controls:**
 - **Phone:** drag the steering wheel (bottom left) with one thumb and press the pedals (bottom right) with the other. Hold the brake while stopped to reverse. The round button top right switches between the chase and cabin cameras, the one next to it sounds the horn, and the one top left pauses.
 - **Steering your way:** Settings (in the main menu, or the pause menu while driving) picks how to steer: the wheel, **tilt** (turn the phone like a steering wheel; the brake moves under the left thumb, and the tilt button beside it makes the way you hold the phone straight ahead) or **buttons** (hold ◀ ▶). Tilt sensitivity and the size of the controls are there too.
-- **Keyboard:** arrow keys or WASD, Space to brake, C to switch camera, H for the horn, Escape or P to pause.
+- **Keyboard:** arrow keys or WASD, Space to brake, C to switch camera, H for the horn, M for the map, Escape or P to pause.
+- **Map:** the round minimap beside the pause button shows the roads round the truck and the route; tap it (or use the pause menu, the HQ's Map button or M) for the full 2D map of the region, which you can drag and zoom.
 - **Loading and unloading:** follow the blue line on the road and the turns on the HUD to the depot's light pillar, then stop with the whole truck inside the yellow bay for 3 seconds.
 
 Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the browser and targets Android first ([why not Unity](docs/adr/0001-web-stack-typescript-threejs.md)).

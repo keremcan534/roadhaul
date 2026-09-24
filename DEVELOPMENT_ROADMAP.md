@@ -140,8 +140,8 @@ After playing the Pages build, the player asked for more ways to steer and see t
 | Item | Status | Notes |
 |---|---|---|
 | Steering by tilting the phone or by buttons; control size | ✅ | Settings (main menu, and now the pause menu) |
-| A 2D map, and a minimap on the HUD | ⬜ **next** | The region's roads, cities, depots, the truck and its route |
-| More cameras | ⬜ | Hood, rear and top-down besides chase and cabin (spec §31); looking round in the cabin |
+| A 2D map, and a minimap on the HUD | ✅ | The region's roads, cities, depots, rest areas, the truck and its route |
+| More cameras | ⬜ **next** | Hood, rear and top-down besides chase and cabin (spec §31); looking round in the cabin |
 | Truck paint | ⬜ | Colours per truck; save v7 |
 | More world | ⬜ | Street lamps, signs, bridges, fields; more cargo and contracts |
 | A bigger map | ⬜ | A larger, Europe-like map needs decisions first: spec §20 and §85 want an original map, not a copy of a real one |
@@ -152,6 +152,9 @@ After playing the Pages build, the player asked for more ways to steer and see t
 - Control size scales the wheel, pedals and buttons to 85% or 120%, capped so the bottom row fits a 360 px wide phone. `tests/e2e/touchControls.spec.ts` checks every way of steering in every size, on a phone on its side, upright and a narrow one upright, for controls off screen or on top of each other.
 - Settings open from the pause menu too, over it. On a phone on its side they fit in two columns, with Close beside the title.
 - Nothing here ran on a phone yet: the tilt maths is unit-tested for portrait, both landscapes, upside down and flipped gravity, and the e2e tests steer the truck with synthetic motion events. Step 29 tries it in real hands.
+- The minimap sits beside the pause button (on a phone held upright, at the right halfway down): 300 m round the truck, the way it heads up, the route in the GPS line's blue, the next bay's pin (or a pointer on the rim when it is further), rest areas and north. It repaints twelve times a second on a small canvas; the roads are drawn once into paths, in runs of up to 32 points, and only the runs in view are stroked. On its side, the mission HUD, the messages and the rest area counter move right to make room.
+- The full map opens from the minimap, the pause menu, the HQ (to see where contracts go) or M. It shows the whole region north up: roads by kind (the highway amber), yards and lots, buildings, city names, depots, the rest area, the truck, and the route with a Pickup or Delivery pin. Drag, pinch, the mouse wheel or the + − buttons zoom and move it; ◎ goes to the truck. The drive waits while it is open, and the 3D view is not drawn under it. Escape, M or Android's back button closes it.
+- The map is drawn from the world's data, so a larger map (the last item) gets a 2D map for free: the paths are culled by their bounds, so drawing cost stays with what is on screen.
 
 ## Next step: 29 Device testing
 
