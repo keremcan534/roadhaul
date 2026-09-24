@@ -69,7 +69,7 @@ flowchart TD
 
 ## 4. Boot sequence
 
-1. `src/main.ts` picks the graphics preset (`?quality=`, the saved setting or the device) and reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar) and creates a `ConsoleLogger`.
+1. `src/main.ts` picks the graphics preset (`?quality=`, the saved setting or the device) and reads URL flags (`?debug`, `?log=`, `?fuelScale=`, `?traffic=`, `?weather=`) into the config, picks the clock (`?date=` moves its calendar, for the special events and the contracts of the day) and creates a `ConsoleLogger`.
 2. `GameBootstrapper.boot()`:
    1. registers `Logger` and `Clock`;
    2. validates the content and builds the `ContentCatalog` (all problems are reported together);
@@ -232,11 +232,13 @@ main menu ─► company HQ (job board) ─► accept ─► drive to the pickup
   - `loadingBay`: the whole truck must stand inside the bay, either way round, below about 1 km/h;
   - `MissionInstance`: the plain, saveable state of an accepted contract, with the stages accepted → travellingToPickup → loaded → delivering → completed or failed (abandoned, or cargo damaged beyond the client's tolerance);
   - `cargoDamage`: each crash damages the cargo with the square of its speed, scaled by the cargo's sensitivity;
-  - `missionReward`: base pay (reward × cargo multiplier), an on-time bonus, a late penalty capped at half the base pay (spec §64), and a condition bonus for careful driving.
+  - `missionReward`: base pay (reward × cargo multiplier), an on-time bonus, a late penalty capped at half the base pay (spec §64), and a condition bonus for careful driving;
+  - `contractGenerator`: contracts of the day (spec §28–29), a seeded batch per number. For each, an origin and another city as destination, a cargo (a city's specialities are likelier), a load some truck can carry, the road distance, pay by distance and tonnes times the difficulty's factor (spec §64), and the difficulty's time limit and damage tolerance. The company level asked is the difficulty's, or where the truck it needs is sold if that is later. Each batch opens with two easy contracts for the starting truck.
   - `world/RoadNetwork` gives the remaining distance by road and a point to steer toward. It computes the shortest routes to a target once (Dijkstra from the target) and caches them, so the HUD can ask every frame without allocating.
-- **`MissionService`** (`src/systems/missions`) offers the contracts the truck can haul (the job board), accepts one at a time, and advances it every fixed step after `DrivingService.step()`: loading after `GameConfig.missions.loadingSeconds` in the pickup bay (the truck gets the cargo's weight), the delivery clock, cargo damage from `VehicleCollided`, and unloading and the reward at the destination. It publishes `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed` and never touches the UI.
+- **`DailyContracts`** (`src/systems/missions`) deals the contracts of the day for the map being driven: a new batch every `GameConfig.missions.dailyContracts.refreshHours` of the clock (6), the same for everyone at the same time, so `?date=` fixes it for tests. Generated contracts' ids start with `daily_`, which the game's own must not use (content validation).
+- **`MissionService`** (`src/systems/missions`) offers the contracts the truck can haul (the job board: the game's own and the contracts of the day), accepts one at a time, and advances it every fixed step after `DrivingService.step()`: loading after `GameConfig.missions.loadingSeconds` in the pickup bay (the truck gets the cargo's weight), the delivery clock, cargo damage from `VehicleCollided`, and unloading and the reward at the destination. It publishes `MissionStateChanged`, `CargoDamaged`, `MissionCompleted` and `MissionFailed` (the last two carry the contract itself, generated or not) and never touches the UI. A generated contract under way goes into the save whole, so it resumes after its batch has left the board.
 - **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay; `RestAreaView` draws the rest area's lot, stalls and fuel canopy. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the job board, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open, and the truck stays parked where it was left between contracts.
-- **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`). A unit test keeps both languages complete.
+- **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`); a generated contract is named after its cargo. A unit test keeps both languages complete.
 
 ### Economy, the truck's upkeep and the company
 
@@ -290,11 +292,12 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - v4 has the same shape: the test track is retired, and saves on it move to the region's spawn;
 - since v5: the progress in each special event's latest run;
 - since v6: the tutorial's step;
-- since v7: each truck's paint (null for its model's factory colour).
+- since v7: each truck's paint (null for its model's factory colour);
+- since v8: the contract under way keeps its own definition when it was generated (a contract of the day); null for the game's own contracts.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (7) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (8) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage, fitted upgrades and paint, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §16), memory in tests or when the browser forbids storage.

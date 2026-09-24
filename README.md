@@ -25,7 +25,7 @@ Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the 
 
 ## Play
 
-**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops. It speaks your browser's language (Turkish or English); `?lang=tr` or `?lang=en` at the end of the URL picks one. `?debug` shows FPS; its T key parks the truck in the bay the contract needs next, and Y at the rest area. `?traffic=0` empties the roads (any number up to 48 sets how many vehicles drive around). `?weather=rain` (or `clear`, `cloudy`, `night`) keeps that weather, `?date=2026-09-30` starts the events' calendar on another day, and `?quality=low` (or `medium`, `high`) plays on that graphics preset instead of the one picked in Settings or for the device.
+**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops. It speaks your browser's language (Turkish or English); `?lang=tr` or `?lang=en` at the end of the URL picks one. `?debug` shows FPS; its T key parks the truck in the bay the contract needs next, and Y at the rest area. `?traffic=0` empties the roads (any number up to 48 sets how many vehicles drive around). `?weather=rain` (or `clear`, `cloudy`, `night`) keeps that weather, `?date=2026-09-30` starts the calendar (events, contracts of the day) on another day, and `?quality=low` (or `medium`, `high`) plays on that graphics preset instead of the one picked in Settings or for the device.
 Every push to `main` redeploys it through [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). This needs one-time repository settings: public visibility (or a paid plan) and *Settings → Pages → Source: GitHub Actions*.
 
 ## Android app
