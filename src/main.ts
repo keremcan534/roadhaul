@@ -38,11 +38,15 @@ import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { CompanyHq } from './ui/hq/CompanyHq';
 import { objectiveText } from './ui/hq/eventText';
+import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { Toasts } from './ui/hud/Toasts';
 import { TutorialHint, tutorialPlace } from './ui/hud/TutorialHint';
 import { chooseLanguage, stringsFor } from './ui/i18n';
+import { MapPainter } from './ui/map/MapPainter';
+import { sketchWorld } from './ui/map/mapSketch';
+import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
@@ -168,6 +172,10 @@ async function start(): Promise<void> {
   });
   touch.size = settings.controlSize;
   const hud = new MissionHud(ui, strings, missions, navigation, driving);
+  // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
+  const mapSketch = sketchWorld(driving.world);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions }, strings);
+  const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
   const result = new ResultDialog(ui, strings, () => {
@@ -242,13 +250,23 @@ async function start(): Promise<void> {
       gameState.transitionTo('companyHq');
     },
     onSettings: () => settingsDialog.open(),
+    onMap: () => openMap(),
   });
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
     onHorn: honk,
+    onMap: () => {
+      if (worldMap.isOpen) {
+        closeMap();
+      } else if (!settingsDialog.isOpen && !newCompany.isOpen && !result.isOpen && (isDriving() || gameState.current === 'companyHq')) {
+        openMap();
+      }
+    },
     onPause: () => {
       if (settingsDialog.isOpen) {
         settingsDialog.close(); // Over the pause menu, which stays.
+      } else if (worldMap.isOpen) {
+        closeMap();
       } else if (pauseMenu.isOpen) {
         resume();
       } else {
@@ -386,8 +404,29 @@ async function start(): Promise<void> {
       },
       onFreeDrive: () => gameState.transitionTo('driving'),
       onMainMenu: () => gameState.transitionTo('mainMenu'),
+      onOpenMap: () => openMap(),
     },
   );
+  /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
+  let pausedForMap = false;
+  const openMap = (): void => {
+    if (worldMap.isOpen) {
+      return;
+    }
+    if (isDriving() && !paused) {
+      paused = true;
+      pausedForMap = true;
+    }
+    worldMap.open();
+  };
+  const closeMap = (): void => {
+    worldMap.close();
+    if (pausedForMap) {
+      pausedForMap = false;
+      paused = false;
+    }
+  };
+  const worldMap = new WorldMap(ui, strings, mapPainter, mapSketch, driving, { onClose: closeMap });
   // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
   const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.gpu}`);
   perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
@@ -516,6 +555,7 @@ async function start(): Promise<void> {
     const drivingNow = state === 'driving';
     touch.visible = drivingNow;
     hud.visible = drivingNow;
+    minimap.visible = drivingNow;
     pauseMenu.buttonVisible = drivingNow;
     mainMenu.visible = state === 'mainMenu';
     if (state === 'mainMenu') {
@@ -590,7 +630,7 @@ async function start(): Promise<void> {
   const goBack = (): boolean => {
     const action = backAction({
       gameState: gameState.current,
-      menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen,
+      menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
     });
@@ -598,6 +638,7 @@ async function start(): Promise<void> {
       case 'closeDialog':
         settingsDialog.close();
         newCompany.close();
+        closeMap();
         break;
       case 'pause':
         pause();
@@ -701,6 +742,8 @@ async function start(): Promise<void> {
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
+        minimap.update(deltaSeconds);
+        worldMap.frame();
         const tutorialStep = tutorial.step;
         const tutorialAt = tutorialPlace(tutorialStep);
         tutorialHint.show(tutorialAt === gameState.current && !paused && !result.isOpen ? tutorialStep : null, tutorialAt);
@@ -713,9 +756,10 @@ async function start(): Promise<void> {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitRain();
         }
-        // Behind the menus the scene is a backdrop: every other frame is enough, and saves the battery.
+        // Behind the menus the scene is a backdrop: every other frame is enough, and saves the battery. The full
+        // map hides it all.
         menuFrames = isDriving() ? 0 : menuFrames + 1;
-        if ((menuFrames & 1) === 0) {
+        if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);

@@ -11,6 +11,8 @@ export interface PauseMenuActions {
   readonly onCompanyHq: () => void;
   /** Opens the settings over the menu (steering, controls, sound), which stays open under them. */
   readonly onSettings: () => void;
+  /** Opens the map over the menu, the same way. */
+  readonly onMap: () => void;
 }
 
 /** The roadside fuel offer: its price, or free emergency fuel for a stranded, broke company. */
@@ -19,8 +21,8 @@ export type RoadsideFuelOffer = { readonly cost: string } | 'emergency' | null;
 /**
  * The pause button shown while driving, and the menu it opens: resume, put a
  * stuck truck back on the road, abandon the contract, or go back to the HQ
- * (only without a contract, so a job is never dropped by accident), and the
- * settings.
+ * (only without a contract, so a job is never dropped by accident), the map
+ * and the settings.
  */
 export class PauseMenu {
   private readonly pauseButton: HTMLButtonElement;
@@ -63,6 +65,7 @@ export class PauseMenu {
       this.fuelButton,
       this.abandonButton,
       this.hqButton,
+      button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap),
       button(document, 'button--ghost', strings.t('pause.settings'), 'pause-settings', actions.onSettings),
     );
     this.overlay.append(panel);

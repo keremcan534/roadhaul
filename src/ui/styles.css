@@ -1975,3 +1975,136 @@ html[data-game-state='companyHq'] .toasts {
   }
 }
 
+
+/* ---- 2D maps: the minimap on the road (src/ui/hud/Minimap.ts) and the full map (src/ui/map/WorldMap.ts) ---- */
+
+.minimap {
+  --rh-minimap-size: 96px;
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 70px);
+  z-index: 2;
+  width: var(--rh-minimap-size);
+  height: var(--rh-minimap-size);
+  padding: 0;
+  overflow: hidden;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: #1b2923;
+  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.minimap[hidden] {
+  display: none;
+}
+
+.minimap__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * On its side, the minimap sits beside the pause button: the mission HUD, the messages and the rest area
+ * counter centre on the room right of it.
+ */
+@media (orientation: landscape) {
+  .mission-hud,
+  .toasts,
+  .rest-area-panel {
+    left: calc(50% + 55px);
+  }
+
+  /* Their own width, not the room left of the screen's edge, sets how wide they are (they centre on `left`). */
+  .mission-hud {
+    width: max-content;
+    max-width: min(440px, calc(100vw - 250px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  }
+
+  .toasts {
+    width: min(420px, calc(100vw - 250px));
+  }
+
+  .rest-area-panel {
+    width: max-content;
+    max-width: min(520px, calc(100vw - 250px));
+  }
+
+  .perf-overlay {
+    top: calc(env(safe-area-inset-top, 0px) + 116px);
+  }
+}
+
+/* Upright, the HUD takes the top: the minimap waits at the right, halfway down, in the open sky. */
+@media (orientation: portrait) {
+  .minimap {
+    --rh-minimap-size: 104px;
+    top: calc(50% - 52px);
+    left: auto;
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+  }
+}
+
+.world-map {
+  z-index: 11;
+  padding: 0;
+  background: #1b2923;
+}
+
+.world-map__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+.world-map__bar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.world-map__bar > * {
+  pointer-events: auto;
+}
+
+.world-map__title {
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: 12px;
+  background: rgb(14 18 24 / 80%);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.world-map__tools {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.world-map__tool {
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  padding: 0;
+  border: 2px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(46 54 64 / 92%), rgb(16 20 26 / 92%));
+  color: var(--rh-fg);
+  font-size: 24px;
+  line-height: 1;
+}

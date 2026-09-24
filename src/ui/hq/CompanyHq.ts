@@ -40,6 +40,7 @@ export interface CompanyHqActions {
   readonly onBuyUpgrade: (upgradeId: string) => void;
   readonly onFreeDrive: () => void;
   readonly onMainMenu: () => void;
+  readonly onOpenMap: () => void;
 }
 
 /**
@@ -144,6 +145,7 @@ export class CompanyHq {
     const tools = el('div', 'hq__tools');
     tools.append(
       button(document, 'button--ghost', strings.t('hq.mainMenu'), 'main-menu', actions.onMainMenu),
+      button(document, 'button--ghost', strings.t('hq.map'), 'hq-map', actions.onOpenMap),
       button(document, 'button--secondary', strings.t('hq.freeDrive'), 'free-drive', actions.onFreeDrive),
     );
     const tabBar = el('div', 'hq__tabs');

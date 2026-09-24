@@ -9,7 +9,7 @@ import {
   watchForProblems,
 } from './support';
 
-const COMMON_CONTROLS = ['.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button', '.horn-button', '.pause-button'];
+const COMMON_CONTROLS = ['.pedal--gas', '.pedal--brake', '.dashboard', '.camera-button', '.horn-button', '.pause-button', '.minimap'];
 /** The controls each way of steering (Settings) adds. */
 const STEERING_CONTROLS = {
   wheel: ['.steering-wheel'],

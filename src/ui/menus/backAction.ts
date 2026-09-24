@@ -3,7 +3,7 @@ import type { GameState } from '../../systems/gameState/GameState';
 /** What is on the screen, as the back button sees it. */
 export interface BackContext {
   readonly gameState: GameState;
-  /** A dialog over a menu is open: the settings (over the main or pause menu) or the new company form. */
+  /** A dialog is open over the game: the settings (over the main or pause menu), the map or the new company form. */
   readonly menuDialogOpen: boolean;
   readonly pauseMenuOpen: boolean;
   readonly resultOpen: boolean;
