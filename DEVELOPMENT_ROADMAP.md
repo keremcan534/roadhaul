@@ -192,6 +192,26 @@ A tester played the Pages build on a phone: the truck could not take a sharp tur
 - Tutorial: the first hint is on the road now and makes the Jobs button glow; after the first delivery the Garage button glows, then its first affordable upgrade.
 - As before, none of this has been in real hands yet: step 29 tries it on phones.
 
+### Graphics pass (between steps 28 and 29)
+
+The player asked for the best graphics the game can have ("grafiksel iyileştirmeler, olabilenin en iyisi"). Every item is original, drawn in code, and sized for phones through the presets.
+
+| Item | Status | Notes |
+|---|---|---|
+| A colour pass | ✅ | Medium and high: bloom on bright lights, ACES tones, a weather grade (saturation, S-curve contrast, warmth, darker corners under lit lamps), dithering; high multisamples 4×, medium smooths with FXAA; low draws straight to the screen (`?post=0` too) |
+| Soft clouds and hills | ✅ | Billboard cumulus lit in the shader from the sky's uniforms, drifting; two ridges of hazy hills |
+| Real-time shadows | ✅ | High only: the sun's soft (PCF) shadows of the truck, traffic, lamp posts, rails and delineators round the truck; phones keep the decals |
+| Sky reflections | ✅ | Paint, glass and chrome of the truck and traffic mirror the sky and the sun's glint by a Fresnel term; rounded traffic bodies |
+| Ground and verges | ✅ | A meadow that does not repeat; grass tufts, flowers and bushes along every road, near the camera only, swaying in the wind |
+| Buildings | ✅ | Stone plinths, warm plasters, tiled hipped roofs, metal gables, parapets, rooftop tanks, solar heaters and plant |
+| Road furniture | ✅ | Guard rails on the sharp bends (walls the truck hits), delineator posts whose reflectors shine in the headlights, zebra crossings |
+| Trees in the wind, headlight beams | ✅ | Crowns sway (harder in the rain); the headlights throw soft beams into the night air (with the lamp glows: medium and high) |
+
+- The presets decide the cost: low has no colour pass, no real-time shadows, 45% of the verges' plants, no lamp glows or beams; medium adds the colour pass (FXAA) and 75% of the plants; high adds 4× MSAA, the shadows and all the plants.
+- Drawn in software (CI's headless browser, some virtual machines) the host also leaves out the edge smoothing and draws half the plants and clouds, a plainer ground and a 1024² shadow map; the simulation runs up to 12 steps a frame there, so it keeps real time and the end-to-end tests do not wait on the drawing.
+- The draw budget holds: the verges add three draw calls, the road furniture two and one per rail tile in view, the buildings two, the colour pass ten or eleven full-screen passes.
+- None of it has been seen on a phone yet: step 29 checks the frame rate of each preset on real devices.
+
 ## Next step: 29 Device testing
 
 Suggested request:
