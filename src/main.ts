@@ -572,8 +572,10 @@ async function start(): Promise<void> {
     {
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
-      // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
-      if (saveSettings(storage, { ...settings, quality: choice }) && persistent) {
+      // setting, so it goes, unless storage forgets the setting: then the address carries the choice. Kept in the
+      // settings in memory too: leaving the page saves them again (the clock), and must not bring back the old one.
+      settings = { ...settings, quality: choice };
+      if (saveSettings(storage, settings) && persistent) {
         query.delete('quality');
       } else {
         query.set('quality', choice);
