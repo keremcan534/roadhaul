@@ -6,7 +6,9 @@ import {
   openGame,
   openMainMenu,
   openPanel,
+  shownSpeed,
   takeContract,
+  waitForFrames,
   watchForProblems,
 } from './support';
 
@@ -174,8 +176,11 @@ test('abandoning a contract from the pause menu fails it, and the road is back w
 
 test('pausing stops the truck, and Escape resumes', async ({ page }) => {
   await openGame(page, '?lang=en');
+  // As the driving tests do: past the first frames on the road (drawn in software, they build the shaders and the
+  // simulation loses the time they take), and time enough to speed up.
+  await waitForFrames(page, 5);
   await page.keyboard.down('ArrowUp');
-  await expect.poll(async () => Number(await page.locator('.dashboard__speed').textContent())).toBeGreaterThan(10);
+  await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(10);
 
   await page.keyboard.press('Escape');
   await page.keyboard.up('ArrowUp');
