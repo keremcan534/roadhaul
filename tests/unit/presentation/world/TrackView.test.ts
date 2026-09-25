@@ -116,6 +116,34 @@ describe('TrackView', () => {
     }
   });
 
+  it('samples the ground\'s grass and meadow twice each, or once each without ground detail', () => {
+    /** The ground's material: the one that lays meadow blotches over the grass. */
+    const groundOf = (scene: Scene): MeshBasicMaterial => {
+      let ground: MeshBasicMaterial | undefined;
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
+          const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '#include <common>\n#include <map_fragment>' };
+          object.material.onBeforeCompile(probe as never, undefined as never);
+          if ('meadow' in probe.uniforms) {
+            ground = object.material;
+          }
+        }
+      });
+      return ground!;
+    };
+    const detailed = new Scene();
+    const plain = new Scene();
+    new TrackView(detailed, world);
+    new TrackView(plain, world, { groundDetail: false });
+
+    expect(groundOf(detailed).defines).toHaveProperty('GROUND_DETAIL');
+    expect(groundOf(plain).defines ?? {}).not.toHaveProperty('GROUND_DETAIL');
+    const shader = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '#include <common>\n#include <map_fragment>' };
+    groundOf(plain).onBeforeCompile(shader as never, undefined as never);
+    expect(shader.fragmentShader).toContain('uniform sampler2D meadow;');
+    expect(shader.fragmentShader).toContain('#ifdef GROUND_DETAIL');
+  });
+
   it('paves the turning circle at each dead end with the road, in the same draw calls', () => {
     const scene = new Scene();
     new TrackView(scene, world);

@@ -297,6 +297,18 @@ export class PostProcessing {
     uniforms['bloomStrength']!.value = grade.bloom * BLOOM_STRENGTH;
   }
 
+  /**
+   * Compiles the shaders of everything in `scene` as the pass draws it (into
+   * its linear target, without tone mapping), so render() finds them ready.
+   * Not per frame.
+   */
+  compile(scene: Scene, camera: Camera): void {
+    const previous = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.sceneTarget);
+    this.renderer.compile(scene, camera);
+    this.renderer.setRenderTarget(previous);
+  }
+
   /** Draws `scene` from `camera` through the passes onto the screen. Allocation-free. */
   render(scene: Scene, camera: Camera): void {
     const renderer = this.renderer;

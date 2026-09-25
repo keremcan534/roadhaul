@@ -171,6 +171,18 @@ describe('EnvironmentView', () => {
     expect(cloud.visible).toBe(false);
   });
 
+  it('shows only its share of the weather\'s clouds when asked for fewer', () => {
+    const rain = look('rain');
+    const full = new EnvironmentView(new Scene());
+    const half = new EnvironmentView(new Scene(), { cloudShare: 0.5 });
+    full.applyWeather(rain, rain, 1);
+    half.applyWeather(rain, rain, 1);
+
+    expect(full.cloudCount).toBe(Math.round(CLOUD_COUNT * rain.cloudCover));
+    expect(half.cloudCount).toBe(Math.round(CLOUD_COUNT * rain.cloudCover * 0.5));
+    expect(half.cloudCount).toBeGreaterThan(0);
+  });
+
   it('rings the horizon with two ridges of smooth hills that take the weather\'s haze', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);

@@ -129,6 +129,21 @@ export class RenderHost {
     this.post?.setGrade(grade);
   }
 
+  /**
+   * Compiles the shaders of everything in the scene now, hidden things too
+   * (the night's lamps, the rain), as render() will draw them: once, at
+   * boot, so the first frames on the road do not stall compiling them (in
+   * software a program takes a good part of a second). The GPU compiles them
+   * while the menu shows.
+   */
+  precompile(): void {
+    if (this.post === null) {
+      this.renderer.compile(this.scene, this.camera);
+    } else {
+      this.post.compile(this.scene, this.camera);
+    }
+  }
+
   render(): void {
     this.renderer.info.reset();
     if (this.post === null) {

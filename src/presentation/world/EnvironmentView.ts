@@ -149,6 +149,11 @@ export interface EnvironmentViewOptions {
    * absent: none. The objects that cast them set castShadow.
    */
   readonly shadowMapSize?: number;
+  /**
+   * The share of the weather's clouds shown, 0..1 (fewer, for rendering
+   * without a GPU, where every layer of a cloud's puffs costs). Default: 1.
+   */
+  readonly cloudShare?: number;
 }
 
 /** The sky as other shaders see it (the sea mirrors it): its colours and the sun, kept up to date by applyWeather(). */
@@ -200,6 +205,7 @@ export class EnvironmentView {
   private readonly shadowGround: Mesh | null = null;
   private readonly shadowMaterial: ShadowMaterial | null = null;
   private readonly shadowMapSize: number;
+  private readonly cloudShare: number;
   private readonly shadowAcross = new Vector3();
   private readonly shadowUp = new Vector3();
   private shadowFocusX = 0;
@@ -232,6 +238,7 @@ export class EnvironmentView {
     this.lights = [this.skyLight, this.sunLight];
     scene.add(...this.lights);
     this.shadowMapSize = options.shadowMapSize ?? 0;
+    this.cloudShare = Math.min(1, Math.max(0, options.cloudShare ?? 1));
     if (this.shadowMapSize > 0) {
       [this.shadowGround, this.shadowMaterial] = this.createShadows(this.shadowMapSize);
       // The shadow camera follows its focus: the light's target moves, so it must be in the scene.
@@ -702,9 +709,9 @@ export class EnvironmentView {
     return [ground, material];
   }
 
-  /** Shows Math.round(`cover` × CLOUD_COUNT) clouds: no draw call for none. */
+  /** Shows Math.round(`cover` × CLOUD_COUNT × the cloud share) clouds: no draw call for none. */
   private showClouds(cover: number): void {
-    const count = Math.round(CLOUD_COUNT * Math.min(1, Math.max(0, cover)));
+    const count = Math.round(CLOUD_COUNT * Math.min(1, Math.max(0, cover)) * this.cloudShare);
     this.cloudGeometry.instanceCount = count * PUFFS_PER_CLOUD;
     this.clouds.visible = count > 0;
   }

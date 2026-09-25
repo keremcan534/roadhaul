@@ -131,6 +131,12 @@ describe('RoadsideView', () => {
     const shader = { uniforms: {} as Record<string, { value: number }>, vertexShader: '#include <common>\n#include <begin_vertex>', fragmentShader: '' };
     material.onBeforeCompile(shader as never, undefined as never);
     expect(shader.vertexShader).toContain('position.y * position.y');
+    // Grass bends more than bushes, through a uniform: every kind shares one program.
+    const bush = { uniforms: {} as Record<string, { value: number }>, vertexShader: '#include <common>\n#include <begin_vertex>', fragmentShader: '' };
+    (meshOf(scene, 'bush').material as MeshBasicMaterial).onBeforeCompile(bush as never, undefined as never);
+    expect(shader.uniforms['windBend']!.value).toBeGreaterThan(bush.uniforms['windBend']!.value);
+    const programs = new Set(ROADSIDE_KINDS.map((kind) => (meshOf(scene, kind).material as MeshBasicMaterial).customProgramCacheKey()));
+    expect(programs.size).toBe(1);
 
     view.update(spawn.x, spawn.z, 2);
     view.update(spawn.x, spawn.z, 0.5);

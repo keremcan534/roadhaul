@@ -376,13 +376,18 @@ export class RoadsideView {
     return surroundings;
   }
 
-  /** Bends `material`'s plants in the wind: the tips the most, each plant at its own phase. */
+  /**
+   * Bends `material`'s plants in the wind: the tips the most, each plant at
+   * its own phase. The bend is a uniform, so every kind shares one program.
+   */
   private sway(material: MeshBasicMaterial, bend: number): void {
     const wind = this.wind;
+    const windBend = { value: bend };
     material.onBeforeCompile = (shader) => {
       shader.uniforms['windTime'] = wind;
+      shader.uniforms['windBend'] = windBend;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float windTime;')
+        .replace('#include <common>', '#include <common>\nuniform float windTime;\nuniform float windBend;')
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
@@ -393,12 +398,12 @@ export class RoadsideView {
           #endif
           float gust = sin( windTime * 1.9 + plantRoot.x * 0.35 + plantRoot.z * 0.27 )
             + 0.5 * sin( windTime * 3.3 + plantRoot.x * 0.9 - plantRoot.z * 0.6 );
-          float bend = gust * position.y * position.y * ${bend.toFixed(4)};
+          float bend = gust * position.y * position.y * windBend;
           transformed.x += bend;
           transformed.z += bend * 0.6;`,
         );
     };
-    material.customProgramCacheKey = () => `roadside-wind:${bend}`;
+    material.customProgramCacheKey = () => 'roadside-wind';
   }
 }
 

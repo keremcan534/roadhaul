@@ -89,9 +89,19 @@ import './ui/styles.css';
  */
 /** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
 const PANEL_STANDSTILL_SPEED = 0.5;
-/** Drawn in software (RenderHost.softwareRendering): the shadow map at most this size, and this share of the plants. */
+/**
+ * Drawn in software (RenderHost.softwareRendering): the shadow map at most
+ * this size, and this share of the plants and of the clouds.
+ */
 const SOFTWARE_SHADOW_MAP_SIZE = 1024;
 const SOFTWARE_VEGETATION_SHARE = 0.5;
+const SOFTWARE_CLOUD_SHARE = 0.5;
+/**
+ * Drawn in software, a frame takes about 100 ms; a fixed step, well under a
+ * millisecond. Up to this many steps a frame keep the simulation in real
+ * time down to 5 FPS (the configured cap would slow it to half speed).
+ */
+const SOFTWARE_MAX_STEPS_PER_FRAME = 12;
 
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -155,16 +165,18 @@ async function start(): Promise<void> {
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
   const castShadows = config.rendering.shadowMapSize > 0;
-  // Drawn in software (no GPU), every pixel is dear: coarser shadows and half the plants.
+  // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
+    cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
   });
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
     prelit,
     sky: environment.sky,
+    groundDetail: !software,
   });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
@@ -898,7 +910,10 @@ async function start(): Promise<void> {
   const pose = { x: 0, z: 0, heading: 0 };
   const loop = new GameLoop(
     animationFrameScheduler,
-    new FixedTimestep(config.simulation.fixedStepSeconds, config.simulation.maxStepsPerFrame),
+    new FixedTimestep(
+      config.simulation.fixedStepSeconds,
+      software ? Math.max(SOFTWARE_MAX_STEPS_PER_FRAME, config.simulation.maxStepsPerFrame) : config.simulation.maxStepsPerFrame,
+    ),
     {
       fixedUpdate: (stepSeconds) => {
         if (paused || (hq.isOpen && worldHeld)) {
@@ -1026,6 +1041,8 @@ async function start(): Promise<void> {
     },
     { maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds },
   );
+  // Every view is in the scene: have the GPU compile their shaders now, behind the menu, not on the road.
+  renderHost.precompile();
   loop.start();
   root.dataset.bootState = 'ready';
 }

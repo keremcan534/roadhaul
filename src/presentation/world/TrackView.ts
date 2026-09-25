@@ -111,16 +111,21 @@ const UP = new Vector3(0, 1, 0);
  * The grass, sampled twice: as tiled, and larger and turned (a period of
  * about 38 m at an angle), half and half, so the tiles' grain does not line
  * up in a grid; then lusher or drier in meadow-sized blotches from a second,
- * small texture, sampled at about 110 m and, turned, at about 33 m.
+ * small texture, sampled at about 110 m and, turned, at about 33 m. Without
+ * GROUND_DETAIL (TrackViewOptions.groundDetail) each is sampled once.
  */
 const GROUND_MAP_FRAGMENT = /* glsl */ `
 #ifdef USE_MAP
   vec4 sampledDiffuseColor = texture2D( map, vMapUv );
-  vec2 turnedUv = mat2( 0.8, 0.6, -0.6, 0.8 ) * vMapUv * 0.37 + vec2( 0.31, 0.17 );
-  sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( map, turnedUv ), 0.5 );
   vec2 meadowUv = vMapUv * ${(GRASS_TILE_METERS / MEADOW_TILE_METERS).toFixed(4)};
-  float meadowShade = texture2D( meadow, meadowUv ).r * 0.65
-    + texture2D( meadow, mat2( 0.6, -0.8, 0.8, 0.6 ) * meadowUv * 3.3 + vec2( 0.53, 0.29 ) ).r * 0.35;
+  #ifdef GROUND_DETAIL
+    vec2 turnedUv = mat2( 0.8, 0.6, -0.6, 0.8 ) * vMapUv * 0.37 + vec2( 0.31, 0.17 );
+    sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( map, turnedUv ), 0.5 );
+    float meadowShade = texture2D( meadow, meadowUv ).r * 0.65
+      + texture2D( meadow, mat2( 0.6, -0.8, 0.8, 0.6 ) * meadowUv * 3.3 + vec2( 0.53, 0.29 ) ).r * 0.35;
+  #else
+    float meadowShade = texture2D( meadow, meadowUv ).r;
+  #endif
   sampledDiffuseColor.rgb *= mix( vec3( 0.8, 0.92, 0.8 ), vec3( 1.16, 1.08, 0.8 ), meadowShade );
   diffuseColor *= sampledDiffuseColor;
 #endif
@@ -136,6 +141,12 @@ export interface TrackViewOptions {
   readonly anisotropy?: number;
   /** Where the pre-lit ground and road and the shadows register, to follow the weather's light. */
   readonly prelit?: PrelitMaterials;
+  /**
+   * The ground samples its grass and meadow textures twice each, so nothing
+   * repeats; false samples each once (half the texture reads on the largest
+   * surface on screen, for rendering without a GPU). Default: true.
+   */
+  readonly groundDetail?: boolean;
 }
 
 /**
@@ -167,7 +178,7 @@ export class TrackView {
     this.prelit = options.prelit;
     this.wet = { wetness: { value: 0 }, wetSky: options.sky?.horizon ?? { value: new Color(WET_SKY) } };
     const anisotropy = options.anisotropy ?? 1;
-    this.root.add(this.createGround(world.halfSizeMeters, anisotropy));
+    this.root.add(this.createGround(world.halfSizeMeters, anisotropy, options.groundDetail ?? true));
     if (world.roads.length > 0) {
       this.root.add(...this.createRoads(world, anisotropy));
     }
@@ -210,7 +221,7 @@ export class TrackView {
     }
   }
 
-  private createGround(halfSize: number, anisotropy: number): Mesh {
+  private createGround(halfSize: number, anisotropy: number, detail: boolean): Mesh {
     const size = (halfSize + GROUND_MARGIN) * 2;
     const geometry = this.track(new PlaneGeometry(size, size, 96, 96));
     geometry.rotateX(-Math.PI / 2);
@@ -231,6 +242,9 @@ export class TrackView {
     const grass = this.texture(toTexture(grassImage(), { repeat: true, anisotropy }));
     grass.repeat.set(size / GRASS_TILE_METERS, size / GRASS_TILE_METERS);
     const material = this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight }));
+    if (detail) {
+      material.defines = { GROUND_DETAIL: '' };
+    }
     const meadow = { value: this.texture(toTexture(meadowImage(), { repeat: true, srgb: false })) };
     material.onBeforeCompile = (shader) => {
       shader.uniforms['meadow'] = meadow;
