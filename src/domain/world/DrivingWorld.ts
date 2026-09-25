@@ -18,16 +18,46 @@ import {
 } from '../../data/definitions/MapDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
+import {
+  Occupancy,
+  placeFieldEdges,
+  placeGrazers,
+  placePowerLines,
+  placeRocks,
+  plantTrees,
+  SCENERY_ROAD_REACH_METERS,
+  type FieldEdge,
+  type Grazer,
+  type PowerLine,
+  type Rock,
+  type SceneryGround,
+  type TreeSpecies,
+} from './countryside';
 import { cellKey, cellOf } from './gridCells';
 import { placeGuardRails, type GuardRail } from './guardRails';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork } from './RoadNetwork';
 import { createRoadPoint, RoadPath } from './RoadPath';
 import { ASPHALT, GRASS, type Surface } from './Surface';
+import {
+  billboardLegs,
+  PavementGrid,
+  placeBillboards,
+  placeSidewalks,
+  placeSpeedSigns,
+  placeStreetFurniture,
+  type Billboard,
+  type Sidewalk,
+  type SpeedSign,
+  type StreetFurniture,
+  type TownGround,
+} from './townscape';
 
 export interface TreeObstacle {
   readonly x: number;
   readonly z: number;
+  /** A planted tree's species (poplar, cypress, olive); the wild ones, without, are the views' pines and broadleaves. */
+  readonly species?: TreeSpecies;
   /** Trunk radius used for collisions, meters. */
   readonly radius: number;
   /** Visual size variation (about 0.8–1.3). */
@@ -175,6 +205,13 @@ export interface BuildingObstacle {
 }
 
 const TREE_TRUNK_RADIUS = 0.45;
+/**
+ * A pavement's middle keeps this far from any road's edge (its own is
+ * farther: half the pavement's width), and its whole width this far from
+ * yards, lots, turning circles and quays.
+ */
+const WALK_ROAD_CLEARANCE = 0.9;
+const WALK_YARD_CLEARANCE = 2;
 /** Trees keep at least this much space from the road edge… */
 const TREE_ROAD_CLEARANCE = 4;
 /** …and are scattered up to this far beyond it. */
@@ -294,6 +331,16 @@ export class DrivingWorld {
   readonly turningCircles: readonly TurningCircle[];
   /** The sea along the west edge, with its quays, boats and cranes; null when the map is all land. */
   readonly sea: Sea | null;
+  /** The countryside (countryside.ts): power lines along the country roads, the fields' fences and walls, boulders and grazing animals. */
+  readonly powerLines: readonly PowerLine[];
+  readonly fieldEdges: readonly FieldEdge[];
+  readonly rocks: readonly Rock[];
+  readonly grazers: readonly Grazer[];
+  /** The towns (townscape.ts): pavements along the streets, what stands on them, billboards and speed limits. */
+  readonly sidewalks: readonly Sidewalk[];
+  readonly streetFurniture: readonly StreetFurniture[];
+  readonly billboards: readonly Billboard[];
+  readonly speedSigns: readonly SpeedSign[];
   /**
    * The solid circles (tree trunks, lamp and sign posts, bales, turbine
    * towers), filed by grid cell as indices into the arrays below.
@@ -317,6 +364,8 @@ export class DrivingWorld {
   private readonly railRoadwardZ: Float64Array;
   /** The road pieces by where they are: which ground a point is on, without visiting every road. */
   private readonly roadGrid: RoadGrid;
+  /** The pavements' pieces by where they are: paved ground beside the town streets. */
+  private readonly pavements: PavementGrid;
   /**
    * Hardest contact of the current resolveCollisions() call: impact speed,
    * contact normal and which footprint circle touched (scratch fields, so
@@ -397,8 +446,52 @@ export class DrivingWorld {
         }
       }
     });
-    this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
+    const wildTrees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.streetLamps = this.placeStreetLamps(map.scenery.streetLampSpacingMeters);
+    // The rest of the scenery keeps clear of everything solid placed so far, and of itself.
+    const occupancy = new Occupancy();
+    for (const circle of [
+      ...wildTrees,
+      ...this.streetLamps,
+      ...this.citySigns.flatMap(signPosts),
+      ...this.hayBales,
+      ...this.windTurbines,
+      ...(this.sea?.cranes.flatMap(craneLegs) ?? []),
+    ]) {
+      occupancy.add(circle.x, circle.z, circle.radius);
+    }
+    const { seed, streetscape = false, countryside = false } = map.scenery;
+    // The country's scenery asks how near the roads it is from further out than the trees do.
+    const sceneryRoads = countryside ? new RoadGrid(this.roads, SCENERY_ROAD_REACH_METERS) : this.roadGrid;
+    const ground: SceneryGround & TownGround = {
+      roads: this.roads,
+      fields: this.fields,
+      isClear: (x, z) => this.isClearForTree(x, z),
+      isClearForWalk: (x, z) => this.isClearForWalk(x, z),
+      nearRoad: (x, z, clearanceMeters) => sceneryRoads.nearRoad(x, z, clearanceMeters),
+    };
+    // The towns first (their pavements run where the streets do), then the country.
+    this.sidewalks = streetscape ? placeSidewalks(ground) : [];
+    this.pavements = new PavementGrid(this.roads, this.sidewalks);
+    this.streetFurniture = streetscape ? placeStreetFurniture(ground, this.sidewalks, occupancy) : [];
+    this.speedSigns = streetscape
+      ? placeSpeedSigns(
+          ground,
+          map.citySigns.map((sign) => ({
+            roadIndex: this.roads.findIndex((road) => road.id === sign.roadId),
+            distanceMeters: sign.distanceMeters,
+            direction: sign.direction,
+          })),
+          occupancy,
+        )
+      : [];
+    this.billboards = streetscape ? placeBillboards(ground, occupancy) : [];
+    this.powerLines = countryside ? placePowerLines(ground, occupancy) : [];
+    this.fieldEdges = countryside ? placeFieldEdges(ground) : [];
+    const plantedTrees = countryside ? plantTrees(ground, occupancy, seed) : [];
+    this.rocks = countryside ? placeRocks(ground, occupancy, map.halfSizeMeters, seed) : [];
+    this.grazers = countryside ? placeGrazers(ground, occupancy, seed) : [];
+    this.trees = [...wildTrees, ...plantedTrees];
     const circles = [
       ...this.trees,
       ...this.streetLamps,
@@ -406,6 +499,12 @@ export class DrivingWorld {
       ...this.hayBales,
       ...this.windTurbines,
       ...(this.sea?.cranes.flatMap(craneLegs) ?? []),
+      ...this.powerLines.flatMap((line) => line.poles),
+      ...this.rocks,
+      ...this.grazers,
+      ...this.streetFurniture,
+      ...this.billboards.flatMap(billboardLegs),
+      ...this.speedSigns,
     ];
     this.circleX = Float64Array.from(circles, (circle) => circle.x);
     this.circleZ = Float64Array.from(circles, (circle) => circle.z);
@@ -423,12 +522,12 @@ export class DrivingWorld {
   }
 
   /**
-   * The ground under a point: asphalt on any road, turning circle, depot yard
-   * or rest area lot, grass everywhere else. Allocation-free: the truck asks
-   * every fixed step.
+   * The ground under a point: asphalt on any road, pavement, turning circle,
+   * depot yard or rest area lot, grass everywhere else. Allocation-free: the
+   * truck asks every fixed step.
    */
   surfaceAt(x: number, z: number): Surface {
-    if (this.roadGrid.onRoad(x, z)) {
+    if (this.roadGrid.onRoad(x, z) || this.pavements.contains(x, z)) {
       return ASPHALT;
     }
     if (this.isOnQuay(x, z)) {
@@ -963,6 +1062,27 @@ export class DrivingWorld {
   /** Whether something standing at (x, z) would be in the way of a name board. */
   private hidesCitySign(x: number, z: number): boolean {
     return this.citySigns.some((sign) => Math.hypot(x - sign.x, z - sign.z) < SIGN_CLEARANCE_METERS);
+  }
+
+  /**
+   * Whether a pavement may run through (x, z): off every road's surface (with
+   * a little margin: its own lies beside it), out of the depot yards, rest
+   * area lots, turning circles and quays, where trucks drive in.
+   */
+  private isClearForWalk(x: number, z: number): boolean {
+    if (this.roadGrid.nearRoad(x, z, WALK_ROAD_CLEARANCE)) {
+      return false;
+    }
+    if (this.isWater(x, z, 1) || this.isOnQuay(x, z, WALK_YARD_CLEARANCE)) {
+      return false;
+    }
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, WALK_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, WALK_YARD_CLEARANCE))) {
+      return false;
+    }
+    return this.turningCircles.every((circle) => Math.hypot(x - circle.x, z - circle.z) > circle.radiusMeters + WALK_YARD_CLEARANCE);
   }
 
   private isClearForTree(x: number, z: number): boolean {
