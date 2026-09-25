@@ -24,6 +24,7 @@ import {
   applyConfigOverrides,
   requestedDateMs,
   requestedLampLight,
+  requestedSpawn,
   requestedTimeOfDay,
 } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
@@ -154,9 +155,11 @@ async function start(): Promise<void> {
   // `?date=` sets the calendar the special events run by (tests, previews); the real date otherwise.
   const startDateMs = requestedDateMs(query);
   const clock = startDateMs === null ? systemClock : shiftedClock(systemClock, startDateMs - systemClock.now());
+  // `?spawn=x,z,heading` starts a new game there (a debug switch: to look round a place without driving to it).
+  const spawn = requestedSpawn(query);
   const services = await new GameBootstrapper({
     config,
-    content: GAME_CONTENT,
+    content: spawn === null ? GAME_CONTENT : { ...GAME_CONTENT, maps: GAME_CONTENT.maps.map((map) => ({ ...map, spawn })) },
     logger,
     clock,
     storage,

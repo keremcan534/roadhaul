@@ -31,6 +31,21 @@ export function requestedLampLight(query: QueryParameters): boolean | null {
   return lamps === '0' || lamps === '1' ? lamps === '1' : null;
 }
 
+/**
+ * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
+ * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
+ * along +x; 0 if left out), to look round a place without driving to it.
+ * Null when the URL does not say, or says something else.
+ */
+export function requestedSpawn(query: QueryParameters): { readonly x: number; readonly z: number; readonly headingDegrees: number } | null {
+  const parts = (query.get('spawn') ?? '').split(',').map((part) => Number(part.trim()));
+  const [x, z, headingDegrees = 0] = parts;
+  if ((parts.length !== 2 && parts.length !== 3) || !parts.every(Number.isFinite) || x === undefined || z === undefined) {
+    return null;
+  }
+  return { x, z, headingDegrees };
+}
+
 /** A time of day the URL asks for: a time on the clock, or the moment the sky takes one of the time's looks. */
 export type RequestedTime = { readonly minutes: number } | { readonly phase: DaylightPhase };
 

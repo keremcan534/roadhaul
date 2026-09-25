@@ -4,6 +4,7 @@ import {
   applyConfigOverrides,
   requestedDateMs,
   requestedLampLight,
+  requestedSpawn,
   requestedTimeOfDay,
   type QueryParameters,
 } from '../../../src/platform/browser/configOverrides';
@@ -114,5 +115,17 @@ describe('requestedTimeOfDay', () => {
     expect(requestedTimeOfDay(query('?weather=rain'))).toBeNull();
     expect(requestedTimeOfDay(query('?time=25:00'))).toBeNull();
     expect(requestedTimeOfDay(query(''))).toBeNull();
+  });
+});
+
+describe('requestedSpawn', () => {
+  it('starts the truck where ?spawn=x,z[,heading in degrees] says, and nowhere else without one it can read', () => {
+    expect(requestedSpawn(query('?spawn=-1086,-339,-68'))).toEqual({ x: -1086, z: -339, headingDegrees: -68 });
+    expect(requestedSpawn(query('?spawn=12.5, 40'))).toEqual({ x: 12.5, z: 40, headingDegrees: 0 });
+    expect(requestedSpawn(query('?spawn=12'))).toBeNull();
+    expect(requestedSpawn(query('?spawn=1,2,3,4'))).toBeNull();
+    expect(requestedSpawn(query('?spawn=a,2'))).toBeNull();
+    expect(requestedSpawn(query('?spawn='))).toBeNull();
+    expect(requestedSpawn(query(''))).toBeNull();
   });
 });
