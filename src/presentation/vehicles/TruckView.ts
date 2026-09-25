@@ -121,6 +121,8 @@ export interface TruckViewOptions {
   readonly paint?: number;
   /** Each upgraded part at its level (UpgradeDefinition.look); parts left out are as built. */
   readonly looks?: Partial<TruckLooks>;
+  /** The truck casts the sun's real-time shadows (the high preset's shadow map). Default: false. */
+  readonly castShadows?: boolean;
 }
 
 /**
@@ -521,6 +523,16 @@ export class TruckView {
     this.root.add(shadow, this.headlightPool, this.body, this.cabin, this.wheels);
     if (this.calipers !== null) {
       this.root.add(this.calipers);
+    }
+    if (options.castShadows === true) {
+      // The truck itself, not its soft shadow, the light on the road or the glows.
+      for (const part of [this.body, this.cabin, this.wheels]) {
+        part.traverse((object) => {
+          if (object instanceof Mesh) {
+            object.castShadow = true;
+          }
+        });
+      }
     }
     scene.add(this.root);
   }

@@ -358,6 +358,28 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(glowsOf(scene).visible).toBe(false);
   });
 
+  it('casts the sun\'s real-time shadows from its body, cab and wheels when asked, never from its soft shadow or lights', () => {
+    const plain = new Scene();
+    const shadowed = new Scene();
+    new TruckView(plain, truck);
+    new TruckView(shadowed, truck, { castShadows: true });
+    const casting = (scene: Scene): Mesh[] => {
+      const meshes: Mesh[] = [];
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.castShadow) meshes.push(object);
+      });
+      return meshes;
+    };
+
+    expect(casting(plain)).toEqual([]);
+    const casters = casting(shadowed);
+    expect(casters.length).toBeGreaterThan(3);
+    expect(casters).toContain(wheelsOf(shadowed));
+    expect(casters).not.toContain(shadowed.getObjectByName('headlight-pool'));
+    // The soft shadow: the see-through black plane under the truck.
+    expect(casters.some((mesh) => mesh.material instanceof MeshBasicMaterial && mesh.material.transparent && mesh.material.color.getHex() === 0)).toBe(false);
+  });
+
   it('releases every GPU resource on dispose', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);

@@ -1,4 +1,4 @@
-import { Box3, Color, InstancedMesh, Matrix4, Points, Scene, Vector3, type BufferAttribute, type MeshBasicMaterial } from 'three';
+import { Box3, Color, InstancedMesh, Matrix4, Points, Quaternion, Scene, Vector3, type BufferAttribute, type MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { TRAFFIC_VEHICLES } from '../../../../src/data/content/trafficVehicles';
 import { TrafficSimulation } from '../../../../src/domain/traffic/TrafficSimulation';
@@ -34,6 +34,10 @@ function lampsOf(scene: Scene): InstancedMesh {
   return scene.getObjectByName('traffic:lamps') as InstancedMesh;
 }
 
+function shadowsOf(scene: Scene): InstancedMesh {
+  return scene.getObjectByName('traffic:shadows') as InstancedMesh;
+}
+
 function glowsOf(scene: Scene): Points {
   let glows: Points | null = null;
   scene.traverse((object) => {
@@ -43,11 +47,11 @@ function glowsOf(scene: Scene): Points {
 }
 
 describe('TrafficView', () => {
-  it('draws all traffic in one draw call per kind of vehicle, one for all their lamps and one for their glow at night', () => {
+  it('draws all traffic in one draw call per kind of vehicle, one for all their lamps, one for their shadows and one for their glow at night', () => {
     const scene = new Scene();
     new TrafficView(scene, TRAFFIC_VEHICLES, 16);
 
-    expect(drawCallCount(scene)).toBe(TRAFFIC_VEHICLES.length + 2);
+    expect(drawCallCount(scene)).toBe(TRAFFIC_VEHICLES.length + 3);
     expect(glowsOf(scene).visible).toBe(false);
     for (const mesh of meshesOf(scene)) {
       expect(mesh.count).toBe(0);
@@ -112,7 +116,7 @@ describe('TrafficView', () => {
     cars.getColorAt(0, paint);
     expect(paint.getHex()).toBe(new Color(sim.color[car]).getHex());
     // Other kinds have nothing to draw.
-    const others = meshesOf(scene).filter((mesh) => mesh !== cars && mesh !== lampsOf(scene));
+    const others = meshesOf(scene).filter((mesh) => mesh !== cars && mesh !== lampsOf(scene) && mesh !== shadowsOf(scene));
     expect(others.every((mesh) => mesh.count === 0)).toBe(true);
     view.update(null, 1);
     expect(cars.count).toBe(0);
@@ -177,6 +181,45 @@ describe('TrafficView', () => {
 
     expect(lampsOf(scene).count).toBe(4);
     expect(glowsOf(scene).visible).toBe(false);
+  });
+
+  it('sets every vehicle on a soft shadow a little larger than itself, turned with it', () => {
+    const scene = new Scene();
+    const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8);
+    const sim = traffic();
+    const car = sim.addVehicle(0, north, 50, 10);
+    sim.addVehicle(0, north, 150, 10);
+    sim.update(1 / 60, truck, footprint);
+    const shadows = shadowsOf(scene);
+    expect((shadows.material as MeshBasicMaterial).transparent).toBe(true);
+    expect((shadows.material as MeshBasicMaterial).depthWrite).toBe(false);
+
+    view.update(sim, 1);
+
+    expect(shadows.count).toBe(2);
+    const matrix = new Matrix4();
+    shadows.getMatrixAt(0, matrix);
+    const position = new Vector3();
+    const scale = new Vector3();
+    matrix.decompose(position, new Quaternion(), scale);
+    expect(position.x).toBeCloseTo(sim.x[car]!, 3);
+    expect(position.z).toBeCloseTo(sim.z[car]!, 3);
+    const type = TRAFFIC_VEHICLES[0]!;
+    expect(scale.x).toBeGreaterThan(type.widthMeters);
+    expect(scale.z).toBeGreaterThan(type.lengthMeters);
+    view.update(null, 1);
+    expect(shadows.count).toBe(0);
+  });
+
+  it('casts the sun\'s real-time shadows only when asked, never from the lamps or the soft shadows', () => {
+    const plain = new Scene();
+    const shadowed = new Scene();
+    new TrafficView(plain, TRAFFIC_VEHICLES, 8);
+    new TrafficView(shadowed, TRAFFIC_VEHICLES, 8, { castShadows: true });
+
+    expect(meshesOf(plain).some((mesh) => mesh.castShadow)).toBe(false);
+    const casting = meshesOf(shadowed).filter((mesh) => mesh.castShadow).map((mesh) => mesh.name);
+    expect(casting).toEqual(TRAFFIC_VEHICLES.map((type) => `traffic:${type.id}`));
   });
 
   it('releases every GPU resource on dispose', () => {

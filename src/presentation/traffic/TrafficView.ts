@@ -8,12 +8,16 @@ import {
   Matrix4,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  PlaneGeometry,
   type BufferGeometry,
+  type DataTexture,
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
 import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
+import { softBoxShadowImage } from '../textures/proceduralImages';
+import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
 
 /** Parts in white take the vehicle's paint (the instance colour); the rest are dark or light enough to stay themselves. */
@@ -33,17 +37,27 @@ const GLOW_SIZE_METERS = 1.6;
 const GLOW_OFFSET_METERS = 0.12;
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
+/** The soft shadow under a vehicle reaches this much past its sides and ends, meters, and is this dark in its middle. */
+const SHADOW_MARGIN_METERS = 0.7;
+const SHADOW_OPACITY = 0.5;
+
+export interface TrafficViewOptions {
+  /** False leaves the lamps without their glow at night (weaker devices). Default: true. */
+  readonly lampGlows?: boolean;
+  /** The vehicles cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
+  readonly castShadows?: boolean;
+}
 
 /**
  * Draws the NPC traffic (roadmap step 22): one instanced mesh per kind of
  * vehicle, so all traffic costs a draw call per kind, and one more for all
  * their lamps (self-lit, so they shine at night). Shapes are generic and
  * original: a hatchback-like car, a van, a box lorry and a bus, low-poly
- * with dark glass and tyres, painted per vehicle. Vehicles move between
- * fixed steps like the truck (interpolated poses). At night (setLamps) the
- * lamps glow, one more draw call. Per frame it only writes instance
- * matrices (and glow positions at night), and colours when a new vehicle
- * takes a slot.
+ * with dark glass and tyres, painted per vehicle, each on a soft shadow
+ * (one more draw call for all of them). Vehicles move between fixed steps
+ * like the truck (interpolated poses). At night (setLamps) the lamps glow,
+ * one more draw call. Per frame it only writes instance matrices (and glow
+ * positions at night), and colours when a new vehicle takes a slot.
  */
 export class TrafficView {
   private readonly root = new Group();
@@ -59,16 +73,20 @@ export class TrafficView {
   private readonly lampBoxes: readonly (readonly Matrix4[])[];
   private readonly glowSpots: readonly Float32Array[];
   private readonly glows: LampGlows;
+  /** Every vehicle's soft shadow, in the order vehicles are drawn; each kind's size (x, z scale) for its shadow. */
+  private readonly shadows: InstancedMesh;
+  private readonly shadowTexture: DataTexture;
+  private readonly shadowSizes: readonly (readonly [number, number])[];
   private readonly matrix = new Matrix4();
   private readonly lampMatrix = new Matrix4();
+  private readonly shadowMatrix = new Matrix4();
   private readonly paint = new Color();
 
-  /** `lampGlows: false` leaves the lamps without their glow at night (weaker devices). */
   constructor(
     private readonly scene: Scene,
     types: readonly TrafficVehicleDefinition[],
     capacity: number,
-    private readonly options: { readonly lampGlows?: boolean } = {},
+    private readonly options: TrafficViewOptions = {},
   ) {
     const instances = Math.max(1, capacity);
     const shapes = types.map(shapeOf);
@@ -78,10 +96,28 @@ export class TrafficView {
       mesh.count = 0;
       // Instances roam the whole map: the mesh's own bounds would cull them wrongly. Few vertices, cheap to draw.
       mesh.frustumCulled = false;
+      mesh.castShadow = options.castShadows === true;
       mesh.setColorAt(0, this.paint.setHex(PAINT));
       this.root.add(mesh);
       return mesh;
     });
+    this.shadowTexture = toTexture(softBoxShadowImage(), { srgb: false });
+    this.shadows = new InstancedMesh(
+      new PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0.06, 0),
+      new MeshBasicMaterial({
+        map: this.shadowTexture,
+        color: 0x000000,
+        transparent: true,
+        opacity: SHADOW_OPACITY,
+        depthWrite: false,
+      }),
+      instances,
+    );
+    this.shadows.name = 'traffic:shadows';
+    this.shadows.count = 0;
+    this.shadows.frustumCulled = false;
+    this.shadowSizes = types.map((type) => [type.widthMeters + SHADOW_MARGIN_METERS * 2, type.lengthMeters + SHADOW_MARGIN_METERS * 2]);
+    this.root.add(this.shadows);
     this.shown = types.map(() => new Int32Array(instances));
     this.counts = new Int32Array(types.length);
 
@@ -120,6 +156,7 @@ export class TrafficView {
     counts.fill(0);
     const glowing = this.glows.visible;
     let lamps = 0;
+    let shadows = 0;
     if (traffic !== null) {
       for (let i = 0; i < traffic.capacity; i++) {
         if (traffic.active[i] !== 1) {
@@ -135,6 +172,8 @@ export class TrafficView {
         const z = traffic.previousZ[i]! + (traffic.z[i]! - traffic.previousZ[i]!) * alpha;
         const heading = traffic.previousHeading[i]! + (traffic.heading[i]! - traffic.previousHeading[i]!) * alpha;
         mesh.setMatrixAt(slot, this.matrix.makeRotationY(heading).setPosition(x, 0, z));
+        const shadowSize = this.shadowSizes[type]!;
+        this.shadows.setMatrixAt(shadows++, this.shadowMatrix.makeScale(shadowSize[0], 1, shadowSize[1]).premultiply(this.matrix));
         const shown = this.shown[type]!;
         if (shown[slot] !== traffic.serial[i]) {
           shown[slot] = traffic.serial[i]!;
@@ -155,17 +194,23 @@ export class TrafficView {
       this.lamps.count = lamps;
       this.lamps.instanceMatrix.needsUpdate = true;
     }
+    if (this.shadows.count !== shadows || shadows > 0) {
+      this.shadows.count = shadows;
+      this.shadows.instanceMatrix.needsUpdate = true;
+    }
     this.glows.setCount(glowing ? lamps : 0);
   }
 
   dispose(): void {
     this.scene.remove(this.root);
-    for (const mesh of [...this.meshes, this.lamps]) {
+    for (const mesh of [...this.meshes, this.lamps, this.shadows]) {
       mesh.geometry.dispose();
       mesh.dispose();
     }
     this.material.dispose();
     this.lampMaterial.dispose();
+    (this.shadows.material as MeshBasicMaterial).dispose();
+    this.shadowTexture.dispose();
     this.glows.dispose();
   }
 

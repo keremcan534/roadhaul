@@ -166,6 +166,9 @@ describe('GameConfig', () => {
     expect(low).toMatchObject({ postProcessing: false, bloom: false });
     expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0 });
     expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4 });
+    // Real-time shadows are for the high preset only (CLAUDE.md: none by default on phones).
+    expect([low!.shadowMapSize, medium!.shadowMapSize]).toEqual([0, 0]);
+    expect(high!.shadowMapSize).toBeGreaterThanOrEqual(1024);
     const applied = applyQualityPreset(DEFAULT_GAME_CONFIG, 'low');
     expect(applied.rendering).toMatchObject({ quality: 'low', maxPixelRatio: low!.maxPixelRatio, lampGlows: false });
     expect(applied.traffic.maxVehicles).toBe(low!.trafficVehicles);
@@ -184,6 +187,7 @@ describe('GameConfig', () => {
         postProcessing: 1 as never,
         bloom: undefined as never,
         msaaSamples: 2.5,
+        shadowMapSize: 1000,
       },
     };
 
@@ -196,6 +200,7 @@ describe('GameConfig', () => {
       'rendering.postProcessing',
       'rendering.bloom',
       'rendering.msaaSamples',
+      'rendering.shadowMapSize',
     ]);
   });
 

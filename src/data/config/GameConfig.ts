@@ -45,6 +45,12 @@ export interface GameConfig {
     readonly bloom: boolean;
     /** With postProcessing: multisampling of the scene (4: smooth edges); 0 smooths them in the colour pass (FXAA). */
     readonly msaaSamples: number;
+    /**
+     * The sun's real-time shadows of the truck and the traffic, round the
+     * truck: the shadow map's size in texels (a power of two), or 0 for
+     * none (the soft shadows under them stay either way).
+     */
+    readonly shadowMapSize: number;
   };
   readonly missions: {
     /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
@@ -143,6 +149,7 @@ export interface QualityPreset {
   readonly postProcessing: boolean;
   readonly bloom: boolean;
   readonly msaaSamples: number;
+  readonly shadowMapSize: number;
   /** NPC vehicles around the truck. */
   readonly trafficVehicles: number;
 }
@@ -157,6 +164,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     postProcessing: false,
     bloom: false,
     msaaSamples: 0,
+    shadowMapSize: 0,
     trafficVehicles: 8,
   },
   medium: {
@@ -168,6 +176,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     postProcessing: true,
     bloom: true,
     msaaSamples: 0,
+    shadowMapSize: 0,
     trafficVehicles: 12,
   },
   high: {
@@ -179,13 +188,15 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     postProcessing: true,
     bloom: true,
     msaaSamples: 4,
+    shadowMapSize: 2048,
     trafficVehicles: 16,
   },
 });
 
 /**
  * `config` with the graphics preset `level`: resolution, rain, smoke and
- * dust, glows, the colour pass and its bloom and smoothing, and how much traffic.
+ * dust, glows, the colour pass and its bloom and smoothing, the sun's
+ * shadows, and how much traffic.
  */
 export function applyQualityPreset(config: GameConfig, level: QualityLevel): GameConfig {
   const { trafficVehicles, ...rendering } = QUALITY_PRESETS[level];
@@ -214,6 +225,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     postProcessing: true,
     bloom: true,
     msaaSamples: 4,
+    shadowMapSize: 2048,
   },
   missions: {
     loadingSeconds: 3,
@@ -292,6 +304,12 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     Number.isInteger(rendering.msaaSamples) && rendering.msaaSamples >= 0 && rendering.msaaSamples <= 8,
     'rendering.msaaSamples',
     'must be a whole number from 0 to 8',
+  );
+  validator.check(
+    rendering.shadowMapSize === 0 ||
+      (Number.isInteger(Math.log2(rendering.shadowMapSize)) && rendering.shadowMapSize >= 256 && rendering.shadowMapSize <= 4096),
+    'rendering.shadowMapSize',
+    'must be 0 or a power of two from 256 to 4096',
   );
   validator.check(
     Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,

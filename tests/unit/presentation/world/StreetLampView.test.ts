@@ -93,6 +93,21 @@ describe('StreetLampView', () => {
     expect(shownDrawCalls(scene)).toBe(2);
   });
 
+  it('casts the posts\' real-time shadows when asked, never the lenses\' or the pools\'', () => {
+    const casting = (options: { castShadows?: boolean }): string[] => {
+      const scene = new Scene();
+      new StreetLampView(scene, LAMPS, options);
+      const names: string[] = [];
+      scene.traverse((object) => {
+        if (object instanceof InstancedMesh && object.castShadow) names.push(object.name);
+      });
+      return names;
+    };
+
+    expect(casting({})).toEqual([]);
+    expect(casting({ castShadows: true })).toHaveLength(1);
+  });
+
   it('draws nothing where no road is lit', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, []);

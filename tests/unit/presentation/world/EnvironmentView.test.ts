@@ -9,7 +9,9 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   Scene,
+  ShaderLib,
   ShaderMaterial,
+  ShadowMaterial,
   Vector3,
 } from 'three';
 import { describe, expect, it } from 'vitest';
@@ -270,6 +272,66 @@ describe('EnvironmentView', () => {
       expect(linear, weather.id).toBeLessThan(plain);
       expect(linear, weather.id).toBeGreaterThan(plain * 0.5);
     }
+  });
+
+  it('casts the sun\'s real-time shadows round the truck when asked: a shadow camera that keeps still between texels', () => {
+    const plain = new Scene();
+    new EnvironmentView(plain);
+    expect(plain.getObjectByName('sun-shadows')).toBeUndefined();
+    expect(plain.children.find((child) => child instanceof DirectionalLight)!.castShadow).toBe(false);
+
+    const scene = new Scene();
+    const view = new EnvironmentView(scene, { shadowMapSize: 1024 });
+    const sun = scene.children.find((child) => child instanceof DirectionalLight)!;
+    const ground = scene.getObjectByName('sun-shadows') as Mesh;
+    expect(sun.castShadow).toBe(true);
+    expect(sun.shadow.mapSize.toArray()).toEqual([1024, 1024]);
+    expect(ground.receiveShadow).toBe(true);
+    expect(ground.material).toBeInstanceOf(ShadowMaterial);
+    // Drawn once whatever the weather: lit shaders sample the map even while it is not updated.
+    expect(sun.shadow.needsUpdate).toBe(true);
+    // The light's target follows the focus, so it is in the scene.
+    expect(sun.target.parent).toBe(scene);
+
+    view.applyWeather(look('clear'), look('clear'), 1);
+    view.focusShadows(1234.5, -678.25);
+    expect(ground.position.x).toBe(1234.5);
+    expect(ground.position.z).toBe(-678.25);
+    // Near the focus (within a texel across the rays), and the light still comes from the sun.
+    const texel = 100 / 1024;
+    const target = sun.target.position.clone();
+    const towardFocus = new Vector3(1234.5, 0, -678.25).sub(target);
+    const direction = view.sky.sunDirection.value;
+    const across = towardFocus.clone().sub(direction.clone().multiplyScalar(towardFocus.dot(direction)));
+    expect(across.length()).toBeLessThan(texel);
+    expect(sun.position.clone().sub(target).normalize().distanceTo(direction)).toBeLessThan(1e-9);
+    // A step smaller than a texel's worth leaves the shadow camera where it was.
+    view.focusShadows(1234.5 + texel * 0.1, -678.25);
+    expect(sun.target.position.distanceTo(target)).toBeLessThan(texel);
+
+    // Strong by day, fainter as the sun sinks, none at night: then the map is not drawn at all.
+    const material = ground.material as ShadowMaterial;
+    const noon = material.opacity;
+    expect(ground.visible).toBe(true);
+    expect(sun.shadow.autoUpdate).toBe(true);
+    view.applyWeather(look('dusk'), look('dusk'), 1);
+    expect(material.opacity).toBeLessThan(noon);
+    expect(material.opacity).toBeGreaterThan(0.1);
+    view.applyWeather(look('night'), look('night'), 1);
+    expect(ground.visible).toBe(false);
+    expect(sun.shadow.autoUpdate).toBe(false);
+    view.applyWeather(look('clear'), look('clear'), 1);
+    expect(sun.shadow.autoUpdate).toBe(true);
+    expect(sun.shadow.needsUpdate).toBe(true);
+
+    // The ground's shadows fade out toward its edges, so no line shows where the map ends.
+    const shader = { uniforms: {}, vertexShader: ShaderLib.shadow.vertexShader, fragmentShader: ShaderLib.shadow.fragmentShader };
+    material.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.fragmentShader).toContain('opacity * edge * ( 1.0 - getShadowMask() )');
+    expect(shader.vertexShader).toContain('vShadowUv = uv;');
+
+    view.dispose();
+    expect(scene.children).toEqual([]);
   });
 
   it('does nothing while the weather looks the same', () => {

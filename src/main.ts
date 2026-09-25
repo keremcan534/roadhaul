@@ -149,7 +149,11 @@ async function start(): Promise<void> {
   const renderHost = new RenderHost(canvas, config.rendering);
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
-  const environment = new EnvironmentView(renderHost.scene, { hdr: renderHost.postProcessing });
+  const castShadows = config.rendering.shadowMapSize > 0;
+  const environment = new EnvironmentView(renderHost.scene, {
+    hdr: renderHost.postProcessing,
+    shadowMapSize: config.rendering.shadowMapSize,
+  });
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
     prelit,
@@ -158,7 +162,7 @@ async function start(): Promise<void> {
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
-  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows });
+  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows, castShadows });
   new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
     anisotropy: renderHost.anisotropy,
     prelit,
@@ -183,6 +187,7 @@ async function start(): Promise<void> {
   });
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
+    castShadows,
   });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity);
@@ -194,7 +199,7 @@ async function start(): Promise<void> {
   /** Whether sound plays, as last written to the page (e2e tests read it). */
   let shownSound = '';
   // Rebuilt whenever the player drives another truck (showActiveTruck).
-  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
+  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
@@ -377,7 +382,7 @@ async function start(): Promise<void> {
       paint = owned?.paint?.color ?? model.factoryColor;
       fitted = owned?.upgrades ?? {};
     }
-    const options = { lampGlows, paint, looks: truckLooks(fitted, content.upgrades.all) };
+    const options = { lampGlows, castShadows, paint, looks: truckLooks(fitted, content.upgrades.all) };
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
       truck = new TruckView(renderHost.scene, definition, options);
@@ -935,6 +940,7 @@ async function start(): Promise<void> {
         cameraRig.update(pose, vehicle, deltaSeconds);
         environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
+        environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.

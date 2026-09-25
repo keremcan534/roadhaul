@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, PerspectiveCamera, Scene, Vector2, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, WebGLRenderer } from 'three';
 import { PostProcessing, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
@@ -9,6 +9,8 @@ export interface RenderSettings {
   readonly postProcessing: boolean;
   readonly bloom: boolean;
   readonly msaaSamples: number;
+  /** The sun's real-time shadows (EnvironmentView): a shadow map this many texels square, or 0 for none. */
+  readonly shadowMapSize: number;
 }
 
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
@@ -57,6 +59,10 @@ export class RenderHost {
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
     // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
     this.renderer.info.autoReset = false;
+    // Soft-edged (percentage-closer) shadow maps, where the preset has them. Set once: switching them later
+    // would rebuild every lit shader.
+    this.renderer.shadowMap.enabled = settings.shadowMapSize > 0;
+    this.renderer.shadowMap.type = PCFShadowMap;
     this.post =
       settings.postProcessing && PostProcessing.supported(this.renderer)
         ? new PostProcessing(this.renderer, {

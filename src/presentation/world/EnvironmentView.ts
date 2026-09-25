@@ -15,6 +15,7 @@ import {
   MeshLambertMaterial,
   PlaneGeometry,
   ShaderMaterial,
+  ShadowMaterial,
   SphereGeometry,
   Vector3,
   type Scene,
@@ -92,6 +93,21 @@ const PUFF_QUAD = 1.33;
 const CLOUD_HEIGHT = 1.9;
 /** The clouds turn slowly round the camera: this many radians a second (once round in 40 minutes). */
 const CLOUD_DRIFT = (Math.PI * 2) / 2400;
+/**
+ * Real-time shadows (EnvironmentViewOptions.shadowMapSize) fall this far
+ * either way round their focus (focusShadows), meters; the sun's shadow
+ * camera stands this far up its rays from there. Without shadows the light
+ * stands this far from the middle of the map.
+ */
+const SHADOW_EXTENT_METERS = 50;
+const SHADOW_DISTANCE_METERS = 150;
+const SUN_DISTANCE_METERS = 300;
+/** How dark a shadow is in full sun, like the soft ones under trees; below this much sunlight there are none. */
+const SHADOW_OPACITY = 0.5;
+const MIN_SHADOW_SUNLIGHT = 0.2;
+/** The ground that shows the shadows lies this high, over the road's markings (polygon offset) and under the pools of light. */
+const SHADOW_Y = 0.02;
+const UP = new Vector3(0, 1, 0);
 /** The ground below the horizon is the horizon's colour, this much darker. */
 const GROUND_HAZE_SHADE = 0.86;
 /**
@@ -127,6 +143,12 @@ export interface EnvironmentViewOptions {
    * same. Default: false.
    */
   readonly hdr?: boolean;
+  /**
+   * The sun casts real-time shadows round a focus (focusShadows) into a map
+   * this many texels square (the renderer's shadow map must be on); 0 or
+   * absent: none. The objects that cast them set castShadow.
+   */
+  readonly shadowMapSize?: number;
 }
 
 /** The sky as other shaders see it (the sea mirrors it): its colours and the sun, kept up to date by applyWeather(). */
@@ -174,6 +196,14 @@ export class EnvironmentView {
   private readonly resources: { dispose(): void }[] = [];
   private readonly colorGrade = createColorGrade();
   private readonly fogScale: number;
+  /** Real-time shadows: the ground that shows them and its material, or null without them. */
+  private readonly shadowGround: Mesh | null = null;
+  private readonly shadowMaterial: ShadowMaterial | null = null;
+  private readonly shadowMapSize: number;
+  private readonly shadowAcross = new Vector3();
+  private readonly shadowUp = new Vector3();
+  private shadowFocusX = 0;
+  private shadowFocusZ = 0;
   /** Scratch colours for blending looks, and what was last applied (so an unchanged look costs nothing). */
   private readonly tint = new Color();
   private readonly scratch = new Color();
@@ -193,10 +223,20 @@ export class EnvironmentView {
     scene.fog = this.fog;
 
     this.sunLight = new DirectionalLight(SUN_COLOR, SUN_INTENSITY);
-    this.sunLight.position.set(SUN_DIRECTION.x * 300, SUN_DIRECTION.y * 300, SUN_DIRECTION.z * 300);
+    this.sunLight.position.set(
+      SUN_DIRECTION.x * SUN_DISTANCE_METERS,
+      SUN_DIRECTION.y * SUN_DISTANCE_METERS,
+      SUN_DIRECTION.z * SUN_DISTANCE_METERS,
+    );
     this.skyLight = new HemisphereLight(SKY_LIGHT_COLOR, GROUND_LIGHT_COLOR, SKY_LIGHT_INTENSITY);
     this.lights = [this.skyLight, this.sunLight];
     scene.add(...this.lights);
+    this.shadowMapSize = options.shadowMapSize ?? 0;
+    if (this.shadowMapSize > 0) {
+      [this.shadowGround, this.shadowMaterial] = this.createShadows(this.shadowMapSize);
+      // The shadow camera follows its focus: the light's target moves, so it must be in the scene.
+      scene.add(this.sunLight.target, this.shadowGround);
+    }
 
     this.skyUniforms = {
       zenith: { value: new Color(ZENITH) },
@@ -260,7 +300,7 @@ export class EnvironmentView {
       Math.cos(SUN_AZIMUTH) * Math.cos(elevation),
     );
     uniforms.sunLow.value = (1 - sunHeight) * (1 - sunHeight);
-    this.sunLight.position.copy(sun).multiplyScalar(300);
+    this.placeSun();
     // At night the light is the moon's: it shows where the light comes from, facing the camera.
     const moon = mix(from.moon, to.moon, blend);
     this.moon.visible = moon > 0.01;
@@ -285,6 +325,16 @@ export class EnvironmentView {
     this.showClouds(mix(from.cloudCover, to.cloudCover, blend));
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
+    if (this.shadowGround !== null && this.shadowMaterial !== null) {
+      // Long, fainter shadows from a low sun; none under a weak one (night, rain), and then the map is not drawn.
+      const shown = sunlight >= MIN_SHADOW_SUNLIGHT;
+      this.shadowMaterial.opacity = SHADOW_OPACITY * sunlight * (0.55 + 0.45 * Math.min(1, groundSun / Math.max(sunlight, 1e-3)));
+      this.shadowGround.visible = shown;
+      if (shown && !this.sunLight.shadow.autoUpdate) {
+        this.sunLight.shadow.needsUpdate = true;
+      }
+      this.sunLight.shadow.autoUpdate = shown;
+    }
 
     const grade = this.colorGrade;
     grade.saturation = mix(from.saturation, to.saturation, blend);
@@ -305,6 +355,22 @@ export class EnvironmentView {
     return this.skyUniforms;
   }
 
+  /**
+   * Keeps the sun's real-time shadows round (`x`, `z`), the truck: the
+   * shadow camera snapped to the shadow map's texels across the sun's rays,
+   * so the shadows keep still as it moves, and the ground that shows them
+   * under it. Does nothing without shadows. Allocation-free.
+   */
+  focusShadows(x: number, z: number): void {
+    if (this.shadowGround === null) {
+      return;
+    }
+    this.shadowFocusX = x;
+    this.shadowFocusZ = z;
+    this.shadowGround.position.set(x, SHADOW_Y, z);
+    this.placeSun();
+  }
+
   /** How many clouds are in the sky (Math.round of `cover` × CLOUD_COUNT), each of PUFFS_PER_CLOUD puffs. */
   get cloudCount(): number {
     return this.clouds.visible ? this.cloudGeometry.instanceCount / PUFFS_PER_CLOUD : 0;
@@ -323,7 +389,11 @@ export class EnvironmentView {
   }
 
   dispose(): void {
-    this.scene.remove(this.backdrop, ...this.lights);
+    this.scene.remove(this.backdrop, ...this.lights, this.sunLight.target);
+    if (this.shadowGround !== null) {
+      this.scene.remove(this.shadowGround);
+      this.sunLight.shadow.dispose();
+    }
     this.scene.background = null;
     this.scene.fog = null;
     for (const resource of this.resources) {
@@ -542,6 +612,94 @@ export class EnvironmentView {
     stars.frustumCulled = false;
     stars.visible = false;
     return stars;
+  }
+
+  /**
+   * Puts the sun's light up its rays: from the middle of the map without
+   * shadows; with them, from the shadows' focus snapped to the map's texels
+   * (across the rays; along them it makes no difference).
+   */
+  private placeSun(): void {
+    const sun = this.skyUniforms.sunDirection.value;
+    const target = this.sunLight.target.position;
+    if (this.shadowGround === null) {
+      target.set(0, 0, 0);
+      this.sunLight.position.copy(sun).multiplyScalar(SUN_DISTANCE_METERS);
+      return;
+    }
+    const across = this.shadowAcross.crossVectors(sun, UP);
+    if (across.lengthSq() < 1e-8) {
+      across.set(1, 0, 0);
+    }
+    across.normalize();
+    const up = this.shadowUp.crossVectors(across, sun);
+    const texel = (2 * SHADOW_EXTENT_METERS) / this.shadowMapSize;
+    const x = this.shadowFocusX;
+    const z = this.shadowFocusZ;
+    const a = Math.round((x * across.x + z * across.z) / texel) * texel;
+    const b = Math.round((x * up.x + z * up.z) / texel) * texel;
+    const c = x * sun.x + z * sun.z;
+    target.copy(across).multiplyScalar(a).addScaledVector(up, b).addScaledVector(sun, c);
+    this.sunLight.position.copy(target).addScaledVector(sun, SHADOW_DISTANCE_METERS);
+  }
+
+  /**
+   * The sun's shadow camera and the ground that shows its shadows: a square
+   * as wide as the camera sees, lying over the road, with a material that
+   * only darkens where the shadow falls and fades out toward its edges, so
+   * no line shows where the map ends.
+   */
+  private createShadows(mapSize: number): [Mesh, ShadowMaterial] {
+    const shadow = this.sunLight.shadow;
+    this.sunLight.castShadow = true;
+    shadow.mapSize.set(mapSize, mapSize);
+    const camera = shadow.camera;
+    camera.left = -SHADOW_EXTENT_METERS;
+    camera.right = SHADOW_EXTENT_METERS;
+    camera.top = SHADOW_EXTENT_METERS;
+    camera.bottom = -SHADOW_EXTENT_METERS;
+    camera.near = 1;
+    camera.far = SHADOW_DISTANCE_METERS * 2;
+    camera.updateProjectionMatrix();
+    // Soft edges; nothing both casts and receives, so no bias is needed against acne.
+    shadow.radius = 3;
+    shadow.bias = 0;
+    // Drawn on the first frame whatever the weather: every lit shader samples the map, which must exist even
+    // while it is not updated (at night).
+    shadow.needsUpdate = true;
+    const material = this.track(
+      new ShadowMaterial({
+        color: 0x000000,
+        opacity: SHADOW_OPACITY,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -10,
+      }),
+    );
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vShadowUv;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvShadowUv = uv;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vShadowUv;')
+        .replace(
+          'gl_FragColor = vec4( color, opacity * ( 1.0 - getShadowMask() ) );',
+          'vec2 fromMiddle = abs(vShadowUv - 0.5) * 2.0;\n' +
+            'float edge = 1.0 - smoothstep(0.75, 1.0, max(fromMiddle.x, fromMiddle.y));\n' +
+            'gl_FragColor = vec4( color, opacity * edge * ( 1.0 - getShadowMask() ) );',
+        );
+    };
+    const ground = new Mesh(
+      this.track(new PlaneGeometry(SHADOW_EXTENT_METERS * 2, SHADOW_EXTENT_METERS * 2).rotateX(-Math.PI / 2)),
+      material,
+    );
+    ground.name = 'sun-shadows';
+    ground.receiveShadow = true;
+    // Over the ground's see-through decals and the sky's layers, before lights, glows and smoke.
+    ground.renderOrder = -0.5;
+    ground.frustumCulled = false;
+    return [ground, material];
   }
 
   /** Shows Math.round(`cover` × CLOUD_COUNT) clouds: no draw call for none. */

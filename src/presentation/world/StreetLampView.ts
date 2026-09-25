@@ -46,6 +46,8 @@ const POOL_OPACITY = 0.6;
 export interface StreetLampViewOptions {
   /** Whether lit lamps glow and light the road beneath them (off on the low preset). Default: true. */
   readonly lampGlows?: boolean;
+  /** The posts cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
+  readonly castShadows?: boolean;
 }
 
 /**
@@ -77,6 +79,7 @@ export class StreetLampView {
       return;
     }
     const posts = this.instanced(this.track(postGeometry()), this.track(new MeshLambertMaterial({ vertexColors: true })), lamps);
+    posts.castShadow = options.castShadows === true;
     const lenses = this.instanced(
       this.track(new BoxGeometry(0.26, 0.04, 0.6).translate(0, LENS_Y, STREET_LAMP_REACH_METERS)),
       this.lensMaterial,
