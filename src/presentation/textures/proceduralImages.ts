@@ -366,18 +366,6 @@ export function fieldRowsImage(size = 64, rows = 4, seed = 61): PixelImage {
   return image;
 }
 
-/** A street lamp's pool of light on the ground: white, brightest under the lamp, fading smoothly to the rim. */
-export function lightPoolImage(size = 64): PixelImage {
-  const image = createImage(size, size, [255, 255, 255], 0);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const r = Math.hypot((x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5) * 2;
-      image.data[(y * size + x) * 4 + 3] = Math.round(255 * (1 - smoothstep(0, 1, r)) ** 1.6);
-    }
-  }
-  return image;
-}
-
 /** A soft round shadow (black with falling-off alpha) for trees and the truck. */
 export function softShadowImage(size = 64): PixelImage {
   const image = createImage(size, size, [0, 0, 0], 0);

@@ -79,4 +79,36 @@ describe('PrelitMaterials', () => {
     expect(ground.color.r).toBeCloseTo(built, 9);
     expect(shadow.opacity).toBeCloseTo(0.4, 9);
   });
+
+  it('knows its materials', () => {
+    const prelit = new PrelitMaterials();
+    const ground = prelit.add(new MeshBasicMaterial());
+
+    expect(prelit.has(ground)).toBe(true);
+    expect(prelit.has(new MeshBasicMaterial())).toBe(false);
+  });
+
+  it('turns a pre-lit colour back into the surface\'s own under any light, finitely in the dark', () => {
+    const prelit = new PrelitMaterials();
+    const clearDay = flatGroundLight();
+    // A surface whose own colour is mid grey, pre-lit as views build it: by a clear day's light on flat ground.
+    const ground = prelit.add(new MeshBasicMaterial({ color: new Color(0.5, 0.5, 0.5).multiply(clearDay) }));
+    const albedo = (): number[] => {
+      const { r, g, b } = prelit.albedo.value;
+      return [ground.color.r * r, ground.color.g * g, ground.color.b * b];
+    };
+
+    for (const channel of albedo()) expect(channel).toBeCloseTo(0.5, 9);
+    prelit.setLight(new Color(0.3, 0.2, 0.6), 0.1);
+    for (const channel of albedo()) expect(channel).toBeCloseTo(0.5, 9);
+
+    // Night: next to no light, but no infinities for the shaders.
+    const albedoBefore = prelit.albedo.value;
+    prelit.setLight(new Color(0, 0, 0), 0);
+    expect(prelit.albedo.value).toBe(albedoBefore);
+    for (const channel of [albedoBefore.r, albedoBefore.g, albedoBefore.b]) {
+      expect(Number.isFinite(channel)).toBe(true);
+      expect(channel).toBeGreaterThan(1);
+    }
+  });
 });

@@ -13,6 +13,7 @@ import {
   type BufferGeometry,
   type DataTexture,
   type Scene,
+  type Vector3,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -22,6 +23,7 @@ import { softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
 import type { SkyUniforms } from '../world/EnvironmentView';
+import type { TrafficHeadlamps } from '../world/LampLighting';
 import { reflectSky } from '../world/skyReflection';
 
 /** Parts in white take the vehicle's paint (the instance colour); the rest are dark or light enough to stay themselves. */
@@ -44,6 +46,12 @@ const GLOW_SIZE_METERS = 1.6;
 const GLOW_OFFSET_METERS = 0.12;
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
+/**
+ * headlampsNear: a vehicle's headlights fade out over this many meters
+ * before the reach, and the farthest one shown as the next one out comes
+ * within this many meters of it, so none pops in or out.
+ */
+const HEADLAMP_FADE_METERS = 20;
 /** The soft shadow under a vehicle reaches this much past its sides and ends, meters, and is this dark in its middle. */
 const SHADOW_MARGIN_METERS = 0.7;
 const SHADOW_OPACITY = 0.5;
@@ -71,7 +79,7 @@ const SHINE: Readonly<Record<number, number>> = { [PAINT]: 0.85, [GLASS]: 1, [TR
  * one more draw call. Per frame it only writes instance matrices (and glow
  * positions at night), and colours when a new vehicle takes a slot.
  */
-export class TrafficView {
+export class TrafficView implements TrafficHeadlamps {
   private readonly root = new Group();
   private readonly meshes: InstancedMesh[];
   private readonly material: MeshLambertMaterial;
@@ -93,6 +101,15 @@ export class TrafficView {
   private readonly lampMatrix = new Matrix4();
   private readonly shadowMatrix = new Matrix4();
   private readonly paint = new Color();
+  /** The vehicles drawn last (update): where each stands, the way it faces and its kind (headlampsNear). */
+  private readonly placedX: Float32Array;
+  private readonly placedZ: Float32Array;
+  private readonly placedHeading: Float32Array;
+  private readonly placedType: Int32Array;
+  private placedCount = 0;
+  /** Scratch for headlampsNear: the nearest vehicles (into placed*) and their squared distances, nearest first. */
+  private nearest = new Int32Array(0);
+  private nearestSq = new Float64Array(0);
 
   constructor(
     private readonly scene: Scene,
@@ -136,6 +153,11 @@ export class TrafficView {
     this.root.add(this.shadows);
     this.shown = types.map(() => new Int32Array(instances));
     this.counts = new Int32Array(types.length);
+    const placed = instances * Math.max(1, types.length);
+    this.placedX = new Float32Array(placed);
+    this.placedZ = new Float32Array(placed);
+    this.placedHeading = new Float32Array(placed);
+    this.placedType = new Int32Array(placed);
 
     this.lampBoxes = shapes.map(({ lamps }) => lamps.map(({ box }) => box));
     this.glowSpots = shapes.map(({ lamps }) => new Float32Array(lamps.flatMap(({ glow }) => glow)));
@@ -173,6 +195,7 @@ export class TrafficView {
     const glowing = this.glows.visible;
     let lamps = 0;
     let shadows = 0;
+    this.placedCount = 0;
     if (traffic !== null) {
       for (let i = 0; i < traffic.capacity; i++) {
         if (traffic.active[i] !== 1) {
@@ -197,6 +220,11 @@ export class TrafficView {
           mesh.instanceColor!.needsUpdate = true;
         }
         lamps = this.placeLamps(type, lamps, x, z, heading, glowing);
+        const placed = this.placedCount++;
+        this.placedX[placed] = x;
+        this.placedZ[placed] = z;
+        this.placedHeading[placed] = heading;
+        this.placedType[placed] = type;
       }
     }
     for (let type = 0; type < this.meshes.length; type++) {
@@ -215,6 +243,79 @@ export class TrafficView {
       this.shadows.instanceMatrix.needsUpdate = true;
     }
     this.glows.setCount(glowing ? lamps : 0);
+  }
+
+  /**
+   * The headlamps of up to `strengths.length` vehicles nearest (`x`, `z`),
+   * as last drawn (update), within `reach` meters: see TrafficHeadlamps.
+   * Allocation-free once it has been asked for that many.
+   */
+  headlampsNear(
+    x: number,
+    z: number,
+    reach: number,
+    lamps: readonly Vector3[],
+    forwards: readonly Vector3[],
+    strengths: number[],
+  ): number {
+    const wanted = Math.min(Math.floor(lamps.length / 2), forwards.length, strengths.length);
+    if (wanted <= 0) {
+      return 0;
+    }
+    if (this.nearest.length < wanted) {
+      this.nearest = new Int32Array(wanted);
+      this.nearestSq = new Float64Array(wanted);
+    }
+    const { nearest, nearestSq } = this;
+    const reachSq = reach * reach;
+    let found = 0;
+    // The nearest vehicle left out: the farthest shown fades as it comes as near.
+    let nextSq = reachSq;
+    for (let vehicle = 0; vehicle < this.placedCount; vehicle++) {
+      const dx = this.placedX[vehicle]! - x;
+      const dz = this.placedZ[vehicle]! - z;
+      const distanceSq = dx * dx + dz * dz;
+      if (distanceSq >= reachSq) {
+        continue;
+      }
+      if (found === wanted) {
+        if (distanceSq >= nearestSq[wanted - 1]!) {
+          nextSq = Math.min(nextSq, distanceSq);
+          continue;
+        }
+        nextSq = Math.min(nextSq, nearestSq[wanted - 1]!);
+      }
+      let slot = found < wanted ? found++ : wanted - 1;
+      while (slot > 0 && nearestSq[slot - 1]! > distanceSq) {
+        nearestSq[slot] = nearestSq[slot - 1]!;
+        nearest[slot] = nearest[slot - 1]!;
+        slot--;
+      }
+      nearestSq[slot] = distanceSq;
+      nearest[slot] = vehicle;
+    }
+    const next = Math.sqrt(nextSq);
+    for (let slot = 0; slot < found; slot++) {
+      const vehicle = nearest[slot]!;
+      const distance = Math.sqrt(nearestSq[slot]!);
+      // The last one shown makes way for the next; every one fades toward the reach.
+      const edge = slot === found - 1 ? next : reach;
+      strengths[slot] = Math.min(1, Math.max(0, (edge - distance) / HEADLAMP_FADE_METERS));
+      const heading = this.placedHeading[vehicle]!;
+      const sin = Math.sin(heading);
+      const cos = Math.cos(heading);
+      const spots = this.glowSpots[this.placedType[vehicle]!]!;
+      const vx = this.placedX[vehicle]!;
+      const vz = this.placedZ[vehicle]!;
+      // The front lamps come first (front left, front right), turned by the heading like makeRotationY.
+      for (let lamp = 0; lamp < 2; lamp++) {
+        const localX = spots[lamp * 3]!;
+        const localZ = spots[lamp * 3 + 2]!;
+        lamps[slot * 2 + lamp]!.set(vx + localX * cos + localZ * sin, spots[lamp * 3 + 1]!, vz - localX * sin + localZ * cos);
+      }
+      forwards[slot]!.set(sin, 0, cos);
+    }
+    return found;
   }
 
   dispose(): void {

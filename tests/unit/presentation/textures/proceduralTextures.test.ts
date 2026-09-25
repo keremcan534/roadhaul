@@ -7,7 +7,6 @@ import {
   concreteImage,
   glowImage,
   grassImage,
-  lightPoolImage,
   liveryImage,
   meadowImage,
   moonImage,
@@ -233,17 +232,6 @@ describe('procedural images', () => {
     expect(pixel(glow, 0, 0)[3]).toBe(0);
     for (let x = 17; x < 31; x++) {
       expect(pixel(glow, x + 1, 16)[3]).toBeLessThanOrEqual(pixel(glow, x, 16)[3]!);
-    }
-  });
-
-  it('light a street lamp\'s pool most under the lamp, fading smoothly to nothing at the rim', () => {
-    const pool = lightPoolImage(32);
-
-    expect(pixel(pool, 16, 16)[3]).toBeGreaterThan(245);
-    expect(pixel(pool, 0, 16)[3]).toBe(0);
-    expect(pixel(pool, 0, 0)[3]).toBe(0);
-    for (let x = 16; x < 31; x++) {
-      expect(pixel(pool, x + 1, 16)[3]).toBeLessThanOrEqual(pixel(pool, x, 16)[3]!);
     }
   });
 

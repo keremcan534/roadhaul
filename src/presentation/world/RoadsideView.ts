@@ -19,6 +19,7 @@ import type { Fraction } from '../../data/units';
 import type { BuildingObstacle, DrivingWorld, Field } from '../../domain/world/DrivingWorld';
 import { createRoadPoint } from '../../domain/world/RoadPath';
 import type { PrelitMaterials } from './lighting';
+import { scattersLamplight } from './LampLighting';
 
 /** What grows on the verges: tufts of grass, tufts in flower, and low bushes. */
 export const ROADSIDE_KINDS = ['tuft', 'flower', 'bush'] as const;
@@ -156,6 +157,8 @@ export class RoadsideView {
         material.side = DoubleSide;
       }
       this.sway(material, WIND_BEND[kind]);
+      // Leaves and petals catch lamplight whichever way they face.
+      scattersLamplight(material);
       options.prelit?.add(material);
       const capacity = CAPACITY[kind];
       const mesh = new InstancedMesh(geometries[kind], material, capacity);

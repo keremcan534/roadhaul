@@ -1,13 +1,10 @@
 import {
-  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   CircleGeometry,
   Color,
-  ConeGeometry,
   CylinderGeometry,
-  DoubleSide,
   Euler,
   Group,
   InstancedMesh,
@@ -19,7 +16,6 @@ import {
   PlaneGeometry,
   Quaternion,
   TorusGeometry,
-  ShaderMaterial,
   Vector3,
   type Material,
   type Scene,
@@ -77,23 +73,6 @@ const LAMP_NIGHT_BOOST = 1.5;
 const HEADLIGHT_GLOW = 0xfff1cf;
 const TAIL_LIGHT_GLOW = 0xff2a1a;
 const GLOW_SIZE_METERS = 1.8;
-/** The headlights' pool of light on the road: its extent ahead of the bumper and across, and its colour. */
-const POOL_LENGTH_METERS = 40;
-const POOL_WIDTH_METERS = 20;
-/** Above the road's markings and the GPS line, so it lights them too. */
-const POOL_Y = 0.11;
-const POOL_COLOR = 0xffe7b8;
-const POOL_STRENGTH = 0.5;
-/**
- * The headlights' beams in the night air (with the lamp glows): a cone from
- * each lamp this long, this wide at its far end, flattened to this share of
- * that in height and aimed this far down (radians), this bright.
- */
-const BEAM_LENGTH_METERS = 22;
-const BEAM_RADIUS_METERS = 3.4;
-const BEAM_FLATTEN = 0.5;
-const BEAM_DIP = 0.05;
-const BEAM_STRENGTH = 0.14;
 /** Upgraded parts (TruckViewOptions.looks), by level 0..3: how much taller the stacks stand, meters. */
 const STACK_EXTRA_HEIGHT = [0, 0.12, 0.22, 0.34] as const;
 /** The fuel tank's length and radius, meters; at level 3 a second one hangs on the other side. */
@@ -175,13 +154,11 @@ export class TruckView {
   private readonly wheels: InstancedMesh;
   /** Brake calipers on the wheels' outer faces (a brakes upgrade); they steer but do not spin. */
   private readonly calipers: InstancedMesh | null = null;
-  /** Night: brighter lamps, their glows, and the headlights' light on the road ahead. */
+  /** Night: brighter lamps and their glows (their light on the world is LampLighting's, from headlamps()). */
   private readonly lampMaterial: MeshBasicMaterial;
   private readonly glows: LampGlows;
-  private readonly headlightPool: Mesh;
-  private readonly poolIntensity = { value: 0 };
-  private readonly headlightBeams: Mesh;
-  private readonly beamIntensity = { value: 0 };
+  /** In the model: the left headlamp (the right one mirrors it across x = 0). */
+  private readonly headlampAt: readonly [number, number, number];
   private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
@@ -548,15 +525,13 @@ export class TruckView {
     }
     this.glows.setCount(4);
     this.body.add(this.glows.points);
-    this.headlightPool = this.createHeadlightPool(frontZ, headlightX);
-    // The beams lean with the body, like the lamps.
-    this.headlightBeams = this.createHeadlightBeams(frontZ + 0.12, headlightX, bumperTop + 0.2);
-    this.body.add(this.headlightBeams);
+    // Where the headlights light the world from (LampLighting): on the body, as low as the suspension sets it.
+    this.headlampAt = [headlightX, bumperTop + 0.2 - drop, frontZ + 0.12];
 
     // An upgraded suspension sets the body lower over its wheels.
     this.body.position.y = -drop;
     this.cabin.position.y = -drop;
-    this.root.add(shadow, this.headlightPool, this.body, this.cabin, this.wheels);
+    this.root.add(shadow, this.body, this.cabin, this.wheels);
     if (this.calipers !== null) {
       this.root.add(this.calipers);
     }
@@ -564,7 +539,7 @@ export class TruckView {
       // The truck itself, not its soft shadow, the light on the road or the glows.
       for (const part of [this.body, this.cabin, this.wheels]) {
         part.traverse((object) => {
-          if (object instanceof Mesh && object !== this.headlightBeams) {
+          if (object instanceof Mesh) {
             object.castShadow = true;
           }
         });
@@ -617,8 +592,8 @@ export class TruckView {
 
   /**
    * How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night):
-   * brighter lamps, a glow round them, and the headlights' pool of light on
-   * the road ahead. Cheap to call every frame.
+   * brighter lamps and a glow round them. Their light on the world is
+   * LampLighting's, from headlamps(). Cheap to call every frame.
    */
   setLamps(level: number): void {
     if (level === this.lamps) {
@@ -628,10 +603,19 @@ export class TruckView {
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
     this.cabinMaterial.color.setScalar(1 - level * (1 - CABIN_NIGHT_LEVEL));
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
-    this.poolIntensity.value = level * POOL_STRENGTH;
-    this.headlightPool.visible = level > 0.01;
-    this.beamIntensity.value = level * BEAM_STRENGTH;
-    this.headlightBeams.visible = this.options.lampGlows !== false && level > 0.01;
+  }
+
+  /**
+   * Where the headlamps are in the world, left and right, and the way the
+   * truck faces (level), as of the last update(): what lights the road ahead.
+   * Writes into the arguments; allocation-free.
+   */
+  headlamps(left: Vector3, right: Vector3, forward: Vector3): void {
+    const [x, y, z] = this.headlampAt;
+    this.toWorld(x, y, z, left);
+    this.toWorld(-x, y, z, right);
+    const heading = this.root.rotation.y;
+    forward.set(Math.sin(heading), 0, Math.cos(heading));
   }
 
   /** From the driver's seat the windshield would block the view: swap it for the cab's inside. */
@@ -645,120 +629,6 @@ export class TruckView {
     for (const resource of this.resources) {
       resource.dispose();
     }
-  }
-
-  /**
-   * The headlights' light on the road: two beams from the lamps `lampX` either
-   * side of the middle, widening ahead of the bumper at `frontZ` and fading
-   * out with distance. Added onto the road, so it lights whatever lies there.
-   */
-  private createHeadlightPool(frontZ: number, lampX: number): Mesh {
-    const geometry = new PlaneGeometry(POOL_WIDTH_METERS, POOL_LENGTH_METERS)
-      .rotateX(-Math.PI / 2)
-      .translate(0, POOL_Y, frontZ + POOL_LENGTH_METERS / 2);
-    const material = new ShaderMaterial({
-      uniforms: { intensity: this.poolIntensity, color: { value: new Color(POOL_COLOR) } },
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      // The road's layers are pulled toward the camera (TrackView): pull the light further, or far off, where
-      // the road is seen at a grazing angle, the road would cover it.
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -12,
-      vertexShader: /* glsl */ `
-        varying vec2 vPlace;
-        void main() {
-          // Across the truck, and ahead of its front bumper, in meters.
-          vPlace = vec2(position.x, position.z - ${frontZ.toFixed(3)});
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        #define LAMP_X ${lampX.toFixed(3)}
-        #define LENGTH ${POOL_LENGTH_METERS.toFixed(1)}
-        #define HALF_WIDTH ${(POOL_WIDTH_METERS / 2).toFixed(1)}
-        uniform float intensity;
-        uniform vec3 color;
-        varying vec2 vPlace;
-        float beam(float x, float ahead, float lampX) {
-          float across = (x - lampX) / (0.35 + ahead * 0.18);
-          return exp(-across * across * 1.5);
-        }
-        void main() {
-          float ahead = vPlace.y;
-          float light = min(beam(vPlace.x, ahead, -LAMP_X) + beam(vPlace.x, ahead, LAMP_X), 1.3);
-          float distance = ahead / 16.0;
-          light *= smoothstep(0.3, 4.0, ahead) * (1.0 - smoothstep(LENGTH * 0.5, LENGTH - 1.0, ahead)) / (1.0 + distance * distance);
-          light *= 1.0 - smoothstep(0.7, 1.0, abs(vPlace.x) / HALF_WIDTH);
-          gl_FragColor = vec4(color * light * intensity, 1.0);
-        }
-      `,
-    });
-    const pool = new Mesh(this.track(geometry), this.track(material));
-    pool.name = 'headlight-pool';
-    pool.visible = false;
-    return pool;
-  }
-
-  /**
-   * The headlights' beams in the air: a cone from each lamp at (±`lampX`,
-   * `lampY`, `frontZ`), flattened and dipped a little, added onto the
-   * picture. Seen through its middle a beam is deepest, so it is brightest
-   * where it faces the eye, fading at its rim and with distance: light in
-   * the air, not a solid cone. One draw call for both, both faces.
-   */
-  private createHeadlightBeams(frontZ: number, lampX: number, lampY: number): Mesh {
-    const cones = ([1, -1] as const).map((side) =>
-      new ConeGeometry(BEAM_RADIUS_METERS, BEAM_LENGTH_METERS, 20, 1, true)
-        // The apex at the lamp, the open end ahead (+z), dipped toward the road.
-        .translate(0, -BEAM_LENGTH_METERS / 2, 0)
-        .rotateX(-Math.PI / 2 + BEAM_DIP)
-        .scale(1, BEAM_FLATTEN, 1)
-        .translate(side * lampX, lampY, frontZ),
-    );
-    const geometry = mergeGeometries(cones);
-    for (const cone of cones) {
-      cone.dispose();
-    }
-    const material = new ShaderMaterial({
-      uniforms: { intensity: this.beamIntensity, color: { value: new Color(HEADLIGHT_GLOW) } },
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      side: DoubleSide,
-      // Additive: the order of its faces does not matter, so one pass (ARCHITECTURE.md: translucent two-sided).
-      forceSinglePass: true,
-      vertexShader: /* glsl */ `
-        varying float vAlong;
-        varying vec3 vNormalView;
-        varying vec3 vToEye;
-        void main() {
-          // How far along the beam, 0 at the lamp and 1 at its far end.
-          vAlong = (position.z - ${frontZ.toFixed(3)}) / ${BEAM_LENGTH_METERS.toFixed(1)};
-          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-          vToEye = -mvPosition.xyz;
-          vNormalView = normalMatrix * normal;
-          gl_Position = projectionMatrix * mvPosition;
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        uniform float intensity;
-        uniform vec3 color;
-        varying float vAlong;
-        varying vec3 vNormalView;
-        varying vec3 vToEye;
-        void main() {
-          float facing = abs(dot(normalize(vNormalView), normalize(vToEye)));
-          float fade = smoothstep(0.0, 0.06, vAlong) * (1.0 - smoothstep(0.4, 1.0, vAlong)) / (1.0 + vAlong * vAlong * 6.0);
-          gl_FragColor = vec4(color * intensity * facing * facing * fade, 1.0);
-        }
-      `,
-    });
-    const beams = new Mesh(this.track(geometry), this.track(material));
-    beams.name = 'headlight-beams';
-    beams.visible = false;
-    return beams;
   }
 
   /** Tyres with a rim on each face, the rims in the finish of the tyres upgrade's `level`: two draw calls for all the wheels. */

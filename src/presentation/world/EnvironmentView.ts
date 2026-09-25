@@ -37,6 +37,7 @@ import {
   SUN_INTENSITY,
   type PrelitMaterials,
 } from './lighting';
+import { unlitByLamps } from './LampLighting';
 
 const ZENITH = 0x3f7fc7;
 const HORIZON = 0xc4dcef;
@@ -274,6 +275,8 @@ export class EnvironmentView {
     this.moon.frustumCulled = false;
     this.moon.visible = false;
     this.backdrop.add(this.createDome(), this.createHills(), this.clouds, this.stars, this.moon);
+    // The sky, its clouds and hills are far past the lamps' reach.
+    unlitByLamps(this.backdrop);
     scene.add(this.backdrop);
   }
 

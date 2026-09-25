@@ -227,6 +227,57 @@ describe('TrafficView', () => {
     expect(casting).toEqual(TRAFFIC_VEHICLES.map((type) => `traffic:${type.id}`));
   });
 
+  it('says where the headlamps of the vehicles nearest a point are, nearest first, fading out rather than popping', () => {
+    const view = new TrafficView(new Scene(), TRAFFIC_VEHICLES, 8);
+    const sim = traffic();
+    const near = sim.addVehicle(0, north, 50, 10);
+    const middle = sim.addVehicle(0, north, 150, 10);
+    const far = sim.addVehicle(0, north, 160, 10);
+    sim.update(1 / 60, truck, footprint);
+    view.update(sim, 1);
+    const lamps = Array.from({ length: 4 }, () => new Vector3());
+    const forwards = Array.from({ length: 2 }, () => new Vector3());
+    const strengths = [0, 0];
+    const from = { x: sim.x[near]!, z: sim.z[near]! };
+    const distance = (vehicle: number): number => Math.hypot(sim.x[vehicle]! - from.x, sim.z[vehicle]! - from.z);
+
+    const found = view.headlampsNear(from.x, from.z, 160, lamps, forwards, strengths);
+
+    expect(found).toBe(2);
+    // The nearest first: its front lamps, just ahead of it, left (+X, facing +Z) then right, at the lamps' height.
+    const forwardX = Math.sin(sim.heading[near]!);
+    const forwardZ = Math.cos(sim.heading[near]!);
+    expect(forwards[0]!.x).toBeCloseTo(forwardX, 6);
+    expect(forwards[0]!.y).toBe(0);
+    expect(forwards[0]!.z).toBeCloseTo(forwardZ, 6);
+    const [frontLeft, frontRight] = vehicleLamps(TRAFFIC_VEHICLES[0]!);
+    for (const [index, lamp] of [frontLeft!, frontRight!].entries()) {
+      const at = lamps[index]!;
+      const aheadMeters = (at.x - from.x) * forwardX + (at.z - from.z) * forwardZ;
+      const leftMeters = (at.x - from.x) * forwardZ - (at.z - from.z) * forwardX;
+      expect(aheadMeters).toBeCloseTo(lamp.glow[2], 4);
+      expect(leftMeters).toBeCloseTo(lamp.glow[0], 4);
+      expect(at.y).toBeCloseTo(lamp.glow[1], 6);
+    }
+    expect(strengths[0]).toBe(1);
+    // The farthest shown makes way for the next one out as it comes as near: half-way there, 10 m of 20 apart.
+    const second = lamps[2]!.clone().add(lamps[3]!).multiplyScalar(0.5);
+    expect(Math.hypot(second.x - sim.x[middle]!, second.z - sim.z[middle]!)).toBeLessThan(TRAFFIC_VEHICLES[0]!.lengthMeters);
+    expect(strengths[1]).toBeCloseTo(Math.min(1, (distance(far) - distance(middle)) / 20), 4);
+    expect(strengths[1]).toBeGreaterThan(0);
+    expect(strengths[1]).toBeLessThan(1);
+
+    // Only those within reach, fading toward it.
+    expect(view.headlampsNear(from.x, from.z, distance(middle) + 5, lamps, forwards, strengths)).toBe(2);
+    expect(strengths[1]).toBeCloseTo(5 / 20, 4);
+    expect(view.headlampsNear(from.x, from.z, 20, lamps, forwards, strengths)).toBe(1);
+    expect(strengths[0]).toBeCloseTo(1, 4);
+    // As many as asked for; none without traffic.
+    expect(view.headlampsNear(from.x, from.z, 500, lamps.slice(0, 2), forwards.slice(0, 1), [0])).toBe(1);
+    view.update(null, 1);
+    expect(view.headlampsNear(from.x, from.z, 500, lamps, forwards, strengths)).toBe(0);
+  });
+
   it('releases every GPU resource on dispose', () => {
     const scene = new Scene();
     const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8);
