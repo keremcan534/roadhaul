@@ -8,6 +8,7 @@ import {
   MeshLambertMaterial,
   PerspectiveCamera,
   Scene,
+  type Object3D,
   ShaderLib,
   UniformsUtils,
   Vector3,
@@ -19,6 +20,16 @@ import { TrackView } from '../../../../src/presentation/world/TrackView';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
+
+/** A mesh of building walls: their facade's material lights windows at night. */
+function isFacade(object: Object3D): object is Mesh {
+  return (
+    object instanceof Mesh &&
+    !(object instanceof InstancedMesh) &&
+    object.material instanceof MeshLambertMaterial &&
+    object.material.emissiveMap !== null
+  );
+}
 
 describe('TrackView', () => {
   it('draws the ground, roads and buildings in a handful of draw calls, and the forest in a few per tile', () => {
@@ -114,7 +125,7 @@ describe('TrackView', () => {
     new TrackView(scene, world);
     let wallVertices = 0;
     scene.traverse((object) => {
-      if (object instanceof Mesh && !(object instanceof InstancedMesh) && object.geometry.getAttribute('color') !== undefined) {
+      if (isFacade(object)) {
         const positions = object.geometry.getAttribute('position');
         let vertical = 0;
         for (let i = 0; i < positions.count; i += 4) {
@@ -207,7 +218,7 @@ describe('TrackView', () => {
     let walls = 0;
 
     scene.traverse((object) => {
-      if (!(object instanceof Mesh) || object instanceof InstancedMesh || object.geometry.getAttribute('color') === undefined) {
+      if (!isFacade(object)) {
         return;
       }
       const positions = object.geometry.getAttribute('position');

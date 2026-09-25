@@ -6,6 +6,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -21,6 +22,7 @@ import {
   type Texture,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SeededRandom } from '../../core/random/SeededRandom';
 import type { BuildingObstacle, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
 import type { RoadPath } from '../../domain/world/RoadPath';
 import { fractalNoise } from '../textures/noise';
@@ -32,19 +34,30 @@ import {
   meadowImage,
   officeFacadeImage,
   officeWindowLightsImage,
+  roofTilesImage,
   softBoxShadowImage,
   softShadowImage,
   warehouseFacadeImage,
   warehouseWindowLightsImage,
 } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
-import { flatGroundLight, SHADOW_OFFSET_PER_METER, type PrelitMaterials } from './lighting';
+import {
+  flatRoofGeometry,
+  gableRoofGeometry,
+  hipRoofGeometry,
+  plinthGeometry,
+  roofStyleOf,
+  rooftopGeometry,
+} from './buildingParts';
+import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
-const ROOF_COLOR = 0x5a5f66;
-const BUILDING_TINTS = [0xf2ede2, 0xdfe6ec, 0xe9dcc6, 0xd9e2d3, 0xf0e4dc] as const;
+/** Warm plasters: cream, peach, sand, pale sage, apricot, pale grey. */
+const BUILDING_TINTS = [0xf3e7d3, 0xecd3b9, 0xe6dac1, 0xd9ded3, 0xf0dac5, 0xdfe2e3] as const;
+/** Terracotta roofs, a shade apart building to building. */
+const ROOF_TILE_TINTS = [0xffffff, 0xf2e2dc, 0xffeede, 0xe8d8d0] as const;
 const PINE_COLORS = [0x2f5e34, 0x355f2e, 0x2a5233, 0x3b6a37] as const;
 const BROADLEAF_COLORS = [0x4f8a3c, 0x5c9442, 0x44803e, 0x6b9a3f, 0x7f9b3a] as const;
 
@@ -459,16 +472,31 @@ export class TrackView {
   private createBuildings(buildings: readonly BuildingObstacle[]): Mesh[] {
     const offices: BufferGeometry[] = [];
     const warehouses: BufferGeometry[] = [];
-    const roofs: BufferGeometry[] = [];
+    const tiledRoofs: BufferGeometry[] = [];
+    const details: BufferGeometry[] = [];
     const shadows: BufferGeometry[] = [];
+    const random = new SeededRandom(311);
+    // Solar water heaters face the sun.
+    const sunBearing = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
     buildings.forEach((box, index) => {
       const width = box.maxX - box.minX;
       const depth = box.maxZ - box.minZ;
       const tint = new Color(BUILDING_TINTS[index % BUILDING_TINTS.length]!);
       (width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices).push(wallsGeometry(box, tint, index));
-      roofs.push(
-        new BoxGeometry(width + 0.6, 0.45, depth + 0.6).translate(box.minX + width / 2, box.heightMeters + 0.2, box.minZ + depth / 2),
-      );
+      details.push(...plinthGeometry(box));
+      switch (roofStyleOf(box, random)) {
+        case 'hip':
+          tiledRoofs.push(
+            hipRoofGeometry(box, Math.min(width, depth) * random.range(0.2, 0.28), new Color(ROOF_TILE_TINTS[index % ROOF_TILE_TINTS.length]!)),
+          );
+          break;
+        case 'gable':
+          details.push(gableRoofGeometry(box, Math.min(width, depth) * 0.12, tint));
+          break;
+        case 'flat':
+          details.push(...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing));
+          break;
+      }
       const reachX = SHADOW_OFFSET_PER_METER.x * box.heightMeters;
       const reachZ = SHADOW_OFFSET_PER_METER.z * box.heightMeters;
       shadows.push(
@@ -491,7 +519,18 @@ export class TrackView {
     add(shadows, this.shadowMaterial(softBoxShadowImage(), 0.38));
     add(offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)));
     add(warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)));
-    add(roofs, this.track(new MeshLambertMaterial({ color: ROOF_COLOR })));
+    add(
+      tiledRoofs,
+      this.track(
+        new MeshLambertMaterial({
+          map: this.texture(toTexture(roofTilesImage(), { repeat: true })),
+          vertexColors: true,
+          // Seen from under the eaves too.
+          side: DoubleSide,
+        }),
+      ),
+    );
+    add(details, this.track(new MeshLambertMaterial({ vertexColors: true })));
     return meshes;
   }
 

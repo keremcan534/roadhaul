@@ -390,6 +390,34 @@ export function softShadowImage(size = 64): PixelImage {
   return image;
 }
 
+/**
+ * Clay roof tiles (u along the eaves, v up the slope): rows of rounded
+ * terracotta tiles, each row shifted half a tile from the one below and
+ * shadowed where the row above laps over it, every tile a little different.
+ * Four tiles across and four rows up; light, for a vertex colour to tint.
+ */
+export function roofTilesImage(size = 64, seed = 101): PixelImage {
+  const image = createImage(size, size);
+  const clay: Rgb = [196, 104, 70];
+  const columns = 4;
+  const rows = 4;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const v = ((y + 0.5) / size) * rows;
+      const row = Math.floor(v);
+      const up = v - row;
+      const u = ((x + 0.5) / size) * columns + (row % 2) * 0.5;
+      const column = Math.floor(u);
+      const across = u - column;
+      const crown = 0.7 + 0.3 * Math.sin(across * Math.PI);
+      const lapped = 1 - 0.38 * smoothstep(0.78, 1, up);
+      const light = crown * lapped * (0.88 + 0.22 * grain(column % columns, row, seed));
+      blendPixel(image, x, y, [clay[0] * light, clay[1] * light, clay[2] * light], 1);
+    }
+  }
+  return image;
+}
+
 /** A soft-edged rectangle shadow for buildings. */
 export function softBoxShadowImage(size = 64): PixelImage {
   const image = createImage(size, size, [0, 0, 0], 0);
