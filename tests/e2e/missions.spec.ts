@@ -287,6 +287,7 @@ test('checks the company name before founding it', async ({ page }) => {
 });
 
 test('burns fuel while driving, and refuels only at a depot or rest area', async ({ page }) => {
+  test.setTimeout(60_000); // It drives until the gauge moves (up to 30 s, drawn in software), then stops twice.
   const problems = watchForProblems(page);
   // fuelScale burns fuel as fast as the old test track did, so the gauge moves within seconds.
   await openGame(page, '?lang=en&debug&fuelScale=60');
@@ -323,6 +324,7 @@ test('burns fuel while driving, and refuels only at a depot or rest area', async
 });
 
 test('offers fuel, repairs and the road again at the rest area', async ({ page }) => {
+  test.setTimeout(60_000); // It drives until the gauge moves (up to 30 s, drawn in software), then stops.
   const problems = watchForProblems(page);
   await openGame(page, '?lang=en&debug&fuelScale=60');
   await page.keyboard.down('ArrowUp');
