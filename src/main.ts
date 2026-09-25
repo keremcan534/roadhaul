@@ -54,6 +54,7 @@ import type { GameState } from './systems/gameState/GameState';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
+import { glassModeFor, installGlass, isGlassMode, lensSupported } from './ui/glass';
 import { CompanyHq, type TruckPreview } from './ui/hq/CompanyHq';
 import type { HqTab } from './ui/hq/hqTabs';
 import { objectiveText } from './ui/hq/eventText';
@@ -185,6 +186,15 @@ async function start(): Promise<void> {
   // a fifth of its time even by day, when the shaders skip it: there they light nothing, unless ?lamps=1 asks.
   const lampLighting = new LampLighting(software ? SOFTWARE_LAMP_LIGHTS : LAMP_LIGHTS[config.rendering.quality]);
   const lampLight = requestedLampLight(query) ?? !software;
+  // The menus' liquid glass blurs the world behind it: not drawn in software or on the low preset, bending only on
+  // high (glass.ts). `?glass=lens|blur|tint` picks it anyway, for comparison.
+  const requestedGlass = query.get('glass');
+  installGlass(
+    document,
+    isGlassMode(requestedGlass)
+      ? requestedGlass
+      : glassModeFor(config.rendering.quality, software, lensSupported(navigator.userAgent)),
+  );
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
@@ -1029,9 +1039,9 @@ async function start(): Promise<void> {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitRain();
         }
-        // Behind the menus and the panel the scene is a backdrop: every other frame is enough, and saves the
-        // battery. The full map hides it all.
-        menuFrames = onRoad() ? 0 : menuFrames + 1;
+        // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
+        // saves the battery (and the glass's blur of it). The full map hides it all.
+        menuFrames = onRoad() && !paused ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.setGrade(environment.grade);
           renderHost.render();
