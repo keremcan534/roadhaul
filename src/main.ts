@@ -18,7 +18,7 @@ import {
 } from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
 import { browserStorage } from './platform/browser/browserStorage';
-import { applyConfigOverrides, requestedDateMs } from './platform/browser/configOverrides';
+import { applyConfigOverrides, requestedDateMs, requestedLampLight } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
@@ -106,7 +106,8 @@ const SOFTWARE_MAX_STEPS_PER_FRAME = 12;
 /**
  * How many lamps light the night (LampLighting), per graphics preset: the
  * nearest street lamps and vehicles, and whether wet roads mirror them. Drawn
- * in software, as few as on the low preset, but the shaders stay whole.
+ * in software (with ?lamps=1), as few as on the low preset, but the shaders
+ * stay whole.
  */
 const LAMP_LIGHTS: Readonly<Record<QualityLevel, LampLightingOptions>> = {
   low: { streetLamps: 3, trafficVehicles: 0, wetGloss: false },
@@ -180,8 +181,10 @@ async function start(): Promise<void> {
   // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
   // The night's lamps (the truck's and the traffic's headlights, the street lamps) light the world through its
-  // materials' shaders (lightScene, at the end of boot).
+  // materials' shaders (lightScene, at the end of boot). Drawn in software, the lamps' code costs every frame about
+  // a fifth of its time even by day, when the shaders skip it: there they light nothing, unless ?lamps=1 asks.
   const lampLighting = new LampLighting(software ? SOFTWARE_LAMP_LIGHTS : LAMP_LIGHTS[config.rendering.quality]);
+  const lampLight = requestedLampLight(query) ?? !software;
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
@@ -231,7 +234,7 @@ async function start(): Promise<void> {
     sky: environment.sky,
   });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
-  const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLighting.uniforms);
+  const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const effectsState = createTruckEffectsState();
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
@@ -428,7 +431,9 @@ async function start(): Promise<void> {
       truck.dispose();
       truck = new TruckView(renderHost.scene, definition, options);
       // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it).
-      lampLighting.lightScene(renderHost.scene, prelit);
+      if (lampLight) {
+        lampLighting.lightScene(renderHost.scene, prelit);
+      }
       cameraRig.setBody(definition.body);
       showCamera(onRoad());
     }
@@ -1064,7 +1069,9 @@ async function start(): Promise<void> {
   );
   // Every view is in the scene: light it by the lamps, and have the GPU compile the shaders now, behind the menu,
   // not on the road.
-  lampLighting.lightScene(renderHost.scene, prelit);
+  if (lampLight) {
+    lampLighting.lightScene(renderHost.scene, prelit);
+  }
   renderHost.precompile();
   loop.start();
   root.dataset.bootState = 'ready';

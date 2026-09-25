@@ -3,6 +3,7 @@ import { DEFAULT_GAME_CONFIG } from '../../../src/data/config/GameConfig';
 import {
   applyConfigOverrides,
   requestedDateMs,
+  requestedLampLight,
   type QueryParameters,
 } from '../../../src/platform/browser/configOverrides';
 
@@ -70,6 +71,15 @@ describe('applyConfigOverrides', () => {
         DEFAULT_GAME_CONFIG.rendering,
       );
     }
+  });
+});
+
+describe('requestedLampLight', () => {
+  it('turns the lamps\' light off or on when the URL says, and leaves it to the entry point otherwise', () => {
+    expect(requestedLampLight(query('?lamps=0'))).toBe(false);
+    expect(requestedLampLight(query('?lamps=1'))).toBe(true);
+    expect(requestedLampLight(query('?lamps=yes'))).toBeNull();
+    expect(requestedLampLight(query(''))).toBeNull();
   });
 });
 

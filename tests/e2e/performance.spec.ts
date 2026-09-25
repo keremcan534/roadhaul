@@ -14,14 +14,15 @@ test('keeps a busy city scene at night in the rain within the draw budget', asyn
   test.setTimeout(60_000); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   // The most there is to draw: dense traffic, lit lamps and glows, the headlights, and rain.
-  // Parked in the pickup bay, in Yeniliman's yard, among its buildings.
-  await openCompanyHq(page, '?debug&lang=en&traffic=24&weather=night');
+  // Parked in the pickup bay, in Yeniliman's yard, among its buildings. The lamps light the world here, drawn in
+  // software too (?lamps=1), so their shaders compile and draw without a problem.
+  await openCompanyHq(page, '?debug&lang=en&traffic=24&weather=night&lamps=1');
   await takeContract(page, 'first_package');
   await page.keyboard.press('KeyT');
   await waitForFrames(page, 20);
   const night = await renderCost(page);
   await testInfo.attach('night', { body: await page.screenshot(), contentType: 'image/png' });
-  await openGame(page, '?debug&lang=en&traffic=24&weather=rain');
+  await openGame(page, '?debug&lang=en&traffic=24&weather=rain&lamps=1');
   await waitForFrames(page, 20);
   const rain = await renderCost(page);
 

@@ -20,6 +20,16 @@ export function requestedDateMs(query: QueryParameters): number | null {
 }
 
 /**
+ * `?lamps=0` keeps the night's lamps from lighting the world (their glows
+ * stay), `?lamps=1` lets them light it even where the entry point would
+ * not (software rendering). Null when the URL does not say.
+ */
+export function requestedLampLight(query: QueryParameters): boolean | null {
+  const lamps = query.get('lamps');
+  return lamps === '0' || lamps === '1' ? lamps === '1' : null;
+}
+
+/**
  * Developer switches read from the page URL:
  * - `?debug` shows the performance overlay and enables debug logging.
  * - `?log=warn` (debug | info | warn | error) sets the log level explicitly.
