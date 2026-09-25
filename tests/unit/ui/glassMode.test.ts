@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { glassModeFor, isGlassMode, lensDisplacementPixels, lensSupported } from '../../../src/ui/glass';
+import { glassModeFor, isGlassMode, lensDisplacementPixels, lensSupported } from '../../../src/ui/glassMode';
 
 const CHROME_ANDROID =
   'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36';
