@@ -286,6 +286,19 @@ test('checks the company name before founding it', async ({ page }) => {
   await expect(page.locator('.new-company__input')).toHaveValue('Wasd Paws');
 });
 
+/**
+ * Drives until the fuel gauge drops from a full tank. It waits for the gauge
+ * to show the full tank first: until the dashboard's first frame on the road
+ * it still shows what it showed before the company started (an empty tank).
+ */
+async function driveUntilFuelBurns(page: Page): Promise<void> {
+  const gauge = page.locator('.dashboard__gauge--fuel');
+  await expect(gauge).toHaveAttribute('data-percent', '100');
+  await page.keyboard.down('ArrowUp');
+  await expect.poll(async () => Number(await gauge.getAttribute('data-percent')), { timeout: 30_000 }).toBeLessThan(100);
+  await page.keyboard.up('ArrowUp');
+}
+
 test('burns fuel while driving, and refuels only at a depot or rest area', async ({ page }) => {
   test.setTimeout(60_000); // It drives until the gauge moves (up to 30 s, drawn in software), then stops twice.
   const problems = watchForProblems(page);
@@ -296,11 +309,7 @@ test('burns fuel while driving, and refuels only at a depot or rest area', async
   await expect(page.locator('[data-action="refuel"]')).toBeDisabled();
 
   await closePanel(page);
-  await page.keyboard.down('ArrowUp');
-  await expect
-    .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
-    .toBeLessThan(100);
-  await page.keyboard.up('ArrowUp');
+  await driveUntilFuelBurns(page);
 
   // Out on the road there is no pump: the truck page says where to go.
   await page.locator('[data-action="dock-truck"]').click();
@@ -327,11 +336,7 @@ test('offers fuel, repairs and the road again at the rest area', async ({ page }
   test.setTimeout(60_000); // It drives until the gauge moves (up to 30 s, drawn in software), then stops.
   const problems = watchForProblems(page);
   await openGame(page, '?lang=en&debug&fuelScale=60');
-  await page.keyboard.down('ArrowUp');
-  await expect
-    .poll(async () => Number(await page.locator('.dashboard__gauge--fuel').getAttribute('data-percent')), { timeout: 30_000 })
-    .toBeLessThan(100);
-  await page.keyboard.up('ArrowUp');
+  await driveUntilFuelBurns(page);
 
   // Debug Y parks the truck on the rest area's lot.
   await page.keyboard.press('KeyY');
