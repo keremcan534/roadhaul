@@ -9,6 +9,7 @@ import {
   kmhToMetersPerSecond,
   lerp,
   metersPerSecondToKmh,
+  smoothstep,
 } from '../../../../src/core/math/scalar';
 
 describe('scalar helpers', () => {
@@ -30,6 +31,15 @@ describe('scalar helpers', () => {
     expect(approach(0, 1, 0.3)).toBeCloseTo(0.3);
     expect(approach(0.9, 1, 0.3)).toBe(1);
     expect(approach(1, -1, 0.5)).toBe(0.5);
+  });
+
+  it('eases from 0 to 1 between two edges, flat outside them', () => {
+    expect(smoothstep(2, 4, 1)).toBe(0);
+    expect(smoothstep(2, 4, 3)).toBe(0.5);
+    expect(smoothstep(2, 4, 5)).toBe(1);
+    expect(smoothstep(2, 4, 2.5)).toBeCloseTo(0.15625, 12);
+    // Reversed edges fall instead.
+    expect(smoothstep(4, 2, 2.5)).toBeCloseTo(0.84375, 12);
   });
 
   it('damps the same total amount regardless of frame rate', () => {

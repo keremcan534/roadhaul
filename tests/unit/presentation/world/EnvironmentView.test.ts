@@ -1,11 +1,13 @@
 import {
+  BufferGeometry,
   Color,
   DirectionalLight,
   FogExp2,
   HemisphereLight,
-  InstancedMesh,
+  InstancedBufferGeometry,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   Scene,
   ShaderMaterial,
   Vector3,
@@ -13,7 +15,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { WEATHER } from '../../../../src/data/content/weather';
 import type { WeatherLook } from '../../../../src/data/definitions/WeatherDefinition';
-import { EnvironmentView } from '../../../../src/presentation/world/EnvironmentView';
+import { CLOUD_COUNT, EnvironmentView, PUFFS_PER_CLOUD } from '../../../../src/presentation/world/EnvironmentView';
 import { PrelitMaterials, SUN_DIRECTION } from '../../../../src/presentation/world/lighting';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
@@ -26,10 +28,14 @@ function nightSky(scene: Scene): { stars: Mesh; moon: Mesh } {
   let stars: Mesh | undefined;
   let moon: Mesh | undefined;
   scene.traverse((object) => {
-    if (object instanceof Mesh && object.renderOrder === -2) stars = object;
-    if (object instanceof Mesh && object.renderOrder === -1) moon = object;
+    if (object instanceof Mesh && object.renderOrder === -3) stars = object;
+    if (object instanceof Mesh && object.renderOrder === -2) moon = object;
   });
   return { stars: stars!, moon: moon! };
+}
+
+function clouds(scene: Scene): Mesh {
+  return scene.getObjectByName('clouds') as Mesh;
 }
 
 describe('EnvironmentView', () => {
@@ -109,14 +115,10 @@ describe('EnvironmentView', () => {
     const fog = scene.fog as FogExp2;
     const sun = scene.children.find((child) => child instanceof DirectionalLight)!;
     const sky = scene.children.find((child) => child instanceof HemisphereLight)!;
-    let clouds: InstancedMesh | undefined;
-    scene.traverse((object) => {
-      if (object instanceof InstancedMesh) clouds = object;
-    });
     const background = scene.background as Color;
 
     view.applyWeather(clear, clear, 1, prelit);
-    const day = { sun: sun.intensity, sky: sky.intensity, background: background.clone(), clouds: clouds!.count };
+    const day = { sun: sun.intensity, sky: sky.intensity, background: background.clone(), clouds: view.cloudCount };
     expect(fog.density).toBe(clear.fogDensity);
     expect(ground.color.r).toBeCloseTo(1, 6);
 
@@ -125,13 +127,74 @@ describe('EnvironmentView', () => {
     expect(sun.intensity).toBeCloseTo(day.sun * night.sunlight, 9);
     expect(sky.intensity).toBeCloseTo(day.sky * night.skylight, 9);
     expect(background.r + background.g + background.b).toBeLessThan((day.background.r + day.background.g + day.background.b) / 4);
-    expect(clouds!.count).toBeLessThan(day.clouds);
+    expect(view.cloudCount).toBeLessThan(day.clouds);
     expect(ground.color.g).toBeLessThan(0.4);
 
     // Halfway from clear to rain: the haze halfway between the two.
     view.applyWeather(clear, rain, 0.5, prelit);
     expect(fog.density).toBeCloseTo((clear.fogDensity + rain.fogDensity) / 2, 12);
-    expect(clouds!.count).toBe(Math.round(48 * (clear.cloudCover + rain.cloudCover) / 2));
+    expect(view.cloudCount).toBe(Math.round((CLOUD_COUNT * (clear.cloudCover + rain.cloudCover)) / 2));
+    // Every puff of every cloud shown, in one draw call.
+    const puffs = clouds(scene).geometry as InstancedBufferGeometry;
+    expect(puffs.instanceCount).toBe(view.cloudCount * PUFFS_PER_CLOUD);
+    expect(clouds(scene).visible).toBe(true);
+  });
+
+  it('builds soft clouds of puffs that drift round the camera, lit by the sky, and none in a clear night sky', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const cloud = clouds(scene);
+    const material = cloud.material as ShaderMaterial;
+    const drift = material.uniforms['drift']!;
+    // The sky's own uniforms light them, so they follow the weather.
+    expect(material.uniforms['sunColor']).toBe(view.sky.sunColor);
+    expect(material.uniforms['horizon']).toBe(view.sky.horizon);
+    expect(material.transparent).toBe(true);
+    expect(material.depthWrite).toBe(false);
+    // Over the stars and the moon, under everything else see-through.
+    const { stars, moon } = nightSky(scene);
+    expect(cloud.renderOrder).toBeGreaterThan(moon.renderOrder);
+    expect(moon.renderOrder).toBeGreaterThan(stars.renderOrder);
+    expect(cloud.renderOrder).toBeLessThan(0);
+
+    view.update({ x: 0, z: 0 }, 60);
+    expect(drift.value).toBeGreaterThan(0.1);
+    expect(drift.value).toBeLessThan(0.2);
+    const turned = drift.value;
+    view.update({ x: 0, z: 0 });
+    expect(drift.value).toBe(turned);
+
+    view.applyWeather({ ...look('night'), cloudCover: 0 }, { ...look('night'), cloudCover: 0 }, 1);
+    expect(view.cloudCount).toBe(0);
+    expect(cloud.visible).toBe(false);
+  });
+
+  it('rings the horizon with two ridges of smooth hills that take the weather\'s haze', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const hills = scene.getObjectByName('hills') as Mesh;
+    const geometry = hills.geometry as BufferGeometry;
+    const position = geometry.getAttribute('position');
+    const haze = geometry.getAttribute('haze');
+    const radii = new Set<number>();
+    let highest = 0;
+    for (let i = 0; i < position.count; i++) {
+      radii.add(Math.round(Math.hypot(position.getX(i), position.getZ(i)) / 50));
+      highest = Math.max(highest, position.getY(i));
+      expect(haze.getX(i)).toBeGreaterThanOrEqual(0);
+      expect(haze.getX(i)).toBeLessThanOrEqual(1);
+    }
+    // Two ridges, one behind the other, within the sky dome; mountains over 100 m high.
+    expect(Math.min(...radii) * 50).toBeGreaterThan(550);
+    expect(Math.max(...radii) * 50).toBeLessThan(800);
+    expect(highest).toBeGreaterThan(100);
+    // Smooth-shaded, and hazed with the sky's horizon colour.
+    const material = hills.material as MeshLambertMaterial;
+    expect(material.flatShading).toBe(false);
+    const shader = { uniforms: {} as Record<string, unknown>, vertexShader: '#include <common>\n#include <begin_vertex>', fragmentShader: '#include <common>\n#include <opaque_fragment>' };
+    material.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.uniforms['hazeColor']).toBe(view.sky.horizon);
+    expect(shader.fragmentShader).toContain('mix(gl_FragColor.rgb, hazeColor, vHaze)');
   });
 
   it('lowers the sun at dusk and dawn: warm, low light, a glowing horizon, and less of it on flat ground', () => {

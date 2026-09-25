@@ -245,6 +245,32 @@ export function puffImage(size = 64, seed = 71): PixelImage {
 }
 
 /**
+ * One puff of a cumulus cloud, for the sky's billboards. Alpha is how dense
+ * it is: a soft ball whose rim is broken into billows by noise, clear well
+ * inside the square. The grey (not sRGB: a factor) mottles the light on it,
+ * brighter billows and darker folds, around 0.75.
+ */
+export function cloudPuffImage(size = 64, seed = 97): PixelImage {
+  const image = createImage(size, size, [255, 255, 255], 0);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = (x + 0.5) / size;
+      const v = (y + 0.5) / size;
+      const r = Math.hypot(u - 0.5, v - 0.5) * 2;
+      const rim = 0.62 + 0.3 * fractalNoise(u, v, 3, 3, seed);
+      const density = (1 - smoothstep(rim - 0.5, rim, r)) * (0.82 + 0.18 * fractalNoise(u, v, 6, 2, seed + 5));
+      const billows = Math.round(255 * (0.55 + 0.45 * fractalNoise(u, v, 5, 3, seed + 11)));
+      const i = (y * size + x) * 4;
+      image.data[i] = billows;
+      image.data[i + 1] = billows;
+      image.data[i + 2] = billows;
+      image.data[i + 3] = Math.round(255 * Math.min(1, density));
+    }
+  }
+  return image;
+}
+
+/**
  * The full moon, filling the square but for a pixel round it: pale highlands,
  * darker seas, a little grain, and a rim a shade darker than the middle. The
  * corners are transparent (in the highlands' colour, so filtering leaves no

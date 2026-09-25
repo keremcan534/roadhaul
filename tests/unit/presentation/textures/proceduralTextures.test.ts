@@ -3,6 +3,7 @@ import { fractalNoise, grain, tileableNoise } from '../../../../src/presentation
 import { createImage, type PixelImage } from '../../../../src/presentation/textures/pixelImage';
 import {
   asphaltImage,
+  cloudPuffImage,
   concreteImage,
   glowImage,
   grassImage,
@@ -280,6 +281,24 @@ describe('procedural images', () => {
       return pixel(puff, Math.round(16 + Math.cos(angle) * 7), Math.round(16 + Math.sin(angle) * 7))[3]!;
     });
     expect(Math.max(...ring) - Math.min(...ring)).toBeGreaterThan(10);
+  });
+
+  it('draw a cloud puff as a dense, billowing ball, clear well inside the square, its light mottled', () => {
+    const puff = cloudPuffImage(32);
+
+    expect(pixel(puff, 16, 16)[3]).toBeGreaterThan(180);
+    for (const [x, y] of [[0, 0], [0, 16], [16, 31], [31, 31]] as const) {
+      expect(pixel(puff, x, y)[3]).toBe(0);
+    }
+    // Billows: the rim is not a circle, and the light on the puff is not flat.
+    const ring = Array.from({ length: 24 }, (_, i) => {
+      const angle = (i / 24) * Math.PI * 2;
+      return pixel(puff, Math.round(16 + Math.cos(angle) * 11), Math.round(16 + Math.sin(angle) * 11))[3]!;
+    });
+    expect(Math.max(...ring) - Math.min(...ring)).toBeGreaterThan(40);
+    const greys = Array.from({ length: 8 }, (_, i) => pixel(puff, 12 + i, 16)[0]!);
+    expect(Math.max(...greys) - Math.min(...greys)).toBeGreaterThan(8);
+    expect(cloudPuffImage(32)).toEqual(puff);
   });
 
   it('fade the soft shadow from the centre to transparent edges', () => {
