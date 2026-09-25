@@ -18,6 +18,7 @@ import {
   ShaderMaterial,
   ShadowMaterial,
   SphereGeometry,
+  Vector2,
   Vector3,
   type Scene,
 } from 'three';
@@ -37,6 +38,7 @@ import {
   SUN_COLOR,
   SUN_DIRECTION,
   SUN_INTENSITY,
+  sunShareOfGroundLight,
   type PrelitMaterials,
 } from './lighting';
 import { unlitByLamps } from './LampLighting';
@@ -132,6 +134,18 @@ const DAY_ELEVATION = degreesToRadians(12);
 /** Past sunset the sky keeps a glow where the sun went down, this strong, gone by this far below the horizon. */
 const AFTERGLOW = 0.45;
 const AFTERGLOW_ENDS = degreesToRadians(-9);
+/**
+ * Twilight's colours opposite the sun (the Earth's shadow on the horizon,
+ * the Belt of Venus above it) come as the sun sinks below TWILIGHT_STARTS,
+ * are at their fullest down to TWILIGHT_DEEPEST and gone by TWILIGHT_ENDS;
+ * the same at dawn. The shadow's top rises this much (as a sine) per radian
+ * the sun is down, from EARTH_SHADOW_LOW.
+ */
+const TWILIGHT_STARTS = degreesToRadians(4);
+const TWILIGHT_DEEPEST = degreesToRadians(-3);
+const TWILIGHT_ENDS = degreesToRadians(-8);
+const EARTH_SHADOW_LOW = 0.045;
+const EARTH_SHADOW_RISE = 1.4;
 const SUNSET_BELOW = degreesToRadians(-1);
 const SUNSET_ABOVE = degreesToRadians(3);
 /** With the moon down, the night's faint key light (the stars', the towns') comes from high up. */
@@ -250,7 +264,14 @@ export class EnvironmentView {
     readonly sunDirection: { value: Vector3 };
     /** 0 with the sun high, toward 1 as it nears the horizon: the sky round it glows. */
     readonly sunLow: { value: number };
+    /** How strongly twilight colours the sky opposite the sun (0..1), the way away from it, and the Earth's shadow's top (a sine). */
+    readonly twilight: { value: number };
+    readonly twilightAway: { value: Vector2 };
+    readonly earthShadow: { value: number };
   };
+  private readonly towardSun = new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z).normalize();
+  private glare = 0;
+  private groundSunShare = 0;
   private readonly clouds: Mesh;
   private readonly cloudGeometry: InstancedBufferGeometry;
   private readonly cloudUniforms = { brightness: { value: 1 }, drift: { value: 0 } };
@@ -320,6 +341,9 @@ export class EnvironmentView {
       sunColor: { value: new Color(SUN_COLOR) },
       sunDirection: { value: new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z) },
       sunLow: { value: 0 },
+      twilight: { value: 0 },
+      twilightAway: { value: new Vector2(0, 1) },
+      earthShadow: { value: EARTH_SHADOW_LOW },
     };
     this.cloudGeometry = this.track(new InstancedBufferGeometry());
     this.clouds = this.createClouds(this.cloudGeometry);
@@ -400,6 +424,20 @@ export class EnvironmentView {
       uniforms.sunColor.value.setHex(MOON_GLOW).multiply(this.tint).multiplyScalar(moonlight);
     }
     uniforms.sunLow.value = (1 - smoothstep(LOW_SUN_ELEVATION, HIGH_SUN_ELEVATION, elevation)) ** 2;
+    // Twilight opposite the sun, in a clear sky: clouds and rain hide it.
+    uniforms.twilight.value =
+      smoothstep(TWILIGHT_ENDS, TWILIGHT_DEEPEST, elevation) *
+      (1 - smoothstep(0, TWILIGHT_STARTS, elevation)) *
+      (1 - 0.85 * look.cloudCover) *
+      (1 - look.rain);
+    uniforms.twilightAway.value.set(-sun.x, -sun.z);
+    if (uniforms.twilightAway.value.lengthSq() > 1e-8) {
+      uniforms.twilightAway.value.normalize();
+    }
+    uniforms.earthShadow.value = EARTH_SHADOW_LOW + Math.max(0, -elevation) * EARTH_SHADOW_RISE;
+    // The sun glares while it is up and bright: less through haze and cloud, not at all in the rain.
+    this.towardSun.set(sun.x, sun.y, sun.z).normalize();
+    this.glare = Math.min(1, look.sunlight) * smoothstep(-0.01, 0.04, sun.y) * (1 - look.rain) * (1 - 0.7 * look.cloudCover);
     this.placeSun();
 
     // The moon where it stands, facing the camera, lit on the side toward the sun.
@@ -433,6 +471,7 @@ export class EnvironmentView {
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
     prelit?.setSun(key);
+    this.groundSunShare = sunShareOfGroundLight(groundSun, skylight);
     if (this.shadowGround !== null && this.shadowMaterial !== null) {
       // Long, fainter shadows from a low sun; none under a weak one (night, rain), and then the map is not drawn.
       const shown = keyLight >= MIN_SHADOW_SUNLIGHT;
@@ -461,6 +500,21 @@ export class EnvironmentView {
   /** The sky's colours and the sun as shader uniforms: share them, and they follow the weather. */
   get sky(): SkyUniforms {
     return this.skyUniforms;
+  }
+
+  /** Toward the sun (unit; below the horizon at night), as applySky() last placed it. Updated in place. */
+  get sunTowards(): Readonly<Vector3> {
+    return this.towardSun;
+  }
+
+  /** How strongly the sun may glare on the picture (0..1): up, bright, the sky clear (RenderHost.setSun). */
+  get sunGlare(): number {
+    return this.glare;
+  }
+
+  /** The sun's share of the light on flat ground now (0..1): what the clouds' shadows can take (CloudShadows). */
+  get sunShare(): number {
+    return this.groundSunShare;
   }
 
   /** The key light and the sky's as they shade the scene now; the object is updated in place by applySky(). */
@@ -535,6 +589,9 @@ export class EnvironmentView {
           uniform vec3 sunColor;
           uniform vec3 sunDirection;
           uniform float sunLow;
+          uniform float twilight;
+          uniform vec2 twilightAway;
+          uniform float earthShadow;
           varying vec3 vDirection;
           void main() {
             vec3 direction = normalize(vDirection);
@@ -550,6 +607,16 @@ export class EnvironmentView {
             vec2 sunBearing = normalize(sunDirection.xz + vec2(1e-5));
             float sunSide = max(dot(bearing, sunBearing), 0.0);
             sky += sunColor * sunLow * sunSide * sunSide * pow(1.0 - clamp(up, 0.0, 1.0), 5.0) * 0.6;
+            // Opposite a setting (or rising) sun: the Earth's shadow, a blue-grey band along the horizon rising as
+            // the sun sinks, and the Belt of Venus, pink, above it.
+            float away = max(dot(bearing, twilightAway), 0.0);
+            float opposite = twilight * away * away;
+            float height = max(up, 0.0);
+            float shadowBand = 1.0 - smoothstep(earthShadow * 0.75, earthShadow * 1.25, height);
+            float belt = smoothstep(earthShadow * 0.8, earthShadow * 1.6, height)
+              * (1.0 - smoothstep(earthShadow + 0.06, earthShadow + 0.22, height));
+            sky = mix(sky, sky * vec3(0.5, 0.56, 0.8), shadowBand * opposite * 0.85);
+            sky += vec3(0.95, 0.42, 0.55) * dot(horizon, vec3(0.2126, 0.7152, 0.0722)) * belt * opposite * 0.65;
             gl_FragColor = vec4(sky, 1.0);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>

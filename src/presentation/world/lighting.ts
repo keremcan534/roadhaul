@@ -125,6 +125,17 @@ export class PrelitMaterials {
 }
 
 /**
+ * The sun's share of the light on flat ground (0..1) with the sun at
+ * `sunlight` and the sky at `skylight` of a clear day's: what a cloud's
+ * shadow can take away (CloudShadows.setClouds).
+ */
+export function sunShareOfGroundLight(sunlight: number, skylight: number): number {
+  const sun = FLAT_LIGHT_PARTS.sun.g * Math.max(0, sunlight);
+  const sky = FLAT_LIGHT_PARTS.sky.g * Math.max(0, skylight);
+  return sun / Math.max(sun + sky, 1e-6);
+}
+
+/**
  * Light on flat, upward-facing ground with the sun at `sunlight` and the sky
  * at `skylight` of a clear day's, tinted `tint`, as a factor of a clear
  * day's flat-ground light: what PrelitMaterials.setLight() takes. Writes

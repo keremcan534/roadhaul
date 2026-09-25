@@ -4,6 +4,7 @@ import { createImage, type PixelImage } from '../../../../src/presentation/textu
 import {
   asphaltImage,
   cloudPuffImage,
+  cloudShadowImage,
   concreteImage,
   glowImage,
   grassImage,
@@ -153,6 +154,28 @@ describe('stroke font', () => {
 });
 
 describe('procedural images', () => {
+  it('maps the clouds\' shadows in grey that tiles, big blobs of it high and low', () => {
+    const size = 64;
+    const image = cloudShadowImage(size);
+    const values: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const [r, g, b, a] = pixel(image, x, y);
+        expect(g).toBe(r);
+        expect(b).toBe(r);
+        expect(a).toBe(255);
+        values.push(r!);
+      }
+    }
+    // Enough spread for a threshold to pick shadows out of it, and no seam where it tiles.
+    expect(Math.max(...values) - Math.min(...values)).toBeGreaterThan(80);
+    for (let y = 0; y < size; y += 3) {
+      expect(Math.abs(pixel(image, 0, y)[0]! - pixel(image, size - 1, y)[0]!)).toBeLessThan(24);
+      expect(Math.abs(pixel(image, y, 0)[0]! - pixel(image, y, size - 1)[0]!)).toBeLessThan(24);
+    }
+    expect(cloudShadowImage(size).data).toEqual(image.data);
+  });
+
   it('are deterministic', () => {
     expect(grassImage(64).data).toEqual(grassImage(64).data);
     expect(liveryImage([224, 98, 42], 256, 128).data).toEqual(liveryImage([224, 98, 42], 256, 128).data);

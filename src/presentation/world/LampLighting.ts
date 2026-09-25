@@ -121,6 +121,11 @@ export function unlitByLamps(object: Object3D | Material): void {
   object.userData[UNLIT] = true;
 }
 
+/** Whether unlitByLamps() kept the lamps' light off `object` (the sky's backdrop, which moves with the camera). */
+export function isUnlitByLamps(object: Object3D | Material): boolean {
+  return object.userData[UNLIT] === true;
+}
+
 /** `material`'s surfaces scatter the lamps' light every way (grass, flowers, smoke, spray), not as flat ground. */
 export function scattersLamplight(material: Material): void {
   material.userData[SCATTERS] = true;

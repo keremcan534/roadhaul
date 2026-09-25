@@ -1,5 +1,5 @@
-import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, WebGLRenderer } from 'three';
-import { PostProcessing, type ColorGrade } from './PostProcessing';
+import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
   /** Upper bound for the device pixel ratio (fill-rate budget on phones). */
@@ -37,6 +37,8 @@ export class RenderHost {
   /** The colour pass, or null where the scene goes straight to the screen (the low preset, older devices). */
   private readonly post: PostProcessing | null;
   private readonly bufferSize = new Vector2();
+  /** Scratch: where the sun is, as the camera sees it (setSun). */
+  private readonly sunPoint = new Vector3();
   /** Share of the capped pixel ratio drawn at (AdaptiveResolution), and the size last asked for. */
   private resolutionScale = 1;
   private cssWidth = 0;
@@ -127,6 +129,25 @@ export class RenderHost {
   /** How the colour pass grades the picture from now on (the weather's: EnvironmentView.grade). Cheap. */
   setGrade(grade: Readonly<ColorGrade>): void {
     this.post?.setGrade(grade);
+  }
+
+  /**
+   * The sun lies toward `direction` (unit: it is that far off) and may glare
+   * on the picture at `strength` (0..1): the colour pass draws its glare and
+   * the lens's ghosts where it shows (PostProcessing.setSun); not when drawn
+   * in software. Call with the camera placed for the frame. Allocation-free.
+   */
+  setSun(direction: Readonly<{ x: number; y: number; z: number }>, strength: number): void {
+    // In software every pixel of the glare counts: none there.
+    if (this.post === null || this.softwareRendering) {
+      return;
+    }
+    this.camera.updateMatrixWorld();
+    if (strength > 0 && sunOnPicture(this.camera, direction, this.sunPoint)) {
+      this.post.setSun(this.sunPoint.x, this.sunPoint.y, strength);
+    } else {
+      this.post.setSun(-10, -10, 0);
+    }
   }
 
   /**

@@ -382,6 +382,53 @@ describe('EnvironmentView', () => {
     expect(dome(scene).fragmentShader).toContain('smoothstep(-0.01, 0.01, sunDirection.y)');
   });
 
+  it("colours the sky opposite a setting sun: the Earth's shadow rising on the horizon, the Belt of Venus over it", () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const uniforms = dome(scene).uniforms;
+    const twilightAt = (elevation: number, weather = 'clear'): number => {
+      view.applySky(skyAt(elevation, weather), placed(toward(elevation, 250)));
+      return uniforms['twilight']!.value as number;
+    };
+
+    expect(twilightAt(40)).toBe(0);
+    expect(twilightAt(2)).toBeGreaterThan(0.1);
+    expect(twilightAt(-2)).toBeGreaterThan(0.4);
+    expect(twilightAt(-10)).toBe(0);
+    // Clouds and rain hide it.
+    expect(twilightAt(-2, 'rain')).toBe(0);
+    expect(twilightAt(-2, 'cloudy')).toBeLessThan(twilightAt(-2) / 3);
+    // Away from the sun, flat; the shadow's top higher the lower the sun.
+    view.applySky(skyAt(-1), placed(toward(-1, 250)));
+    const away = uniforms['twilightAway']!.value as { x: number; y: number };
+    const sun = toward(-1, 250);
+    expect(away.x * sun.x + away.y * sun.z).toBeLessThan(-0.99);
+    const shallow = uniforms['earthShadow']!.value as number;
+    view.applySky(skyAt(-5), placed(toward(-5, 250)));
+    expect(uniforms['earthShadow']!.value).toBeGreaterThan(shallow);
+    expect(dome(scene).fragmentShader).toContain('earthShadow');
+  });
+
+  it('tells the colour pass where the sun is and how it may glare, and the clouds how much light they can shade', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+
+    view.applySky(skyAt(40), placed(toward(40, 180)));
+    const noon = { glare: view.sunGlare, share: view.sunShare };
+    const sun = toward(40, 180);
+    expect(view.sunTowards.distanceTo(new Vector3(sun.x, sun.y, sun.z))).toBeLessThan(1e-9);
+    expect(noon.glare).toBeGreaterThan(0.3);
+    expect(noon.share).toBeGreaterThan(0.4);
+    expect(noon.share).toBeLessThan(1);
+
+    view.applySky(skyAt(40, 'rain'), placed(toward(40, 180)));
+    expect(view.sunGlare).toBe(0);
+    // After sunset only the moon lights the ground from one side, faintly.
+    view.applySky(skyAt(-6), placed(toward(-6, 250)));
+    expect(view.sunGlare).toBe(0);
+    expect(view.sunShare).toBeLessThan(noon.share / 2);
+  });
+
   it('grades the picture by the time and the weather: warm at dusk, cool at night, grey in the rain, darker corners under lit lamps', () => {
     const view = new EnvironmentView(new Scene());
     const clear = look('clear');

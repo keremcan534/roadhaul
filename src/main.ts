@@ -48,6 +48,7 @@ import { LampLighting, type LampLightingOptions } from './presentation/world/Lam
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { BirdsView } from './presentation/world/BirdsView';
+import { CloudShadows } from './presentation/world/cloudShadows';
 import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { SeaView } from './presentation/world/SeaView';
@@ -213,6 +214,9 @@ async function start(): Promise<void> {
   const renderHost = new RenderHost(canvas, config.rendering);
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
+  // Broken cloud's shadows drift over the land, on the pre-lit ground and the lit things alike; not drawn in software,
+  // where every pixel's texture read counts.
+  const cloudShadows = new CloudShadows();
   const castShadows = config.rendering.shadowMapSize > 0;
   // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
@@ -494,7 +498,11 @@ async function start(): Promise<void> {
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
       truck = new TruckView(renderHost.scene, definition, options);
-      // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it).
+      // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it), and the
+      // clouds shade it.
+      if (!software) {
+        cloudShadows.shadeScene(renderHost.scene, prelit);
+      }
       if (lampLight) {
         lampLighting.lightScene(renderHost.scene, prelit);
       }
@@ -1123,6 +1131,7 @@ async function start(): Promise<void> {
         windTurbines.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
         scenery.update(paused ? 0 : deltaSeconds);
+        cloudShadows.drift(paused ? 0 : deltaSeconds);
         harbour?.setLamps(lamps);
         harbour?.update(paused ? 0 : deltaSeconds);
         seaView?.update(paused ? 0 : deltaSeconds);
@@ -1152,6 +1161,7 @@ async function start(): Promise<void> {
         lampLighting.setWetness(weather.rain);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
         environment.applySky(skyLook, timeOfDay, prelit);
+        cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
@@ -1201,6 +1211,7 @@ async function start(): Promise<void> {
         menuFrames = onRoad() && !paused ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.setGrade(environment.grade);
+          renderHost.setSun(environment.sunTowards, environment.sunGlare);
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
@@ -1232,8 +1243,11 @@ async function start(): Promise<void> {
     },
     { maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds },
   );
-  // Every view is in the scene: light it by the lamps, and have the GPU compile the shaders now, behind the menu,
-  // not on the road.
+  // Every view is in the scene: the clouds' shadows on the pre-lit ground, the lamps' light on everything, and the
+  // GPU compiling the shaders now, behind the menu, not on the road.
+  if (!software) {
+    cloudShadows.shadeScene(renderHost.scene, prelit);
+  }
   if (lampLight) {
     lampLighting.lightScene(renderHost.scene, prelit);
   }

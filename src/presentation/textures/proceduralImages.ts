@@ -15,6 +15,26 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 /**
+ * Where the clouds' shadows fall, seen from above: tileable fractal noise in
+ * grey (the higher, the cloudier), a few big blobs with ragged edges. Not a
+ * colour image: the pre-lit ground reads it (PrelitMaterials).
+ */
+export function cloudShadowImage(size = 128, seed = 107): PixelImage {
+  const image = createImage(size, size);
+  const { data } = image;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const value = Math.round(fractalNoise(x / size, y / size, 4, 3, seed) * 255);
+      const i = (y * size + x) * 4;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+  }
+  return image;
+}
+
+/**
  * Tileable meadow grass: small blotches of greens with fine grain, even
  * across the tile, so nothing larger repeats where it is tiled (the ground
  * lays larger lusher and drier patches over it).
