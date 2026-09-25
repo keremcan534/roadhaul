@@ -33,6 +33,8 @@ import type { VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
 import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
+import type { SkyUniforms } from '../world/EnvironmentView';
+import { reflectSky, type SkyReflectionOptions } from '../world/skyReflection';
 import { cabGeometry } from './cabGeometry';
 import { LampGlows } from './LampGlows';
 
@@ -87,12 +89,12 @@ const TANK_LENGTH = [1.1, 1.4, 1.7, 1.7] as const;
 const TANK_RADIUS = [0.28, 0.3, 0.31, 0.31] as const;
 /** Brake calipers on the wheels: none, yellow, orange, red (they stand out on the gold rims too). */
 const CALIPER_COLORS = [0, 0xffd21f, 0xff7a1a, 0xe0281f] as const;
-/** The rims: plain, polished, chrome, gold. */
+/** The rims: plain, polished, chrome, gold; `mirror` is how much of the sky they mirror head-on (skyReflection). */
 const RIM_FINISHES = [
-  { color: 0xffffff, shininess: 90, specular: 0x111111 },
-  { color: 0xe4ecf4, shininess: 120, specular: 0x555555 },
-  { color: 0xffffff, shininess: 200, specular: 0xffffff },
-  { color: 0xf0c050, shininess: 160, specular: 0xfff0c0 },
+  { color: 0xffffff, shininess: 90, specular: 0x111111, mirror: 0.12 },
+  { color: 0xe4ecf4, shininess: 120, specular: 0x555555, mirror: 0.35 },
+  { color: 0xffffff, shininess: 200, specular: 0xffffff, mirror: 0.75 },
+  { color: 0xf0c050, shininess: 160, specular: 0xfff0c0, mirror: 0.6 },
 ] as const;
 /** How far the body sits lower on an upgraded suspension, meters. */
 const STANCE_DROP = [0, 0.04, 0.07, 0.1] as const;
@@ -123,6 +125,8 @@ export interface TruckViewOptions {
   readonly looks?: Partial<TruckLooks>;
   /** The truck casts the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
+  /** The sky its paint, glass and chrome mirror (EnvironmentView.sky); without it they mirror nothing. */
+  readonly sky?: SkyUniforms;
 }
 
 /**
@@ -375,22 +379,37 @@ export class TruckView {
 
     const accentRgb: Rgb = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
     this.lampMaterial = this.track(new MeshBasicMaterial({ vertexColors: true }));
+    // Glossy paint and glass mirror the sky the flatter they are seen; chrome and metal mirror it in their colour.
+    const shiny = (material: MeshPhongMaterial, reflection: SkyReflectionOptions): MeshPhongMaterial =>
+      options.sky === undefined ? material : reflectSky(material, options.sky, reflection);
     const materials: Readonly<Record<PartMaterial, Material>> = {
-      paint: this.track(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 })),
+      paint: this.track(shiny(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 }), { facing: 0.05 })),
       dark: this.track(new MeshLambertMaterial({ color: 0x2b2e33 })),
-      metal: this.track(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd })),
-      glass: this.track(new MeshPhongMaterial({ color: 0x1b2733, shininess: 140, specular: 0x9aa7b3 })),
+      metal: this.track(
+        shiny(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd }), { facing: 0.5, metal: true }),
+      ),
+      glass: this.track(shiny(new MeshPhongMaterial({ color: 0x1b2733, shininess: 140, specular: 0x9aa7b3 }), { facing: 0.07 })),
       lamps: this.lampMaterial,
       grille: this.track(new MeshLambertMaterial({ map: this.texture(toTexture(grilleImage())) })),
-      panels: this.track(new MeshPhongMaterial({ color: 0xf2f2ee, shininess: 25, specular: 0x222222 })),
+      panels: this.track(
+        shiny(new MeshPhongMaterial({ color: 0xf2f2ee, shininess: 25, specular: 0x222222 }), { facing: 0.03, strength: 0.5 }),
+      ),
       livery: this.track(
-        new MeshPhongMaterial({ map: this.texture(toTexture(liveryImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+        shiny(
+          new MeshPhongMaterial({ map: this.texture(toTexture(liveryImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          { facing: 0.03, strength: 0.5 },
+        ),
       ),
       doors: this.track(
-        new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+        shiny(
+          new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          { facing: 0.03, strength: 0.5 },
+        ),
       ),
       deck: this.track(new MeshLambertMaterial({ color: 0x6e5238 })),
-      chrome: this.track(new MeshPhongMaterial({ color: CHROME_COLOR, shininess: 160, specular: 0xffffff })),
+      chrome: this.track(
+        shiny(new MeshPhongMaterial({ color: CHROME_COLOR, shininess: 160, specular: 0xffffff }), { facing: 0.85, metal: true }),
+      ),
       mudflap: this.track(new MeshLambertMaterial({ color: MUDFLAP_COLOR })),
     };
     for (const [material, geometries] of parts) {
@@ -681,6 +700,9 @@ export class TruckView {
         specular: finish.specular,
       }),
     );
+    if (this.options.sky !== undefined) {
+      reflectSky(rim, this.options.sky, { facing: finish.mirror, metal: true });
+    }
     return this.track(
       new InstancedMesh(this.track(wheel), [this.track(new MeshLambertMaterial({ color: 0x1d1d1f })), rim, rim], count),
     );
@@ -689,7 +711,11 @@ export class TruckView {
   /** A caliper on each wheel's outer face, over the rim's upper rear: one draw call for them all. */
   private createCalipers(radius: number, count: number, color: number): InstancedMesh {
     const caliper = new BoxGeometry(0.03, radius * 0.34, radius * 0.5).translate(0, radius * 0.36, -radius * 0.22);
-    const mesh = new InstancedMesh(this.track(caliper), this.track(new MeshPhongMaterial({ color, shininess: 70 })), count);
+    const material = new MeshPhongMaterial({ color, shininess: 70 });
+    if (this.options.sky !== undefined) {
+      reflectSky(material, this.options.sky, { facing: 0.05 });
+    }
+    const mesh = new InstancedMesh(this.track(caliper), this.track(material), count);
     mesh.name = 'brake-calipers';
     return this.track(mesh);
   }

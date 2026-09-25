@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   BufferAttribute,
+  CircleGeometry,
   Color,
   CylinderGeometry,
   Group,
@@ -13,18 +14,24 @@ import {
   type DataTexture,
   type Scene,
 } from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
 import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
 import { softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
+import type { SkyUniforms } from '../world/EnvironmentView';
+import { reflectSky } from '../world/skyReflection';
 
 /** Parts in white take the vehicle's paint (the instance colour); the rest are dark or light enough to stay themselves. */
 const PAINT = 0xffffff;
 const GLASS = 0x1d2630;
 const TYRE = 0x161616;
 const TRIM = 0x3a3d42;
+const HUB = 0xb4b9bf;
+/** Painted bodies' edges are rounded off by this share of their smallest side. */
+const BODY_ROUNDING = 0.14;
 const WHEEL_SEGMENTS = 10;
 /** Every vehicle has two headlights and two tail lights, in this order: front left, front right, rear left, rear right. */
 const LAMPS_PER_VEHICLE = 4;
@@ -46,7 +53,12 @@ export interface TrafficViewOptions {
   readonly lampGlows?: boolean;
   /** The vehicles cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
+  /** The sky their paint and glass mirror (EnvironmentView.sky); without it they mirror nothing. */
+  readonly sky?: SkyUniforms;
 }
+
+/** How much each part mirrors the sky (skyReflection's per-vertex shine): glossy paint, glass, dull trim, no tyres. */
+const SHINE: Readonly<Record<number, number>> = { [PAINT]: 0.85, [GLASS]: 1, [TRIM]: 0.25, [TYRE]: 0, [HUB]: 0.6 };
 
 /**
  * Draws the NPC traffic (roadmap step 22): one instanced mesh per kind of
@@ -62,7 +74,7 @@ export interface TrafficViewOptions {
 export class TrafficView {
   private readonly root = new Group();
   private readonly meshes: InstancedMesh[];
-  private readonly material = new MeshLambertMaterial({ vertexColors: true });
+  private readonly material: MeshLambertMaterial;
   /** The vehicle (by serial) each instance of each mesh showed last frame, to repaint only when it changes. */
   private readonly shown: Int32Array[];
   private readonly counts: Int32Array;
@@ -90,6 +102,10 @@ export class TrafficView {
   ) {
     const instances = Math.max(1, capacity);
     const shapes = types.map(shapeOf);
+    this.material = new MeshLambertMaterial({ vertexColors: true });
+    if (options.sky !== undefined) {
+      reflectSky(this.material, options.sky, { facing: 0.05, perVertex: true });
+    }
     this.meshes = types.map((type, index) => {
       const mesh = new InstancedMesh(merged(shapes[index]!.parts), this.material, instances);
       mesh.name = `traffic:${type.id}`;
@@ -284,7 +300,7 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       const glass = height - sill - body - 0.06;
       return {
         parts: [
-          box(width, body, length, 0, sill + body / 2, 0, PAINT),
+          rounded(width, body, length, 0, sill + body / 2, 0, PAINT),
           // The glasshouse sits back from the bonnet, with the roof painted.
           box(width * 0.86, glass, length * 0.5, 0, sill + body + glass / 2, -length * 0.06, GLASS),
           box(width * 0.84, 0.06, length * 0.46, 0, height - 0.03, -length * 0.06, PAINT),
@@ -299,7 +315,7 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       const body = height - floor;
       return {
         parts: [
-          box(width, body, length, 0, floor + body / 2, 0, PAINT),
+          rounded(width, body, length, 0, floor + body / 2, 0, PAINT),
           // A band of side windows and the windscreen.
           box(width + 0.02, body * 0.32, length * 0.78, 0, floor + body * 0.72, -length * 0.06, GLASS),
           box(width * 0.9, body * 0.36, 0.04, 0, floor + body * 0.7, length / 2 + 0.01, GLASS),
@@ -321,10 +337,10 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       return {
         parts: [
           // Cab at the front with its windscreen, the painted box behind, a dark chassis under both.
-          box(width, cab, cabLength, 0, floor + cab / 2, length / 2 - cabLength / 2, PAINT),
+          rounded(width, cab, cabLength, 0, floor + cab / 2, length / 2 - cabLength / 2, PAINT),
           box(width * 0.9, cab * 0.36, 0.04, 0, windowY, length / 2 + 0.01, GLASS),
           box(width + 0.02, cab * 0.3, cabLength * 0.4, 0, windowY, length / 2 - cabLength * 0.3, GLASS),
-          box(width, cargo, cargoLength, 0, floor + 0.1 + cargo / 2, -length / 2 + cargoLength / 2, PAINT),
+          rounded(width, cargo, cargoLength, 0, floor + 0.1 + cargo / 2, -length / 2 + cargoLength / 2, PAINT),
           box(width * 0.8, 0.3, length * 0.96, 0, floor - 0.1, 0, TRIM),
           ...wheels(width, wheel, [length / 2 - 1.4, -length / 2 + 2.2, -length / 2 + 1.1]),
         ],
@@ -337,7 +353,7 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       const body = height - floor;
       return {
         parts: [
-          box(width, body, length, 0, floor + body / 2, 0, PAINT),
+          rounded(width, body, length, 0, floor + body / 2, 0, PAINT),
           box(width + 0.02, body * 0.36, length * 0.84, 0, floor + body * 0.66, -length * 0.03, GLASS),
           box(width * 0.92, body * 0.5, 0.04, 0, floor + body * 0.6, length / 2 + 0.01, GLASS),
           box(width + 0.03, 0.14, length, 0, floor + 0.07, 0, TRIM),
@@ -352,6 +368,16 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
 /** A box `w` wide, `h` tall and `d` long centred at (x, y, z), in one colour. */
 function box(w: number, h: number, d: number, x: number, y: number, z: number, color: number): BufferGeometry {
   return colored(new BoxGeometry(w, h, d).translate(x, y, z), color);
+}
+
+/** A box like box(), its edges rounded off: a body that catches the light and the sky along its edges. */
+function rounded(w: number, h: number, d: number, x: number, y: number, z: number, color: number): BufferGeometry {
+  const radius = Math.min(w, h, d) * BODY_ROUNDING;
+  // three.js builds it without an index; welded, it merges with the other (indexed) parts.
+  const shape = new RoundedBoxGeometry(w, h, d, 1, radius);
+  const welded = mergeVertices(shape);
+  shape.dispose();
+  return colored(welded.translate(x, y, z), color);
 }
 
 /**
@@ -373,20 +399,24 @@ function lamps(width: number, length: number, y: number, size: number): VehicleL
   ];
 }
 
-/** A pair of wheels on each axle, `axles` meters ahead of the middle. */
+/** A pair of wheels on each axle, `axles` meters ahead of the middle, each with a light hub on its outer face. */
 function wheels(width: number, radius: number, axles: readonly number[]): BufferGeometry[] {
   const parts: BufferGeometry[] = [];
   for (const z of axles) {
     for (const side of [-1, 1]) {
-      const tyre = new CylinderGeometry(radius, radius, 0.26, WHEEL_SEGMENTS)
-        .rotateZ(Math.PI / 2)
-        .translate(side * (width / 2 - 0.12), radius, z);
+      const x = side * (width / 2 - 0.12);
+      const tyre = new CylinderGeometry(radius, radius, 0.26, WHEEL_SEGMENTS).rotateZ(Math.PI / 2).translate(x, radius, z);
       parts.push(colored(tyre, TYRE));
+      const hub = new CircleGeometry(radius * 0.58, WHEEL_SEGMENTS)
+        .rotateY((side * Math.PI) / 2)
+        .translate(x + side * 0.132, radius, z);
+      parts.push(colored(hub, HUB));
     }
   }
   return parts;
 }
 
+/** Gives every vertex of `geometry` one colour, and the shine of the part that colour stands for (SHINE). */
 function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
   const color = new Color(hex);
   const count = geometry.getAttribute('position').count;
@@ -397,5 +427,6 @@ function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
     colors[i * 3 + 2] = color.b;
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setAttribute('shine', new BufferAttribute(new Float32Array(count).fill(SHINE[hex] ?? 0), 1));
   return geometry;
 }

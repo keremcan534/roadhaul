@@ -150,6 +150,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | RainView | presentation | `src/presentation/weather/RainView.ts` | Rain streaks round the camera, animated on the GPU, one draw call; more of them the harder it rains | three | none |
 | TruckEffects | presentation | `src/presentation/vehicles/TruckEffects.ts` | What the truck throws into the air: exhaust from the stack (more and darker under load), dust from the rear wheels off the road, spray on a wet road; thinned out by the graphics preset | TruckView, ParticlePool, three | none |
 | ParticlePool | presentation | `src/presentation/effects/ParticlePool.ts` | Soft puffs in one draw call: camera-facing quads rebuilt every frame, moving, growing and fading, lit like the ground; hidden while none is in the air | three | none |
+| Sky reflections | presentation | `world/skyReflection.ts`, `TruckView`, `TrafficView` | Paint, glass, chrome and rims mirror the sky from EnvironmentView's shared uniforms (Fresnel, sun glint), without a reflection map | three | none |
 | Night lamps | presentation | `vehicles/LampGlows.ts`, `TruckView.setLamps`, `TrafficView.setLamps`, `TrackView.setLamps`, `StreetLampView.setLamps`, `CitySignView.setLamps` | Glowing lamps, the truck's headlights on the road ahead, lit windows, street lamps and their light on the road, name boards in the headlights | three | none |
 
 ### Special events (Phase 6, roadmap step 25)

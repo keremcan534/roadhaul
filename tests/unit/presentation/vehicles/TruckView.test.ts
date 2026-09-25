@@ -17,6 +17,7 @@ import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { CameraRig } from '../../../../src/presentation/cameras/CameraRig';
 import { TruckView, truckViewKey } from '../../../../src/presentation/vehicles/TruckView';
+import { EnvironmentView } from '../../../../src/presentation/world/EnvironmentView';
 import { gpuResources, watchDisposal } from '../../../support/threeResources';
 
 function wheelsOf(scene: Scene): InstancedMesh {
@@ -378,6 +379,31 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(casters).not.toContain(shadowed.getObjectByName('headlight-pool'));
     // The soft shadow: the see-through black plane under the truck.
     expect(casters.some((mesh) => mesh.material instanceof MeshBasicMaterial && mesh.material.transparent && mesh.material.color.getHex() === 0)).toBe(false);
+  });
+
+  it('mirrors the sky in its paint, glass, chrome and rims when given it', () => {
+    const sky = new EnvironmentView(new Scene()).sky;
+    const mirroring = (scene: Scene): number => {
+      const materials = new Set<MeshPhongMaterial>();
+      scene.traverse((object) => {
+        if (object instanceof Mesh) {
+          for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+            if (material instanceof MeshPhongMaterial && material.customProgramCacheKey().startsWith('sky-reflection')) {
+              materials.add(material);
+            }
+          }
+        }
+      });
+      return materials.size;
+    };
+    const plain = new Scene();
+    const shiny = new Scene();
+    new TruckView(plain, truck);
+    new TruckView(shiny, truck, { sky });
+
+    expect(mirroring(plain)).toBe(0);
+    // At least the paint, the glass, the rims and some metal; a box body's panels, livery and doors too.
+    expect(mirroring(shiny)).toBeGreaterThanOrEqual(4);
   });
 
   it('releases every GPU resource on dispose', () => {

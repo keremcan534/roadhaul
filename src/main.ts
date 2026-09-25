@@ -188,6 +188,7 @@ async function start(): Promise<void> {
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
     castShadows,
+    sky: environment.sky,
   });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity);
@@ -199,7 +200,7 @@ async function start(): Promise<void> {
   /** Whether sound plays, as last written to the page (e2e tests read it). */
   let shownSound = '';
   // Rebuilt whenever the player drives another truck (showActiveTruck).
-  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows });
+  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
@@ -382,7 +383,7 @@ async function start(): Promise<void> {
       paint = owned?.paint?.color ?? model.factoryColor;
       fitted = owned?.upgrades ?? {};
     }
-    const options = { lampGlows, castShadows, paint, looks: truckLooks(fitted, content.upgrades.all) };
+    const options = { lampGlows, castShadows, sky: environment.sky, paint, looks: truckLooks(fitted, content.upgrades.all) };
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
       truck = new TruckView(renderHost.scene, definition, options);

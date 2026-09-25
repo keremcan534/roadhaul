@@ -59,7 +59,7 @@ describe('TrafficView', () => {
     }
   });
 
-  it('shapes every kind to its size, standing on the ground and facing +Z, in under 400 triangles', () => {
+  it('shapes every kind to its size, standing on the ground and facing +Z, rounded, in under 600 triangles', () => {
     for (const type of TRAFFIC_VEHICLES) {
       const geometry = vehicleGeometry(type);
       const box = new Box3().setFromBufferAttribute(geometry.getAttribute('position') as BufferAttribute);
@@ -69,7 +69,12 @@ describe('TrafficView', () => {
       expect(box.max.x - box.min.x, type.id).toBeLessThan(type.widthMeters + 0.1);
       expect(box.max.z - box.min.z, type.id).toBeLessThan(type.lengthMeters + 0.05);
       expect(box.max.z - box.min.z, type.id).toBeGreaterThan(type.lengthMeters - 0.1);
-      expect(geometry.index!.count / 3, type.id).toBeLessThan(400);
+      expect(geometry.index!.count / 3, type.id).toBeLessThan(600);
+      // Every part mirrors the sky as much as it shines: glossy paint and glass, dull tyres.
+      const shine = geometry.getAttribute('shine');
+      expect(shine.count, type.id).toBe(geometry.getAttribute('position').count);
+      const shines = new Set(Array.from(shine.array as Float32Array));
+      expect([...shines].sort(), type.id).toEqual(expect.arrayContaining([0, 1]));
       geometry.dispose();
     }
   });
