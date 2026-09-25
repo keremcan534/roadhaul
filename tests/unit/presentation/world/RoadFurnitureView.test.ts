@@ -46,7 +46,8 @@ function railsOf(scene: Scene): Mesh[] {
 describe('RoadFurnitureView', () => {
   it('stands reflector posts along both sides of rural roads and highways, on the verge, clear of junctions', () => {
     const scene = new Scene();
-    const view = new RoadFurnitureView(scene, world);
+    const view = new RoadFurnitureView(scene, world, { postDrawMeters: Infinity });
+    view.update(0, 0, 0);
     const posts = placesOf(scene.getObjectByName('road-furniture:posts') as InstancedMesh);
 
     expect(view.counts.posts).toBe(posts.length);
@@ -71,7 +72,7 @@ describe('RoadFurnitureView', () => {
 
   it('puts a reflector on both faces of every post, facing the traffic along the road either way', () => {
     const scene = new Scene();
-    new RoadFurnitureView(scene, world);
+    new RoadFurnitureView(scene, world, { postDrawMeters: Infinity }).update(0, 0, 0);
     const posts = scene.getObjectByName('road-furniture:posts') as InstancedMesh;
     const reflectors = scene.getObjectByName('road-furniture:reflectors') as InstancedMesh;
     expect(reflectors.count).toBe(posts.count * 2);
@@ -92,6 +93,36 @@ describe('RoadFurnitureView', () => {
       const along = (b.x - a.x) * point.directionX + (b.z - a.z) * point.directionZ;
       expect(Math.abs(along)).toBeCloseTo(0.14, 2);
     }
+  });
+
+  it('draws only the posts near the truck, gathering them again as it drives on', () => {
+    const scene = new Scene();
+    const view = new RoadFurnitureView(scene, world);
+    const posts = scene.getObjectByName('road-furniture:posts') as InstancedMesh;
+    const reflectors = scene.getObjectByName('road-furniture:reflectors') as InstancedMesh;
+    expect(posts.visible).toBe(false);
+
+    const road = world.roads.find((candidate) => candidate.kind === 'rural')!;
+    const point = createRoadPoint();
+    road.pointAt(600, point);
+    view.update(point.x, point.z, 0);
+    const near = placesOf(posts);
+    expect(near.length).toBeGreaterThan(8);
+    expect(near.length).toBeLessThan(view.counts.posts / 3);
+    expect(view.counts.drawnPosts).toBe(near.length);
+    expect(reflectors.count).toBe(near.length * 2);
+    for (const post of near) {
+      expect(Math.hypot(post.x - point.x, post.z - point.z)).toBeLessThanOrEqual(300);
+    }
+    // A few meters on: the same posts; a kilometer on, others.
+    view.update(point.x + 5, point.z, 1);
+    expect(placesOf(posts)).toEqual(near);
+    road.pointAt(1600, point);
+    view.update(point.x, point.z, 0);
+    for (const post of placesOf(posts)) {
+      expect(Math.hypot(post.x - point.x, post.z - point.z)).toBeLessThanOrEqual(300);
+    }
+    expect(placesOf(posts)).not.toEqual(near);
   });
 
   it('lights the reflectors up in the headlights, dead ahead of the truck, and only when its lamps are on', () => {
@@ -123,7 +154,8 @@ describe('RoadFurnitureView', () => {
 
   it("draws the world's guard rails in steel, merged per tile, and keeps the reflector posts off them", () => {
     const scene = new Scene();
-    const view = new RoadFurnitureView(scene, world);
+    const view = new RoadFurnitureView(scene, world, { postDrawMeters: Infinity });
+    view.update(0, 0, 0);
     const rails = railsOf(scene);
     const railPosts = world.guardRails.flatMap((rail) => rail.points);
 

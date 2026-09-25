@@ -30,6 +30,12 @@ const JUNCTION_CLEARANCE_METERS = 18;
 /** …and this far from a guard rail's posts. */
 const RAIL_CLEARANCE_METERS = 3;
 /**
+ * Only the posts within this distance of the truck are drawn (further out
+ * they are specks), gathered again whenever it has moved this far.
+ */
+const POST_DRAW_METERS = 300;
+const POST_REGATHER_METERS = 20;
+/**
  * A guard rail's beam: its W profile from the bottom up, each row's height
  * and how far it stands out toward the road (DrivingWorld places the rails).
  */
@@ -59,6 +65,8 @@ export interface RoadFurnitureViewOptions {
   readonly sky?: SkyUniforms;
   /** Posts and rails cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
+  /** How far from the truck delineator posts are drawn, meters. Default: 300. */
+  readonly postDrawMeters?: number;
 }
 
 /**
@@ -66,8 +74,9 @@ export interface RoadFurnitureViewOptions {
  * rural roads and highways, each with an amber reflector that lights up in
  * the truck's headlights at night, and the world's guard rails
  * (DrivingWorld.guardRails) in galvanised steel. Posts and reflectors are
- * instanced (two draw calls); the rails are merged per 600 m tile, which
- * the camera culls. Placed once, deterministically.
+ * instanced (two draw calls), holding only the posts near the truck; the
+ * rails are merged per 600 m tile, which the camera culls. Placed once,
+ * deterministically.
  */
 export class RoadFurnitureView {
   private readonly root = new Group();
@@ -75,6 +84,15 @@ export class RoadFurnitureView {
   private readonly reflectors: InstancedMesh;
   private readonly rails: Mesh[] = [];
   private readonly resources: { dispose(): void }[] = [];
+  /** Every post: where it stands, its matrix and its two reflectors' (16 floats each), in the same order. */
+  private readonly postX: Float32Array;
+  private readonly postZ: Float32Array;
+  private readonly postMatrices: Float32Array;
+  private readonly reflectorMatrices: Float32Array;
+  private readonly postDrawMeters: number;
+  /** Where the drawn posts were gathered round (NaN: not yet). */
+  private gatheredX = Number.NaN;
+  private gatheredZ = Number.NaN;
   /** The headlights, as the reflectors' shader sees them: where the truck is and faces, and how bright its lamps are. */
   private readonly headlights = {
     truck: { value: new Vector3() },
@@ -88,6 +106,11 @@ export class RoadFurnitureView {
     options: RoadFurnitureViewOptions = {},
   ) {
     const spots = delineatorSpots(world);
+    this.postDrawMeters = options.postDrawMeters ?? POST_DRAW_METERS;
+    this.postX = Float32Array.from(spots, (spot) => spot.x);
+    this.postZ = Float32Array.from(spots, (spot) => spot.z);
+    this.postMatrices = new Float32Array(spots.length * 16);
+    this.reflectorMatrices = new Float32Array(spots.length * 32);
     const postGeometry = this.track(postGeometryOf());
     this.posts = this.track(new InstancedMesh(postGeometry, this.track(new MeshLambertMaterial({ vertexColors: true })), Math.max(1, spots.length)));
     this.posts.name = 'road-furniture:posts';
@@ -107,17 +130,19 @@ export class RoadFurnitureView {
     spots.forEach(({ x, z, heading }, index) => {
       rotation.setFromAxisAngle(up, heading);
       matrix.compose(position.set(x, 0, z), rotation, one);
-      this.posts.setMatrixAt(index, matrix);
+      matrix.toArray(this.postMatrices, index * 16);
       // One on each face, toward the traffic either way, near the post's top.
       for (const face of [0, 1] as const) {
         reflector.makeTranslation(0, 0.86, face === 0 ? 0.07 : -0.07).premultiply(matrix);
-        this.reflectors.setMatrixAt(index * 2 + face, reflector);
+        reflector.toArray(this.reflectorMatrices, (index * 2 + face) * 16);
       }
     });
-    this.posts.count = spots.length;
-    this.reflectors.count = spots.length * 2;
-    this.posts.visible = spots.length > 0;
-    this.reflectors.visible = spots.length > 0;
+    // Nothing drawn until update() gathers the posts round the truck; they move, so no culling by the map-wide bounds.
+    for (const mesh of [this.posts, this.reflectors]) {
+      mesh.count = 0;
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+    }
     this.posts.castShadow = options.castShadows === true;
 
     const railMaterial = this.track(new MeshLambertMaterial({ vertexColors: true }));
@@ -138,9 +163,9 @@ export class RoadFurnitureView {
     scene.add(this.root);
   }
 
-  /** How many delineator posts and rail tiles there are. */
-  get counts(): { readonly posts: number; readonly railTiles: number } {
-    return { posts: this.posts.count, railTiles: this.rails.length };
+  /** How many delineator posts there are, how many are drawn now, and how many rail tiles. */
+  get counts(): { readonly posts: number; readonly drawnPosts: number; readonly railTiles: number } {
+    return { posts: this.postX.length, drawnPosts: this.posts.count, railTiles: this.rails.length };
   }
 
   /** How brightly the truck's lamps shine, 0..1 (the weather's): the reflectors ahead catch them. Cheap. */
@@ -148,10 +173,17 @@ export class RoadFurnitureView {
     this.headlights.lamps.value = level;
   }
 
-  /** Where the truck is and which way it faces (heading 0 along +z), for the reflectors. Allocation-free. */
+  /**
+   * Where the truck is and which way it faces (heading 0 along +z): the
+   * reflectors' headlights, and the posts drawn round it, gathered again
+   * after it has moved POST_REGATHER_METERS. Allocation-free.
+   */
   update(truckX: number, truckZ: number, heading: number): void {
     this.headlights.truck.value.set(truckX, 0, truckZ);
     this.headlights.forward.value.set(Math.sin(heading), 0, Math.cos(heading));
+    if (!(Math.hypot(truckX - this.gatheredX, truckZ - this.gatheredZ) < POST_REGATHER_METERS)) {
+      this.gather(truckX, truckZ);
+    }
   }
 
   dispose(): void {
@@ -159,6 +191,36 @@ export class RoadFurnitureView {
     for (const resource of this.resources) {
       resource.dispose();
     }
+  }
+
+  /** Copies the posts within postDrawMeters of (x, z), and their reflectors, into the instanced meshes. */
+  private gather(x: number, z: number): void {
+    this.gatheredX = x;
+    this.gatheredZ = z;
+    const posts = this.posts.instanceMatrix.array;
+    const reflectors = this.reflectors.instanceMatrix.array;
+    const reach = this.postDrawMeters * this.postDrawMeters;
+    let count = 0;
+    for (let index = 0; index < this.postX.length; index++) {
+      const dx = this.postX[index]! - x;
+      const dz = this.postZ[index]! - z;
+      if (dx * dx + dz * dz > reach) {
+        continue;
+      }
+      for (let k = 0; k < 16; k++) {
+        posts[count * 16 + k] = this.postMatrices[index * 16 + k]!;
+      }
+      for (let k = 0; k < 32; k++) {
+        reflectors[count * 32 + k] = this.reflectorMatrices[index * 32 + k]!;
+      }
+      count++;
+    }
+    this.posts.count = count;
+    this.reflectors.count = count * 2;
+    this.posts.visible = count > 0;
+    this.reflectors.visible = count > 0;
+    this.posts.instanceMatrix.needsUpdate = true;
+    this.reflectors.instanceMatrix.needsUpdate = true;
   }
 
   /** Lights a reflector up in the headlights: bright dead ahead and near, nothing behind or far. */
