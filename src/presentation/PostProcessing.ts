@@ -23,9 +23,11 @@ export interface PostProcessingSettings {
   /**
    * Multisampling of the scene (4 is smooth), up to what the GPU can do for
    * a half-float target; 0 smooths the edges of the finished picture instead
-   * (FXAA, one more pass).
+   * (FXAA, one more pass), unless `smoothing` is false.
    */
   readonly msaaSamples: number;
+  /** Without multisampling, smooth the edges with FXAA. Default: true. */
+  readonly smoothing?: boolean;
 }
 
 /**
@@ -158,7 +160,7 @@ export class PostProcessing {
       }
     }
     this.pictureTarget =
-      samples > 0
+      samples > 0 || settings.smoothing === false
         ? null
         : new WebGLRenderTarget(1, 1, {
             type: UnsignedByteType,
@@ -257,9 +259,14 @@ export class PostProcessing {
     this.setGrade(createColorGrade());
   }
 
-  /** Multisampling of the scene: 0 when FXAA smooths the edges instead. */
+  /** Multisampling of the scene: 0 when FXAA smooths the edges instead, or nothing does. */
   get samples(): number {
     return this.sceneTarget.samples;
+  }
+
+  /** Whether FXAA smooths the finished picture's edges. */
+  get fxaaSmoothing(): boolean {
+    return this.fxaa !== null;
   }
 
   /** Sizes the targets to the drawing buffer, `width` × `height` pixels. Not per frame. */

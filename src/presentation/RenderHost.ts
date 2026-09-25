@@ -28,7 +28,8 @@ export class RenderHost {
   /**
    * True when WebGL is emulated on the CPU (no GPU acceleration, headless
    * test browsers). Every pixel is then expensive, so the host renders at
-   * one pixel per CSS pixel and turns off anisotropic filtering.
+   * one pixel per CSS pixel, turns off anisotropic filtering and leaves out
+   * the edge smoothing; the entry point thins the plants and the shadows.
    */
   readonly softwareRendering: boolean;
   /** The GPU's name as WebGL reports it, for the performance display. */
@@ -67,8 +68,9 @@ export class RenderHost {
       settings.postProcessing && PostProcessing.supported(this.renderer)
         ? new PostProcessing(this.renderer, {
             bloom: settings.bloom,
-            // In software every sample costs as much as a pixel: the colour pass smooths the edges instead.
+            // In software every sample, and every pass, costs as much as a pixel: no smoothing at all.
             msaaSamples: this.softwareRendering ? 0 : settings.msaaSamples,
+            smoothing: !this.softwareRendering,
           })
         : null;
   }
@@ -83,7 +85,10 @@ export class RenderHost {
     if (this.post === null) {
       return 'direct';
     }
-    return this.post.samples > 0 ? `MSAA ${this.post.samples}×` : 'FXAA';
+    if (this.post.samples > 0) {
+      return `MSAA ${this.post.samples}×`;
+    }
+    return this.post.fxaaSmoothing ? 'FXAA' : 'graded';
   }
 
   /** Texture anisotropy to use: the GPU's maximum, up to 4, or 1 when rendering in software. */

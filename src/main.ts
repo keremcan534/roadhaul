@@ -88,6 +88,9 @@ import './ui/styles.css';
  */
 /** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
 const PANEL_STANDSTILL_SPEED = 0.5;
+/** Drawn in software (RenderHost.softwareRendering): the shadow map at most this size, and this share of the plants. */
+const SOFTWARE_SHADOW_MAP_SIZE = 1024;
+const SOFTWARE_VEGETATION_SHARE = 0.5;
 
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -151,9 +154,11 @@ async function start(): Promise<void> {
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
   const castShadows = config.rendering.shadowMapSize > 0;
+  // Drawn in software (no GPU), every pixel is dear: coarser shadows and half the plants.
+  const software = renderHost.softwareRendering;
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
-    shadowMapSize: config.rendering.shadowMapSize,
+    shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
   });
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
@@ -170,7 +175,7 @@ async function start(): Promise<void> {
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
   const roadside = new RoadsideView(renderHost.scene, driving.world, {
-    density: config.rendering.vegetationDensity,
+    density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
     prelit,
   });
   // The sea mirrors the sky, so it follows the weather with it.
