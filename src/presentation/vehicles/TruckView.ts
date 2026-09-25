@@ -5,7 +5,9 @@ import {
   BufferGeometry,
   CircleGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
   Euler,
   Group,
   InstancedMesh,
@@ -82,6 +84,16 @@ const POOL_WIDTH_METERS = 20;
 const POOL_Y = 0.11;
 const POOL_COLOR = 0xffe7b8;
 const POOL_STRENGTH = 0.5;
+/**
+ * The headlights' beams in the night air (with the lamp glows): a cone from
+ * each lamp this long, this wide at its far end, flattened to this share of
+ * that in height and aimed this far down (radians), this bright.
+ */
+const BEAM_LENGTH_METERS = 22;
+const BEAM_RADIUS_METERS = 3.4;
+const BEAM_FLATTEN = 0.5;
+const BEAM_DIP = 0.05;
+const BEAM_STRENGTH = 0.14;
 /** Upgraded parts (TruckViewOptions.looks), by level 0..3: how much taller the stacks stand, meters. */
 const STACK_EXTRA_HEIGHT = [0, 0.12, 0.22, 0.34] as const;
 /** The fuel tank's length and radius, meters; at level 3 a second one hangs on the other side. */
@@ -168,6 +180,8 @@ export class TruckView {
   private readonly glows: LampGlows;
   private readonly headlightPool: Mesh;
   private readonly poolIntensity = { value: 0 };
+  private readonly headlightBeams: Mesh;
+  private readonly beamIntensity = { value: 0 };
   private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
@@ -535,6 +549,9 @@ export class TruckView {
     this.glows.setCount(4);
     this.body.add(this.glows.points);
     this.headlightPool = this.createHeadlightPool(frontZ, headlightX);
+    // The beams lean with the body, like the lamps.
+    this.headlightBeams = this.createHeadlightBeams(frontZ + 0.12, headlightX, bumperTop + 0.2);
+    this.body.add(this.headlightBeams);
 
     // An upgraded suspension sets the body lower over its wheels.
     this.body.position.y = -drop;
@@ -547,7 +564,7 @@ export class TruckView {
       // The truck itself, not its soft shadow, the light on the road or the glows.
       for (const part of [this.body, this.cabin, this.wheels]) {
         part.traverse((object) => {
-          if (object instanceof Mesh) {
+          if (object instanceof Mesh && object !== this.headlightBeams) {
             object.castShadow = true;
           }
         });
@@ -613,6 +630,8 @@ export class TruckView {
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
     this.poolIntensity.value = level * POOL_STRENGTH;
     this.headlightPool.visible = level > 0.01;
+    this.beamIntensity.value = level * BEAM_STRENGTH;
+    this.headlightBeams.visible = this.options.lampGlows !== false && level > 0.01;
   }
 
   /** From the driver's seat the windshield would block the view: swap it for the cab's inside. */
@@ -680,6 +699,66 @@ export class TruckView {
     pool.name = 'headlight-pool';
     pool.visible = false;
     return pool;
+  }
+
+  /**
+   * The headlights' beams in the air: a cone from each lamp at (±`lampX`,
+   * `lampY`, `frontZ`), flattened and dipped a little, added onto the
+   * picture. Seen through its middle a beam is deepest, so it is brightest
+   * where it faces the eye, fading at its rim and with distance: light in
+   * the air, not a solid cone. One draw call for both, both faces.
+   */
+  private createHeadlightBeams(frontZ: number, lampX: number, lampY: number): Mesh {
+    const cones = ([1, -1] as const).map((side) =>
+      new ConeGeometry(BEAM_RADIUS_METERS, BEAM_LENGTH_METERS, 20, 1, true)
+        // The apex at the lamp, the open end ahead (+z), dipped toward the road.
+        .translate(0, -BEAM_LENGTH_METERS / 2, 0)
+        .rotateX(-Math.PI / 2 + BEAM_DIP)
+        .scale(1, BEAM_FLATTEN, 1)
+        .translate(side * lampX, lampY, frontZ),
+    );
+    const geometry = mergeGeometries(cones);
+    for (const cone of cones) {
+      cone.dispose();
+    }
+    const material = new ShaderMaterial({
+      uniforms: { intensity: this.beamIntensity, color: { value: new Color(HEADLIGHT_GLOW) } },
+      transparent: true,
+      depthWrite: false,
+      blending: AdditiveBlending,
+      side: DoubleSide,
+      // Additive: the order of its faces does not matter, so one pass (ARCHITECTURE.md: translucent two-sided).
+      forceSinglePass: true,
+      vertexShader: /* glsl */ `
+        varying float vAlong;
+        varying vec3 vNormalView;
+        varying vec3 vToEye;
+        void main() {
+          // How far along the beam, 0 at the lamp and 1 at its far end.
+          vAlong = (position.z - ${frontZ.toFixed(3)}) / ${BEAM_LENGTH_METERS.toFixed(1)};
+          vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+          vToEye = -mvPosition.xyz;
+          vNormalView = normalMatrix * normal;
+          gl_Position = projectionMatrix * mvPosition;
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform float intensity;
+        uniform vec3 color;
+        varying float vAlong;
+        varying vec3 vNormalView;
+        varying vec3 vToEye;
+        void main() {
+          float facing = abs(dot(normalize(vNormalView), normalize(vToEye)));
+          float fade = smoothstep(0.0, 0.06, vAlong) * (1.0 - smoothstep(0.4, 1.0, vAlong)) / (1.0 + vAlong * vAlong * 6.0);
+          gl_FragColor = vec4(color * intensity * facing * facing * fade, 1.0);
+        }
+      `,
+    });
+    const beams = new Mesh(this.track(geometry), this.track(material));
+    beams.name = 'headlight-beams';
+    beams.visible = false;
+    return beams;
   }
 
   /** Tyres with a rim on each face, the rims in the finish of the tyres upgrade's `level`: two draw calls for all the wheels. */

@@ -946,6 +946,7 @@ async function start(): Promise<void> {
         const lamps = weather.lamps;
         track.setLamps(lamps);
         track.setWetness(weather.rain);
+        track.update(paused ? 0 : deltaSeconds);
         roadFurniture.setLamps(lamps);
         streetLamps.setLamps(lamps);
         citySigns.setLamps(lamps);

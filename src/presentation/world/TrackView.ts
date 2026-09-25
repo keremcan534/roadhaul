@@ -131,6 +131,36 @@ const GROUND_MAP_FRAGMENT = /* glsl */ `
 #endif
 `;
 
+/**
+ * The trees' crowns sway in the wind, the more the higher (meters per meter
+ * squared up the crown), toward the wind and back: a gust every few seconds,
+ * each tree a little out of step with its neighbours. In the rain the wind
+ * blows this much harder.
+ */
+const CROWN_SWAY = 0.011;
+const RAIN_WIND = 1.3;
+const WIND_DIRECTION = { x: 0.8, z: 0.6 } as const;
+/** Replaces three.js's project_vertex: the crown, placed by its instance, then swayed in the world. */
+const CROWN_PROJECT_VERTEX = /* glsl */ `
+vec4 mvPosition = vec4( transformed, 1.0 );
+// Where the tree stands, and how high over the crown's base this point is.
+vec2 treeAt = vec2( 0.0 );
+float up = max( transformed.y, 0.0 );
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+  treeAt = vec2( instanceMatrix[3][0], instanceMatrix[3][2] );
+  up = max( mvPosition.y - instanceMatrix[3][1], 0.0 );
+#endif
+{
+  float phase = dot( treeAt, vec2( 0.071, 0.113 ) );
+  float gust = sin( windTime * 1.3 + phase ) + 0.35 * sin( windTime * 2.9 + phase * 1.7 );
+  float sway = up * up * ${CROWN_SWAY.toFixed(4)} * windStrength * ( 0.55 + 0.45 * gust );
+  mvPosition.xz += vec2( ${WIND_DIRECTION.x.toFixed(2)}, ${WIND_DIRECTION.z.toFixed(2)} ) * sway;
+}
+mvPosition = modelViewMatrix * mvPosition;
+gl_Position = projectionMatrix * mvPosition;
+`;
+
 /** The sky a wet road mirrors when there is none given (a rainy day's haze). */
 const WET_SKY = 0x7f8b97;
 
@@ -169,6 +199,8 @@ export class TrackView {
   private lamps = 0;
   /** How wet the asphalt is (0..1), and the sky it mirrors: its shader's uniforms. */
   private readonly wet: { readonly wetness: { value: number }; readonly wetSky: { readonly value: Color } };
+  /** The wind in the trees' crowns: its clock (seconds) and strength. */
+  private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
 
   constructor(
     private readonly scene: Scene,
@@ -212,6 +244,13 @@ export class TrackView {
    */
   setWetness(level: number): void {
     this.wet.wetness.value = level;
+    // The rain comes with wind: the trees sway harder.
+    this.wind.windStrength.value = 1 + level * RAIN_WIND;
+  }
+
+  /** Advances the wind in the trees by `deltaSeconds` (0 while paused). Allocation-free. */
+  update(deltaSeconds: number): void {
+    this.wind.windTime.value += deltaSeconds;
   }
 
   dispose(): void {
@@ -403,7 +442,7 @@ export class TrackView {
       trunkMaterial: this.track(new MeshLambertMaterial({ color: TRUNK_COLOR })),
       pine: this.track(pineCrownGeometry()),
       broadleaf: this.track(broadleafCrownGeometry()),
-      crownMaterial: this.track(new MeshLambertMaterial({ color: 0xffffff, flatShading: true })),
+      crownMaterial: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }))),
       shadow: this.track(flatQuad()),
       shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42),
     };
@@ -611,6 +650,20 @@ export class TrackView {
         polygonOffsetUnits: -2 * layer,
       }),
     );
+  }
+
+  /** Sways the trees' crowns (instanced) in the wind (update, setWetness). Returns the material. */
+  private swaying(material: MeshLambertMaterial): MeshLambertMaterial {
+    const wind = this.wind;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['windTime'] = wind.windTime;
+      shader.uniforms['windStrength'] = wind.windStrength;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float windTime;\nuniform float windStrength;')
+        .replace('#include <project_vertex>', CROWN_PROJECT_VERTEX);
+    };
+    material.customProgramCacheKey = () => 'tree-crown-wind';
+    return material;
   }
 
   /**

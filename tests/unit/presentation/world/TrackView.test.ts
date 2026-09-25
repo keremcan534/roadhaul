@@ -193,6 +193,41 @@ describe('TrackView', () => {
     expect(shadows).toBe(world.trees.length);
   });
 
+  it('sways the trees\' crowns in the wind, harder in the rain, and not their trunks', () => {
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const crowns = new Set<MeshLambertMaterial>();
+    const trunks = new Set<MeshLambertMaterial>();
+    scene.getObjectByName('forest')!.traverse((object) => {
+      if (object instanceof InstancedMesh && object.material instanceof MeshLambertMaterial) {
+        (object.material.flatShading ? crowns : trunks).add(object.material);
+      }
+    });
+    expect(crowns.size).toBe(1);
+    const crown = [...crowns][0]!;
+    const shader = {
+      uniforms: {} as Record<string, { value: number }>,
+      vertexShader: '#include <common>\n#include <project_vertex>',
+      fragmentShader: '',
+    };
+    crown.onBeforeCompile(shader as never, undefined as never);
+    // Swayed in the world, after the tree is placed: the higher up the crown, the more.
+    expect(shader.vertexShader).not.toContain('#include <project_vertex>');
+    expect(shader.vertexShader).toContain('mvPosition = instanceMatrix * mvPosition');
+    expect(shader.vertexShader).toContain('up * up');
+    expect(crown.customProgramCacheKey()).toBe('tree-crown-wind');
+    for (const trunk of trunks) {
+      expect(trunk.customProgramCacheKey()).not.toBe('tree-crown-wind');
+    }
+
+    view.update(1.5);
+    view.update(0.5);
+    expect(shader.uniforms['windTime']!.value).toBeCloseTo(2, 9);
+    const calm = shader.uniforms['windStrength']!.value;
+    view.setWetness(1);
+    expect(shader.uniforms['windStrength']!.value).toBeGreaterThan(calm * 2);
+  });
+
   it('draws four textured walls and a roof for every building', () => {
     const scene = new Scene();
     new TrackView(scene, world);

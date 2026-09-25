@@ -1,5 +1,7 @@
 import {
+  AdditiveBlending,
   Box3,
+  DoubleSide,
   InstancedMesh,
   Matrix4,
   Mesh,
@@ -9,6 +11,7 @@ import {
   Points,
   Quaternion,
   Scene,
+  ShaderMaterial,
   Vector3,
   type BufferAttribute,
 } from 'three';
@@ -349,7 +352,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(lamps.color.r).toBe(dayBrightness);
   });
 
-  it('keeps the headlights on the road but leaves out the glows on weaker devices', () => {
+  it('keeps the headlights on the road but leaves out the glows and beams on weaker devices', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck, { lampGlows: false });
 
@@ -357,6 +360,49 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
 
     expect((scene.getObjectByName('headlight-pool') as Mesh).visible).toBe(true);
     expect(glowsOf(scene).visible).toBe(false);
+    expect((scene.getObjectByName('headlight-beams') as Mesh).visible).toBe(false);
+  });
+
+  it('throws the headlights\' beams ahead into the night air: a cone from each lamp, dipped toward the road', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck, { castShadows: true });
+    const beams = scene.getObjectByName('headlight-beams') as Mesh;
+    const material = beams.material as ShaderMaterial;
+    expect(beams.visible).toBe(false);
+    expect(beams.castShadow).toBe(false);
+    // Light in the air: added onto the picture, from both faces, in one pass.
+    expect(material.blending).toBe(AdditiveBlending);
+    expect(material.depthWrite).toBe(false);
+    expect(material.side).toBe(DoubleSide);
+    expect(material.forceSinglePass).toBe(true);
+
+    view.setLamps(1);
+    expect(beams.visible).toBe(true);
+    const bright = material.uniforms['intensity']!.value as number;
+    view.setLamps(0.5);
+    expect(material.uniforms['intensity']!.value).toBeCloseTo(bright / 2, 9);
+
+    // From the lamps at the front, on ahead; the far ends lower than the lamps.
+    const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
+    const position = beams.geometry.getAttribute('position');
+    const bounds = new Box3().setFromBufferAttribute(position as BufferAttribute);
+    expect(bounds.min.z).toBeGreaterThan(front - 0.5);
+    expect(bounds.max.z).toBeGreaterThan(front + 15);
+    expect(bounds.min.x).toBeLessThan(0);
+    expect(bounds.max.x).toBeGreaterThan(0);
+    let far = 0;
+    let farY = 0;
+    for (let i = 0; i < position.count; i++) {
+      if (position.getZ(i) > front + 15) {
+        far++;
+        farY += position.getY(i);
+      }
+    }
+    const lampY = Math.max(...Array.from({ length: position.count }, (_, i) => (position.getZ(i) < front + 0.5 ? position.getY(i) : -Infinity)));
+    expect(farY / far).toBeLessThan(lampY);
+
+    view.setLamps(0);
+    expect(beams.visible).toBe(false);
   });
 
   it('casts the sun\'s real-time shadows from its body, cab and wheels when asked, never from its soft shadow or lights', () => {
