@@ -29,6 +29,8 @@ export function requestedDateMs(query: QueryParameters): number | null {
  *   off; a whole number up to MAX_TRAFFIC_VEHICLES).
  * - `?weather=rain` starts in that weather and keeps it (the config check
  *   rejects ids that do not exist).
+ * - `?post=0` draws the scene straight to the screen, without the colour
+ *   pass, its bloom and smoothing (`?post=1` turns it on over the preset).
  */
 export function applyConfigOverrides(config: GameConfig, query: QueryParameters): GameConfig {
   const debug = query.has('debug');
@@ -39,9 +41,12 @@ export function applyConfigOverrides(config: GameConfig, query: QueryParameters)
   const weatherId = query.get('weather')?.trim() ?? '';
   const trafficText = query.get('traffic')?.trim() ?? '';
   const traffic = trafficText === '' ? Number.NaN : Number(trafficText);
+  const post = query.get('post');
 
   return {
     ...config,
+    rendering:
+      post === '0' || post === '1' ? { ...config.rendering, postProcessing: post === '1' } : config.rendering,
     fuel: {
       ...config.fuel,
       consumptionScale: Number.isFinite(fuelScale) && fuelScale > 0 ? fuelScale : config.fuel.consumptionScale,

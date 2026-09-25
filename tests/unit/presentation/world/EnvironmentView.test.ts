@@ -169,6 +169,46 @@ describe('EnvironmentView', () => {
     expect(ground.color.g).toBeLessThan(noonGround.g * 0.8);
   });
 
+  it('grades the picture by the weather: warm at dusk, cool at night, with darker corners and more bloom under lit lamps', () => {
+    const view = new EnvironmentView(new Scene());
+    const [clear, dusk, night] = [look('clear'), look('dusk'), look('night')];
+
+    view.applyWeather(clear, clear, 1);
+    const day = { ...view.grade };
+    expect(day).toMatchObject({ saturation: clear.saturation, contrast: clear.contrast, warmth: clear.warmth, bloom: clear.bloom });
+
+    view.applyWeather(dusk, dusk, 1);
+    expect(view.grade.warmth).toBeGreaterThan(day.warmth);
+    view.applyWeather(night, night, 1);
+    const dark = { ...view.grade };
+    expect(dark.warmth).toBeLessThan(day.warmth);
+    expect(dark.bloom).toBeGreaterThan(day.bloom);
+    expect(dark.vignette).toBeGreaterThan(day.vignette);
+    // The exposure is the day's in every weather.
+    expect(dark.exposure).toBe(day.exposure);
+
+    // Halfway from clear to night: halfway in every figure.
+    view.applyWeather(clear, night, 0.5);
+    for (const key of ['saturation', 'contrast', 'warmth', 'bloom', 'vignette'] as const) {
+      expect(view.grade[key], key).toBeCloseTo((day[key] + dark[key]) / 2, 12);
+    }
+  });
+
+  it('thins the haze through the colour pass, where fog mixes in linear light and shows more', () => {
+    const screen = new Scene();
+    const hdr = new Scene();
+    const onScreen = new EnvironmentView(screen);
+    const throughPass = new EnvironmentView(hdr, { hdr: true });
+
+    for (const weather of WEATHER) {
+      onScreen.applyWeather(weather.look, weather.look, 1);
+      throughPass.applyWeather(weather.look, weather.look, 1);
+      const [plain, linear] = [(screen.fog as FogExp2).density, (hdr.fog as FogExp2).density];
+      expect(linear, weather.id).toBeLessThan(plain);
+      expect(linear, weather.id).toBeGreaterThan(plain * 0.5);
+    }
+  });
+
   it('does nothing while the weather looks the same', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);

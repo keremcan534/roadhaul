@@ -149,7 +149,7 @@ async function start(): Promise<void> {
   const renderHost = new RenderHost(canvas, config.rendering);
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
-  const environment = new EnvironmentView(renderHost.scene);
+  const environment = new EnvironmentView(renderHost.scene, { hdr: renderHost.postProcessing });
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
     prelit,
@@ -579,7 +579,7 @@ async function start(): Promise<void> {
   };
   const worldMap = new WorldMap(ui, strings, mapPainter, mapSketch, driving, { onClose: closeMap });
   // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
-  const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.gpu}`);
+  const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.pipeline} · ${renderHost.gpu}`);
   perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
 
   /** The picked way of steering: its controls show, and tilt steering listens to the motion sensor only while picked. */
@@ -970,6 +970,7 @@ async function start(): Promise<void> {
         // battery. The full map hides it all.
         menuFrames = onRoad() ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
+          renderHost.setGrade(environment.grade);
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);

@@ -1,9 +1,14 @@
-import { ACESFilmicToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, PerspectiveCamera, Scene, Vector2, WebGLRenderer } from 'three';
+import { PostProcessing, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
   /** Upper bound for the device pixel ratio (fill-rate budget on phones). */
   readonly maxPixelRatio: number;
   readonly antialias: boolean;
+  /** Draw through the colour pass (PostProcessing) where the device can: graded, with bloom and smooth edges. */
+  readonly postProcessing: boolean;
+  readonly bloom: boolean;
+  readonly msaaSamples: number;
 }
 
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
@@ -26,6 +31,9 @@ export class RenderHost {
   readonly softwareRendering: boolean;
   /** The GPU's name as WebGL reports it, for the performance display. */
   readonly gpu: string;
+  /** The colour pass, or null where the scene goes straight to the screen (the low preset, older devices). */
+  private readonly post: PostProcessing | null;
+  private readonly bufferSize = new Vector2();
   /** Share of the capped pixel ratio drawn at (AdaptiveResolution), and the size last asked for. */
   private resolutionScale = 1;
   private cssWidth = 0;
@@ -47,6 +55,29 @@ export class RenderHost {
     this.renderer.toneMappingExposure = 1.05;
     this.gpu = rendererName(this.renderer.getContext());
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
+    // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
+    this.renderer.info.autoReset = false;
+    this.post =
+      settings.postProcessing && PostProcessing.supported(this.renderer)
+        ? new PostProcessing(this.renderer, {
+            bloom: settings.bloom,
+            // In software every sample costs as much as a pixel: the colour pass smooths the edges instead.
+            msaaSamples: this.softwareRendering ? 0 : settings.msaaSamples,
+          })
+        : null;
+  }
+
+  /** Whether the picture goes through the colour pass: graded, with bloom and smooth edges. */
+  get postProcessing(): boolean {
+    return this.post !== null;
+  }
+
+  /** How the picture is drawn, for the performance display: through the colour pass, smoothed by MSAA or FXAA, or straight. */
+  get pipeline(): string {
+    if (this.post === null) {
+      return 'direct';
+    }
+    return this.post.samples > 0 ? `MSAA ${this.post.samples}×` : 'FXAA';
   }
 
   /** Texture anisotropy to use: the GPU's maximum, up to 4, or 1 when rendering in software. */
@@ -82,8 +113,18 @@ export class RenderHost {
     }
   }
 
+  /** How the colour pass grades the picture from now on (the weather's: EnvironmentView.grade). Cheap. */
+  setGrade(grade: Readonly<ColorGrade>): void {
+    this.post?.setGrade(grade);
+  }
+
   render(): void {
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.info.reset();
+    if (this.post === null) {
+      this.renderer.render(this.scene, this.camera);
+    } else {
+      this.post.render(this.scene, this.camera);
+    }
   }
 
   /**
@@ -114,11 +155,14 @@ export class RenderHost {
     this.appliedHeight = this.cssHeight;
     this.appliedPixelRatio = pixelRatio;
     this.renderer.setDrawingBufferSize(this.cssWidth, this.cssHeight, pixelRatio);
+    const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
+    this.post?.setSize(buffer.x, buffer.y);
     this.camera.aspect = this.cssWidth / this.cssHeight;
     this.camera.updateProjectionMatrix();
   }
 
   dispose(): void {
+    this.post?.dispose();
     this.renderer.dispose();
   }
 }

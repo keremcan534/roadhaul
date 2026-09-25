@@ -56,6 +56,21 @@ describe('applyConfigOverrides', () => {
     });
     expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?weather=')).weather).toEqual(DEFAULT_GAME_CONFIG.weather);
   });
+
+  it('turns the colour pass off with ?post=0, and on over the preset with ?post=1', () => {
+    const low = { ...DEFAULT_GAME_CONFIG, rendering: { ...DEFAULT_GAME_CONFIG.rendering, postProcessing: false } };
+
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?post=0')).rendering).toEqual({
+      ...DEFAULT_GAME_CONFIG.rendering,
+      postProcessing: false,
+    });
+    expect(applyConfigOverrides(low, query('?post=1')).rendering.postProcessing).toBe(true);
+    for (const other of ['', 'off', 'yes']) {
+      expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query(`?post=${other}`)).rendering, other).toBe(
+        DEFAULT_GAME_CONFIG.rendering,
+      );
+    }
+  });
 });
 
 describe('requestedDateMs', () => {

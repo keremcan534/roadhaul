@@ -151,7 +151,7 @@ describe('GameConfig', () => {
     }
   });
 
-  it('asks less of weaker devices: fewer pixels, less rain, smoke and traffic, no glows on low', () => {
+  it('asks less of weaker devices: fewer pixels, less rain, smoke and traffic, no glows or colour pass on low', () => {
     const [low, medium, high] = QUALITY_LEVELS.map((level) => QUALITY_PRESETS[level]);
 
     expect(low!.maxPixelRatio).toBeLessThan(medium!.maxPixelRatio);
@@ -161,6 +161,11 @@ describe('GameConfig', () => {
     expect(low!.particleDensity).toBeLessThan(medium!.particleDensity);
     expect(medium!.particleDensity).toBeLessThan(high!.particleDensity);
     expect(low!.lampGlows).toBe(false);
+    // Low draws straight to the screen; medium grades, blooms and smooths the picture in one colour pass; high
+    // multisamples the scene for smoother edges.
+    expect(low).toMatchObject({ postProcessing: false, bloom: false });
+    expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0 });
+    expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4 });
     const applied = applyQualityPreset(DEFAULT_GAME_CONFIG, 'low');
     expect(applied.rendering).toMatchObject({ quality: 'low', maxPixelRatio: low!.maxPixelRatio, lampGlows: false });
     expect(applied.traffic.maxVehicles).toBe(low!.trafficVehicles);
@@ -176,6 +181,9 @@ describe('GameConfig', () => {
         rainDensity: 1.5,
         particleDensity: -0.5,
         lampGlows: 'yes' as never,
+        postProcessing: 1 as never,
+        bloom: undefined as never,
+        msaaSamples: 2.5,
       },
     };
 
@@ -185,6 +193,9 @@ describe('GameConfig', () => {
       'rendering.rainDensity',
       'rendering.particleDensity',
       'rendering.lampGlows',
+      'rendering.postProcessing',
+      'rendering.bloom',
+      'rendering.msaaSamples',
     ]);
   });
 

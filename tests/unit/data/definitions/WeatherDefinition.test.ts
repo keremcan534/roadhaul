@@ -69,6 +69,15 @@ describe('validateWeatherDefinition', () => {
     }
   });
 
+  it('grades each weather: warm at dusk and dawn, cool and glowing at night, grey in the rain', () => {
+    const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
+    expect(byId('dusk').look.warmth).toBeGreaterThan(0.2);
+    expect(byId('dawn').look.warmth).toBeGreaterThan(0.2);
+    expect(byId('night').look.warmth).toBeLessThan(0);
+    expect(byId('night').look.bloom).toBeGreaterThan(byId('clear').look.bloom);
+    expect(byId('rain').look.saturation).toBeLessThan(byId('clear').look.saturation);
+  });
+
   it('reports successions that are not a list of other weathers', () => {
     expect(issues(weatherFixture({ next: [] }))).toEqual(['weather.next']);
     expect(issues(weatherFixture({ next: ['test_clear', 'Rain', 'dawn', 'dawn'] }))).toEqual([
@@ -96,6 +105,10 @@ describe('validateWeatherDefinition', () => {
         sunHeight: 1.5,
         stars: -0.1,
         moon: 2,
+        bloom: 1.2,
+        saturation: 2,
+        contrast: 0.5,
+        warmth: Number.NaN,
       },
     });
 
@@ -112,6 +125,10 @@ describe('validateWeatherDefinition', () => {
       'weather.look.sunHeight',
       'weather.look.stars',
       'weather.look.moon',
+      'weather.look.bloom',
+      'weather.look.saturation',
+      'weather.look.contrast',
+      'weather.look.warmth',
     ]);
     expect(issues({ ...fixture, look: null as unknown as WeatherDefinition['look'] })).toEqual(['weather.look']);
   });

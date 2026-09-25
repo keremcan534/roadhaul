@@ -24,6 +24,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { WeatherLook } from '../../data/definitions/WeatherDefinition';
+import { createColorGrade, type ColorGrade } from '../PostProcessing';
 import { moonImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import {
@@ -42,6 +43,12 @@ const HORIZON = 0xc4dcef;
 const GROUND_HAZE = 0xa9bfcf;
 /** Exponential fog: about 60% at 400 m, fully hazy by 700 m. */
 const FOG_DENSITY = 0.0023;
+/**
+ * Through the colour pass (EnvironmentViewOptions.hdr) the fog mixes into
+ * linear light, where the same share of haze shows much more than on the
+ * screen's curve: this share of the weather's density looks as hazy.
+ */
+const LINEAR_FOG_SCALE = 0.65;
 const DOME_RADIUS = 800;
 const HILL_RADIUS = 640;
 /** Clouds in a fully overcast sky; the weather shows a share of them. */
@@ -73,7 +80,19 @@ const MOON_SIZE_METERS = 42;
 const MOON_COLOR = 0xeef2ff;
 /** Time for the stars' twinkling runs round this many seconds, so it keeps its precision. */
 const TWINKLE_PERIOD_SECONDS = 3600;
+/** The picture's corners are this much darker by day, and this much more with the lamps on (the colour pass). */
+const VIGNETTE = 0.28;
+const NIGHT_VIGNETTE = 0.22;
 const Z_AXIS = new Vector3(0, 0, 1);
+
+export interface EnvironmentViewOptions {
+  /**
+   * The picture goes through the colour pass (RenderHost.postProcessing),
+   * where the scene's light stays linear and the fog is thinned to look the
+   * same. Default: false.
+   */
+  readonly hdr?: boolean;
+}
 
 /** The sky as other shaders see it (the sea mirrors it): its colours and the sun, kept up to date by applyWeather(). */
 export interface SkyUniforms {
@@ -90,7 +109,8 @@ export interface SkyUniforms {
  * (call update() every frame), so they always sit at the horizon. About
  * three draw calls, two more at night. applyWeather() turns it all to the
  * weather and the time of day (spec §38–39): sky, haze, light, the sun's
- * height, clouds, stars and moon, and the pre-lit ground with it.
+ * height, clouds, stars and moon, the pre-lit ground with it, and the
+ * picture's grade (`grade`, for the renderer's colour pass).
  */
 export class EnvironmentView {
   private readonly backdrop = new Group();
@@ -116,6 +136,8 @@ export class EnvironmentView {
   private readonly moonMaterial: MeshBasicMaterial;
   private readonly toMoon = new Vector3();
   private readonly resources: { dispose(): void }[] = [];
+  private readonly colorGrade = createColorGrade();
+  private readonly fogScale: number;
   /** Scratch colours for blending looks, and what was last applied (so an unchanged look costs nothing). */
   private readonly tint = new Color();
   private readonly scratch = new Color();
@@ -124,10 +146,14 @@ export class EnvironmentView {
   private appliedTo: WeatherLook | null = null;
   private appliedBlend = Number.NaN;
 
-  constructor(private readonly scene: Scene) {
+  constructor(
+    private readonly scene: Scene,
+    options: EnvironmentViewOptions = {},
+  ) {
+    this.fogScale = options.hdr === true ? LINEAR_FOG_SCALE : 1;
     this.background = new Color(HORIZON);
     scene.background = this.background;
-    this.fog = new FogExp2(HORIZON, FOG_DENSITY);
+    this.fog = new FogExp2(HORIZON, FOG_DENSITY * this.fogScale);
     scene.fog = this.fog;
 
     this.sunLight = new DirectionalLight(SUN_COLOR, SUN_INTENSITY);
@@ -214,7 +240,7 @@ export class EnvironmentView {
     const groundSun = (sunlight * Math.sin(elevation)) / Math.sin(DAY_SUN_ELEVATION);
     this.background.copy(uniforms.horizon.value);
     this.fog.color.copy(uniforms.horizon.value);
-    this.fog.density = mix(from.fogDensity, to.fogDensity, blend);
+    this.fog.density = mix(from.fogDensity, to.fogDensity, blend) * this.fogScale;
 
     this.skyLight.intensity = SKY_LIGHT_INTENSITY * skylight;
     this.skyLight.color.setHex(SKY_LIGHT_COLOR).multiply(this.tint);
@@ -231,6 +257,19 @@ export class EnvironmentView {
     this.clouds.count = Math.round(CLOUD_COUNT * mix(from.cloudCover, to.cloudCover, blend));
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
+
+    const grade = this.colorGrade;
+    grade.saturation = mix(from.saturation, to.saturation, blend);
+    grade.contrast = mix(from.contrast, to.contrast, blend);
+    grade.warmth = mix(from.warmth, to.warmth, blend);
+    grade.bloom = mix(from.bloom, to.bloom, blend);
+    // At night the lamps light the middle of the picture: darker corners draw the eye there.
+    grade.vignette = VIGNETTE + NIGHT_VIGNETTE * mix(from.lamps, to.lamps, blend);
+  }
+
+  /** How the renderer's colour pass grades the picture for the weather shown (applyWeather). Updated in place. */
+  get grade(): Readonly<ColorGrade> {
+    return this.colorGrade;
   }
 
   /** The sky's colours and the sun as shader uniforms: share them, and they follow the weather. */
