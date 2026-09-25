@@ -95,6 +95,30 @@ describe('stroke font', () => {
     }
   });
 
+  it('writes the figures within the cap height, for dials and clocks, and can leave a mask in the alpha', () => {
+    for (const figure of '0123456789/.:-') {
+      expect(hasGlyph(figure), figure).toBe(true);
+      // Clear white, so the strokes' own alpha shows.
+      const image = createImage(80, 80, [255, 255, 255], 0);
+      drawText(image, figure, 10, 20, { ...style, alpha: 200 });
+      let inked = 0;
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+          const [red, , , alpha] = pixel(image, x, y);
+          if (red! < 128) {
+            inked++;
+            expect(y, figure).toBeGreaterThanOrEqual(20 - 4);
+            expect(y, figure).toBeLessThanOrEqual(20 + style.height + 4);
+            expect(alpha, figure).toBeGreaterThanOrEqual(99);
+            expect(alpha, figure).toBeLessThanOrEqual(200);
+          }
+        }
+      }
+      expect(inked, figure).toBeGreaterThan(figure === '.' || figure === ':' ? 20 : 60);
+    }
+    expect(measureText('125', style)).toBeGreaterThan(measureText('12', style));
+  });
+
   it('puts the dots and hooks of Turkish letters above the capitals and below the line', () => {
     /** The lowest and highest inked rows of `text` drawn with its baseline at y = 30. */
     const inkedRows = (text: string): [number, number] => {

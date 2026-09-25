@@ -242,6 +242,27 @@ describe('EnvironmentView', () => {
     expect(clouds(scene).visible).toBe(true);
   });
 
+  it('tells shaders that light themselves the lights\' colours and strengths as they shade the scene now', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const light = view.light;
+    const sun = scene.children.find((child) => child instanceof DirectionalLight)!;
+    const sky = scene.children.find((child) => child instanceof HemisphereLight)!;
+
+    view.applySky(skyAt(48), placed(DAY_SUN));
+    expect(light.key.r).toBeCloseTo(sun.color.r * sun.intensity, 9);
+    expect(light.sky.g).toBeCloseTo(sky.color.g * sky.intensity, 9);
+    expect(light.ground.b).toBeCloseTo(sky.groundColor.b * sky.intensity, 9);
+    expect(light.keyDirection.y).toBeGreaterThan(0.5);
+    const day = light.sky.g;
+
+    view.applySky(skyAt(-25), placed(toward(-25, 330)));
+    expect(light.sky.g).toBeLessThan(day / 2);
+    expect(light.key.r).toBeCloseTo(sun.color.r * sun.intensity, 9);
+    // The same object, kept up to date.
+    expect(view.light).toBe(light);
+  });
+
   it('exposes a low winter sun a little brighter, as the eye adapts, but not a setting one', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);

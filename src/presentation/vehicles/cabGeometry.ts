@@ -18,10 +18,12 @@ export interface CabGeometry {
   /** The cab-over's floor height: the box floor clears the wheels. */
   readonly deckY: number;
   readonly cabLength: number;
-  /** The driver's eye: left seat (the map drives on the right), just behind the windscreen. */
+  /** The driver's eye: left seat (the map drives on the right), a meter behind the windscreen, over the wheel. */
   readonly eyeX: number;
   readonly eyeY: number;
   readonly eyeZ: number;
+  /** The left side mirror's glass (the right one mirrors it across x = 0): its middle, facing back, and its size. */
+  readonly mirror: { readonly x: number; readonly y: number; readonly z: number; readonly width: number; readonly height: number };
 }
 
 export function cabGeometry(body: VehicleBody): CabGeometry {
@@ -30,16 +32,18 @@ export function cabGeometry(body: VehicleBody): CabGeometry {
   const frontZ = centreZ + L / 2;
   const deckY = 2 * R + 0.1;
   const cabTop = deckY + (H - deckY) * 0.78;
+  const beltY = deckY + (cabTop - deckY) * 0.42;
   return {
     frontZ,
     rearZ: centreZ - L / 2,
     centreZ,
     cabTop,
-    beltY: deckY + (cabTop - deckY) * 0.42,
+    beltY,
     deckY,
     cabLength: Math.min(2.4, Math.max(1.8, L * 0.28)),
     eyeX: W * 0.22,
     eyeY: H * 0.72,
-    eyeZ: frontZ - 0.9,
+    eyeZ: frontZ - 1.05,
+    mirror: { x: W / 2 + 0.33, y: beltY + (cabTop - beltY) * 0.3, z: frontZ - 0.356, width: 0.16, height: 0.31 },
   };
 }

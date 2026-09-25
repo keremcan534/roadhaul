@@ -24,6 +24,9 @@ const OPACITY = 0.42;
 const LAMP_SCATTERING = 0.012;
 const MOST_LAMPLIGHT = 2;
 const SEED = 61;
+/** No drop is drawn nearer the eye than this (meters along its view) by default; they fade in over the next two. */
+const CLEARANCE_METERS = 0.6;
+const FADE_METERS = 1.9;
 
 /**
  * Rain (spec §38): streaks falling around the camera, slanted by the wind.
@@ -46,6 +49,7 @@ export class RainView {
     readonly resolution: { value: Vector2 };
     readonly color: { value: Color };
     readonly opacity: { value: number };
+    readonly clearance: { value: number };
   };
   private fall = 0;
   private driftX = 0;
@@ -91,6 +95,7 @@ export class RainView {
       resolution: { value: new Vector2(1, 1) },
       color: { value: new Color(COLOR) },
       opacity: { value: OPACITY },
+      clearance: { value: CLEARANCE_METERS },
     };
     // The tail points back along the drop's path: up, and into the wind.
     const speed = Math.hypot(WIND_X, FALL_SPEED, WIND_Z);
@@ -114,6 +119,7 @@ export class RainView {
         uniform vec2 drift;
         uniform vec2 center;
         uniform vec2 resolution;
+        uniform float clearance;
         attribute vec2 corner;
         varying float vAlpha;
         varying float vSide;
@@ -125,7 +131,7 @@ export class RainView {
           vec4 head = projectionMatrix * viewMatrix * vec4(drop, 1.0);
           vec4 tail = projectionMatrix * viewMatrix * vec4(drop + TAIL, 1.0);
           float nearest = min(head.w, tail.w);
-          if (nearest < 0.6) {
+          if (nearest < clearance) {
             // Behind the camera or at the eye: nothing to draw.
             gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
             vAlpha = 0.0;
@@ -150,7 +156,7 @@ export class RainView {
           // Bright at the drop, fading along the tail; faint when thinner than a pixel, near the eye and at the box's edge.
           vAlpha = (1.0 - corner.x * 0.85)
             * min(widthPixels, 1.0)
-            * smoothstep(0.6, 2.5, nearest)
+            * smoothstep(clearance, clearance + ${FADE_METERS.toFixed(1)}, nearest)
             * (1.0 - smoothstep(BOX_WIDTH * 0.3, BOX_WIDTH * 0.48, length(around)));
           vSide = corner.y;
         }
@@ -182,6 +188,15 @@ export class RainView {
   /** The drawing buffer's size in pixels, so the streaks keep at least a pixel's width. Call on resize. */
   setViewport(widthPixels: number, heightPixels: number): void {
     this.uniforms.resolution.value.set(Math.max(1, widthPixels), Math.max(1, heightPixels));
+  }
+
+  /**
+   * Draws no drop nearer the eye than `meters` (along its view; at least the
+   * default 0.6): from the driver's seat none falls inside the cab, only
+   * past the glass.
+   */
+  setClearance(meters: number): void {
+    this.uniforms.clearance.value = Math.max(CLEARANCE_METERS, meters);
   }
 
   /**

@@ -41,6 +41,18 @@ describe('RainView', () => {
     expect(rain.geometry.index!.count).toBe(heavy * 6);
   });
 
+  it('keeps its drops clear of the eye, and out of the cab when seen from the driver\'s seat', () => {
+    const { view, uniforms } = setup();
+    const clearance = (): number => uniforms.clearance!.value as number;
+    const byDefault = clearance();
+    expect(byDefault).toBeGreaterThan(0);
+
+    view.setClearance(1.2);
+    expect(clearance()).toBe(1.2);
+    view.setClearance(0);
+    expect(clearance()).toBe(byDefault);
+  });
+
   it('draws a share of its streaks on weaker devices', () => {
     const full = setup();
     const scene = new Scene();

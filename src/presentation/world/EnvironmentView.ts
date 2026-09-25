@@ -211,6 +211,20 @@ export interface SkyUniforms {
 }
 
 /**
+ * The scene's light as its lights shade things, for shaders that light
+ * themselves (the cab's inside): kept up to date by applySky().
+ */
+export interface SceneLight {
+  /** Toward the key light, unit: the sun's, the moon's, or the night sky's. */
+  readonly keyDirection: Readonly<Vector3>;
+  /** The key light's colour times its intensity. */
+  readonly key: Readonly<Color>;
+  /** The sky light's colours from above and from below, times its intensity. */
+  readonly sky: Readonly<Color>;
+  readonly ground: Readonly<Color>;
+}
+
+/**
  * Sky, horizon and light: a gradient dome with a sun glow, soft drifting
  * clouds, two ridges of hazy hills, fog, and the sun and sky lights; at
  * night the stars and the moon. The dome, clouds, hills, stars and moon
@@ -267,6 +281,7 @@ export class EnvironmentView {
   /** Scratch colours for the look. */
   private readonly tint = new Color();
   private readonly groundLight = new Color();
+  private readonly sceneLight = { keyDirection: this.keyDirection, key: new Color(), sky: new Color(), ground: new Color() };
 
   constructor(
     private readonly scene: Scene,
@@ -288,6 +303,7 @@ export class EnvironmentView {
     );
     this.skyLight = new HemisphereLight(SKY_LIGHT_COLOR, GROUND_LIGHT_COLOR, SKY_LIGHT_INTENSITY);
     this.lights = [this.skyLight, this.sunLight];
+    this.keepSceneLight();
     scene.add(...this.lights);
     this.shadowMapSize = options.shadowMapSize ?? 0;
     this.cloudShare = Math.min(1, Math.max(0, options.cloudShare ?? 1));
@@ -410,6 +426,8 @@ export class EnvironmentView {
     this.sunLight.intensity = SUN_INTENSITY * keyLight;
     this.sunLight.color.setHex(SUN_COLOR).multiply(this.tint);
 
+    this.keepSceneLight();
+
     this.cloudUniforms.brightness.value = look.cloudBrightness * exposure;
     this.showClouds(look.cloudCover);
 
@@ -443,6 +461,11 @@ export class EnvironmentView {
   /** The sky's colours and the sun as shader uniforms: share them, and they follow the weather. */
   get sky(): SkyUniforms {
     return this.skyUniforms;
+  }
+
+  /** The key light and the sky's as they shade the scene now; the object is updated in place by applySky(). */
+  get light(): SceneLight {
+    return this.sceneLight;
   }
 
   /**
@@ -971,6 +994,14 @@ export class EnvironmentView {
     clouds.renderOrder = -1;
     clouds.frustumCulled = false;
     return clouds;
+  }
+
+  /** The lights' colours times their intensities, as `light` gives them. */
+  private keepSceneLight(): void {
+    const light = this.sceneLight;
+    light.key.copy(this.sunLight.color).multiplyScalar(this.sunLight.intensity);
+    light.sky.copy(this.skyLight.color).multiplyScalar(this.skyLight.intensity);
+    light.ground.copy(this.skyLight.groundColor).multiplyScalar(this.skyLight.intensity);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {

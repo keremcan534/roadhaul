@@ -128,6 +128,8 @@ const LAMP_LIGHTS: Readonly<Record<QualityLevel, LampLightingOptions>> = {
 const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
 /** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
 const CLOCK_KEEP_SECONDS = 30;
+/** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
+const CAB_RAIN_CLEARANCE_METERS = 1.2;
 
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -287,7 +289,7 @@ async function start(): Promise<void> {
   /** Seconds since the clock's time was last kept in the settings (keepClock). */
   let sinceClockKept = 0;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
-  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky });
+  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky, light: environment.light });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
@@ -302,10 +304,15 @@ async function start(): Promise<void> {
   const onRoad = (): boolean => isDriving() && !hq.isOpen;
 
   const ui = document.body;
-  /** The camera in use, shown: the cab's inside from the driver's seat, the rear camera's picture mirrored. */
+  /**
+   * The camera in use, shown: the cab's inside from the driver's seat (and no rain falling inside it), the rear
+   * camera's picture mirrored.
+   */
   const showCamera = (drivingNow: boolean): void => {
     const mode = cameraRig.currentMode;
-    truck.setCabinView(drivingNow && mode === 'cabin');
+    const inCab = drivingNow && mode === 'cabin';
+    truck.setCabinView(inCab);
+    rain.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
     renderHost.mirrored = drivingNow && mode === 'rear';
     root.dataset.camera = mode;
   };
@@ -470,7 +477,14 @@ async function start(): Promise<void> {
       paint = owned?.paint?.color ?? model.factoryColor;
       fitted = owned?.upgrades ?? {};
     }
-    const options = { lampGlows, castShadows, sky: environment.sky, paint, looks: truckLooks(fitted, content.upgrades.all) };
+    const options = {
+      lampGlows,
+      castShadows,
+      sky: environment.sky,
+      light: environment.light,
+      paint,
+      looks: truckLooks(fitted, content.upgrades.all),
+    };
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
       truck = new TruckView(renderHost.scene, definition, options);
@@ -1036,6 +1050,8 @@ async function start(): Promise<void> {
   /** The keyboard and the touch controls together; tilt steering joins them in `driverInput`. */
   const controlsInput = createVehicleInput();
   const driverInput = createVehicleInput();
+  /** What the cab's instruments read beyond the truck's motion, refreshed every frame (no allocation). */
+  const dashboard = { fuelFraction: 1, clockMinutes: 0, drivePedal: 0, brakePedal: 0 };
   let menuFrames = 0;
   const pose = { x: 0, z: 0, heading: 0 };
   const loop = new GameLoop(
@@ -1102,6 +1118,15 @@ async function start(): Promise<void> {
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
+        truck.setRain(weather.rain);
+        // The pedals as the truck reads them (VehicleDynamics): on auto they swap roles in reverse.
+        const reversing = vehicle.gear < 0;
+        dashboard.fuelFraction = fuel.fraction;
+        dashboard.clockMinutes = timeOfDay.minutes;
+        dashboard.drivePedal = drivePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
+        dashboard.brakePedal = brakePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
+        truck.setDashboard(dashboard);
+        truck.setNavigation(minimap.picture, minimap.paintCount);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
         trafficView.update(traffic.simulation, worldStill ? 1 : alpha);
         gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
@@ -1127,7 +1152,7 @@ async function start(): Promise<void> {
         effectsState.engineRpm = vehicle.engineRpm;
         effectsState.idleRpm = driving.definition.powertrain.idleRpm;
         effectsState.maxRpm = driving.definition.powertrain.maxRpm;
-        effectsState.drivePedal = drivePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, vehicle.gear < 0);
+        effectsState.drivePedal = dashboard.drivePedal;
         effectsState.speed = vehicle.speed;
         effectsState.heading = pose.heading;
         effectsState.offRoad = driving.surface.name === 'grass';
@@ -1169,15 +1194,13 @@ async function start(): Promise<void> {
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
-        // The pedals as the truck reads them (VehicleDynamics): on auto they swap roles in reverse.
-        const reversing = vehicle.gear < 0;
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
         soundState.engineRpm = vehicle.engineRpm;
         soundState.idleRpm = driving.definition.powertrain.idleRpm;
         soundState.maxRpm = driving.definition.powertrain.maxRpm;
-        soundState.drivePedal = drivePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
-        soundState.brakePedal = brakePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
+        soundState.drivePedal = dashboard.drivePedal;
+        soundState.brakePedal = dashboard.brakePedal;
         soundState.reversing = reversing;
         soundState.speed = vehicle.speed;
         soundState.rain = weather.rain;
