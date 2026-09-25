@@ -134,11 +134,17 @@ describe('GameConfig', () => {
   it('starts in weather that exists, and turns it over a positive time', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
-      weather: { initialWeatherId: 'hurricane', changes: 'yes' as unknown as boolean, transitionSeconds: 0 },
+      weather: {
+        initialWeatherId: 'hurricane',
+        clearWeatherId: 'fog',
+        changes: 'yes' as unknown as boolean,
+        transitionSeconds: 0,
+      },
     };
 
     expect(validateGameConfig(config, catalog)).toEqual([
       { path: 'weather.initialWeatherId', message: 'unknown weather "hurricane"' },
+      { path: 'weather.clearWeatherId', message: 'unknown weather "fog"' },
       { path: 'weather.changes', message: expect.any(String) },
       { path: 'weather.transitionSeconds', message: expect.any(String) },
     ]);

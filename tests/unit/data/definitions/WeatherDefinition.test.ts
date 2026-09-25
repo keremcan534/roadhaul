@@ -17,70 +17,32 @@ describe('validateWeatherDefinition', () => {
     }
   });
 
-  it('ships the four kinds of spec §38 and the times of day of §39, with clear days the most common', () => {
-    expect(WEATHER.map((weather) => weather.id)).toEqual(['clear', 'cloudy', 'rain', 'dusk', 'night', 'dawn']);
-    const clear = WEATHER.find((weather) => weather.id === 'clear')!;
+  it('ships the kinds of spec §38, with clear days the most common and rain the hardest on the driver', () => {
+    expect(WEATHER.map((weather) => weather.id)).toEqual(['clear', 'cloudy', 'rain']);
+    const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
     for (const weather of WEATHER) {
-      expect(weather.weight).toBeLessThanOrEqual(clear.weight);
+      expect(weather.weight).toBeLessThanOrEqual(byId('clear').weight);
+      // The weather turns only into another weather: the time of day is apart from it.
+      for (const next of weather.next ?? []) {
+        expect(WEATHER.map((candidate) => candidate.id)).toContain(next);
+      }
+      // By day: no stars and no moon (the time of day's looks bring them).
+      expect(weather.look.stars).toBe(0);
+      expect(weather.look.moon).toBe(0);
     }
-    // Rain makes the road slippery and slows traffic; night turns the lamps on.
-    const rain = WEATHER.find((weather) => weather.id === 'rain')!;
-    const night = WEATHER.find((weather) => weather.id === 'night')!;
+    // Rain makes the road slippery, slows traffic, and turns the lamps on under its dark clouds.
+    const rain = byId('rain');
     expect(rain.gripFactor).toBeLessThan(1);
     expect(rain.trafficSpeedFactor).toBeLessThan(1);
     expect(rain.look.rain).toBe(1);
-    expect(night.look.lamps).toBe(1);
-    // Dark, but the road still shows beyond the headlights.
-    expect(night.look.sunlight + night.look.skylight).toBeLessThan(0.5);
-    expect(night.look.skylight).toBeGreaterThan(0.2);
-  });
-
-  it('goes round the day: dusk only into night, night only into dawn, and the sun low at both ends', () => {
-    const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
-    expect(byId('dusk').next).toEqual(['night']);
-    expect(byId('night').next).toEqual(['dawn']);
-    // Only dusk leads into the night, and dawn leads out of it into the day.
-    for (const weather of WEATHER.filter((candidate) => candidate.id !== 'dusk')) {
-      expect(weather.next, weather.id).not.toContain('night');
-    }
-    expect(byId('dawn').next).not.toContain('dusk');
-    for (const id of ['dusk', 'dawn']) {
-      expect(byId(id).look.sunHeight).toBeLessThan(0.2);
-      expect(byId(id).look.lamps).toBeGreaterThan(0);
-    }
-    for (const id of ['clear', 'cloudy', 'rain']) {
-      expect(byId(id).look.sunHeight).toBe(1);
-    }
-  });
-
-  it('puts out the stars and the moon at night only; the first stars show at dusk and the last at dawn', () => {
-    const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
-    expect(byId('night').look.stars).toBe(1);
-    expect(byId('night').look.moon).toBe(1);
-    for (const id of ['dusk', 'dawn']) {
-      expect(byId(id).look.stars).toBeGreaterThan(0);
-      expect(byId(id).look.stars).toBeLessThan(0.3);
-      // The moon shows in the sun's place: never while the sun is up.
-      expect(byId(id).look.moon).toBe(0);
-    }
-    for (const id of ['clear', 'cloudy', 'rain']) {
-      expect(byId(id).look.stars).toBe(0);
-      expect(byId(id).look.moon).toBe(0);
-    }
-  });
-
-  it('grades each weather: warm at dusk and dawn, cool and glowing at night, grey in the rain', () => {
-    const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
-    expect(byId('dusk').look.warmth).toBeGreaterThan(0.2);
-    expect(byId('dawn').look.warmth).toBeGreaterThan(0.2);
-    expect(byId('night').look.warmth).toBeLessThan(0);
-    expect(byId('night').look.bloom).toBeGreaterThan(byId('clear').look.bloom);
-    expect(byId('rain').look.saturation).toBeLessThan(byId('clear').look.saturation);
+    expect(rain.look.lamps).toBeGreaterThan(0);
+    expect(rain.look.saturation).toBeLessThan(byId('clear').look.saturation);
+    expect(byId('clear').look.lamps).toBe(0);
   });
 
   it('reports successions that are not a list of other weathers', () => {
     expect(issues(weatherFixture({ next: [] }))).toEqual(['weather.next']);
-    expect(issues(weatherFixture({ next: ['test_clear', 'Rain', 'dawn', 'dawn'] }))).toEqual([
+    expect(issues(weatherFixture({ next: ['test_clear', 'Rain', 'cloudy', 'cloudy'] }))).toEqual([
       'weather.next[0]',
       'weather.next[1]',
       'weather.next[3]',
@@ -102,7 +64,6 @@ describe('validateWeatherDefinition', () => {
         fogDensity: 0,
         rain: 2,
         lamps: Number.NaN,
-        sunHeight: 1.5,
         stars: -0.1,
         moon: 2,
         bloom: 1.2,
@@ -122,7 +83,6 @@ describe('validateWeatherDefinition', () => {
       'weather.look.fogDensity',
       'weather.look.rain',
       'weather.look.lamps',
-      'weather.look.sunHeight',
       'weather.look.stars',
       'weather.look.moon',
       'weather.look.bloom',

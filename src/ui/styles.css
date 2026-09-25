@@ -872,6 +872,24 @@ body {
   font-size: 13px;
 }
 
+/* The clock's time beside its label, and the slider under the presets. */
+.settings__clock-time {
+  color: var(--rh-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__slider {
+  width: 100%;
+  height: 28px;
+  margin: 2px 0 0;
+  accent-color: var(--rh-accent);
+  touch-action: pan-x;
+}
+
+.settings__slider:disabled {
+  opacity: 0.4;
+}
+
 /* Phones on their side: two columns of settings, so they fit the short screen. */
 @media (orientation: landscape) and (min-width: 700px) {
   .settings .settings__panel {
@@ -2765,7 +2783,6 @@ html[data-panel='open'] .toasts {
   width: var(--rh-minimap-size);
   height: var(--rh-minimap-size);
   padding: 0;
-  overflow: hidden;
   border: 2px solid rgb(255 255 255 / 30%);
   border-radius: 50%;
   background: #1b2923;
@@ -2797,6 +2814,31 @@ html[data-panel='open'] .toasts {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: 50%;
+}
+
+/* The time of day on the map's rim at its foot, like a watch's date: clear of north's mark inside it. */
+.minimap__clock {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), 0 2px 6px rgb(0 0 0 / 30%);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+  color: var(--rh-fg);
+  font: 700 11px / 1.2 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.minimap__clock:empty {
+  display: none;
 }
 
 /*

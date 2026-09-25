@@ -173,6 +173,7 @@ describe('ContentCatalog', () => {
       upgrades: [7],
       trafficVehicles: ['car'],
       weather: [null],
+      daylight: [null],
       events: [null],
       paints: [null],
     } as unknown as Parameters<typeof validateGameContent>[0];
@@ -185,11 +186,15 @@ describe('ContentCatalog', () => {
       'upgrades[0]',
       'trafficVehicles[0]',
       'weather[0]',
+      'daylight[0]',
       'events[0]',
       'paints[0]',
       'missions[1].originCityId', // No maps, so no depots.
       'missions[1].destinationCityId',
       'missions[1].cargoId',
+      'daylight', // Dawn, dusk and night are all missing.
+      'daylight',
+      'daylight',
     ]);
     expect(() => ContentCatalog.create(content)).toThrow(ValidationError);
   });

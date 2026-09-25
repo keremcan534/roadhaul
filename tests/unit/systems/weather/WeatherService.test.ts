@@ -31,7 +31,7 @@ function setup(config: Partial<GameConfig['weather']> = {}) {
     driving,
     traffic,
     events,
-    { initialWeatherId: 'test_clear', changes: true, transitionSeconds: 20, ...config },
+    { initialWeatherId: 'test_clear', clearWeatherId: 'test_clear', changes: true, transitionSeconds: 20, ...config },
     logger,
   );
   return { weather, grip, trafficSpeed, changes };
@@ -45,6 +45,30 @@ function run(weather: WeatherService, seconds: number, each?: () => void): void 
 }
 
 describe('WeatherService', () => {
+  it('slows traffic in the dark too, as the time of day says, in small steps', () => {
+    const content = ContentCatalog.create(contentFixture());
+    const trafficSpeed: number[] = [];
+    const daylight = { trafficSpeedFactor: 1 };
+    const weather = new WeatherService(
+      content,
+      { setPerformanceModifier: () => {} } as unknown as DrivingService,
+      { setSpeedFactor: (factor: number) => trafficSpeed.push(factor) } as unknown as TrafficService,
+      new EventBus<GameEvents>(new MemoryLogger()),
+      { initialWeatherId: 'test_rain', clearWeatherId: 'test_clear', changes: false, transitionSeconds: 20 },
+      new MemoryLogger(),
+      daylight,
+    );
+    expect(trafficSpeed).toEqual([0.8]);
+
+    // The evening darkens slowly: traffic slows in steps, not every fixed step.
+    for (let step = 0; step < 100; step++) {
+      daylight.trafficSpeedFactor = 1 - (0.1 * step) / 99;
+      weather.update(STEP);
+    }
+    expect(trafficSpeed.at(-1)).toBeCloseTo(0.8 * 0.9, 9);
+    expect(trafficSpeed.length).toBeLessThan(30);
+  });
+
   it('starts in the configured weather and applies it', () => {
     const { weather, grip, trafficSpeed } = setup({ initialWeatherId: 'test_rain' });
 
@@ -136,7 +160,7 @@ describe('WeatherService', () => {
       { setPerformanceModifier: () => {} } as unknown as DrivingService,
       { setSpeedFactor: () => {} } as unknown as TrafficService,
       events,
-      { initialWeatherId: 'day', changes: true, transitionSeconds: 1 },
+      { initialWeatherId: 'day', clearWeatherId: 'day', changes: true, transitionSeconds: 1 },
       logger,
     );
 
@@ -185,7 +209,7 @@ describe('WeatherService', () => {
       { setPerformanceModifier: () => {} } as unknown as DrivingService,
       { setSpeedFactor: () => {} } as unknown as TrafficService,
       events,
-      { initialWeatherId: 'common', changes: true, transitionSeconds: 1 },
+      { initialWeatherId: 'common', clearWeatherId: 'common', changes: true, transitionSeconds: 1 },
       logger,
     );
 

@@ -4,6 +4,7 @@ import {
   applyConfigOverrides,
   requestedDateMs,
   requestedLampLight,
+  requestedTimeOfDay,
   type QueryParameters,
 } from '../../../src/platform/browser/configOverrides';
 
@@ -58,6 +59,15 @@ describe('applyConfigOverrides', () => {
     expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?weather=')).weather).toEqual(DEFAULT_GAME_CONFIG.weather);
   });
 
+  it('keeps the first weather for ?weather=dawn, dusk or night: those are times of day (requestedTimeOfDay)', () => {
+    for (const phase of ['dawn', 'dusk', 'night']) {
+      expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query(`?weather=${phase}`)).weather, phase).toEqual({
+        ...DEFAULT_GAME_CONFIG.weather,
+        changes: false,
+      });
+    }
+  });
+
   it('turns the colour pass off with ?post=0, and on over the preset with ?post=1', () => {
     const low = { ...DEFAULT_GAME_CONFIG, rendering: { ...DEFAULT_GAME_CONFIG.rendering, postProcessing: false } };
 
@@ -93,5 +103,16 @@ describe('requestedDateMs', () => {
     for (const search of ['', '?date=', '?date=someday', '?date=2026-02-30']) {
       expect(requestedDateMs(query(search)), search).toBeNull();
     }
+  });
+});
+
+describe('requestedTimeOfDay', () => {
+  it('reads a time on the clock from ?time=, and a time of day\'s look from ?weather=', () => {
+    expect(requestedTimeOfDay(query('?time=19:30'))).toEqual({ minutes: 19 * 60 + 30 });
+    expect(requestedTimeOfDay(query('?weather=night'))).toEqual({ phase: 'night' });
+    expect(requestedTimeOfDay(query('?weather=dusk&time=6:05'))).toEqual({ minutes: 6 * 60 + 5 });
+    expect(requestedTimeOfDay(query('?weather=rain'))).toBeNull();
+    expect(requestedTimeOfDay(query('?time=25:00'))).toBeNull();
+    expect(requestedTimeOfDay(query(''))).toBeNull();
   });
 });

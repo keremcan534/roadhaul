@@ -16,6 +16,7 @@ import {
   MeshLambertMaterial,
   PlaneGeometry,
   Quaternion,
+  Vector2,
   Vector3,
   type Material,
   type Scene,
@@ -194,6 +195,8 @@ export class TrackView {
   private readonly resources: { dispose(): void }[] = [];
   /** Flat, upward-facing surfaces are pre-lit: see flatGroundLight(). */
   private readonly groundLight = flatGroundLight();
+  /** Where the shadow decals reach without pre-lit materials to follow the sun: the reference sun's way. */
+  private readonly fixedShadowReach = { value: new Vector2(SHADOW_OFFSET_PER_METER.x, SHADOW_OFFSET_PER_METER.z) };
   private readonly prelit: PrelitMaterials | undefined;
   /** Facades whose windows light up at night. */
   private readonly facades: MeshLambertMaterial[] = [];
@@ -445,7 +448,7 @@ export class TrackView {
       broadleaf: this.track(broadleafCrownGeometry()),
       crownMaterial: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }))),
       shadow: this.track(flatQuad()),
-      shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42),
+      shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42, 'tree'),
     };
     const tiles = new Map<string, number[]>();
     trees.forEach((tree, index) => {
@@ -513,14 +516,11 @@ export class TrackView {
           color.setHex(BROADLEAF_COLORS[index % BROADLEAF_COLORS.length]!).multiplyScalar(shade),
         );
       }
-      // The shadow falls away from the sun, centred under the crown's projection.
+      // The shadow falls away from the sun, centred under the crown's projection: the decal's shader moves it
+      // there from the tree's foot (followTheSun), by the crown's height, kept in the flat decal's y scale.
       const crownHeight = trunkHeight + 2.6 * s;
-      position.set(
-        tree.x + SHADOW_OFFSET_PER_METER.x * crownHeight * 0.5,
-        SHOULDER_Y / 2,
-        tree.z + SHADOW_OFFSET_PER_METER.z * crownHeight * 0.5,
-      );
-      shadows.setMatrixAt(slot, matrix.compose(position, rotation.identity(), scale.set(5.5 * s, 1, 5.5 * s)));
+      position.set(tree.x, SHOULDER_Y / 2, tree.z);
+      shadows.setMatrixAt(slot, matrix.compose(position, rotation.identity(), scale.set(5.5 * s, crownHeight, 5.5 * s)));
     });
     const meshes = [shadows, trunks, pines, broadleaves].filter((mesh) => mesh.count > 0);
     for (const mesh of meshes) {
@@ -561,15 +561,7 @@ export class TrackView {
           details.push(...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing));
           break;
       }
-      const reachX = SHADOW_OFFSET_PER_METER.x * box.heightMeters;
-      const reachZ = SHADOW_OFFSET_PER_METER.z * box.heightMeters;
-      shadows.push(
-        flatQuad(width + Math.abs(reachX) + 3, depth + Math.abs(reachZ) + 3).translate(
-          box.minX + width / 2 + reachX / 2,
-          SHOULDER_Y / 2,
-          box.minZ + depth / 2 + reachZ / 2,
-        ),
-      );
+      shadows.push(buildingShadowQuad(box.minX + width / 2, box.minZ + depth / 2, width + 3, depth + 3, box.heightMeters));
     });
     const meshes: Mesh[] = [];
     const add = (parts: BufferGeometry[], material: Material): void => {
@@ -580,7 +572,7 @@ export class TrackView {
         part.dispose();
       }
     };
-    add(shadows, this.shadowMaterial(softBoxShadowImage(), 0.38));
+    add(shadows, this.shadowMaterial(softBoxShadowImage(), 0.38, 'building'));
     add(offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)));
     add(warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)));
     add(
@@ -615,19 +607,20 @@ export class TrackView {
     return material;
   }
 
-  private shadowMaterial(image: PixelImage, opacity: number): MeshBasicMaterial {
-    return this.registerShadow(
-      new MeshBasicMaterial({
-        map: this.texture(toTexture(image, { srgb: false })),
-        color: 0x000000,
-        transparent: true,
-        opacity,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-      }),
-    );
+  /** A baked shadow decal's material: it fades with the sun's light and follows it round (followTheSun). */
+  private shadowMaterial(image: PixelImage, opacity: number, kind: ShadowDecalKind): MeshBasicMaterial {
+    const material = new MeshBasicMaterial({
+      map: this.texture(toTexture(image, { srgb: false })),
+      color: 0x000000,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    followTheSun(material, this.prelit?.shadowReach ?? this.fixedShadowReach, kind);
+    return this.registerShadow(material);
   }
 
   private registerShadow(material: MeshBasicMaterial): MeshBasicMaterial {
@@ -721,6 +714,62 @@ function hash(a: number, b: number): number {
 /** A horizontal quad facing up, centred on the origin. */
 function flatQuad(width = 1, depth = 1): BufferGeometry {
   return new PlaneGeometry(width, depth).rotateX(-Math.PI / 2);
+}
+
+/** The baked shadow decals: under a tree's crown (instanced), or round a building's footprint (merged). */
+type ShadowDecalKind = 'tree' | 'building';
+
+/**
+ * A building's shadow decal: a flat quad round its footprint at (x, z)
+ * whose shader stretches it away from the sun by the building's height
+ * (followTheSun): each corner carries which way it lies from the middle
+ * (x, z: ±1) and the height.
+ */
+function buildingShadowQuad(x: number, z: number, width: number, depth: number, height: number): BufferGeometry {
+  const quad = flatQuad(width, depth).translate(x, SHOULDER_Y / 2, z);
+  const positions = quad.getAttribute('position');
+  const cast = new Float32Array(positions.count * 3);
+  for (let i = 0; i < positions.count; i++) {
+    cast[i * 3] = Math.sign(positions.getX(i) - x);
+    cast[i * 3 + 1] = Math.sign(positions.getZ(i) - z);
+    cast[i * 3 + 2] = height;
+  }
+  quad.setAttribute('shadowCast', new BufferAttribute(cast, 3));
+  return quad;
+}
+
+/**
+ * Moves a baked shadow decal away from the key light, as far as `reach`
+ * says per meter of height (PrelitMaterials.shadowReach, following the sun
+ * across the sky): a tree's soft spot to under its crown's shadow,
+ * stretched along its way the lower the sun (the crown's height rides in
+ * the flat decal's y scale); a building's quad grown from its footprint to
+ * where its roof's shadow falls.
+ */
+function followTheSun(material: MeshBasicMaterial, reach: { readonly value: Vector2 }, kind: ShadowDecalKind): void {
+  const move =
+    kind === 'tree'
+      ? /* glsl */ `
+        vec2 decalScale = vec2(instanceMatrix[0][0], instanceMatrix[2][2]);
+        vec2 reach = shadowReach * instanceMatrix[1][1] * 0.5;
+        float reachLength = length(reach);
+        vec2 along = reachLength > 1e-4 ? reach / reachLength : vec2(1.0, 0.0);
+        vec2 spot = transformed.xz * decalScale;
+        spot += along * dot(spot, along) * (reachLength / decalScale.x);
+        transformed.xz = (spot + reach) / decalScale;`
+      : /* glsl */ `
+        vec2 reach = shadowReach * shadowCast.z;
+        transformed.xz += reach * 0.5 + shadowCast.xy * abs(reach) * 0.5;`;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms['shadowReach'] = reach;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>\nuniform vec2 shadowReach;${kind === 'building' ? '\nattribute vec3 shadowCast;' : ''}`,
+      )
+      .replace('#include <begin_vertex>', `#include <begin_vertex>${move}`);
+  };
+  material.customProgramCacheKey = () => `shadow-decal-${kind}`;
 }
 
 /** A flat disc facing up at (x, y, z), textured in world space: one texture tile per `tileMeters`. */

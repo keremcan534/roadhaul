@@ -3,12 +3,14 @@ import { ServiceKeys } from './app/ServiceKeys';
 import { ConsoleLogger } from './core/logging/ConsoleLogger';
 import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
+import { formatClock } from './core/time/dayTime';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
 import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
+import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import {
   brakePedalOf,
@@ -18,7 +20,12 @@ import {
 } from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
 import { browserStorage } from './platform/browser/browserStorage';
-import { applyConfigOverrides, requestedDateMs, requestedLampLight } from './platform/browser/configOverrides';
+import {
+  applyConfigOverrides,
+  requestedDateMs,
+  requestedLampLight,
+  requestedTimeOfDay,
+} from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
@@ -50,6 +57,7 @@ import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
 import { interpolatePose } from './systems/driving/DrivingService';
+import { CLOCK_PRESETS, type ClockPreset } from './systems/weather/TimeOfDayService';
 import type { GameState } from './systems/gameState/GameState';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
@@ -87,8 +95,9 @@ import './ui/styles.css';
  * it goes.
  *
  * `<html data-boot-state>` (booting | ready | error), `data-game-state`,
- * `data-panel`, `data-mission-state`, `data-vehicle`, `data-traffic` and
- * `data-weather` let the end-to-end tests follow progress.
+ * `data-panel`, `data-mission-state`, `data-vehicle`, `data-traffic`,
+ * `data-weather` and `data-daylight` let the end-to-end tests follow
+ * progress.
  */
 /** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
 const PANEL_STANDSTILL_SPEED = 0.5;
@@ -117,6 +126,8 @@ const LAMP_LIGHTS: Readonly<Record<QualityLevel, LampLightingOptions>> = {
   high: {},
 };
 const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
+/** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
+const CLOCK_KEEP_SECONDS = 30;
 
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -146,6 +157,7 @@ async function start(): Promise<void> {
     logger,
     clock,
     storage,
+    localTimeOffsetMinutes: -new Date().getTimezoneOffset(),
   }).boot();
 
   const content = services.resolve(ServiceKeys.content);
@@ -154,6 +166,22 @@ async function start(): Promise<void> {
   const driving = services.resolve(ServiceKeys.driving);
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
+  const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
+  // The game's clock: the time the player picked and the way it goes (Settings), unless the address sets it
+  // (`?time=`, `?weather=dawn|dusk|night`), which stops it there and keeps the player's own for later.
+  const requestedTime = requestedTimeOfDay(query);
+  timeOfDay.flow = requestedTime === null ? settings.timeFlow : 'stopped';
+  timeOfDay.set(
+    requestedTime === null
+      ? settings.clockMinutes
+      : 'minutes' in requestedTime
+        ? requestedTime.minutes
+        : timeOfDay.timeOf(requestedTime.phase),
+  );
+  /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
+  const clearDay = content.weather.get(config.weather.clearWeatherId).look;
+  const weatherLook = createSkyLook();
+  const skyLook = createSkyLook();
   const missions = services.resolve(ServiceKeys.missions);
   const dailyContracts = services.resolve(ServiceKeys.dailyContracts);
   const navigation = services.resolve(ServiceKeys.navigation);
@@ -253,6 +281,11 @@ async function start(): Promise<void> {
   let shownTraffic = -1;
   /** Whether sound plays, as last written to the page (e2e tests read it). */
   let shownSound = '';
+  /** The time of day's look (day, dawn, dusk, night) and the clock's minute, as last shown. */
+  let shownDaylight = '';
+  let shownClockMinute = -1;
+  /** Seconds since the clock's time was last kept in the settings (keepClock). */
+  let sinceClockKept = 0;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
@@ -384,7 +417,7 @@ async function start(): Promise<void> {
       paused = false;
       gameState.transitionTo('mainMenu');
     },
-    onSettings: () => settingsDialog.open(),
+    onSettings: () => openSettings(),
     onMap: () => openMap(),
   });
   const keyboard = new KeyboardInput(window, {
@@ -486,9 +519,57 @@ async function start(): Promise<void> {
       query.set('lang', language === 'tr' ? 'en' : 'tr');
       window.location.search = query.toString();
     },
-    onSettings: () => settingsDialog.open(),
+    onSettings: () => openSettings(),
   });
-  const settingsDialog = new SettingsDialog(ui, strings, { ...settings, quality: qualityChoice, qualityInUse: quality }, {
+  /** Keeps the clock's time in the settings as the day goes on, so the next visit picks it up. */
+  const keepClock = (): void => {
+    if (requestedTime === null && timeOfDay.flow !== 'device') {
+      settings = { ...settings, clockMinutes: timeOfDay.minutes };
+      saveSettings(storage, settings);
+    }
+  };
+  /**
+   * Marks the time of day's look on the page (`data-daylight`: day, dawn,
+   * dusk or night, for the tests), and says so on the road when it turns to
+   * dawn, dusk or night.
+   */
+  const showDaylight = (): void => {
+    const shown = timeOfDay.shown;
+    if (shown === shownDaylight) {
+      return;
+    }
+    const first = shownDaylight === '';
+    shownDaylight = shown;
+    root.dataset.daylight = shown;
+    if (!first && shown !== 'day' && isDriving()) {
+      toasts.show(strings.t(`daylight.${shown}.message`), 'info');
+    }
+  };
+  /** The time today of each of the Settings' clock presets (they move with the seasons). */
+  const clockPresets = (): Record<ClockPreset, number> => {
+    const presets = {} as Record<ClockPreset, number>;
+    for (const preset of CLOCK_PRESETS) {
+      presets[preset] = timeOfDay.timeOf(preset);
+    }
+    return presets;
+  };
+  const openSettings = (): void => {
+    keepClock();
+    settingsDialog.showClock(timeOfDay.minutes, clockPresets());
+    settingsDialog.open();
+  };
+  const settingsDialog = new SettingsDialog(
+    ui,
+    strings,
+    {
+      ...settings,
+      quality: qualityChoice,
+      qualityInUse: quality,
+      clockMinutes: timeOfDay.minutes,
+      timeFlow: timeOfDay.flow,
+      clockPresets: clockPresets(),
+    },
+    {
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice.
@@ -524,8 +605,20 @@ async function start(): Promise<void> {
       saveSettings(storage, settings);
       perfOverlay.visible = on || config.debug.showPerfOverlay;
     },
+    onClock: (minutes) => {
+      timeOfDay.set(minutes);
+      settings = { ...settings, clockMinutes: timeOfDay.minutes };
+      saveSettings(storage, settings);
+    },
+    onTimeFlow: (flow) => {
+      timeOfDay.flow = flow;
+      settings = { ...settings, timeFlow: flow, clockMinutes: timeOfDay.minutes };
+      saveSettings(storage, settings);
+      settingsDialog.showClock(timeOfDay.minutes, clockPresets());
+    },
     onClose: () => settingsDialog.close(),
-  });
+    },
+  );
   const hq = new CompanyHq(
     ui,
     strings,
@@ -842,6 +935,7 @@ async function start(): Promise<void> {
   const leave = (): void => {
     pause();
     session.save();
+    keepClock();
   };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
@@ -956,6 +1050,7 @@ async function start(): Promise<void> {
         // Traffic moves first, so the truck collides with where it is now. It drives behind the menus and the
         // panel too, under the weather, while the truck waits.
         traffic.update(stepSeconds);
+        timeOfDay.update(stepSeconds);
         weather.update(stepSeconds);
         if (!onRoad()) {
           return;
@@ -977,7 +1072,20 @@ async function start(): Promise<void> {
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         roadFurniture.update(pose.x, pose.z, pose.heading);
-        const lamps = weather.lamps;
+        // The sky: the time of day's look with the weather's over it. Its lamps light up at dusk and in the rain.
+        mixWeather(weather.previous.look, weather.current.look, weather.blend, weatherLook);
+        composeSky(
+          clearDay,
+          timeOfDay.twilight.look,
+          timeOfDay.nightLook.look,
+          timeOfDay.weights,
+          timeOfDay.sunUp,
+          timeOfDay.moonlit,
+          weatherLook,
+          skyLook,
+        );
+        const lamps = skyLook.lamps;
+        showDaylight();
         track.setLamps(lamps);
         track.setWetness(weather.rain);
         track.update(paused ? 0 : deltaSeconds);
@@ -1005,7 +1113,7 @@ async function start(): Promise<void> {
         cameraRig.update(pose, vehicle, deltaSeconds);
         lampLighting.setWetness(weather.rain);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
-        environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
+        environment.applySky(skyLook, timeOfDay, prelit);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
@@ -1026,6 +1134,16 @@ async function start(): Promise<void> {
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);
+        const clockMinute = Math.floor(timeOfDay.minutes);
+        if (clockMinute !== shownClockMinute) {
+          shownClockMinute = clockMinute;
+          minimap.showClock(formatClock(clockMinute));
+        }
+        sinceClockKept += deltaSeconds;
+        if (sinceClockKept > CLOCK_KEEP_SECONDS) {
+          sinceClockKept = 0;
+          keepClock();
+        }
         worldMap.frame();
         restArea.visible = simulating;
         restArea.update();

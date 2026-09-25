@@ -12,15 +12,23 @@ import type { TrafficService } from '../traffic/TrafficService';
 const WEATHER_SEED = 38;
 /** During a transition the truck's grip is handed on in steps this small (not every fixed step). */
 const GRIP_STEP = 0.01;
+/** The time of day changes traffic's speed in steps this small. */
+const TRAFFIC_STEP = 0.005;
+
+/** How the time of day changes traffic's speed (TimeOfDayService). */
+export interface DaylightTraffic {
+  readonly trafficSpeedFactor: number;
+}
 
 /**
- * The weather and the time of day (spec §38–39, the WeatherManager). It runs
- * a seeded schedule: each weather lasts a while, then turns into another it
- * may turn into (dusk only into night, say), chosen by weight, over
- * `transitionSeconds`. Meanwhile it applies the effects, blended: the
- * truck's grip (a DrivingService performance modifier) and how fast traffic
- * drives. Presentation reads `previous`, `current` and `blend` (and the
- * blended `rain` and `lamps`) to draw it. Call update() every fixed step.
+ * The weather (spec §38, the WeatherManager). It runs a seeded schedule:
+ * each weather lasts a while, then turns into another it may turn into,
+ * chosen by weight, over `transitionSeconds`. Meanwhile it applies the
+ * effects, blended: the truck's grip (a DrivingService performance
+ * modifier) and how fast traffic drives, with the time of day's slower
+ * traffic in the dark (`daylight`) on top. Presentation reads `previous`,
+ * `current` and `blend` (and the blended `rain` and `lamps`) to draw it,
+ * over the time of day's look. Call update() every fixed step.
  */
 export class WeatherService {
   private currentWeather: WeatherDefinition;
@@ -40,6 +48,7 @@ export class WeatherService {
     private readonly events: EventBus<GameEvents>,
     private readonly config: GameConfig['weather'],
     private readonly logger: Logger,
+    private readonly daylight: DaylightTraffic | null = null,
   ) {
     this.currentWeather = content.weather.get(config.initialWeatherId);
     this.previousWeather = this.currentWeather;
@@ -72,7 +81,7 @@ export class WeatherService {
     return mix(this.previousWeather.look.rain, this.currentWeather.look.rain, this.blendValue);
   }
 
-  /** How brightly headlights and lamps shine now, 0..1 (blended during a transition). */
+  /** How brightly headlights and lamps shine for the weather (rain darkens the day), 0..1, blended during a transition. */
   get lamps(): number {
     return mix(this.previousWeather.look.lamps, this.currentWeather.look.lamps, this.blendValue);
   }
@@ -82,6 +91,8 @@ export class WeatherService {
     if (this.blendValue < 1) {
       this.blendValue = Math.min(1, this.blendValue + dt / this.config.transitionSeconds);
       this.apply();
+    } else if (this.daylight !== null) {
+      this.applyTraffic();
     }
     if (!this.config.changes) {
       return;
@@ -154,7 +165,18 @@ export class WeatherService {
       this.modifier.gripFactor = grip;
       this.driving.setPerformanceModifier('weather', this.modifier);
     }
-    const traffic = mix(this.previousWeather.trafficSpeedFactor, this.currentWeather.trafficSpeedFactor, this.blendValue);
+    this.applyTraffic();
+  }
+
+  /**
+   * Hands traffic its speed for the weather and the time of day when it
+   * changes: the time's share in steps of TRAFFIC_STEP, so the slow turn of
+   * the day does not change it every fixed step.
+   */
+  private applyTraffic(): void {
+    const weather = mix(this.previousWeather.trafficSpeedFactor, this.currentWeather.trafficSpeedFactor, this.blendValue);
+    const daylight = this.daylight === null ? 1 : Math.round(this.daylight.trafficSpeedFactor / TRAFFIC_STEP) * TRAFFIC_STEP;
+    const traffic = weather * daylight;
     if (traffic !== this.appliedTraffic) {
       this.appliedTraffic = traffic;
       this.traffic.setSpeedFactor(traffic);

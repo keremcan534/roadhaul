@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { TIME_FLOWS } from '../../../../src/data/config/controls';
 import { GAME_CONTENT } from '../../../../src/data/content';
 import { DEFAULT_GAME_CONFIG, QUALITY_CHOICES } from '../../../../src/data/config/GameConfig';
 import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
@@ -8,6 +9,7 @@ import { VEHICLE_STATS } from '../../../../src/data/definitions/UpgradeDefinitio
 import { VEHICLE_CLASSES } from '../../../../src/data/definitions/VehicleDefinition';
 import { TUTORIAL_STEPS } from '../../../../src/domain/tutorial/tutorialSteps';
 import { DAMAGE_BANDS } from '../../../../src/domain/vehicles/vehicleDamage';
+import { CLOCK_PRESETS } from '../../../../src/systems/weather/TimeOfDayService';
 import { HQ_TABS } from '../../../../src/ui/hq/hqTabs';
 import { EN } from '../../../../src/ui/i18n/en';
 import { chooseLanguage, stringsFor } from '../../../../src/ui/i18n';
@@ -21,7 +23,7 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, truck, upgrade, weather, event, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
@@ -29,6 +31,9 @@ describe('string tables', () => {
       ...GAME_CONTENT.vehicles.map((vehicle) => `vehicle.${vehicle.id}.name`),
       ...GAME_CONTENT.upgrades.map((upgrade) => `upgrade.${upgrade.id}.name`),
       ...GAME_CONTENT.weather.map((weather) => `weather.${weather.id}.message`),
+      ...GAME_CONTENT.daylight.map((daylight) => `daylight.${daylight.id}.message`),
+      ...CLOCK_PRESETS.map((preset) => `settings.clock.${preset}`),
+      ...TIME_FLOWS.map((flow) => `settings.timeFlow.${flow}`),
       ...GAME_CONTENT.events.flatMap((event) => [`event.${event.id}.name`, `event.${event.id}.description`]),
       ...CARGO_CATEGORIES.map((category) => `cargoCategory.${category}`),
       ...TUTORIAL_STEPS.filter((step) => step !== 'done').map((step) => `tutorial.${step}`),

@@ -1,5 +1,7 @@
 import { isLogLevel } from '../../core/logging/Logger';
 import { MAX_TRAFFIC_VEHICLES, type GameConfig } from '../../data/config/GameConfig';
+import { parseClock } from '../../core/time/dayTime';
+import { isDaylightPhase, type DaylightPhase } from '../../data/definitions/DaylightDefinition';
 import { utcMidnightMs } from '../../data/definitions/EventDefinition';
 
 /** The part of URLSearchParams this module needs. */
@@ -29,6 +31,24 @@ export function requestedLampLight(query: QueryParameters): boolean | null {
   return lamps === '0' || lamps === '1' ? lamps === '1' : null;
 }
 
+/** A time of day the URL asks for: a time on the clock, or the moment the sky takes one of the time's looks. */
+export type RequestedTime = { readonly minutes: number } | { readonly phase: DaylightPhase };
+
+/**
+ * `?time=19:30` sets the game's clock to that time and keeps it there;
+ * `?weather=dawn` (or `dusk`, `night`: the looks of the time of day, not
+ * kinds of weather) keeps it where the sky looks so. Null when the URL
+ * asks for neither.
+ */
+export function requestedTimeOfDay(query: QueryParameters): RequestedTime | null {
+  const minutes = parseClock(query.get('time') ?? '');
+  if (minutes !== null) {
+    return { minutes };
+  }
+  const weather = query.get('weather')?.trim();
+  return isDaylightPhase(weather) ? { phase: weather } : null;
+}
+
 /**
  * Developer switches read from the page URL:
  * - `?debug` shows the performance overlay and enables debug logging.
@@ -38,7 +58,8 @@ export function requestedLampLight(query: QueryParameters): boolean | null {
  * - `?traffic=0` sets how many NPC vehicles drive around (0 turns traffic
  *   off; a whole number up to MAX_TRAFFIC_VEHICLES).
  * - `?weather=rain` starts in that weather and keeps it (the config check
- *   rejects ids that do not exist).
+ *   rejects ids that do not exist). `?weather=dawn|dusk|night` keeps the
+ *   first weather instead (requestedTimeOfDay sets the time).
  * - `?post=0` draws the scene straight to the screen, without the colour
  *   pass, its bloom and smoothing (`?post=1` turns it on over the preset).
  */
@@ -66,7 +87,12 @@ export function applyConfigOverrides(config: GameConfig, query: QueryParameters)
       maxVehicles:
         Number.isInteger(traffic) && traffic >= 0 && traffic <= MAX_TRAFFIC_VEHICLES ? traffic : config.traffic.maxVehicles,
     },
-    weather: weatherId === '' ? config.weather : { ...config.weather, initialWeatherId: weatherId, changes: false },
+    weather:
+      weatherId === ''
+        ? config.weather
+        : isDaylightPhase(weatherId)
+          ? { ...config.weather, changes: false }
+          : { ...config.weather, initialWeatherId: weatherId, changes: false },
     debug: {
       logLevel,
       showPerfOverlay: debug || config.debug.showPerfOverlay,

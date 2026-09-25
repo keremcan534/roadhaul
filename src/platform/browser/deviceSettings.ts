@@ -1,13 +1,16 @@
 import type { KeyValueStorage } from '../../core/storage/KeyValueStorage';
+import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import {
   isCameraMode,
   isControlSize,
   isSteeringMode,
   isTiltSensitivity,
+  isTimeFlow,
   type CameraMode,
   type ControlSize,
   type SteeringMode,
   type TiltSensitivity,
+  type TimeFlow,
 } from '../../data/config/controls';
 import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfig';
 
@@ -24,6 +27,10 @@ export interface DeviceSettings {
   readonly controlSize: ControlSize;
   /** The driving camera last picked with the camera button. */
   readonly camera: CameraMode;
+  /** How the game's clock goes: the day passes, stands still at the time picked, or keeps the phone's time. */
+  readonly timeFlow: TimeFlow;
+  /** The game's time of day, minutes after midnight: picked in Settings, and kept as the day goes on. */
+  readonly clockMinutes: number;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
@@ -35,6 +42,8 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   tiltSensitivity: 'normal',
   controlSize: 'normal',
   camera: 'chase',
+  timeFlow: 'passes',
+  clockMinutes: 10 * 60,
 });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
@@ -44,7 +53,10 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera } = parsed as Record<string, unknown>;
+    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes } = parsed as Record<
+      string,
+      unknown
+    >;
     return {
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
       sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
@@ -53,6 +65,11 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
       tiltSensitivity: isTiltSensitivity(tiltSensitivity) ? tiltSensitivity : DEFAULT_SETTINGS.tiltSensitivity,
       controlSize: isControlSize(controlSize) ? controlSize : DEFAULT_SETTINGS.controlSize,
       camera: isCameraMode(camera) ? camera : DEFAULT_SETTINGS.camera,
+      timeFlow: isTimeFlow(timeFlow) ? timeFlow : DEFAULT_SETTINGS.timeFlow,
+      clockMinutes:
+        typeof clockMinutes === 'number' && clockMinutes >= 0 && clockMinutes < MINUTES_PER_DAY
+          ? clockMinutes
+          : DEFAULT_SETTINGS.clockMinutes,
     };
   } catch {
     return DEFAULT_SETTINGS;

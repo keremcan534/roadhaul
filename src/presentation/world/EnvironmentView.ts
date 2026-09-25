@@ -14,15 +14,17 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
+  Quaternion,
   ShaderMaterial,
   ShadowMaterial,
   SphereGeometry,
   Vector3,
   type Scene,
 } from 'three';
-import { smoothstep } from '../../core/math/scalar';
+import { clamp, degreesToRadians, smoothstep } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
-import type { WeatherLook } from '../../data/definitions/WeatherDefinition';
+import type { SkyLook } from '../../domain/sky/skyLook';
+import type { SkyDirection } from '../../domain/sky/solar';
 import { createColorGrade, type ColorGrade } from '../PostProcessing';
 import { fractalNoise } from '../textures/noise';
 import { cloudPuffImage, moonImage } from '../textures/proceduralImages';
@@ -112,19 +114,43 @@ const UP = new Vector3(0, 1, 0);
 /** The ground below the horizon is the horizon's colour, this much darker. */
 const GROUND_HAZE_SHADE = 0.86;
 /**
- * Where the sun stands: always in the same quarter of the sky, as high as
- * SUN_DIRECTION on a clear day (a look's sunHeight 1) and this high above
- * the horizon at sunHeight 0, radians.
+ * The looks were drawn for a clear day with the sun as high as
+ * SUN_DIRECTION: the light on flat ground is measured against its. The sky
+ * round the sun glows more the lower it stands, from this high (radians)
+ * down to this low.
  */
-const SUN_AZIMUTH = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
-const DAY_SUN_ELEVATION = Math.asin(SUN_DIRECTION.y);
-const HORIZON_SUN_ELEVATION = (3 * Math.PI) / 180;
+const REFERENCE_SUN_SINE = SUN_DIRECTION.y;
+const HIGH_SUN_ELEVATION = degreesToRadians(48);
+const LOW_SUN_ELEVATION = degreesToRadians(3);
+/**
+ * The eye adapts: by day a low sun (a winter's, a morning's) looks brighter
+ * than its light on the ground is, up to this much, from the day's full
+ * look (DAY_ELEVATION) on; not at dawn and dusk, which stay low and warm.
+ */
+const MAX_DAY_EXPOSURE = 1.3;
+const DAY_ELEVATION = degreesToRadians(12);
+/** Past sunset the sky keeps a glow where the sun went down, this strong, gone by this far below the horizon. */
+const AFTERGLOW = 0.45;
+const AFTERGLOW_ENDS = degreesToRadians(-9);
+const SUNSET_BELOW = degreesToRadians(-1);
+const SUNSET_ABOVE = degreesToRadians(3);
+/** With the moon down, the night's faint key light (the stars', the towns') comes from high up. */
+const NIGHT_KEY = new Vector3(0.25, 0.9, 0.35).normalize();
+/** The moon's glow round it, as the sun's is round the sun (times the moonlight). */
+const MOON_GLOW = 0xc8d4f0;
+/** The moon counts as up from this height of its direction (a sine), the key light's source from the next. */
+const MOON_SHOWS = -0.03;
+const MOON_KEY = 0.05;
+/** The key light never comes from lower than this (a sine), so a setting sun lights nothing from below. */
+const MIN_KEY_HEIGHT = 0.02;
+/** The region's latitude by default, degrees: the stars turn round the pole this high over the north. */
+const DEFAULT_LATITUDE = 39;
 /**
  * The night sky, beyond the clouds and inside the dome: this many stars, as
  * far as this, each this wide in radians (the brightest the widest); and the
  * moon, this far and this wide (about 3°, bigger than life, like the sun).
  */
-const STAR_COUNT = 700;
+const STAR_COUNT = 1400;
 const STAR_DISTANCE = 780;
 const STAR_SIZE = { faint: 0.0028, bright: 0.007 } as const;
 const MOON_DISTANCE = 760;
@@ -155,9 +181,28 @@ export interface EnvironmentViewOptions {
    * without a GPU, where every layer of a cloud's puffs costs). Default: 1.
    */
   readonly cloudShare?: number;
+  /** The region's latitude, degrees north: where the pole stands that the stars turn round. Default: 39. */
+  readonly latitudeDegrees?: number;
 }
 
-/** The sky as other shaders see it (the sea mirrors it): its colours and the sun, kept up to date by applyWeather(). */
+/**
+ * Where the sun, the moon and the stars stand (TimeOfDayService): toward
+ * the sun and the moon in the world's axes (x east, y up, z south), how
+ * far through its phases the moon is (0 new, 0.5 full), and how far the
+ * stars have turned round the pole (radians).
+ */
+export interface SkyPlacement {
+  readonly sun: Readonly<SkyDirection>;
+  readonly moon: Readonly<SkyDirection>;
+  readonly moonPhase: number;
+  readonly starTurn: number;
+}
+
+/**
+ * The sky as other shaders see it (the sea mirrors it): its colours and the
+ * light that glows in it, the sun's (at night the moon's), kept up to date
+ * by applySky().
+ */
 export interface SkyUniforms {
   readonly zenith: { readonly value: Color };
   readonly horizon: { readonly value: Color };
@@ -168,12 +213,13 @@ export interface SkyUniforms {
 /**
  * Sky, horizon and light: a gradient dome with a sun glow, soft drifting
  * clouds, two ridges of hazy hills, fog, and the sun and sky lights; at
- * night the stars and the moon. The dome, clouds, hills, stars and moon follow the camera
- * (call update() every frame), so they always sit at the horizon. About
- * three draw calls, two more at night. applyWeather() turns it all to the
- * weather and the time of day (spec §38–39): sky, haze, light, the sun's
- * height, clouds, stars and moon, the pre-lit ground with it, and the
- * picture's grade (`grade`, for the renderer's colour pass).
+ * night the stars and the moon. The dome, clouds, hills, stars and moon
+ * follow the camera (call update() every frame), so they always sit at the
+ * horizon. About three draw calls, two more at night. applySky() turns it
+ * all to the time of day and the weather (spec §38–39): sky, haze, light,
+ * the sun and the moon where they stand, the moon's phase, the turning
+ * stars, clouds, the pre-lit ground with it, and the picture's grade
+ * (`grade`, for the renderer's colour pass).
  */
 export class EnvironmentView {
   private readonly backdrop = new Group();
@@ -198,7 +244,14 @@ export class EnvironmentView {
   private readonly starUniforms = { time: { value: 0 }, level: { value: 0 } };
   private readonly moon: Mesh;
   private readonly moonMaterial: MeshBasicMaterial;
+  /** Toward the sun, in the moon picture's own axes: which of its face is lit. */
+  private readonly moonLit = { value: new Vector3(0, 0, 1) };
   private readonly toMoon = new Vector3();
+  private readonly fromMoon = new Quaternion();
+  /** Where the key light comes from (the sun's, the moon's or the night sky's): the shadows' and the ground's light. */
+  private readonly keyDirection = new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z);
+  /** The axis the stars turn round: the sky's north pole, the latitude high over the north. */
+  private readonly pole: Vector3;
   private readonly resources: { dispose(): void }[] = [];
   private readonly colorGrade = createColorGrade();
   private readonly fogScale: number;
@@ -211,19 +264,17 @@ export class EnvironmentView {
   private readonly shadowUp = new Vector3();
   private shadowFocusX = 0;
   private shadowFocusZ = 0;
-  /** Scratch colours for blending looks, and what was last applied (so an unchanged look costs nothing). */
+  /** Scratch colours for the look. */
   private readonly tint = new Color();
-  private readonly scratch = new Color();
   private readonly groundLight = new Color();
-  private appliedFrom: WeatherLook | null = null;
-  private appliedTo: WeatherLook | null = null;
-  private appliedBlend = Number.NaN;
 
   constructor(
     private readonly scene: Scene,
     options: EnvironmentViewOptions = {},
   ) {
     this.fogScale = options.hdr === true ? LINEAR_FOG_SCALE : 1;
+    const latitude = degreesToRadians(options.latitudeDegrees ?? DEFAULT_LATITUDE);
+    this.pole = new Vector3(0, Math.sin(latitude), -Math.cos(latitude));
     this.background = new Color(HORIZON);
     scene.background = this.background;
     this.fog = new FogExp2(HORIZON, FOG_DENSITY * this.fogScale);
@@ -269,6 +320,7 @@ export class EnvironmentView {
         toneMapped: false,
       }),
     );
+    this.showMoonPhase(this.moonMaterial);
     this.moon = new Mesh(this.track(new PlaneGeometry(MOON_SIZE_METERS, MOON_SIZE_METERS)), this.moonMaterial);
     // Over the stars, under the clouds and everything else see-through; hidden (no draw call) by day.
     this.moon.renderOrder = -2;
@@ -281,64 +333,92 @@ export class EnvironmentView {
   }
 
   /**
-   * Shows the weather `blend` (0..1) of the way from look `from` to look
-   * `to`, and relights the pre-lit ground in `prelit`. Cheap to call every
-   * frame: it does nothing while the look stays the same. Allocation-free.
+   * Shows the sky `look` (composeSky: the time of day with the weather over
+   * it) with the sun, the moon and the stars where `sky` places them, and
+   * relights the pre-lit ground in `prelit`: colours, haze, the key light
+   * (the sun's; at night the moon's, or the night sky's with the moon down)
+   * and the sky's, the glow round the sun (after sunset, where it went
+   * down; at night, round the moon), the moon's lit side toward the sun,
+   * the stars, clouds, real-time shadows and the grade. By day a low sun
+   * is exposed a little brighter, as the eye adapts. Allocation-free.
    */
-  applyWeather(from: WeatherLook, to: WeatherLook, blend: number, prelit?: PrelitMaterials): void {
-    if (from === this.appliedFrom && to === this.appliedTo && blend === this.appliedBlend) {
-      return;
+  applySky(look: Readonly<SkyLook>, sky: SkyPlacement, prelit?: PrelitMaterials): void {
+    const sun = sky.sun;
+    const moon = sky.moon;
+    const elevation = Math.asin(clamp(sun.y, -1, 1));
+    const adapted = clamp(Math.sqrt(REFERENCE_SUN_SINE / Math.max(sun.y, 0.05)), 1, MAX_DAY_EXPOSURE);
+    const exposure = 1 + (adapted - 1) * smoothstep(LOW_SUN_ELEVATION, DAY_ELEVATION, elevation);
+    const sunlight = look.sunlight * exposure;
+    const skylight = look.skylight * exposure;
+    const moonlight = look.moonlight;
+    this.tint.setHex(look.lightColor);
+
+    // The key light: the sun's, or at night the moon's; with the moon down, the night sky's from high up.
+    const key = this.keyDirection;
+    const moonUp = moon.y > MOON_KEY;
+    let keyLight: number;
+    if (sunlight >= moonlight) {
+      key.set(sun.x, Math.max(sun.y, MIN_KEY_HEIGHT), sun.z).normalize();
+      keyLight = sunlight;
+    } else {
+      if (moonUp) {
+        key.set(moon.x, moon.y, moon.z).normalize();
+      } else {
+        key.copy(NIGHT_KEY);
+      }
+      keyLight = moonlight;
     }
-    this.appliedFrom = from;
-    this.appliedTo = to;
-    this.appliedBlend = blend;
-    const sunlight = mix(from.sunlight, to.sunlight, blend);
-    const skylight = mix(from.skylight, to.skylight, blend);
-    this.tint.setHex(from.lightColor).lerp(this.scratch.setHex(to.lightColor), blend);
 
     const uniforms = this.skyUniforms;
-    uniforms.zenith.value.setHex(from.zenithColor).lerp(this.scratch.setHex(to.zenithColor), blend);
-    uniforms.horizon.value.setHex(from.horizonColor).lerp(this.scratch.setHex(to.horizonColor), blend);
+    uniforms.zenith.value.setHex(look.zenithColor).multiplyScalar(exposure);
+    uniforms.horizon.value.setHex(look.horizonColor).multiplyScalar(exposure);
     uniforms.groundHaze.value.copy(uniforms.horizon.value).multiplyScalar(GROUND_HAZE_SHADE);
-    // The sun's glow takes the light's colour: orange at dusk, pale blue for the moon.
-    uniforms.sunColor.value.setHex(SUN_COLOR).multiply(this.tint).multiplyScalar(sunlight);
-    const sunHeight = mix(from.sunHeight, to.sunHeight, blend);
-    const elevation = HORIZON_SUN_ELEVATION + (DAY_SUN_ELEVATION - HORIZON_SUN_ELEVATION) * sunHeight;
-    const sun = uniforms.sunDirection.value.set(
-      Math.sin(SUN_AZIMUTH) * Math.cos(elevation),
-      Math.sin(elevation),
-      Math.cos(SUN_AZIMUTH) * Math.cos(elevation),
-    );
-    uniforms.sunLow.value = (1 - sunHeight) * (1 - sunHeight);
+    // The glow in the sky: round the sun while it is up and while its twilight lasts (orange at dusk), then
+    // round the moon, pale.
+    const afterglow = AFTERGLOW * smoothstep(AFTERGLOW_ENDS, SUNSET_BELOW, elevation) * (1 - smoothstep(SUNSET_BELOW, SUNSET_ABOVE, elevation));
+    if (elevation > AFTERGLOW_ENDS || !moonUp) {
+      uniforms.sunDirection.value.set(sun.x, sun.y, sun.z).normalize();
+      uniforms.sunColor.value.setHex(SUN_COLOR).multiply(this.tint).multiplyScalar(Math.max(sunlight, afterglow));
+    } else {
+      uniforms.sunDirection.value.set(moon.x, moon.y, moon.z).normalize();
+      uniforms.sunColor.value.setHex(MOON_GLOW).multiply(this.tint).multiplyScalar(moonlight);
+    }
+    uniforms.sunLow.value = (1 - smoothstep(LOW_SUN_ELEVATION, HIGH_SUN_ELEVATION, elevation)) ** 2;
     this.placeSun();
-    // At night the light is the moon's: it shows where the light comes from, facing the camera.
-    const moon = mix(from.moon, to.moon, blend);
-    this.moon.visible = moon > 0.01;
-    this.moonMaterial.opacity = moon;
-    this.moon.position.copy(sun).multiplyScalar(MOON_DISTANCE);
-    this.moon.quaternion.setFromUnitVectors(Z_AXIS, this.toMoon.copy(sun).negate());
-    const stars = mix(from.stars, to.stars, blend);
-    this.stars.visible = stars > 0.01;
-    this.starUniforms.level.value = stars;
-    // Flat ground catches less of a low sun, and its baked shadows fade with it.
-    const groundSun = (sunlight * Math.sin(elevation)) / Math.sin(DAY_SUN_ELEVATION);
+
+    // The moon where it stands, facing the camera, lit on the side toward the sun.
+    this.moon.visible = look.moon > 0.01 && moon.y > MOON_SHOWS;
+    this.moonMaterial.opacity = look.moon;
+    this.toMoon.set(moon.x, moon.y, moon.z).normalize();
+    this.moon.position.copy(this.toMoon).multiplyScalar(MOON_DISTANCE);
+    this.moon.quaternion.setFromUnitVectors(Z_AXIS, this.toMoon.negate());
+    this.fromMoon.copy(this.moon.quaternion).invert();
+    this.moonLit.value.set(sun.x, sun.y, sun.z).normalize().applyQuaternion(this.fromMoon);
+    // The stars, turned round the pole.
+    this.stars.visible = look.stars > 0.01;
+    this.starUniforms.level.value = look.stars;
+    this.stars.quaternion.setFromAxisAngle(this.pole, sky.starTurn);
+
+    // Flat ground catches less of a low light, and its baked shadows fade with it.
+    const groundSun = (keyLight * Math.max(key.y, 0)) / REFERENCE_SUN_SINE;
     this.background.copy(uniforms.horizon.value);
     this.fog.color.copy(uniforms.horizon.value);
-    this.fog.density = mix(from.fogDensity, to.fogDensity, blend) * this.fogScale;
+    this.fog.density = look.fogDensity * this.fogScale;
 
     this.skyLight.intensity = SKY_LIGHT_INTENSITY * skylight;
     this.skyLight.color.setHex(SKY_LIGHT_COLOR).multiply(this.tint);
-    this.sunLight.intensity = SUN_INTENSITY * sunlight;
+    this.sunLight.intensity = SUN_INTENSITY * keyLight;
     this.sunLight.color.setHex(SUN_COLOR).multiply(this.tint);
 
-    this.cloudUniforms.brightness.value = mix(from.cloudBrightness, to.cloudBrightness, blend);
-    this.showClouds(mix(from.cloudCover, to.cloudCover, blend));
+    this.cloudUniforms.brightness.value = look.cloudBrightness * exposure;
+    this.showClouds(look.cloudCover);
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
+    prelit?.setSun(key);
     if (this.shadowGround !== null && this.shadowMaterial !== null) {
       // Long, fainter shadows from a low sun; none under a weak one (night, rain), and then the map is not drawn.
-      const shown = sunlight >= MIN_SHADOW_SUNLIGHT;
-      this.shadowMaterial.opacity = SHADOW_OPACITY * sunlight * (0.55 + 0.45 * Math.min(1, groundSun / Math.max(sunlight, 1e-3)));
+      const shown = keyLight >= MIN_SHADOW_SUNLIGHT;
+      this.shadowMaterial.opacity = SHADOW_OPACITY * Math.min(keyLight, 1) * (0.55 + 0.45 * Math.min(1, groundSun / Math.max(keyLight, 1e-3)));
       this.shadowGround.visible = shown;
       if (shown && !this.sunLight.shadow.autoUpdate) {
         this.sunLight.shadow.needsUpdate = true;
@@ -347,15 +427,15 @@ export class EnvironmentView {
     }
 
     const grade = this.colorGrade;
-    grade.saturation = mix(from.saturation, to.saturation, blend);
-    grade.contrast = mix(from.contrast, to.contrast, blend);
-    grade.warmth = mix(from.warmth, to.warmth, blend);
-    grade.bloom = mix(from.bloom, to.bloom, blend);
+    grade.saturation = look.saturation;
+    grade.contrast = look.contrast;
+    grade.warmth = look.warmth;
+    grade.bloom = look.bloom;
     // At night the lamps light the middle of the picture: darker corners draw the eye there.
-    grade.vignette = VIGNETTE + NIGHT_VIGNETTE * mix(from.lamps, to.lamps, blend);
+    grade.vignette = VIGNETTE + NIGHT_VIGNETTE * look.lamps;
   }
 
-  /** How the renderer's colour pass grades the picture for the weather shown (applyWeather). Updated in place. */
+  /** How the renderer's colour pass grades the picture for the sky shown (applySky). Updated in place. */
   get grade(): Readonly<ColorGrade> {
     return this.colorGrade;
   }
@@ -439,7 +519,9 @@ export class EnvironmentView {
             vec3 sky = mix(horizon, zenith, pow(max(up, 0.0), 0.5));
             sky = mix(sky, groundHaze, clamp(-up * 6.0, 0.0, 1.0));
             float toSun = max(dot(direction, sunDirection), 0.0);
-            sky += sunColor * (pow(toSun, 900.0) * 3.0 + pow(toSun, 24.0) * (0.18 + 0.4 * sunLow));
+            // The disc only above the horizon; the halo and the glow stay a while after sunset.
+            float disc = pow(toSun, 900.0) * 3.0 * smoothstep(-0.01, 0.01, sunDirection.y);
+            sky += sunColor * (disc + pow(toSun, 24.0) * (0.18 + 0.4 * sunLow));
             // A low sun sets the sky along the horizon aglow on its side.
             vec2 bearing = normalize(direction.xz + vec2(1e-5));
             vec2 sunBearing = normalize(sunDirection.xz + vec2(1e-5));
@@ -549,8 +631,8 @@ export class EnvironmentView {
     const tint = new Color();
     const quad = [-1, -1, 1, -1, 1, 1, -1, 1];
     for (let star = 0; star < STAR_COUNT; star++) {
-      // Even over the sky above the horizon: a uniform height on a sphere covers equal areas.
-      const height = random.range(0.03, 1);
+      // Even over the whole sphere (a uniform height covers equal areas): the sky turns, and stars rise and set.
+      const height = random.range(-1, 1);
       const angle = random.range(0, Math.PI * 2);
       const ring = Math.sqrt(1 - height * height);
       direction.set(Math.cos(angle) * ring, height, Math.sin(angle) * ring);
@@ -602,7 +684,8 @@ export class EnvironmentView {
         void main() {
           vCorner = corner;
           float flicker = 0.72 + 0.28 * sin(twinkle.x + time * twinkle.y);
-          float haze = clamp(normalize(position).y * 5.0, 0.0, 1.0);
+          // Hazed near the horizon, gone below it: by the height the sky's turn has taken the star to.
+          float haze = clamp(normalize(mat3(modelMatrix) * position).y * 5.0, 0.0, 1.0);
           vColor = starColor * (flicker * haze * level);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
@@ -625,12 +708,34 @@ export class EnvironmentView {
   }
 
   /**
-   * Puts the sun's light up its rays: from the middle of the map without
+   * The moon's phase on its picture: the face as a ball facing the camera,
+   * lit on the side toward the sun (`moonLit`, in the picture's axes), the
+   * rest in earthshine.
+   */
+  private showMoonPhase(material: MeshBasicMaterial): void {
+    const moonLit = this.moonLit;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['moonLit'] = moonLit;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 moonLit;')
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+          vec2 face = vMapUv * 2.0 - 1.0;
+          vec3 ball = vec3(face, sqrt(max(1.0 - dot(face, face), 0.0)));
+          diffuseColor.rgb *= mix(0.06, 1.0, smoothstep(-0.06, 0.12, dot(ball, moonLit)));`,
+        );
+    };
+    material.customProgramCacheKey = () => 'moon-phase';
+  }
+
+  /**
+   * Puts the key light up its rays: from the middle of the map without
    * shadows; with them, from the shadows' focus snapped to the map's texels
    * (across the rays; along them it makes no difference).
    */
   private placeSun(): void {
-    const sun = this.skyUniforms.sunDirection.value;
+    const sun = this.keyDirection;
     const target = this.sunLight.target.position;
     if (this.shadowGround === null) {
       target.set(0, 0, 0);
@@ -872,8 +977,4 @@ export class EnvironmentView {
     this.resources.push(resource);
     return resource;
   }
-}
-
-function mix(from: number, to: number, t: number): number {
-  return from + (to - from) * t;
 }

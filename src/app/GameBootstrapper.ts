@@ -20,6 +20,7 @@ import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
 import { TrafficService } from '../systems/traffic/TrafficService';
 import { TutorialService } from '../systems/tutorial/TutorialService';
+import { TimeOfDayService } from '../systems/weather/TimeOfDayService';
 import { WeatherService } from '../systems/weather/WeatherService';
 import { DamageService } from '../systems/vehicles/DamageService';
 import { FuelService } from '../systems/vehicles/FuelService';
@@ -34,6 +35,8 @@ export interface BootstrapOptions {
   readonly clock: Clock;
   /** Where saves go: localStorage in the browser, MemoryStorage in tests. */
   readonly storage: KeyValueStorage;
+  /** Minutes the device's time zone runs ahead of UTC, for a clock that keeps the device's time. Default: 0. */
+  readonly localTimeOffsetMinutes?: number;
 }
 
 /**
@@ -104,9 +107,13 @@ export class GameBootstrapper {
         ServiceKeys.traffic,
         new TrafficService(driving, catalog, config.traffic, logger.withCategory('Traffic')),
       );
+      const timeOfDay = container.register(
+        ServiceKeys.timeOfDay,
+        new TimeOfDayService(catalog, clock, config.timeOfDay, this.options.localTimeOffsetMinutes ?? 0),
+      );
       container.register(
         ServiceKeys.weather,
-        new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather')),
+        new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay),
       );
       // Subscription order matters: the economy and the company apply a delivery before the session saves it,
       // and the garage must be created after the services it drives (missions, damage, fuel).
@@ -236,6 +243,7 @@ function describeContent(catalog: ContentCatalog): string {
     `upgrades ${catalog.upgrades.size}`,
     `traffic vehicles ${catalog.trafficVehicles.size}`,
     `weather ${catalog.weather.size}`,
+    `times of day ${catalog.daylight.size}`,
     `events ${catalog.events.size}`,
   ].join(', ');
 }

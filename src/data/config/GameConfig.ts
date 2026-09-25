@@ -1,5 +1,6 @@
 import { isLogLevel, type LogLevel } from '../../core/logging/Logger';
 import { frozenCopy } from '../../core/objects/frozenCopy';
+import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../ContentCatalog';
 import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
@@ -103,10 +104,28 @@ export interface GameConfig {
   readonly weather: {
     /** WeatherDefinition id the game starts with. */
     readonly initialWeatherId: string;
+    /** The weather whose look is a clear day's: the time of day's looks are drawn under it, the others laid over them. */
+    readonly clearWeatherId: string;
     /** False keeps the initial weather for good (tests, screenshots). */
     readonly changes: boolean;
     /** One weather turns into the next over this long, seconds. */
     readonly transitionSeconds: number;
+  };
+  /**
+   * The time of day (TimeOfDayService): the game's clock, and the sun and
+   * the moon on their real paths over the region for the calendar's date.
+   */
+  readonly timeOfDay: {
+    /** The region's latitude, degrees north: how high the sun climbs and how long the days are, through the year. */
+    readonly latitudeDegrees: number;
+    /** The clock time (hours) when the sun stands highest: after 12 where the time zone runs ahead of the sun. */
+    readonly solarNoonHours: number;
+    /** While the clock runs, this many seconds of the day pass each second: the day goes round in 72 minutes at 20. */
+    readonly gameSecondsPerSecond: number;
+    /** The clock's time (minutes after midnight) in a new game, until the player picks another in Settings. */
+    readonly startMinutes: number;
+    /** Above this elevation, degrees, the sun lights a full day: the sky is the weather's own. */
+    readonly dayFromDegrees: number;
   };
   readonly company: {
     /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
@@ -258,8 +277,17 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   },
   weather: {
     initialWeatherId: 'clear',
+    clearWeatherId: 'clear',
     changes: true,
     transitionSeconds: 25,
+  },
+  timeOfDay: {
+    // An Aegean coast: the sun highest just before one o'clock (the time zone runs ahead of it).
+    latitudeDegrees: 39,
+    solarNoonHours: 12.8,
+    gameSecondsPerSecond: 20,
+    startMinutes: 10 * 60,
+    dayFromDegrees: 12,
   },
   company: {
     levelXp: [0, 1000, 3000, 6500, 12000],
@@ -278,7 +306,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, economy, fuel, traffic, navigation, weather, company, newGame, debug } =
+  const { simulation, rendering, missions, economy, fuel, traffic, navigation, weather, timeOfDay, company, newGame, debug } =
     config;
 
   validator.check(
@@ -368,8 +396,34 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'weather.initialWeatherId',
     `unknown weather "${weather.initialWeatherId}"`,
   );
+  validator.check(
+    content.weather.has(weather.clearWeatherId),
+    'weather.clearWeatherId',
+    `unknown weather "${weather.clearWeatherId}"`,
+  );
   validator.boolean(weather.changes, 'weather.changes');
   validator.positiveNumber(weather.transitionSeconds, 'weather.transitionSeconds');
+  validator.check(
+    Number.isFinite(timeOfDay.latitudeDegrees) && Math.abs(timeOfDay.latitudeDegrees) <= 66,
+    'timeOfDay.latitudeDegrees',
+    'must be from -66 to 66 (the sun rises and sets every day)',
+  );
+  validator.check(
+    Number.isFinite(timeOfDay.solarNoonHours) && timeOfDay.solarNoonHours >= 10 && timeOfDay.solarNoonHours <= 14,
+    'timeOfDay.solarNoonHours',
+    'must be from 10 to 14',
+  );
+  validator.positiveNumber(timeOfDay.gameSecondsPerSecond, 'timeOfDay.gameSecondsPerSecond');
+  validator.check(
+    Number.isFinite(timeOfDay.startMinutes) && timeOfDay.startMinutes >= 0 && timeOfDay.startMinutes < MINUTES_PER_DAY,
+    'timeOfDay.startMinutes',
+    'must be from 0 to under 1440',
+  );
+  validator.check(
+    Number.isFinite(timeOfDay.dayFromDegrees) && timeOfDay.dayFromDegrees > 0 && timeOfDay.dayFromDegrees <= 30,
+    'timeOfDay.dayFromDegrees',
+    'must be greater than 0 and at most 30',
+  );
   const levels = company.levelXp;
   validator.check(
     Array.isArray(levels) &&
