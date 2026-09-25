@@ -53,6 +53,7 @@ import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
 import { RoadsideView } from './presentation/world/RoadsideView';
+import { SceneryView } from './presentation/world/SceneryView';
 import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
@@ -252,6 +253,8 @@ async function start(): Promise<void> {
     prelit,
   });
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
+  // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
+  const scenery = new SceneryView(renderHost.scene, driving.world, { castShadows, anisotropy: renderHost.anisotropy });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;
   const seaView =
@@ -1034,12 +1037,16 @@ async function start(): Promise<void> {
     });
   }
 
-  const fitRain = (): void => {
-    rain.setViewport(canvas.clientWidth * renderHost.pixelRatio, canvas.clientHeight * renderHost.pixelRatio);
+  /** The rain's streaks and the power lines' wires are sized in pixels. */
+  const fitPixelSizes = (): void => {
+    const width = canvas.clientWidth * renderHost.pixelRatio;
+    const height = canvas.clientHeight * renderHost.pixelRatio;
+    rain.setViewport(width, height);
+    scenery.setViewport(width, height);
   };
   const resize = (): void => {
     renderHost.setSize(canvas.clientWidth, canvas.clientHeight, window.devicePixelRatio);
-    fitRain();
+    fitPixelSizes();
     if (hq.isOpen) {
       frameShowroom();
     }
@@ -1112,6 +1119,7 @@ async function start(): Promise<void> {
         citySigns.setLamps(lamps);
         windTurbines.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
+        scenery.update(paused ? 0 : deltaSeconds);
         harbour?.setLamps(lamps);
         harbour?.update(paused ? 0 : deltaSeconds);
         seaView?.update(paused ? 0 : deltaSeconds);
@@ -1179,11 +1187,11 @@ async function start(): Promise<void> {
         tutorialHint.show(tutorialAt !== null && tutorialShows(tutorialStep, tutorialAt) ? tutorialStep : null, tutorialAt);
         dock.busy = missions.active !== null;
         toasts.update(deltaSeconds);
-        // Slow frames on the road: fewer pixels (the rain's streaks keep their width in pixels). The menus,
+        // Slow frames on the road: fewer pixels (the rain's streaks and the wires keep their width in pixels). The menus,
         // drawn at half rate, are no measure.
         if (simulating && adaptiveResolution.frame(deltaSeconds)) {
           renderHost.setResolutionScale(adaptiveResolution.scale);
-          fitRain();
+          fitPixelSizes();
         }
         // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
         // saves the battery (and the glass's blur of it). The full map hides it all.

@@ -10,6 +10,7 @@ import {
   Group,
   IcosahedronGeometry,
   InstancedMesh,
+  LatheGeometry,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -24,6 +25,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import type { TreeSpecies } from '../../domain/world/countryside';
 import type { BuildingObstacle, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
 import { createRoadPoint, type RoadPath } from '../../domain/world/RoadPath';
 import { fractalNoise } from '../textures/noise';
@@ -62,6 +64,22 @@ const BUILDING_TINTS = [0xf3e7d3, 0xecd3b9, 0xe6dac1, 0xd9ded3, 0xf0dac5, 0xdfe2
 const ROOF_TILE_TINTS = [0xffffff, 0xf2e2dc, 0xffeede, 0xe8d8d0] as const;
 const PINE_COLORS = [0x2f5e34, 0x355f2e, 0x2a5233, 0x3b6a37] as const;
 const BROADLEAF_COLORS = [0x4f8a3c, 0x5c9442, 0x44803e, 0x6b9a3f, 0x7f9b3a] as const;
+/** The trees: the wild ones (pine, broadleaf) and the planted species (countryside.ts). */
+type TreeKind = 'pine' | 'broadleaf' | TreeSpecies;
+/**
+ * Each kind of tree's shape: its trunk's height (and girth, times the
+ * trunk's), where the middle of its crown is over the trunk (for the
+ * shadow's reach), how wide its shadow is, and its leaves' colours.
+ */
+const TREE_SHAPES: Readonly<
+  Record<TreeKind, { trunkHeight: number; trunkGirth: number; crownMiddle: number; shadowWidth: number; colors: readonly number[] }>
+> = {
+  pine: { trunkHeight: 2.2, trunkGirth: 1, crownMiddle: 2.6, shadowWidth: 5.5, colors: PINE_COLORS },
+  broadleaf: { trunkHeight: 2.8, trunkGirth: 1, crownMiddle: 2.6, shadowWidth: 5.5, colors: BROADLEAF_COLORS },
+  poplar: { trunkHeight: 1.4, trunkGirth: 0.8, crownMiddle: 4.6, shadowWidth: 3, colors: [0x5f9440, 0x6a9c45, 0x56893a] },
+  cypress: { trunkHeight: 0.4, trunkGirth: 0.9, crownMiddle: 3.4, shadowWidth: 2.2, colors: [0x31603a, 0x386841, 0x2c5835] },
+  olive: { trunkHeight: 1.1, trunkGirth: 1.5, crownMiddle: 1.3, shadowWidth: 4.6, colors: [0x7d8f5f, 0x86956a, 0x73865a] },
+};
 
 /**
  * Layers lie flat on the ground; each sits a little higher and is pulled a
@@ -441,11 +459,16 @@ export class TrackView {
    * are out of sight.
    */
   private createTrees(trees: readonly TreeObstacle[]): InstancedMesh[] {
-    const parts = {
+    const parts: TreeParts = {
       trunk: this.track(new CylinderGeometry(0.2, 0.3, 1, 6).translate(0, 0.5, 0)),
       trunkMaterial: this.track(new MeshLambertMaterial({ color: TRUNK_COLOR })),
-      pine: this.track(pineCrownGeometry()),
-      broadleaf: this.track(broadleafCrownGeometry()),
+      crowns: {
+        pine: this.track(pineCrownGeometry()),
+        broadleaf: this.track(broadleafCrownGeometry()),
+        poplar: this.track(poplarCrownGeometry()),
+        cypress: this.track(cypressCrownGeometry()),
+        olive: this.track(oliveCrownGeometry()),
+      },
       crownMaterial: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }))),
       shadow: this.track(flatQuad()),
       shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42, 'tree'),
@@ -463,30 +486,29 @@ export class TrackView {
     return [...tiles.values()].flatMap((indices) => this.createTreeTile(trees, indices, parts));
   }
 
-  /** One tile of the forest: `indices` into `trees`. The tree's index picks its spin and tint, so tiling changes nothing. */
-  private createTreeTile(
-    trees: readonly TreeObstacle[],
-    indices: readonly number[],
-    parts: {
-      readonly trunk: BufferGeometry;
-      readonly trunkMaterial: Material;
-      readonly pine: BufferGeometry;
-      readonly broadleaf: BufferGeometry;
-      readonly crownMaterial: Material;
-      readonly shadow: BufferGeometry;
-      readonly shadowMaterial: Material;
-    },
-  ): InstancedMesh[] {
-    const isPine = (tree: TreeObstacle): boolean =>
-      fractalNoise(tree.x / 700, tree.z / 700, 4, 2, 5) + (hash(tree.x, tree.z) - 0.5) * 0.5 > 0.5;
-    const pineCount = indices.filter((index) => isPine(trees[index]!)).length;
+  /**
+   * One tile of the forest: `indices` into `trees`. A planted tree is its
+   * species (poplar, cypress, olive); a wild one a pine or a broadleaf by
+   * where it stands (pines gather in stands). The tree's index picks its
+   * spin and tint, so tiling changes nothing. One instanced mesh per kind
+   * of crown in the tile, one for the trunks and one for the shadows.
+   */
+  private createTreeTile(trees: readonly TreeObstacle[], indices: readonly number[], parts: TreeParts): InstancedMesh[] {
+    const kindOf = (tree: TreeObstacle): TreeKind =>
+      tree.species ?? (fractalNoise(tree.x / 700, tree.z / 700, 4, 2, 5) + (hash(tree.x, tree.z) - 0.5) * 0.5 > 0.5 ? 'pine' : 'broadleaf');
+    const counts = new Map<TreeKind, number>();
+    for (const index of indices) {
+      const kind = kindOf(trees[index]!);
+      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+    }
     const trunks = this.track(new InstancedMesh(parts.trunk, parts.trunkMaterial, indices.length));
-    const pines = this.track(new InstancedMesh(parts.pine, parts.crownMaterial, Math.max(1, pineCount)));
-    const broadleaves = this.track(
-      new InstancedMesh(parts.broadleaf, parts.crownMaterial, Math.max(1, indices.length - pineCount)),
-    );
-    pines.count = pineCount;
-    broadleaves.count = indices.length - pineCount;
+    const crowns = new Map<TreeKind, InstancedMesh>();
+    for (const [kind, count] of counts) {
+      const crown = this.track(new InstancedMesh(parts.crowns[kind], parts.crownMaterial, count));
+      crown.name = `forest:crowns:${kind}`;
+      crown.count = 0;
+      crowns.set(kind, crown);
+    }
     const shadows = this.track(new InstancedMesh(parts.shadow, parts.shadowMaterial, indices.length));
 
     const matrix = new Matrix4();
@@ -494,35 +516,32 @@ export class TrackView {
     const rotation = new Quaternion();
     const scale = new Vector3();
     const color = new Color();
-    let pineIndex = 0;
-    let broadleafIndex = 0;
     indices.forEach((index, slot) => {
       const tree = trees[index]!;
-      const pine = isPine(tree);
+      const kind = kindOf(tree);
+      const shape = TREE_SHAPES[kind];
       const s = tree.scale;
-      const trunkHeight = (pine ? 2.2 : 2.8) * s;
+      const trunkHeight = shape.trunkHeight * s;
       rotation.setFromAxisAngle(UP, index * 2.399); // Golden-angle spin so neighbours differ.
-      trunks.setMatrixAt(slot, matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s, trunkHeight, s)));
+      trunks.setMatrixAt(
+        slot,
+        matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s * shape.trunkGirth, trunkHeight, s * shape.trunkGirth)),
+      );
       position.set(tree.x, trunkHeight, tree.z);
       scale.setScalar(s);
       const shade = 0.88 + 0.24 * hash(tree.z, tree.x);
-      if (pine) {
-        pines.setMatrixAt(pineIndex, matrix.compose(position, rotation, scale));
-        pines.setColorAt(pineIndex++, color.setHex(PINE_COLORS[index % PINE_COLORS.length]!).multiplyScalar(shade));
-      } else {
-        broadleaves.setMatrixAt(broadleafIndex, matrix.compose(position, rotation, scale));
-        broadleaves.setColorAt(
-          broadleafIndex++,
-          color.setHex(BROADLEAF_COLORS[index % BROADLEAF_COLORS.length]!).multiplyScalar(shade),
-        );
-      }
+      const crown = crowns.get(kind)!;
+      crown.setMatrixAt(crown.count, matrix.compose(position, rotation, scale));
+      crown.setColorAt(crown.count, color.setHex(shape.colors[index % shape.colors.length]!).multiplyScalar(shade));
+      crown.count++;
       // The shadow falls away from the sun, centred under the crown's projection: the decal's shader moves it
       // there from the tree's foot (followTheSun), by the crown's height, kept in the flat decal's y scale.
-      const crownHeight = trunkHeight + 2.6 * s;
+      const crownHeight = trunkHeight + shape.crownMiddle * s;
       position.set(tree.x, SHOULDER_Y / 2, tree.z);
-      shadows.setMatrixAt(slot, matrix.compose(position, rotation.identity(), scale.set(5.5 * s, crownHeight, 5.5 * s)));
+      const width = shape.shadowWidth * s;
+      shadows.setMatrixAt(slot, matrix.compose(position, rotation.identity(), scale.set(width, crownHeight, width)));
     });
-    const meshes = [shadows, trunks, pines, broadleaves].filter((mesh) => mesh.count > 0);
+    const meshes = [shadows, trunks, ...crowns.values()].filter((mesh) => mesh.count > 0);
     for (const mesh of meshes) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor !== null) {
@@ -795,6 +814,96 @@ function pineCrownGeometry(): BufferGeometry {
     tier.dispose();
   }
   return crown;
+}
+
+/** The parts every tile of trees shares: the trunk, each kind's crown, their materials, and the shadow decal. */
+interface TreeParts {
+  readonly trunk: BufferGeometry;
+  readonly trunkMaterial: Material;
+  readonly crowns: Readonly<Record<TreeKind, BufferGeometry>>;
+  readonly crownMaterial: Material;
+  readonly shadow: BufferGeometry;
+  readonly shadowMaterial: Material;
+}
+
+/** Faceted blobs (x, y, z, radius), each corner nudged by a hash of where it is, merged (origin at the crown's base). */
+function blobCrown(blobs: readonly (readonly [number, number, number, number])[], squash: readonly [number, number, number] = [1, 1, 1]): BufferGeometry {
+  const pieces = blobs.map(([x, y, z, r]) => {
+    const blob = new IcosahedronGeometry(r, 0).scale(...squash).translate(x, y, z);
+    const position = blob.getAttribute('position');
+    for (let i = 0; i < position.count; i++) {
+      const px = position.getX(i);
+      const py = position.getY(i);
+      const pz = position.getZ(i);
+      position.setXYZ(i, px + (hash(py, pz) - 0.5) * 0.25, py + (hash(pz, px) - 0.5) * 0.25, pz + (hash(px, py) - 0.5) * 0.25);
+    }
+    return blob;
+  });
+  const crown = mergeGeometries(pieces);
+  crown.computeVertexNormals();
+  for (const piece of pieces) {
+    piece.dispose();
+  }
+  return crown;
+}
+
+/** A Lombardy poplar's tall, slim column of leaves. */
+function poplarCrownGeometry(): BufferGeometry {
+  return blobCrown(
+    [
+      [0, 2.2, 0, 1.2],
+      [0.1, 4.2, -0.1, 1.15],
+      [-0.1, 6.1, 0.05, 1],
+      [0, 7.7, 0, 0.75],
+    ],
+    [0.85, 1.5, 0.85],
+  );
+}
+
+/** A cypress's outline from its foot to its tip: radius and height (meters), widest a third of the way up. */
+const CYPRESS_OUTLINE = [
+  [0, 0],
+  [0.5, 0.15],
+  [0.78, 0.9],
+  [0.86, 2.1],
+  [0.8, 3.5],
+  [0.64, 4.9],
+  [0.42, 6.1],
+  [0.2, 7.1],
+  [0, 7.7],
+] as const;
+
+/** A cypress: a dark, slender flame of a tree, its surface a little uneven. */
+function cypressCrownGeometry(): BufferGeometry {
+  const crown = new LatheGeometry(
+    CYPRESS_OUTLINE.map(([radius, height]) => new Vector2(radius, height)),
+    9,
+  );
+  const position = crown.getAttribute('position');
+  for (let i = 0; i < position.count; i++) {
+    const px = position.getX(i);
+    const py = position.getY(i);
+    const pz = position.getZ(i);
+    // Out or in by a hash of where it is, so the seam's two copies of a corner move together.
+    const bulge = 0.88 + 0.24 * hash(Math.round(px * 100) + py * 7, Math.round(pz * 100) + py * 3);
+    position.setXYZ(i, px * bulge, py, pz * bulge);
+  }
+  // The lathe's own normals: smooth all round, the seam included.
+  return crown;
+}
+
+/** An olive: a low, wide, uneven crown of grey-green, on a short thick trunk. */
+function oliveCrownGeometry(): BufferGeometry {
+  return blobCrown(
+    [
+      [0, 1.1, 0, 1.35],
+      [1.0, 0.8, 0.5, 1],
+      [-0.9, 0.9, -0.4, 1.05],
+      [0.2, 1.7, -0.7, 0.9],
+      [-0.3, 0.7, 1.0, 0.85],
+    ],
+    [1, 0.7, 1],
+  );
 }
 
 /** A lumpy canopy of faceted blobs (origin at the crown's base). */
