@@ -24,7 +24,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { BuildingObstacle, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
-import type { RoadPath } from '../../domain/world/RoadPath';
+import { createRoadPoint, type RoadPath } from '../../domain/world/RoadPath';
 import { fractalNoise } from '../textures/noise';
 import type { PixelImage } from '../textures/pixelImage';
 import {
@@ -76,6 +76,13 @@ const LINE_WIDTH = 0.2;
 const EDGE_LINE_INSET = 0.6;
 const DASH_LENGTH = 3;
 const DASH_SPACING = 12;
+/**
+ * A zebra crossing lies this far further out from a junction than the
+ * markings stop; its stripes are this wide across the road, this long along
+ * it, with this gap between them.
+ */
+const CROSSWALK_SETBACK_METERS = 2.2;
+const CROSSWALK_STRIPE = { width: 0.5, length: 2.6, gap: 0.55 } as const;
 /** Markings stop this far short of a junction, measured past the widest road's edge. */
 const JUNCTION_MARKING_GAP = 2;
 /** One grass texture tile covers this many meters; the road textures repeat along the road. */
@@ -299,6 +306,9 @@ export class TrackView {
         flatDisc(circle.x, circle.z, circle.radiusMeters, ROAD_Y + roads.length * ROAD_STACK, ASPHALT_TILE_METERS),
       );
     }
+
+    // Zebra crossings on the city streets' arms of every junction, painted with the lines.
+    lines.push(...crosswalkGeometries(world, junctionReach + CROSSWALK_SETBACK_METERS, markingY));
 
     const meshes: (Mesh | InstancedMesh)[] = [
       new Mesh(this.merged(shoulders), this.overlayMaterial({ map: gravel }, 1)),
@@ -742,6 +752,47 @@ function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): Buffe
   geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
   geometry.setIndex(indices);
   return geometry;
+}
+
+/**
+ * Zebra crossings where city streets meet: on each street arm of every
+ * junction, `setback` meters out from its middle, stripes across the whole
+ * road, each a flat quad `y` over the ground (with the painted lines' uv and
+ * normal, to merge with them).
+ */
+function crosswalkGeometries(world: DrivingWorld, setback: number, y: number): BufferGeometry[] {
+  const parts: BufferGeometry[] = [];
+  const point = createRoadPoint();
+  for (const junction of world.network.junctions) {
+    for (const member of junction.members) {
+      const road = world.roads[member.roadIndex]!;
+      if (road.kind !== 'street') {
+        continue;
+      }
+      const at = road.distances[member.sampleIndex]!;
+      for (const arm of [-1, 1] as const) {
+        const along = at + arm * setback;
+        if (!road.closed && (along < 0 || along > road.lengthMeters)) {
+          continue;
+        }
+        road.pointAt(along, point);
+        const heading = Math.atan2(point.directionX, point.directionZ);
+        const usable = road.widthMeters - 1;
+        const stripes = Math.floor((usable + CROSSWALK_STRIPE.gap) / (CROSSWALK_STRIPE.width + CROSSWALK_STRIPE.gap));
+        const span = stripes * CROSSWALK_STRIPE.width + (stripes - 1) * CROSSWALK_STRIPE.gap;
+        for (let stripe = 0; stripe < stripes; stripe++) {
+          const across = -span / 2 + CROSSWALK_STRIPE.width / 2 + stripe * (CROSSWALK_STRIPE.width + CROSSWALK_STRIPE.gap);
+          parts.push(
+            new PlaneGeometry(CROSSWALK_STRIPE.width, CROSSWALK_STRIPE.length)
+              .rotateX(-Math.PI / 2)
+              .rotateY(heading)
+              .translate(point.x + point.directionZ * across, y, point.z - point.directionX * across),
+          );
+        }
+      }
+    }
+  }
+  return parts;
 }
 
 /**

@@ -43,6 +43,7 @@ import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
 import { RoadsideView } from './presentation/world/RoadsideView';
 import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
@@ -178,6 +179,7 @@ async function start(): Promise<void> {
     density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
     prelit,
   });
+  const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;
   const seaView =
@@ -925,9 +927,11 @@ async function start(): Promise<void> {
         const vehicle = driving.vehicle;
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        roadFurniture.update(pose.x, pose.z, pose.heading);
         const lamps = weather.lamps;
         track.setLamps(lamps);
         track.setWetness(weather.rain);
+        roadFurniture.setLamps(lamps);
         streetLamps.setLamps(lamps);
         citySigns.setLamps(lamps);
         windTurbines.setLamps(lamps);

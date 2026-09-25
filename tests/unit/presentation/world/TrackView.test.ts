@@ -71,6 +71,51 @@ describe('TrackView', () => {
     expect(triangles).toBeLessThan(150_000);
   });
 
+  it('paints zebra crossings across the city streets where they meet, and none out on the country roads', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    // The painted lines: the one untextured overlay on the road (the dashes are instanced).
+    const painted: Mesh[] = [];
+    scene.traverse((object) => {
+      if (
+        object instanceof Mesh &&
+        !(object instanceof InstancedMesh) &&
+        object.material instanceof MeshBasicMaterial &&
+        object.material.polygonOffset &&
+        object.material.map === null
+      ) {
+        painted.push(object);
+      }
+    });
+    expect(painted).toHaveLength(1);
+    const position = painted[0]!.geometry.getAttribute('position');
+    const vertices = Array.from({ length: position.count }, (_, index) => ({ x: position.getX(index), z: position.getZ(index) }));
+    const nearestJunction = (x: number, z: number): number =>
+      Math.min(...world.network.junctions.map((junction) => Math.hypot(junction.x - x, junction.z - z)));
+
+    // The solid lines keep to a street's edges: paint across its middle is a crossing's stripe.
+    let arms = 0;
+    for (const junction of world.network.junctions) {
+      for (const member of junction.members) {
+        const road = world.roads[member.roadIndex]!;
+        if (road.kind !== 'street') {
+          continue;
+        }
+        arms++;
+        const across = vertices.filter((vertex) => {
+          const fromJunction = Math.hypot(vertex.x - junction.x, vertex.z - junction.z);
+          return fromJunction > 6 && fromJunction < 30 && road.distanceTo(vertex.x, vertex.z) < 1;
+        });
+        expect(across.length, `${road.id} at ${junction.x},${junction.z}`).toBeGreaterThanOrEqual(4);
+      }
+    }
+    expect(arms).toBeGreaterThan(0);
+    for (const road of world.roads.filter((candidate) => candidate.kind === 'rural')) {
+      const middle = vertices.filter((vertex) => road.distanceTo(vertex.x, vertex.z) < 1 && nearestJunction(vertex.x, vertex.z) > 40);
+      expect(middle, road.id).toHaveLength(0);
+    }
+  });
+
   it('paves the turning circle at each dead end with the road, in the same draw calls', () => {
     const scene = new Scene();
     new TrackView(scene, world);
