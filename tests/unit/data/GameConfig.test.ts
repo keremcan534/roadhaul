@@ -160,6 +160,8 @@ describe('GameConfig', () => {
     expect(low!.rainDensity).toBeLessThan(high!.rainDensity);
     expect(low!.particleDensity).toBeLessThan(medium!.particleDensity);
     expect(medium!.particleDensity).toBeLessThan(high!.particleDensity);
+    expect(low!.vegetationDensity).toBeLessThan(medium!.vegetationDensity);
+    expect(medium!.vegetationDensity).toBeLessThan(high!.vegetationDensity);
     expect(low!.lampGlows).toBe(false);
     // Low draws straight to the screen; medium grades, blooms and smooths the picture in one colour pass; high
     // multisamples the scene for smoother edges.
@@ -183,6 +185,7 @@ describe('GameConfig', () => {
         minResolutionScale: 0,
         rainDensity: 1.5,
         particleDensity: -0.5,
+        vegetationDensity: 2,
         lampGlows: 'yes' as never,
         postProcessing: 1 as never,
         bloom: undefined as never,
@@ -196,6 +199,7 @@ describe('GameConfig', () => {
       'rendering.minResolutionScale',
       'rendering.rainDensity',
       'rendering.particleDensity',
+      'rendering.vegetationDensity',
       'rendering.lampGlows',
       'rendering.postProcessing',
       'rendering.bloom',

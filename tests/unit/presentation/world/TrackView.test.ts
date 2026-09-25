@@ -241,7 +241,11 @@ describe('TrackView', () => {
     const wettable: MeshBasicMaterial[] = [];
     scene.traverse((object) => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
-        wettable.push(object.material);
+        const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '' };
+        object.material.onBeforeCompile(probe as never, undefined as never);
+        if ('wetness' in probe.uniforms) {
+          wettable.push(object.material);
+        }
       }
     });
     // Only the asphalt: the shoulders, markings and ground stay as they are.

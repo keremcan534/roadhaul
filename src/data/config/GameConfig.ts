@@ -33,6 +33,8 @@ export interface GameConfig {
     readonly rainDensity: Fraction;
     /** Share of the exhaust, dust and spray puffs the truck throws. */
     readonly particleDensity: Fraction;
+    /** Share of the grass, flowers and bushes on the verges, and how far away they are drawn. */
+    readonly vegetationDensity: Fraction;
     /** Glows round lit lamps at night. */
     readonly lampGlows: boolean;
     /**
@@ -145,6 +147,7 @@ export interface QualityPreset {
   readonly minResolutionScale: Fraction;
   readonly rainDensity: Fraction;
   readonly particleDensity: Fraction;
+  readonly vegetationDensity: Fraction;
   readonly lampGlows: boolean;
   readonly postProcessing: boolean;
   readonly bloom: boolean;
@@ -160,6 +163,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     minResolutionScale: 0.7,
     rainDensity: 0.5,
     particleDensity: 0.5,
+    vegetationDensity: 0.45,
     lampGlows: false,
     postProcessing: false,
     bloom: false,
@@ -172,6 +176,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     minResolutionScale: 0.6,
     rainDensity: 0.75,
     particleDensity: 0.75,
+    vegetationDensity: 0.75,
     lampGlows: true,
     postProcessing: true,
     bloom: true,
@@ -184,6 +189,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     minResolutionScale: 0.6,
     rainDensity: 1,
     particleDensity: 1,
+    vegetationDensity: 1,
     lampGlows: true,
     postProcessing: true,
     bloom: true,
@@ -221,6 +227,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     minResolutionScale: 0.6,
     rainDensity: 1,
     particleDensity: 1,
+    vegetationDensity: 1,
     lampGlows: true,
     postProcessing: true,
     bloom: true,
@@ -297,6 +304,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   );
   validator.fraction(rendering.rainDensity, 'rendering.rainDensity');
   validator.fraction(rendering.particleDensity, 'rendering.particleDensity');
+  validator.fraction(rendering.vegetationDensity, 'rendering.vegetationDensity');
   validator.boolean(rendering.lampGlows, 'rendering.lampGlows');
   validator.boolean(rendering.postProcessing, 'rendering.postProcessing');
   validator.boolean(rendering.bloom, 'rendering.bloom');

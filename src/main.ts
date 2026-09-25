@@ -43,6 +43,7 @@ import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { RoadsideView } from './presentation/world/RoadsideView';
 import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
@@ -168,6 +169,10 @@ async function start(): Promise<void> {
     prelit,
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  const roadside = new RoadsideView(renderHost.scene, driving.world, {
+    density: config.rendering.vegetationDensity,
+    prelit,
+  });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;
   const seaView =
@@ -943,6 +948,7 @@ async function start(): Promise<void> {
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
+        roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
         effectsState.driving = simulating;

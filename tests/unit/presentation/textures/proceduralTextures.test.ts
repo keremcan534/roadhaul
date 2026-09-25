@@ -9,6 +9,7 @@ import {
   grassImage,
   lightPoolImage,
   liveryImage,
+  meadowImage,
   moonImage,
   puffImage,
   officeFacadeImage,
@@ -281,6 +282,20 @@ describe('procedural images', () => {
       return pixel(puff, Math.round(16 + Math.cos(angle) * 7), Math.round(16 + Math.sin(angle) * 7))[3]!;
     });
     expect(Math.max(...ring) - Math.min(...ring)).toBeGreaterThan(10);
+  });
+
+  it('blotch a meadow grey from lush to dry, tiling seamlessly', () => {
+    const meadow = meadowImage(32);
+    const values = Array.from({ length: 32 * 32 }, (_, i) => meadow.data[i * 4]!);
+
+    expect(Math.min(...values)).toBeLessThan(40);
+    expect(Math.max(...values)).toBeGreaterThan(215);
+    // Grey: the same in every channel.
+    expect(meadow.data[4]).toBe(meadow.data[5]);
+    // The right edge runs on into the left one.
+    for (let y = 0; y < 32; y++) {
+      expect(Math.abs(meadow.data[(y * 32 + 31) * 4]! - meadow.data[y * 32 * 4]!)).toBeLessThan(40);
+    }
   });
 
   it('draw a cloud puff as a dense, billowing ball, clear well inside the square, its light mottled', () => {

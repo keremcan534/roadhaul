@@ -14,7 +14,11 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Tileable meadow grass: blotches of greens and dry patches, with fine grain. */
+/**
+ * Tileable meadow grass: small blotches of greens with fine grain, even
+ * across the tile, so nothing larger repeats where it is tiled (the ground
+ * lays larger lusher and drier patches over it).
+ */
 export function grassImage(size = 256, seed = 11): PixelImage {
   const image = createImage(size, size);
   const dark: Rgb = [52, 86, 36];
@@ -24,10 +28,10 @@ export function grassImage(size = 256, seed = 11): PixelImage {
     for (let x = 0; x < size; x++) {
       const u = x / size;
       const v = y / size;
-      const patches = fractalNoise(u, v, 4, 3, seed);
+      const patches = fractalNoise(u, v, 8, 3, seed);
       const detail = fractalNoise(u, v, 24, 2, seed + 7);
-      const dryness = smoothstep(0.58, 0.8, fractalNoise(u, v, 3, 2, seed + 13));
-      const base = mixRgb(mixRgb(dark, light, patches * 0.65 + detail * 0.35), dry, dryness * 0.55);
+      const dryness = smoothstep(0.62, 0.85, fractalNoise(u, v, 12, 2, seed + 13));
+      const base = mixRgb(mixRgb(dark, light, patches * 0.55 + detail * 0.45), dry, dryness * 0.35);
       // Blades: per-pixel grain, stretched a little vertically by sampling pairs of rows.
       const blade = 0.8 + 0.4 * grain(x, y >> 1, seed + 3);
       blendPixel(image, x, y, [base[0] * blade, base[1] * blade, base[2] * blade], 1);
@@ -239,6 +243,24 @@ export function puffImage(size = 64, seed = 71): PixelImage {
       const body = (1 - smoothstep(0.15, 1, r)) ** 1.5;
       const lumps = 0.55 + 0.45 * fractalNoise(u, v, 4, 3, seed);
       image.data[(y * size + x) * 4 + 3] = Math.round(255 * Math.min(1, body * lumps * 1.25));
+    }
+  }
+  return image;
+}
+
+/**
+ * Soft blotches that tile, grey (not sRGB: a factor): where a meadow grows
+ * lusher (dark) or drier (light), on a scale of tens of meters.
+ */
+export function meadowImage(size = 64, seed = 89): PixelImage {
+  const image = createImage(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const value = Math.round(255 * smoothstep(0.25, 0.75, fractalNoise((x + 0.5) / size, (y + 0.5) / size, 4, 3, seed)));
+      const i = (y * size + x) * 4;
+      image.data[i] = value;
+      image.data[i + 1] = value;
+      image.data[i + 2] = value;
     }
   }
   return image;

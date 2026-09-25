@@ -29,6 +29,7 @@ import {
   asphaltImage,
   grassImage,
   gravelImage,
+  meadowImage,
   officeFacadeImage,
   officeWindowLightsImage,
   softBoxShadowImage,
@@ -66,6 +67,8 @@ const DASH_SPACING = 12;
 const JUNCTION_MARKING_GAP = 2;
 /** One grass texture tile covers this many meters; the road textures repeat along the road. */
 const GRASS_TILE_METERS = 14;
+/** The meadow's lusher and drier blotches repeat every this many meters. */
+const MEADOW_TILE_METERS = 110;
 const ASPHALT_TILE_METERS = 10;
 const GRAVEL_TILE_METERS = 4;
 /** One facade texture tile covers 2 bays × 2 floors. */
@@ -83,6 +86,25 @@ const GROUND_MARGIN = 1000;
 const TREE_TILE_METERS = 600;
 
 const UP = new Vector3(0, 1, 0);
+
+/**
+ * The grass, sampled twice: as tiled, and larger and turned (a period of
+ * about 38 m at an angle), half and half, so the tiles' grain does not line
+ * up in a grid; then lusher or drier in meadow-sized blotches from a second,
+ * small texture, sampled at about 110 m and, turned, at about 33 m.
+ */
+const GROUND_MAP_FRAGMENT = /* glsl */ `
+#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+  vec2 turnedUv = mat2( 0.8, 0.6, -0.6, 0.8 ) * vMapUv * 0.37 + vec2( 0.31, 0.17 );
+  sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( map, turnedUv ), 0.5 );
+  vec2 meadowUv = vMapUv * ${(GRASS_TILE_METERS / MEADOW_TILE_METERS).toFixed(4)};
+  float meadowShade = texture2D( meadow, meadowUv ).r * 0.65
+    + texture2D( meadow, mat2( 0.6, -0.8, 0.8, 0.6 ) * meadowUv * 3.3 + vec2( 0.53, 0.29 ) ).r * 0.35;
+  sampledDiffuseColor.rgb *= mix( vec3( 0.8, 0.92, 0.8 ), vec3( 1.16, 1.08, 0.8 ), meadowShade );
+  diffuseColor *= sampledDiffuseColor;
+#endif
+`;
 
 /** The sky a wet road mirrors when there is none given (a rainy day's haze). */
 const WET_SKY = 0x7f8b97;
@@ -189,6 +211,13 @@ export class TrackView {
     const grass = this.texture(toTexture(grassImage(), { repeat: true, anisotropy }));
     grass.repeat.set(size / GRASS_TILE_METERS, size / GRASS_TILE_METERS);
     const material = this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight }));
+    const meadow = { value: this.texture(toTexture(meadowImage(), { repeat: true, srgb: false })) };
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['meadow'] = meadow;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D meadow;')
+        .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT);
+    };
     this.prelit?.add(material);
     return new Mesh(geometry, material);
   }
