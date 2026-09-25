@@ -10,13 +10,13 @@ import {
   Quaternion,
   Scene,
   Vector3,
-  type BufferAttribute,
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { CameraRig } from '../../../../src/presentation/cameras/CameraRig';
 import { TruckView, truckViewKey } from '../../../../src/presentation/vehicles/TruckView';
+import { EnvironmentView } from '../../../../src/presentation/world/EnvironmentView';
 import { gpuResources, watchDisposal } from '../../../support/threeResources';
 
 function wheelsOf(scene: Scene): InstancedMesh {
@@ -305,28 +305,19 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(visibleMeshes()).toBe(empty);
   });
 
-  it('lights the road ahead and makes its lamps glow at night, and does neither by day', () => {
+  it('makes its lamps glow at night, and not by day', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
-    const pool = scene.getObjectByName('headlight-pool') as Mesh;
     const glows = glowsOf(scene);
     const lamps = lampMaterialOf(scene);
     const dayBrightness = lamps.color.r;
-    expect(pool.visible).toBe(false);
     expect(glows.visible).toBe(false);
 
     view.setLamps(1);
 
-    expect(pool.visible).toBe(true);
     expect(glows.visible).toBe(true);
     expect(lamps.color.r).toBeGreaterThan(dayBrightness * 2);
-    // The light lies flat on the road, from the front bumper on.
     const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
-    const bounds = new Box3().setFromBufferAttribute(pool.geometry.getAttribute('position') as BufferAttribute);
-    expect(bounds.min.z).toBeCloseTo(front, 5);
-    expect(bounds.max.z).toBeGreaterThan(front + 25);
-    expect(bounds.max.y - bounds.min.y).toBeLessThan(1e-6);
-    expect(bounds.max.y).toBeLessThan(0.2);
     // A glow on each headlight, ahead of the nose, and on each tail light, behind the back.
     expect(glows.geometry.drawRange.count).toBe(4);
     const positions = glows.geometry.getAttribute('position');
@@ -343,19 +334,98 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
 
     view.setLamps(0);
 
-    expect(pool.visible).toBe(false);
     expect(glows.visible).toBe(false);
     expect(lamps.color.r).toBe(dayBrightness);
   });
 
-  it('keeps the headlights on the road but leaves out the glows on weaker devices', () => {
+  it('says where its headlamps light the road from: either side of the nose, level, following the truck round', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    view.update({ x: 0, z: 0, heading: 0 }, state, 0);
+    const left = new Vector3();
+    const right = new Vector3();
+    const forward = new Vector3();
+    const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
+
+    view.headlamps(left, right, forward);
+
+    // Heading 0 faces +z, so the left is +x: the lamps sit either side, just ahead of the nose, below the cab.
+    expect(left.x).toBeGreaterThan(truck.body.widthMeters / 4);
+    expect(right.x).toBeCloseTo(-left.x, 9);
+    expect(left.z).toBeGreaterThan(front);
+    expect(left.z).toBeLessThan(front + 0.3);
+    expect(right.z).toBeCloseTo(left.z, 9);
+    expect(left.y).toBeGreaterThan(0.5);
+    expect(left.y).toBeLessThan(truck.body.heightMeters / 2);
+    expect(right.y).toBe(left.y);
+    expect(forward.toArray()).toEqual([0, 0, 1]);
+
+    // A quarter turn to the left faces +x.
+    view.update({ x: 100, z: 50, heading: Math.PI / 2 }, state, 0);
+    const turnedLeft = new Vector3();
+    view.headlamps(turnedLeft, right, forward);
+    expect(turnedLeft.x).toBeCloseTo(100 + left.z, 6);
+    expect(turnedLeft.z).toBeCloseTo(50 - left.x, 6);
+    expect(turnedLeft.y).toBe(left.y);
+    expect(forward.x).toBeCloseTo(1, 12);
+    expect(forward.y).toBe(0);
+    expect(forward.z).toBeCloseTo(0, 12);
+  });
+
+  it('leaves out the glows on weaker devices', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck, { lampGlows: false });
 
     view.setLamps(1);
 
-    expect((scene.getObjectByName('headlight-pool') as Mesh).visible).toBe(true);
     expect(glowsOf(scene).visible).toBe(false);
+  });
+
+  it('casts the sun\'s real-time shadows from its body, cab and wheels when asked, never from its soft shadow or lights', () => {
+    const plain = new Scene();
+    const shadowed = new Scene();
+    new TruckView(plain, truck);
+    new TruckView(shadowed, truck, { castShadows: true });
+    const casting = (scene: Scene): Mesh[] => {
+      const meshes: Mesh[] = [];
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.castShadow) meshes.push(object);
+      });
+      return meshes;
+    };
+
+    expect(casting(plain)).toEqual([]);
+    const casters = casting(shadowed);
+    expect(casters.length).toBeGreaterThan(3);
+    expect(casters).toContain(wheelsOf(shadowed));
+    // The soft shadow: the see-through black plane under the truck.
+    expect(casters.some((mesh) => mesh.material instanceof MeshBasicMaterial && mesh.material.transparent && mesh.material.color.getHex() === 0)).toBe(false);
+  });
+
+  it('mirrors the sky in its paint, glass, chrome and rims when given it', () => {
+    const sky = new EnvironmentView(new Scene()).sky;
+    const mirroring = (scene: Scene): number => {
+      const materials = new Set<MeshPhongMaterial>();
+      scene.traverse((object) => {
+        if (object instanceof Mesh) {
+          for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+            if (material instanceof MeshPhongMaterial && material.customProgramCacheKey().startsWith('sky-reflection')) {
+              materials.add(material);
+            }
+          }
+        }
+      });
+      return materials.size;
+    };
+    const plain = new Scene();
+    const shiny = new Scene();
+    new TruckView(plain, truck);
+    new TruckView(shiny, truck, { sky });
+
+    expect(mirroring(plain)).toBe(0);
+    // At least the paint, the glass, the rims and some metal; a box body's panels, livery and doors too.
+    expect(mirroring(shiny)).toBeGreaterThanOrEqual(4);
   });
 
   it('releases every GPU resource on dispose', () => {

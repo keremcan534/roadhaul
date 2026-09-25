@@ -6,7 +6,7 @@ import { shiftedClock, systemClock } from './core/time/Clock';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
 import type { SteeringMode, TiltStatus } from './data/config/controls';
-import { applyQualityPreset, DEFAULT_GAME_CONFIG } from './data/config/GameConfig';
+import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
@@ -18,7 +18,7 @@ import {
 } from './domain/vehicles/VehicleInput';
 import { animationFrameScheduler } from './platform/browser/animationFrameScheduler';
 import { browserStorage } from './platform/browser/browserStorage';
-import { applyConfigOverrides, requestedDateMs } from './platform/browser/configOverrides';
+import { applyConfigOverrides, requestedDateMs, requestedLampLight } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
@@ -36,6 +36,7 @@ import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { RainView } from './presentation/weather/RainView';
+import { LampLighting, type LampLightingOptions } from './presentation/world/LampLighting';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { BirdsView } from './presentation/world/BirdsView';
@@ -43,6 +44,8 @@ import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
+import { RoadsideView } from './presentation/world/RoadsideView';
 import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
@@ -87,6 +90,31 @@ import './ui/styles.css';
  */
 /** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
 const PANEL_STANDSTILL_SPEED = 0.5;
+/**
+ * Drawn in software (RenderHost.softwareRendering): the shadow map at most
+ * this size, and this share of the plants and of the clouds.
+ */
+const SOFTWARE_SHADOW_MAP_SIZE = 1024;
+const SOFTWARE_VEGETATION_SHARE = 0.5;
+const SOFTWARE_CLOUD_SHARE = 0.5;
+/**
+ * Drawn in software, a frame takes about 100 ms; a fixed step, well under a
+ * millisecond. Up to this many steps a frame keep the simulation in real
+ * time down to 5 FPS (the configured cap would slow it to half speed).
+ */
+const SOFTWARE_MAX_STEPS_PER_FRAME = 12;
+/**
+ * How many lamps light the night (LampLighting), per graphics preset: the
+ * nearest street lamps and vehicles, and whether wet roads mirror them. Drawn
+ * in software (with ?lamps=1), as few as on the low preset, but the shaders
+ * stay whole.
+ */
+const LAMP_LIGHTS: Readonly<Record<QualityLevel, LampLightingOptions>> = {
+  low: { streetLamps: 3, trafficVehicles: 0, wetGloss: false },
+  medium: { streetLamps: 6, trafficVehicles: 1 },
+  high: {},
+};
+const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
 
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -149,21 +177,40 @@ async function start(): Promise<void> {
   const renderHost = new RenderHost(canvas, config.rendering);
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
-  const environment = new EnvironmentView(renderHost.scene);
+  const castShadows = config.rendering.shadowMapSize > 0;
+  // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
+  const software = renderHost.softwareRendering;
+  // The night's lamps (the truck's and the traffic's headlights, the street lamps) light the world through its
+  // materials' shaders (lightScene, at the end of boot). Drawn in software, the lamps' code costs every frame about
+  // a fifth of its time even by day, when the shaders skip it: there they light nothing, unless ?lamps=1 asks.
+  const lampLighting = new LampLighting(software ? SOFTWARE_LAMP_LIGHTS : LAMP_LIGHTS[config.rendering.quality]);
+  const lampLight = requestedLampLight(query) ?? !software;
+  const environment = new EnvironmentView(renderHost.scene, {
+    hdr: renderHost.postProcessing,
+    shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
+    cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
+  });
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
     prelit,
     sky: environment.sky,
+    groundDetail: !software,
   });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
-  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows });
+  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows, castShadows });
+  lampLighting.setStreetLamps(streetLamps.lampLights());
   new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
     anisotropy: renderHost.anisotropy,
     prelit,
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  const roadside = new RoadsideView(renderHost.scene, driving.world, {
+    density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
+    prelit,
+  });
+  const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;
   const seaView =
@@ -183,9 +230,11 @@ async function start(): Promise<void> {
   });
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
+    castShadows,
+    sky: environment.sky,
   });
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
-  const rain = new RainView(renderHost.scene, config.rendering.rainDensity);
+  const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const effectsState = createTruckEffectsState();
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
@@ -194,7 +243,7 @@ async function start(): Promise<void> {
   /** Whether sound plays, as last written to the page (e2e tests read it). */
   let shownSound = '';
   // Rebuilt whenever the player drives another truck (showActiveTruck).
-  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows });
+  let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
@@ -377,10 +426,14 @@ async function start(): Promise<void> {
       paint = owned?.paint?.color ?? model.factoryColor;
       fitted = owned?.upgrades ?? {};
     }
-    const options = { lampGlows, paint, looks: truckLooks(fitted, content.upgrades.all) };
+    const options = { lampGlows, castShadows, sky: environment.sky, paint, looks: truckLooks(fitted, content.upgrades.all) };
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
       truck = new TruckView(renderHost.scene, definition, options);
+      // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it).
+      if (lampLight) {
+        lampLighting.lightScene(renderHost.scene, prelit);
+      }
       cameraRig.setBody(definition.body);
       showCamera(onRoad());
     }
@@ -579,7 +632,7 @@ async function start(): Promise<void> {
   };
   const worldMap = new WorldMap(ui, strings, mapPainter, mapSketch, driving, { onClose: closeMap });
   // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
-  const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.gpu}`);
+  const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.pipeline} · ${renderHost.gpu}`);
   perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
 
   /** The picked way of steering: its controls show, and tilt steering listens to the motion sensor only while picked. */
@@ -880,7 +933,10 @@ async function start(): Promise<void> {
   const pose = { x: 0, z: 0, heading: 0 };
   const loop = new GameLoop(
     animationFrameScheduler,
-    new FixedTimestep(config.simulation.fixedStepSeconds, config.simulation.maxStepsPerFrame),
+    new FixedTimestep(
+      config.simulation.fixedStepSeconds,
+      software ? Math.max(SOFTWARE_MAX_STEPS_PER_FRAME, config.simulation.maxStepsPerFrame) : config.simulation.maxStepsPerFrame,
+    ),
     {
       fixedUpdate: (stepSeconds) => {
         if (paused || (hq.isOpen && worldHeld)) {
@@ -909,9 +965,12 @@ async function start(): Promise<void> {
         const vehicle = driving.vehicle;
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        roadFurniture.update(pose.x, pose.z, pose.heading);
         const lamps = weather.lamps;
         track.setLamps(lamps);
         track.setWetness(weather.rain);
+        track.update(paused ? 0 : deltaSeconds);
+        roadFurniture.setLamps(lamps);
         streetLamps.setLamps(lamps);
         citySigns.setLamps(lamps);
         windTurbines.setLamps(lamps);
@@ -933,9 +992,13 @@ async function start(): Promise<void> {
         lookAround.update(deltaSeconds);
         cameraRig.look(lookAround.yaw, lookAround.pitch);
         cameraRig.update(pose, vehicle, deltaSeconds);
+        lampLighting.setWetness(weather.rain);
+        lampLighting.update(truck, trafficView, renderHost.camera, lamps);
         environment.applyWeather(weather.previous.look, weather.current.look, weather.blend, prelit);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
+        environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
+        roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
         effectsState.driving = simulating;
@@ -970,6 +1033,7 @@ async function start(): Promise<void> {
         // battery. The full map hides it all.
         menuFrames = onRoad() ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
+          renderHost.setGrade(environment.grade);
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
@@ -1003,6 +1067,12 @@ async function start(): Promise<void> {
     },
     { maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds },
   );
+  // Every view is in the scene: light it by the lamps, and have the GPU compile the shaders now, behind the menu,
+  // not on the road.
+  if (lampLight) {
+    lampLighting.lightScene(renderHost.scene, prelit);
+  }
+  renderHost.precompile();
   loop.start();
   root.dataset.bootState = 'ready';
 }

@@ -70,23 +70,25 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
     return Math.abs(headingChange(before, await freshHeading()));
   };
 
-  // Held turned 20° to the right from the start: that is straight ahead. The truck rolls on slowly, so it keeps
-  // to the road whatever the steering does.
+  // Held turned 20° to the right from the start: that is straight ahead. The truck rolls on slowly, straight down its
+  // lane until the last check. Turned before, it could reach the verge's lamp posts: under a software renderer the
+  // overlay may show a turn a couple of seconds late, and the truck turns on meanwhile.
   await tiltPhone(page, 20);
   await page.keyboard.down('ArrowUp');
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
   await page.keyboard.up('ArrowUp');
   expect(await drift()).toBeLessThan(3);
 
-  // Turned back 8° from there: a gentle left turn, until the tilt button makes this straight ahead.
-  const before = await shownHeading(page);
-  await tiltPhone(page, 12);
-  await expect.poll(async () => headingChange(before, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(3);
+  // The tilt button tapped with the phone turned 8° further right, a third of full lock: that is straight ahead now.
   await page.locator('.tilt-button').click();
-  await tiltPhone(page, 12);
-  await page.waitForTimeout(300); // The wheels straighten.
+  await tiltPhone(page, 28);
   expect(await drift()).toBeLessThan(3);
   expect(await shownSpeed(page), 'still rolling, so the heading could have turned').toBeGreaterThan(3);
+
+  // Back where straight ahead was before the tap: a gentle left turn now.
+  const straight = await shownHeading(page);
+  await tiltPhone(page, 20);
+  await expect.poll(async () => headingChange(straight, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(3);
   expect(problems).toEqual([]);
 });
 

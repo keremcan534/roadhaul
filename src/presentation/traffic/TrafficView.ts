@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   BufferAttribute,
+  CircleGeometry,
   Color,
   CylinderGeometry,
   Group,
@@ -8,19 +9,31 @@ import {
   Matrix4,
   MeshBasicMaterial,
   MeshLambertMaterial,
+  PlaneGeometry,
   type BufferGeometry,
+  type DataTexture,
   type Scene,
+  type Vector3,
 } from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
 import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
+import { softBoxShadowImage } from '../textures/proceduralImages';
+import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
+import type { SkyUniforms } from '../world/EnvironmentView';
+import type { TrafficHeadlamps } from '../world/LampLighting';
+import { reflectSky } from '../world/skyReflection';
 
 /** Parts in white take the vehicle's paint (the instance colour); the rest are dark or light enough to stay themselves. */
 const PAINT = 0xffffff;
 const GLASS = 0x1d2630;
 const TYRE = 0x161616;
 const TRIM = 0x3a3d42;
+const HUB = 0xb4b9bf;
+/** Painted bodies' edges are rounded off by this share of their smallest side. */
+const BODY_ROUNDING = 0.14;
 const WHEEL_SEGMENTS = 10;
 /** Every vehicle has two headlights and two tail lights, in this order: front left, front right, rear left, rear right. */
 const LAMPS_PER_VEHICLE = 4;
@@ -33,22 +46,43 @@ const GLOW_SIZE_METERS = 1.6;
 const GLOW_OFFSET_METERS = 0.12;
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
+/**
+ * headlampsNear: a vehicle's headlights fade out over this many meters
+ * before the reach, and the farthest one shown as the next one out comes
+ * within this many meters of it, so none pops in or out.
+ */
+const HEADLAMP_FADE_METERS = 20;
+/** The soft shadow under a vehicle reaches this much past its sides and ends, meters, and is this dark in its middle. */
+const SHADOW_MARGIN_METERS = 0.7;
+const SHADOW_OPACITY = 0.5;
+
+export interface TrafficViewOptions {
+  /** False leaves the lamps without their glow at night (weaker devices). Default: true. */
+  readonly lampGlows?: boolean;
+  /** The vehicles cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
+  readonly castShadows?: boolean;
+  /** The sky their paint and glass mirror (EnvironmentView.sky); without it they mirror nothing. */
+  readonly sky?: SkyUniforms;
+}
+
+/** How much each part mirrors the sky (skyReflection's per-vertex shine): glossy paint, glass, dull trim, no tyres. */
+const SHINE: Readonly<Record<number, number>> = { [PAINT]: 0.85, [GLASS]: 1, [TRIM]: 0.25, [TYRE]: 0, [HUB]: 0.6 };
 
 /**
  * Draws the NPC traffic (roadmap step 22): one instanced mesh per kind of
  * vehicle, so all traffic costs a draw call per kind, and one more for all
  * their lamps (self-lit, so they shine at night). Shapes are generic and
  * original: a hatchback-like car, a van, a box lorry and a bus, low-poly
- * with dark glass and tyres, painted per vehicle. Vehicles move between
- * fixed steps like the truck (interpolated poses). At night (setLamps) the
- * lamps glow, one more draw call. Per frame it only writes instance
- * matrices (and glow positions at night), and colours when a new vehicle
- * takes a slot.
+ * with dark glass and tyres, painted per vehicle, each on a soft shadow
+ * (one more draw call for all of them). Vehicles move between fixed steps
+ * like the truck (interpolated poses). At night (setLamps) the lamps glow,
+ * one more draw call. Per frame it only writes instance matrices (and glow
+ * positions at night), and colours when a new vehicle takes a slot.
  */
-export class TrafficView {
+export class TrafficView implements TrafficHeadlamps {
   private readonly root = new Group();
   private readonly meshes: InstancedMesh[];
-  private readonly material = new MeshLambertMaterial({ vertexColors: true });
+  private readonly material: MeshLambertMaterial;
   /** The vehicle (by serial) each instance of each mesh showed last frame, to repaint only when it changes. */
   private readonly shown: Int32Array[];
   private readonly counts: Int32Array;
@@ -59,31 +93,71 @@ export class TrafficView {
   private readonly lampBoxes: readonly (readonly Matrix4[])[];
   private readonly glowSpots: readonly Float32Array[];
   private readonly glows: LampGlows;
+  /** Every vehicle's soft shadow, in the order vehicles are drawn; each kind's size (x, z scale) for its shadow. */
+  private readonly shadows: InstancedMesh;
+  private readonly shadowTexture: DataTexture;
+  private readonly shadowSizes: readonly (readonly [number, number])[];
   private readonly matrix = new Matrix4();
   private readonly lampMatrix = new Matrix4();
+  private readonly shadowMatrix = new Matrix4();
   private readonly paint = new Color();
+  /** The vehicles drawn last (update): where each stands, the way it faces and its kind (headlampsNear). */
+  private readonly placedX: Float32Array;
+  private readonly placedZ: Float32Array;
+  private readonly placedHeading: Float32Array;
+  private readonly placedType: Int32Array;
+  private placedCount = 0;
+  /** Scratch for headlampsNear: the nearest vehicles (into placed*) and their squared distances, nearest first. */
+  private nearest = new Int32Array(0);
+  private nearestSq = new Float64Array(0);
 
-  /** `lampGlows: false` leaves the lamps without their glow at night (weaker devices). */
   constructor(
     private readonly scene: Scene,
     types: readonly TrafficVehicleDefinition[],
     capacity: number,
-    private readonly options: { readonly lampGlows?: boolean } = {},
+    private readonly options: TrafficViewOptions = {},
   ) {
     const instances = Math.max(1, capacity);
     const shapes = types.map(shapeOf);
+    this.material = new MeshLambertMaterial({ vertexColors: true });
+    if (options.sky !== undefined) {
+      reflectSky(this.material, options.sky, { facing: 0.05, perVertex: true });
+    }
     this.meshes = types.map((type, index) => {
       const mesh = new InstancedMesh(merged(shapes[index]!.parts), this.material, instances);
       mesh.name = `traffic:${type.id}`;
       mesh.count = 0;
       // Instances roam the whole map: the mesh's own bounds would cull them wrongly. Few vertices, cheap to draw.
       mesh.frustumCulled = false;
+      mesh.castShadow = options.castShadows === true;
       mesh.setColorAt(0, this.paint.setHex(PAINT));
       this.root.add(mesh);
       return mesh;
     });
+    this.shadowTexture = toTexture(softBoxShadowImage(), { srgb: false });
+    this.shadows = new InstancedMesh(
+      new PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0.06, 0),
+      new MeshBasicMaterial({
+        map: this.shadowTexture,
+        color: 0x000000,
+        transparent: true,
+        opacity: SHADOW_OPACITY,
+        depthWrite: false,
+      }),
+      instances,
+    );
+    this.shadows.name = 'traffic:shadows';
+    this.shadows.count = 0;
+    this.shadows.frustumCulled = false;
+    this.shadowSizes = types.map((type) => [type.widthMeters + SHADOW_MARGIN_METERS * 2, type.lengthMeters + SHADOW_MARGIN_METERS * 2]);
+    this.root.add(this.shadows);
     this.shown = types.map(() => new Int32Array(instances));
     this.counts = new Int32Array(types.length);
+    const placed = instances * Math.max(1, types.length);
+    this.placedX = new Float32Array(placed);
+    this.placedZ = new Float32Array(placed);
+    this.placedHeading = new Float32Array(placed);
+    this.placedType = new Int32Array(placed);
 
     this.lampBoxes = shapes.map(({ lamps }) => lamps.map(({ box }) => box));
     this.glowSpots = shapes.map(({ lamps }) => new Float32Array(lamps.flatMap(({ glow }) => glow)));
@@ -120,6 +194,8 @@ export class TrafficView {
     counts.fill(0);
     const glowing = this.glows.visible;
     let lamps = 0;
+    let shadows = 0;
+    this.placedCount = 0;
     if (traffic !== null) {
       for (let i = 0; i < traffic.capacity; i++) {
         if (traffic.active[i] !== 1) {
@@ -135,6 +211,8 @@ export class TrafficView {
         const z = traffic.previousZ[i]! + (traffic.z[i]! - traffic.previousZ[i]!) * alpha;
         const heading = traffic.previousHeading[i]! + (traffic.heading[i]! - traffic.previousHeading[i]!) * alpha;
         mesh.setMatrixAt(slot, this.matrix.makeRotationY(heading).setPosition(x, 0, z));
+        const shadowSize = this.shadowSizes[type]!;
+        this.shadows.setMatrixAt(shadows++, this.shadowMatrix.makeScale(shadowSize[0], 1, shadowSize[1]).premultiply(this.matrix));
         const shown = this.shown[type]!;
         if (shown[slot] !== traffic.serial[i]) {
           shown[slot] = traffic.serial[i]!;
@@ -142,6 +220,11 @@ export class TrafficView {
           mesh.instanceColor!.needsUpdate = true;
         }
         lamps = this.placeLamps(type, lamps, x, z, heading, glowing);
+        const placed = this.placedCount++;
+        this.placedX[placed] = x;
+        this.placedZ[placed] = z;
+        this.placedHeading[placed] = heading;
+        this.placedType[placed] = type;
       }
     }
     for (let type = 0; type < this.meshes.length; type++) {
@@ -155,17 +238,96 @@ export class TrafficView {
       this.lamps.count = lamps;
       this.lamps.instanceMatrix.needsUpdate = true;
     }
+    if (this.shadows.count !== shadows || shadows > 0) {
+      this.shadows.count = shadows;
+      this.shadows.instanceMatrix.needsUpdate = true;
+    }
     this.glows.setCount(glowing ? lamps : 0);
+  }
+
+  /**
+   * The headlamps of up to `strengths.length` vehicles nearest (`x`, `z`),
+   * as last drawn (update), within `reach` meters: see TrafficHeadlamps.
+   * Allocation-free once it has been asked for that many.
+   */
+  headlampsNear(
+    x: number,
+    z: number,
+    reach: number,
+    lamps: readonly Vector3[],
+    forwards: readonly Vector3[],
+    strengths: number[],
+  ): number {
+    const wanted = Math.min(Math.floor(lamps.length / 2), forwards.length, strengths.length);
+    if (wanted <= 0) {
+      return 0;
+    }
+    if (this.nearest.length < wanted) {
+      this.nearest = new Int32Array(wanted);
+      this.nearestSq = new Float64Array(wanted);
+    }
+    const { nearest, nearestSq } = this;
+    const reachSq = reach * reach;
+    let found = 0;
+    // The nearest vehicle left out: the farthest shown fades as it comes as near.
+    let nextSq = reachSq;
+    for (let vehicle = 0; vehicle < this.placedCount; vehicle++) {
+      const dx = this.placedX[vehicle]! - x;
+      const dz = this.placedZ[vehicle]! - z;
+      const distanceSq = dx * dx + dz * dz;
+      if (distanceSq >= reachSq) {
+        continue;
+      }
+      if (found === wanted) {
+        if (distanceSq >= nearestSq[wanted - 1]!) {
+          nextSq = Math.min(nextSq, distanceSq);
+          continue;
+        }
+        nextSq = Math.min(nextSq, nearestSq[wanted - 1]!);
+      }
+      let slot = found < wanted ? found++ : wanted - 1;
+      while (slot > 0 && nearestSq[slot - 1]! > distanceSq) {
+        nearestSq[slot] = nearestSq[slot - 1]!;
+        nearest[slot] = nearest[slot - 1]!;
+        slot--;
+      }
+      nearestSq[slot] = distanceSq;
+      nearest[slot] = vehicle;
+    }
+    const next = Math.sqrt(nextSq);
+    for (let slot = 0; slot < found; slot++) {
+      const vehicle = nearest[slot]!;
+      const distance = Math.sqrt(nearestSq[slot]!);
+      // The last one shown makes way for the next; every one fades toward the reach.
+      const edge = slot === found - 1 ? next : reach;
+      strengths[slot] = Math.min(1, Math.max(0, (edge - distance) / HEADLAMP_FADE_METERS));
+      const heading = this.placedHeading[vehicle]!;
+      const sin = Math.sin(heading);
+      const cos = Math.cos(heading);
+      const spots = this.glowSpots[this.placedType[vehicle]!]!;
+      const vx = this.placedX[vehicle]!;
+      const vz = this.placedZ[vehicle]!;
+      // The front lamps come first (front left, front right), turned by the heading like makeRotationY.
+      for (let lamp = 0; lamp < 2; lamp++) {
+        const localX = spots[lamp * 3]!;
+        const localZ = spots[lamp * 3 + 2]!;
+        lamps[slot * 2 + lamp]!.set(vx + localX * cos + localZ * sin, spots[lamp * 3 + 1]!, vz - localX * sin + localZ * cos);
+      }
+      forwards[slot]!.set(sin, 0, cos);
+    }
+    return found;
   }
 
   dispose(): void {
     this.scene.remove(this.root);
-    for (const mesh of [...this.meshes, this.lamps]) {
+    for (const mesh of [...this.meshes, this.lamps, this.shadows]) {
       mesh.geometry.dispose();
       mesh.dispose();
     }
     this.material.dispose();
     this.lampMaterial.dispose();
+    (this.shadows.material as MeshBasicMaterial).dispose();
+    this.shadowTexture.dispose();
     this.glows.dispose();
   }
 
@@ -239,7 +401,7 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       const glass = height - sill - body - 0.06;
       return {
         parts: [
-          box(width, body, length, 0, sill + body / 2, 0, PAINT),
+          rounded(width, body, length, 0, sill + body / 2, 0, PAINT),
           // The glasshouse sits back from the bonnet, with the roof painted.
           box(width * 0.86, glass, length * 0.5, 0, sill + body + glass / 2, -length * 0.06, GLASS),
           box(width * 0.84, 0.06, length * 0.46, 0, height - 0.03, -length * 0.06, PAINT),
@@ -254,7 +416,7 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       const body = height - floor;
       return {
         parts: [
-          box(width, body, length, 0, floor + body / 2, 0, PAINT),
+          rounded(width, body, length, 0, floor + body / 2, 0, PAINT),
           // A band of side windows and the windscreen.
           box(width + 0.02, body * 0.32, length * 0.78, 0, floor + body * 0.72, -length * 0.06, GLASS),
           box(width * 0.9, body * 0.36, 0.04, 0, floor + body * 0.7, length / 2 + 0.01, GLASS),
@@ -276,10 +438,10 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       return {
         parts: [
           // Cab at the front with its windscreen, the painted box behind, a dark chassis under both.
-          box(width, cab, cabLength, 0, floor + cab / 2, length / 2 - cabLength / 2, PAINT),
+          rounded(width, cab, cabLength, 0, floor + cab / 2, length / 2 - cabLength / 2, PAINT),
           box(width * 0.9, cab * 0.36, 0.04, 0, windowY, length / 2 + 0.01, GLASS),
           box(width + 0.02, cab * 0.3, cabLength * 0.4, 0, windowY, length / 2 - cabLength * 0.3, GLASS),
-          box(width, cargo, cargoLength, 0, floor + 0.1 + cargo / 2, -length / 2 + cargoLength / 2, PAINT),
+          rounded(width, cargo, cargoLength, 0, floor + 0.1 + cargo / 2, -length / 2 + cargoLength / 2, PAINT),
           box(width * 0.8, 0.3, length * 0.96, 0, floor - 0.1, 0, TRIM),
           ...wheels(width, wheel, [length / 2 - 1.4, -length / 2 + 2.2, -length / 2 + 1.1]),
         ],
@@ -292,7 +454,7 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
       const body = height - floor;
       return {
         parts: [
-          box(width, body, length, 0, floor + body / 2, 0, PAINT),
+          rounded(width, body, length, 0, floor + body / 2, 0, PAINT),
           box(width + 0.02, body * 0.36, length * 0.84, 0, floor + body * 0.66, -length * 0.03, GLASS),
           box(width * 0.92, body * 0.5, 0.04, 0, floor + body * 0.6, length / 2 + 0.01, GLASS),
           box(width + 0.03, 0.14, length, 0, floor + 0.07, 0, TRIM),
@@ -307,6 +469,16 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
 /** A box `w` wide, `h` tall and `d` long centred at (x, y, z), in one colour. */
 function box(w: number, h: number, d: number, x: number, y: number, z: number, color: number): BufferGeometry {
   return colored(new BoxGeometry(w, h, d).translate(x, y, z), color);
+}
+
+/** A box like box(), its edges rounded off: a body that catches the light and the sky along its edges. */
+function rounded(w: number, h: number, d: number, x: number, y: number, z: number, color: number): BufferGeometry {
+  const radius = Math.min(w, h, d) * BODY_ROUNDING;
+  // three.js builds it without an index; welded, it merges with the other (indexed) parts.
+  const shape = new RoundedBoxGeometry(w, h, d, 1, radius);
+  const welded = mergeVertices(shape);
+  shape.dispose();
+  return colored(welded.translate(x, y, z), color);
 }
 
 /**
@@ -328,20 +500,24 @@ function lamps(width: number, length: number, y: number, size: number): VehicleL
   ];
 }
 
-/** A pair of wheels on each axle, `axles` meters ahead of the middle. */
+/** A pair of wheels on each axle, `axles` meters ahead of the middle, each with a light hub on its outer face. */
 function wheels(width: number, radius: number, axles: readonly number[]): BufferGeometry[] {
   const parts: BufferGeometry[] = [];
   for (const z of axles) {
     for (const side of [-1, 1]) {
-      const tyre = new CylinderGeometry(radius, radius, 0.26, WHEEL_SEGMENTS)
-        .rotateZ(Math.PI / 2)
-        .translate(side * (width / 2 - 0.12), radius, z);
+      const x = side * (width / 2 - 0.12);
+      const tyre = new CylinderGeometry(radius, radius, 0.26, WHEEL_SEGMENTS).rotateZ(Math.PI / 2).translate(x, radius, z);
       parts.push(colored(tyre, TYRE));
+      const hub = new CircleGeometry(radius * 0.58, WHEEL_SEGMENTS)
+        .rotateY((side * Math.PI) / 2)
+        .translate(x + side * 0.132, radius, z);
+      parts.push(colored(hub, HUB));
     }
   }
   return parts;
 }
 
+/** Gives every vertex of `geometry` one colour, and the shine of the part that colour stands for (SHINE). */
 function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
   const color = new Color(hex);
   const count = geometry.getAttribute('position').count;
@@ -352,5 +528,6 @@ function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
     colors[i * 3 + 2] = color.b;
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  geometry.setAttribute('shine', new BufferAttribute(new Float32Array(count).fill(SHINE[hex] ?? 0), 1));
   return geometry;
 }

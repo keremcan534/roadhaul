@@ -1,5 +1,4 @@
 import {
-  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   Color,
@@ -9,7 +8,6 @@ import {
   Matrix4,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  PlaneGeometry,
   Quaternion,
   Vector3,
   type BufferGeometry,
@@ -17,9 +15,8 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { StreetLamp } from '../../domain/world/DrivingWorld';
-import { lightPoolImage } from '../textures/proceduralImages';
-import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
+import type { StreetLampLight } from './LampLighting';
 
 /** The post's height and how far its arm reaches out over the road, meters. */
 const POST_HEIGHT = 7.6;
@@ -33,36 +30,29 @@ const LENS_OFF = 0x9ea4a9;
 const LENS_ON = 0xfff1cf;
 const GLOW_COLOR = 0xffd79c;
 const GLOW_SIZE_METERS = 2.8;
-/**
- * The pool of light under each lamp: its size, height and colour, and how
- * strongly it lights the road with the lamps fully on. It lies over the road
- * and its markings, pulled toward the camera like the headlights' pool.
- */
-const POOL_SIZE_METERS = 17;
-const POOL_Y = 0.1;
-const POOL_COLOR = 0xffc574;
-const POOL_OPACITY = 0.6;
 
 export interface StreetLampViewOptions {
-  /** Whether lit lamps glow and light the road beneath them (off on the low preset). Default: true. */
+  /** Whether lit lamps glow (off on the low preset). Default: true. */
   readonly lampGlows?: boolean;
+  /** The posts cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
+  readonly castShadows?: boolean;
 }
 
 /**
  * The street lamps along the city roads: a post with an arm and a head over
  * the road, all instanced (two draw calls for every lamp on the map). At
  * night (setLamps) the lenses light up and, unless the quality preset
- * leaves them out, glow and throw a warm pool of light on the road: two
- * more draw calls, only while the lamps are on.
+ * leaves it out, glow: one more draw call, only while the lamps are on.
+ * Their light on the world is LampLighting's, from lampLights().
  */
 export class StreetLampView {
   private readonly root = new Group();
   private readonly resources: { dispose(): void }[] = [];
   private readonly lensMaterial: MeshBasicMaterial;
   private readonly lensOn = new Color(LENS_ON);
-  private readonly pools: InstancedMesh | null = null;
-  private readonly poolMaterial: MeshBasicMaterial | null = null;
   private readonly glows: LampGlows | null = null;
+  /** Where each lamp's light comes from (just under its lens, in the world), and the way its head faces. */
+  private readonly lights: readonly StreetLampLight[];
   private level = 0;
 
   constructor(
@@ -72,11 +62,23 @@ export class StreetLampView {
   ) {
     this.root.name = 'street-lamps';
     this.lensMaterial = this.track(new MeshBasicMaterial({ color: LENS_OFF }));
+    this.lights = lamps.map((lamp) => {
+      const facingX = Math.sin(lamp.heading);
+      const facingZ = Math.cos(lamp.heading);
+      return {
+        x: lamp.x + facingX * STREET_LAMP_REACH_METERS,
+        y: LENS_Y - 0.1,
+        z: lamp.z + facingZ * STREET_LAMP_REACH_METERS,
+        facingX,
+        facingZ,
+      };
+    });
     if (lamps.length === 0) {
       scene.add(this.root);
       return;
     }
     const posts = this.instanced(this.track(postGeometry()), this.track(new MeshLambertMaterial({ vertexColors: true })), lamps);
+    posts.castShadow = options.castShadows === true;
     const lenses = this.instanced(
       this.track(new BoxGeometry(0.26, 0.04, 0.6).translate(0, LENS_Y, STREET_LAMP_REACH_METERS)),
       this.lensMaterial,
@@ -85,47 +87,25 @@ export class StreetLampView {
     this.root.add(posts, lenses);
 
     if (options.lampGlows !== false) {
-      this.poolMaterial = this.track(
-        new MeshBasicMaterial({
-          map: this.track(toTexture(lightPoolImage(), { srgb: false })),
-          color: POOL_COLOR,
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          blending: AdditiveBlending,
-          polygonOffset: true,
-          polygonOffsetFactor: -2,
-          polygonOffsetUnits: -12,
-        }),
-      );
-      const pool = this.track(
-        new PlaneGeometry(POOL_SIZE_METERS, POOL_SIZE_METERS)
-          .rotateX(-Math.PI / 2)
-          .translate(0, POOL_Y, STREET_LAMP_REACH_METERS),
-      );
-      this.pools = this.instanced(pool, this.poolMaterial, lamps);
-      this.pools.name = 'street-lamp-pools';
-      this.pools.visible = false;
-
       this.glows = new LampGlows(lamps.length, GLOW_SIZE_METERS);
-      lamps.forEach((lamp, index) => {
-        this.glows!.setPosition(
-          index,
-          lamp.x + Math.sin(lamp.heading) * STREET_LAMP_REACH_METERS,
-          LENS_Y - 0.1,
-          lamp.z + Math.cos(lamp.heading) * STREET_LAMP_REACH_METERS,
-        );
+      this.lights.forEach(({ x, y, z }, index) => {
+        this.glows!.setPosition(index, x, y, z);
         this.glows!.setColor(index, GLOW_COLOR);
       });
       this.glows.setCount(lamps.length);
-      this.root.add(this.pools, this.glows.points);
+      this.root.add(this.glows.points);
     }
     scene.add(this.root);
   }
 
+  /** Where each lamp's light comes from, in the world (just under its lens), and the way its head faces the road. */
+  lampLights(): readonly StreetLampLight[] {
+    return this.lights;
+  }
+
   /**
    * How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): the
-   * lenses light up, glow and light the road. Cheap to call every frame.
+   * lenses light up and glow. Cheap to call every frame.
    */
   setLamps(level: number): void {
     if (level === this.level) {
@@ -133,10 +113,6 @@ export class StreetLampView {
     }
     this.level = level;
     this.lensMaterial.color.setHex(LENS_OFF).lerp(this.lensOn, level);
-    if (this.pools !== null && this.poolMaterial !== null) {
-      this.poolMaterial.opacity = level * POOL_OPACITY;
-      this.pools.visible = level > 0.01;
-    }
     this.glows?.setLevel(level);
   }
 

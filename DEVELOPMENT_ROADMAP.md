@@ -104,7 +104,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Navigation (step 23): NavigationService traces the route by road to the contract's next bay ten times a second. The HUD shows the next turn ("Turn left in 200 m"; "Turn round" when the truck faces away on the road), the distance by road and the arrival time, in red when it would be late. A translucent band marks the route in the right-hand lane for 700 m ahead and into the yard. Carrying on where roads bend or meet is not announced.
 - The arrival time assumes each road driven at 80% of its speed limit (or of the truck's top speed, if lower): `GameConfig.navigation.etaPaceFactor`.
 - Weather (step 24): WeatherService runs a seeded schedule. A clear day is the likeliest; each weather lasts 2½ to 7 minutes and turns into the next over 25 s, and a toast says so while driving. Rain cuts the truck's grip to 78% and traffic to 85% of its speed; at night traffic drives at 90%. Haze thickens in rain, so the driver sees less far.
-- The look follows the weather through the change: sky, haze, sun and sky light, clouds, and the pre-lit ground with its baked shadows (`PrelitMaterials`). Rain is one draw call of streaks animated on the GPU. At night about half the windows light up, the lamps glow (one draw call for all traffic) and the truck's headlights light the road ahead. In rain the lamps are on at a third.
+- The look follows the weather through the change: sky, haze, sun and sky light, clouds, and the pre-lit ground with its baked shadows (`PrelitMaterials`). Rain is one draw call of streaks animated on the GPU. At night about half the windows light up, the lamps glow (one draw call for all traffic) and the lamps light the world (`LampLighting`, from the graphics pass). In rain the lamps are on at a third.
 - The weather is not saved: each session starts clear. `?weather=clear|cloudy|rain|dusk|night|dawn` fixes the weather for testing.
 
 ### Phase 6 notes
@@ -191,6 +191,27 @@ A tester played the Pages build on a phone: the truck could not take a sharp tur
 - The garage page holds the paint, the upgrades and the trucks. A tap on a paint, an upgrade's Preview or a truck's Preview shows it on the truck, and the camera turns to the part; nothing is spent until the buy button. Each upgrade shows on the truck (`UpgradeDefinition.look`): chrome and taller exhaust stacks (twin at level 2, a roof light bar at 3), a longer and chrome fuel tank (a second at 3), polished, chrome or gold rims, yellow, orange or red brake calipers, a lower body with mudflaps, then a chrome bumper and grille bars. A fully upgraded truck costs two more draw calls (chrome, calipers).
 - Tutorial: the first hint is on the road now and makes the Jobs button glow; after the first delivery the Garage button glows, then its first affordable upgrade.
 - As before, none of this has been in real hands yet: step 29 tries it on phones.
+
+### Graphics pass (between steps 28 and 29)
+
+The player asked for the best graphics the game can have ("grafiksel iyileştirmeler, olabilenin en iyisi"). Every item is original, drawn in code, and sized for phones through the presets.
+
+| Item | Status | Notes |
+|---|---|---|
+| A colour pass | ✅ | Medium and high: bloom on bright lights, ACES tones, a weather grade (saturation, S-curve contrast, warmth, darker corners under lit lamps), dithering; high multisamples 4×, medium smooths with FXAA; low draws straight to the screen (`?post=0` too) |
+| Soft clouds and hills | ✅ | Billboard cumulus lit in the shader from the sky's uniforms, drifting; two ridges of hazy hills |
+| Real-time shadows | ✅ | High only: the sun's soft (PCF) shadows of the truck, traffic, lamp posts, rails and delineators round the truck; phones keep the decals |
+| Sky reflections | ✅ | Paint, glass and chrome of the truck and traffic mirror the sky and the sun's glint by a Fresnel term; rounded traffic bodies |
+| Ground and verges | ✅ | A meadow that does not repeat; grass tufts, flowers and bushes along every road, near the camera only, swaying in the wind |
+| Buildings | ✅ | Stone plinths, warm plasters, tiled hipped roofs, metal gables, parapets, rooftop tanks, solar heaters and plant |
+| Road furniture | ✅ | Guard rails on the sharp bends (walls the truck hits), delineator posts whose reflectors shine in the headlights, zebra crossings |
+| Trees in the wind | ✅ | Crowns sway (harder in the rain) |
+| Realistic lamps | ✅ | The player found the headlights' pool of light poor ("far ışığı bok gibi"): the night's lamps are now real lights in the materials' shaders (`LampLighting`). The truck's low beams (ECE, right-hand traffic: the cut-off, the step up to the right, the hot zone, the wide light near the bumper), the nearest vehicles' and the nearest street lamps' (full cut-off, batwing, less behind) light the road by its own colour, the verges, trees, posts, buildings and cars; in the rain the wet road mirrors them in streaks and the drops glitter in the beams. No draw calls: the decal pools and the beam cones are gone |
+
+- The presets decide the cost: low has no colour pass, no real-time shadows, 45% of the verges' plants, no lamp glows, the truck's headlights and three street lamps and no wet mirroring; medium adds the colour pass (FXAA), 75% of the plants, six street lamps and one vehicle's headlights; high adds 4× MSAA, the shadows, all the plants, eight street lamps and two vehicles.
+- Drawn in software (CI's headless browser, some virtual machines) the host also leaves out the edge smoothing and draws half the plants and clouds, a plainer ground and a 1024² shadow map; the simulation runs up to 12 steps a frame there, so it keeps real time and the end-to-end tests do not wait on the drawing.
+- The draw budget holds: the verges add three draw calls, the road furniture two and one per rail tile in view, the buildings two, the colour pass ten or eleven full-screen passes.
+- None of it has been seen on a phone yet: step 29 checks the frame rate of each preset on real devices.
 
 ## Next step: 29 Device testing
 

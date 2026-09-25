@@ -1,9 +1,16 @@
-import { ACESFilmicToneMapping, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, WebGLRenderer } from 'three';
+import { PostProcessing, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
   /** Upper bound for the device pixel ratio (fill-rate budget on phones). */
   readonly maxPixelRatio: number;
   readonly antialias: boolean;
+  /** Draw through the colour pass (PostProcessing) where the device can: graded, with bloom and smooth edges. */
+  readonly postProcessing: boolean;
+  readonly bloom: boolean;
+  readonly msaaSamples: number;
+  /** The sun's real-time shadows (EnvironmentView): a shadow map this many texels square, or 0 for none. */
+  readonly shadowMapSize: number;
 }
 
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
@@ -21,11 +28,15 @@ export class RenderHost {
   /**
    * True when WebGL is emulated on the CPU (no GPU acceleration, headless
    * test browsers). Every pixel is then expensive, so the host renders at
-   * one pixel per CSS pixel and turns off anisotropic filtering.
+   * one pixel per CSS pixel, turns off anisotropic filtering and leaves out
+   * the edge smoothing; the entry point thins the plants and the shadows.
    */
   readonly softwareRendering: boolean;
   /** The GPU's name as WebGL reports it, for the performance display. */
   readonly gpu: string;
+  /** The colour pass, or null where the scene goes straight to the screen (the low preset, older devices). */
+  private readonly post: PostProcessing | null;
+  private readonly bufferSize = new Vector2();
   /** Share of the capped pixel ratio drawn at (AdaptiveResolution), and the size last asked for. */
   private resolutionScale = 1;
   private cssWidth = 0;
@@ -47,6 +58,37 @@ export class RenderHost {
     this.renderer.toneMappingExposure = 1.05;
     this.gpu = rendererName(this.renderer.getContext());
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
+    // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
+    this.renderer.info.autoReset = false;
+    // Soft-edged (percentage-closer) shadow maps, where the preset has them. Set once: switching them later
+    // would rebuild every lit shader.
+    this.renderer.shadowMap.enabled = settings.shadowMapSize > 0;
+    this.renderer.shadowMap.type = PCFShadowMap;
+    this.post =
+      settings.postProcessing && PostProcessing.supported(this.renderer)
+        ? new PostProcessing(this.renderer, {
+            bloom: settings.bloom,
+            // In software every sample, and every pass, costs as much as a pixel: no smoothing at all.
+            msaaSamples: this.softwareRendering ? 0 : settings.msaaSamples,
+            smoothing: !this.softwareRendering,
+          })
+        : null;
+  }
+
+  /** Whether the picture goes through the colour pass: graded, with bloom and smooth edges. */
+  get postProcessing(): boolean {
+    return this.post !== null;
+  }
+
+  /** How the picture is drawn, for the performance display: through the colour pass, smoothed by MSAA or FXAA, or straight. */
+  get pipeline(): string {
+    if (this.post === null) {
+      return 'direct';
+    }
+    if (this.post.samples > 0) {
+      return `MSAA ${this.post.samples}×`;
+    }
+    return this.post.fxaaSmoothing ? 'FXAA' : 'graded';
   }
 
   /** Texture anisotropy to use: the GPU's maximum, up to 4, or 1 when rendering in software. */
@@ -82,8 +124,33 @@ export class RenderHost {
     }
   }
 
+  /** How the colour pass grades the picture from now on (the weather's: EnvironmentView.grade). Cheap. */
+  setGrade(grade: Readonly<ColorGrade>): void {
+    this.post?.setGrade(grade);
+  }
+
+  /**
+   * Compiles the shaders of everything in the scene now, hidden things too
+   * (the night's lamps, the rain), as render() will draw them: once, at
+   * boot, so the first frames on the road do not stall compiling them (in
+   * software a program takes a good part of a second). The GPU compiles them
+   * while the menu shows.
+   */
+  precompile(): void {
+    if (this.post === null) {
+      this.renderer.compile(this.scene, this.camera);
+    } else {
+      this.post.compile(this.scene, this.camera);
+    }
+  }
+
   render(): void {
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.info.reset();
+    if (this.post === null) {
+      this.renderer.render(this.scene, this.camera);
+    } else {
+      this.post.render(this.scene, this.camera);
+    }
   }
 
   /**
@@ -114,11 +181,14 @@ export class RenderHost {
     this.appliedHeight = this.cssHeight;
     this.appliedPixelRatio = pixelRatio;
     this.renderer.setDrawingBufferSize(this.cssWidth, this.cssHeight, pixelRatio);
+    const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
+    this.post?.setSize(buffer.x, buffer.y);
     this.camera.aspect = this.cssWidth / this.cssHeight;
     this.camera.updateProjectionMatrix();
   }
 
   dispose(): void {
+    this.post?.dispose();
     this.renderer.dispose();
   }
 }

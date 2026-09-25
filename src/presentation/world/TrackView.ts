@@ -6,6 +6,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DoubleSide,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -21,29 +22,43 @@ import {
   type Texture,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { SeededRandom } from '../../core/random/SeededRandom';
 import type { BuildingObstacle, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
-import type { RoadPath } from '../../domain/world/RoadPath';
+import { createRoadPoint, type RoadPath } from '../../domain/world/RoadPath';
 import { fractalNoise } from '../textures/noise';
 import type { PixelImage } from '../textures/pixelImage';
 import {
   asphaltImage,
   grassImage,
   gravelImage,
+  meadowImage,
   officeFacadeImage,
   officeWindowLightsImage,
+  roofTilesImage,
   softBoxShadowImage,
   softShadowImage,
   warehouseFacadeImage,
   warehouseWindowLightsImage,
 } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
-import { flatGroundLight, SHADOW_OFFSET_PER_METER, type PrelitMaterials } from './lighting';
+import {
+  flatRoofGeometry,
+  gableRoofGeometry,
+  hipRoofGeometry,
+  plinthGeometry,
+  roofStyleOf,
+  rooftopGeometry,
+} from './buildingParts';
+import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
+import { glossyUnderLamps } from './LampLighting';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
-const ROOF_COLOR = 0x5a5f66;
-const BUILDING_TINTS = [0xf2ede2, 0xdfe6ec, 0xe9dcc6, 0xd9e2d3, 0xf0e4dc] as const;
+/** Warm plasters: cream, peach, sand, pale sage, apricot, pale grey. */
+const BUILDING_TINTS = [0xf3e7d3, 0xecd3b9, 0xe6dac1, 0xd9ded3, 0xf0dac5, 0xdfe2e3] as const;
+/** Terracotta roofs, a shade apart building to building. */
+const ROOF_TILE_TINTS = [0xffffff, 0xf2e2dc, 0xffeede, 0xe8d8d0] as const;
 const PINE_COLORS = [0x2f5e34, 0x355f2e, 0x2a5233, 0x3b6a37] as const;
 const BROADLEAF_COLORS = [0x4f8a3c, 0x5c9442, 0x44803e, 0x6b9a3f, 0x7f9b3a] as const;
 
@@ -62,10 +77,19 @@ const LINE_WIDTH = 0.2;
 const EDGE_LINE_INSET = 0.6;
 const DASH_LENGTH = 3;
 const DASH_SPACING = 12;
+/**
+ * A zebra crossing lies this far further out from a junction than the
+ * markings stop; its stripes are this wide across the road, this long along
+ * it, with this gap between them.
+ */
+const CROSSWALK_SETBACK_METERS = 2.2;
+const CROSSWALK_STRIPE = { width: 0.5, length: 2.6, gap: 0.55 } as const;
 /** Markings stop this far short of a junction, measured past the widest road's edge. */
 const JUNCTION_MARKING_GAP = 2;
 /** One grass texture tile covers this many meters; the road textures repeat along the road. */
 const GRASS_TILE_METERS = 14;
+/** The meadow's lusher and drier blotches repeat every this many meters. */
+const MEADOW_TILE_METERS = 110;
 const ASPHALT_TILE_METERS = 10;
 const GRAVEL_TILE_METERS = 4;
 /** One facade texture tile covers 2 bays × 2 floors. */
@@ -84,6 +108,60 @@ const TREE_TILE_METERS = 600;
 
 const UP = new Vector3(0, 1, 0);
 
+/**
+ * The grass, sampled twice: as tiled, and larger and turned (a period of
+ * about 38 m at an angle), half and half, so the tiles' grain does not line
+ * up in a grid; then lusher or drier in meadow-sized blotches from a second,
+ * small texture, sampled at about 110 m and, turned, at about 33 m. Without
+ * GROUND_DETAIL (TrackViewOptions.groundDetail) each is sampled once.
+ */
+const GROUND_MAP_FRAGMENT = /* glsl */ `
+#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+  vec2 meadowUv = vMapUv * ${(GRASS_TILE_METERS / MEADOW_TILE_METERS).toFixed(4)};
+  #ifdef GROUND_DETAIL
+    vec2 turnedUv = mat2( 0.8, 0.6, -0.6, 0.8 ) * vMapUv * 0.37 + vec2( 0.31, 0.17 );
+    sampledDiffuseColor = mix( sampledDiffuseColor, texture2D( map, turnedUv ), 0.5 );
+    float meadowShade = texture2D( meadow, meadowUv ).r * 0.65
+      + texture2D( meadow, mat2( 0.6, -0.8, 0.8, 0.6 ) * meadowUv * 3.3 + vec2( 0.53, 0.29 ) ).r * 0.35;
+  #else
+    float meadowShade = texture2D( meadow, meadowUv ).r;
+  #endif
+  sampledDiffuseColor.rgb *= mix( vec3( 0.8, 0.92, 0.8 ), vec3( 1.16, 1.08, 0.8 ), meadowShade );
+  diffuseColor *= sampledDiffuseColor;
+#endif
+`;
+
+/**
+ * The trees' crowns sway in the wind, the more the higher (meters per meter
+ * squared up the crown), toward the wind and back: a gust every few seconds,
+ * each tree a little out of step with its neighbours. In the rain the wind
+ * blows this much harder.
+ */
+const CROWN_SWAY = 0.011;
+const RAIN_WIND = 1.3;
+const WIND_DIRECTION = { x: 0.8, z: 0.6 } as const;
+/** Replaces three.js's project_vertex: the crown, placed by its instance, then swayed in the world. */
+const CROWN_PROJECT_VERTEX = /* glsl */ `
+vec4 mvPosition = vec4( transformed, 1.0 );
+// Where the tree stands, and how high over the crown's base this point is.
+vec2 treeAt = vec2( 0.0 );
+float up = max( transformed.y, 0.0 );
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+  treeAt = vec2( instanceMatrix[3][0], instanceMatrix[3][2] );
+  up = max( mvPosition.y - instanceMatrix[3][1], 0.0 );
+#endif
+{
+  float phase = dot( treeAt, vec2( 0.071, 0.113 ) );
+  float gust = sin( windTime * 1.3 + phase ) + 0.35 * sin( windTime * 2.9 + phase * 1.7 );
+  float sway = up * up * ${CROWN_SWAY.toFixed(4)} * windStrength * ( 0.55 + 0.45 * gust );
+  mvPosition.xz += vec2( ${WIND_DIRECTION.x.toFixed(2)}, ${WIND_DIRECTION.z.toFixed(2)} ) * sway;
+}
+mvPosition = modelViewMatrix * mvPosition;
+gl_Position = projectionMatrix * mvPosition;
+`;
+
 /** The sky a wet road mirrors when there is none given (a rainy day's haze). */
 const WET_SKY = 0x7f8b97;
 
@@ -94,6 +172,12 @@ export interface TrackViewOptions {
   readonly anisotropy?: number;
   /** Where the pre-lit ground and road and the shadows register, to follow the weather's light. */
   readonly prelit?: PrelitMaterials;
+  /**
+   * The ground samples its grass and meadow textures twice each, so nothing
+   * repeats; false samples each once (half the texture reads on the largest
+   * surface on screen, for rendering without a GPU). Default: true.
+   */
+  readonly groundDetail?: boolean;
 }
 
 /**
@@ -116,6 +200,8 @@ export class TrackView {
   private lamps = 0;
   /** How wet the asphalt is (0..1), and the sky it mirrors: its shader's uniforms. */
   private readonly wet: { readonly wetness: { value: number }; readonly wetSky: { readonly value: Color } };
+  /** The wind in the trees' crowns: its clock (seconds) and strength. */
+  private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
 
   constructor(
     private readonly scene: Scene,
@@ -125,7 +211,7 @@ export class TrackView {
     this.prelit = options.prelit;
     this.wet = { wetness: { value: 0 }, wetSky: options.sky?.horizon ?? { value: new Color(WET_SKY) } };
     const anisotropy = options.anisotropy ?? 1;
-    this.root.add(this.createGround(world.halfSizeMeters, anisotropy));
+    this.root.add(this.createGround(world.halfSizeMeters, anisotropy, options.groundDetail ?? true));
     if (world.roads.length > 0) {
       this.root.add(...this.createRoads(world, anisotropy));
     }
@@ -159,6 +245,13 @@ export class TrackView {
    */
   setWetness(level: number): void {
     this.wet.wetness.value = level;
+    // The rain comes with wind: the trees sway harder.
+    this.wind.windStrength.value = 1 + level * RAIN_WIND;
+  }
+
+  /** Advances the wind in the trees by `deltaSeconds` (0 while paused). Allocation-free. */
+  update(deltaSeconds: number): void {
+    this.wind.windTime.value += deltaSeconds;
   }
 
   dispose(): void {
@@ -168,7 +261,7 @@ export class TrackView {
     }
   }
 
-  private createGround(halfSize: number, anisotropy: number): Mesh {
+  private createGround(halfSize: number, anisotropy: number, detail: boolean): Mesh {
     const size = (halfSize + GROUND_MARGIN) * 2;
     const geometry = this.track(new PlaneGeometry(size, size, 96, 96));
     geometry.rotateX(-Math.PI / 2);
@@ -189,6 +282,16 @@ export class TrackView {
     const grass = this.texture(toTexture(grassImage(), { repeat: true, anisotropy }));
     grass.repeat.set(size / GRASS_TILE_METERS, size / GRASS_TILE_METERS);
     const material = this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight }));
+    if (detail) {
+      material.defines = { GROUND_DETAIL: '' };
+    }
+    const meadow = { value: this.texture(toTexture(meadowImage(), { repeat: true, srgb: false })) };
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['meadow'] = meadow;
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform sampler2D meadow;')
+        .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT);
+    };
     this.prelit?.add(material);
     return new Mesh(geometry, material);
   }
@@ -257,6 +360,9 @@ export class TrackView {
         flatDisc(circle.x, circle.z, circle.radiusMeters, ROAD_Y + roads.length * ROAD_STACK, ASPHALT_TILE_METERS),
       );
     }
+
+    // Zebra crossings on the city streets' arms of every junction, painted with the lines.
+    lines.push(...crosswalkGeometries(world, junctionReach + CROSSWALK_SETBACK_METERS, markingY));
 
     const meshes: (Mesh | InstancedMesh)[] = [
       new Mesh(this.merged(shoulders), this.overlayMaterial({ map: gravel }, 1)),
@@ -337,7 +443,7 @@ export class TrackView {
       trunkMaterial: this.track(new MeshLambertMaterial({ color: TRUNK_COLOR })),
       pine: this.track(pineCrownGeometry()),
       broadleaf: this.track(broadleafCrownGeometry()),
-      crownMaterial: this.track(new MeshLambertMaterial({ color: 0xffffff, flatShading: true })),
+      crownMaterial: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }))),
       shadow: this.track(flatQuad()),
       shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42),
     };
@@ -430,16 +536,31 @@ export class TrackView {
   private createBuildings(buildings: readonly BuildingObstacle[]): Mesh[] {
     const offices: BufferGeometry[] = [];
     const warehouses: BufferGeometry[] = [];
-    const roofs: BufferGeometry[] = [];
+    const tiledRoofs: BufferGeometry[] = [];
+    const details: BufferGeometry[] = [];
     const shadows: BufferGeometry[] = [];
+    const random = new SeededRandom(311);
+    // Solar water heaters face the sun.
+    const sunBearing = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
     buildings.forEach((box, index) => {
       const width = box.maxX - box.minX;
       const depth = box.maxZ - box.minZ;
       const tint = new Color(BUILDING_TINTS[index % BUILDING_TINTS.length]!);
       (width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices).push(wallsGeometry(box, tint, index));
-      roofs.push(
-        new BoxGeometry(width + 0.6, 0.45, depth + 0.6).translate(box.minX + width / 2, box.heightMeters + 0.2, box.minZ + depth / 2),
-      );
+      details.push(...plinthGeometry(box));
+      switch (roofStyleOf(box, random)) {
+        case 'hip':
+          tiledRoofs.push(
+            hipRoofGeometry(box, Math.min(width, depth) * random.range(0.2, 0.28), new Color(ROOF_TILE_TINTS[index % ROOF_TILE_TINTS.length]!)),
+          );
+          break;
+        case 'gable':
+          details.push(gableRoofGeometry(box, Math.min(width, depth) * 0.12, tint));
+          break;
+        case 'flat':
+          details.push(...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing));
+          break;
+      }
       const reachX = SHADOW_OFFSET_PER_METER.x * box.heightMeters;
       const reachZ = SHADOW_OFFSET_PER_METER.z * box.heightMeters;
       shadows.push(
@@ -462,7 +583,18 @@ export class TrackView {
     add(shadows, this.shadowMaterial(softBoxShadowImage(), 0.38));
     add(offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)));
     add(warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)));
-    add(roofs, this.track(new MeshLambertMaterial({ color: ROOF_COLOR })));
+    add(
+      tiledRoofs,
+      this.track(
+        new MeshLambertMaterial({
+          map: this.texture(toTexture(roofTilesImage(), { repeat: true })),
+          vertexColors: true,
+          // Seen from under the eaves too.
+          side: DoubleSide,
+        }),
+      ),
+    );
+    add(details, this.track(new MeshLambertMaterial({ vertexColors: true })));
     return meshes;
   }
 
@@ -521,11 +653,27 @@ export class TrackView {
     );
   }
 
+  /** Sways the trees' crowns (instanced) in the wind (update, setWetness). Returns the material. */
+  private swaying(material: MeshLambertMaterial): MeshLambertMaterial {
+    const wind = this.wind;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['windTime'] = wind.windTime;
+      shader.uniforms['windStrength'] = wind.windStrength;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float windTime;\nuniform float windStrength;')
+        .replace('#include <project_vertex>', CROWN_PROJECT_VERTEX);
+    };
+    material.customProgramCacheKey = () => 'tree-crown-wind';
+    return material;
+  }
+
   /**
    * Lets the rain wet `material` (setWetness): it darkens, and mirrors the
-   * sky by a Fresnel term, the view grazing the road mirroring the most.
+   * sky by a Fresnel term, the view grazing the road mirroring the most (and
+   * the lamps at night: LampLighting).
    */
   private wettable(material: MeshBasicMaterial): MeshBasicMaterial {
+    glossyUnderLamps(material);
     const wet = this.wet;
     material.onBeforeCompile = (shader) => {
       shader.uniforms['wetness'] = wet.wetness;
@@ -674,6 +822,47 @@ function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): Buffe
   geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
   geometry.setIndex(indices);
   return geometry;
+}
+
+/**
+ * Zebra crossings where city streets meet: on each street arm of every
+ * junction, `setback` meters out from its middle, stripes across the whole
+ * road, each a flat quad `y` over the ground (with the painted lines' uv and
+ * normal, to merge with them).
+ */
+function crosswalkGeometries(world: DrivingWorld, setback: number, y: number): BufferGeometry[] {
+  const parts: BufferGeometry[] = [];
+  const point = createRoadPoint();
+  for (const junction of world.network.junctions) {
+    for (const member of junction.members) {
+      const road = world.roads[member.roadIndex]!;
+      if (road.kind !== 'street') {
+        continue;
+      }
+      const at = road.distances[member.sampleIndex]!;
+      for (const arm of [-1, 1] as const) {
+        const along = at + arm * setback;
+        if (!road.closed && (along < 0 || along > road.lengthMeters)) {
+          continue;
+        }
+        road.pointAt(along, point);
+        const heading = Math.atan2(point.directionX, point.directionZ);
+        const usable = road.widthMeters - 1;
+        const stripes = Math.floor((usable + CROSSWALK_STRIPE.gap) / (CROSSWALK_STRIPE.width + CROSSWALK_STRIPE.gap));
+        const span = stripes * CROSSWALK_STRIPE.width + (stripes - 1) * CROSSWALK_STRIPE.gap;
+        for (let stripe = 0; stripe < stripes; stripe++) {
+          const across = -span / 2 + CROSSWALK_STRIPE.width / 2 + stripe * (CROSSWALK_STRIPE.width + CROSSWALK_STRIPE.gap);
+          parts.push(
+            new PlaneGeometry(CROSSWALK_STRIPE.width, CROSSWALK_STRIPE.length)
+              .rotateX(-Math.PI / 2)
+              .rotateY(heading)
+              .translate(point.x + point.directionZ * across, y, point.z - point.directionX * across),
+          );
+        }
+      }
+    }
+  }
+  return parts;
 }
 
 /**

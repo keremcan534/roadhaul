@@ -231,6 +231,10 @@ export function weatherFixture(overrides: Partial<WeatherDefinition> = {}): Weat
       sunHeight: 1,
       stars: 0,
       moon: 0,
+      saturation: 1,
+      contrast: 1,
+      warmth: 0,
+      bloom: 0.2,
     },
     ...overrides,
   };

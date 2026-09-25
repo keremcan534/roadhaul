@@ -454,6 +454,100 @@ describe('DrivingWorld', () => {
     });
   });
 
+  describe('guard rails', () => {
+    const region = new DrivingWorld(MAPS[0]!);
+    /** A piece in the middle of the longest rail: its ends, its direction and the way to its road. */
+    const rail = region.guardRails.reduce((best, candidate) => (candidate.points.length > best.points.length ? candidate : best));
+    const middle = Math.floor(rail.points.length / 2);
+    const [ax, az] = rail.points[middle]!;
+    const [bx, bz] = rail.points[middle + 1]!;
+    const length = Math.hypot(bx - ax, bz - az);
+    const along = { x: (bx - ax) / length, z: (bz - az) / length };
+    const toRoad = rail.roadSide === 'left' ? 1 : -1;
+    const roadward = { x: along.z * toRoad, z: -along.x * toRoad };
+    const midX = (ax + bx) / 2;
+    const midZ = (az + bz) / 2;
+    /** How far the front footprint circle's centre is from the rail's line, on the road's side (negative: beyond it). */
+    const frontClearance = (state: { x: number; z: number; heading: number }): number =>
+      (state.x + Math.sin(state.heading) * front - ax) * roadward.x + (state.z + Math.cos(state.heading) * front - az) * roadward.z;
+
+    it("line the outside of the ring road's sharp corners in the shipped region, beside the road and clear of junctions and yards", () => {
+      expect(region.guardRails.length).toBeGreaterThanOrEqual(4);
+      for (const { points } of region.guardRails) {
+        for (const [x, z] of points) {
+          const distances = region.roads.map((road) => ({ road, edge: road.distanceTo(x, z) - road.widthMeters / 2 }));
+          const nearest = distances.reduce((best, entry) => (entry.edge < best.edge ? entry : best));
+          expect(['ringRoad', 'rural', 'highway']).toContain(nearest.road.kind);
+          expect(nearest.edge).toBeGreaterThan(1);
+          expect(nearest.edge).toBeLessThan(1.4);
+          for (const other of distances.filter((entry) => entry.road !== nearest.road)) {
+            expect(other.edge).toBeGreaterThan(1);
+          }
+          expect(region.surfaceAt(x, z)).toBe(GRASS);
+          for (const junction of region.network.junctions) {
+            expect(Math.hypot(x - junction.x, z - junction.z)).toBeGreaterThan(17.9);
+          }
+          for (const depot of region.depots) {
+            expect(rectangleContains(depot.yard, x, z, 7.9)).toBe(false);
+          }
+        }
+      }
+      // The road is on the side the rail says.
+      const ring = region.roads.find((road) => road.kind === 'ringRoad')!;
+      expect(ring.distanceTo(midX + roadward.x, midZ + roadward.z)).toBeLessThan(ring.distanceTo(midX - roadward.x, midZ - roadward.z));
+    });
+
+    it('are solid: a truck driving straight at one stops against it', () => {
+      const heading = Math.atan2(-roadward.x, -roadward.z);
+      const state = truckAt(0, 0, 0, 12);
+      state.heading = heading;
+      // The front circle 0.3 m into the rail.
+      const back = front + footprint.radius + 0.2 - 0.3;
+      state.x = midX - Math.sin(heading) * back;
+      state.z = midZ - Math.cos(heading) * back;
+
+      expect(region.resolveCollisions(state, footprint)).toBeCloseTo(12, 6);
+      expect(Math.abs(state.speed)).toBeLessThan(1e-6);
+      expect(frontClearance(state)).toBeGreaterThanOrEqual(footprint.radius + 0.2 - 1e-9);
+    });
+
+    it('turn a truck that glances off one along it', () => {
+      // 10° toward the rail, driving along it.
+      const heading = Math.atan2(along.x, along.z) + degrees(10) * (rail.roadSide === 'left' ? -1 : 1);
+      const state = truckAt(0, 0, 0, 15);
+      state.heading = heading;
+      const aimed = { x: Math.sin(heading), z: Math.cos(heading) };
+      // Into the rail by 0.2 m with the front circle.
+      expect(aimed.x * roadward.x + aimed.z * roadward.z).toBeLessThan(0);
+      const reach = footprint.radius + 0.2 - 0.2;
+      state.x = midX + roadward.x * reach - aimed.x * front;
+      state.z = midZ + roadward.z * reach - aimed.z * front;
+
+      expect(region.resolveCollisions(state, footprint)).toBeGreaterThan(0);
+      // Along the rail, most of the speed kept.
+      expect(Math.abs(Math.sin(state.heading) * roadward.x + Math.cos(state.heading) * roadward.z)).toBeLessThan(0.02);
+      expect(state.speed).toBeGreaterThan(14);
+    });
+
+    it('never let a fast truck through', () => {
+      const heading = Math.atan2(-roadward.x, -roadward.z) + degrees(25);
+      const state = truckAt(0, 0, 0, 0);
+      state.heading = heading;
+      const start = front + footprint.radius + 6;
+      state.x = midX + roadward.x * start - Math.sin(heading) * front;
+      state.z = midZ + roadward.z * start - Math.cos(heading) * front;
+      const step = 1 / 60;
+      for (let frame = 0; frame < 120; frame++) {
+        // Flat out at 110 km/h, every step.
+        state.speed = 30;
+        state.x += Math.sin(state.heading) * state.speed * step;
+        state.z += Math.cos(state.heading) * state.speed * step;
+        region.resolveCollisions(state, footprint);
+        expect(frontClearance(state)).toBeGreaterThan(footprint.radius);
+      }
+    });
+  });
+
   describe('trees', () => {
     const map = MAPS[0]!;
     const forest = new DrivingWorld(map);

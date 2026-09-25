@@ -17,6 +17,12 @@ export function lerp(from: number, to: number, t: number): number {
   return from + (to - from) * t;
 }
 
+/** 0 up to `edge0`, 1 from `edge1`, eased smoothly in between (GLSL's smoothstep). */
+export function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = clamp01((x - edge0) / (edge1 - edge0));
+  return t * t * (3 - 2 * t);
+}
+
 /** Moves `current` toward `target` by at most `maxDelta`. */
 export function approach(current: number, target: number, maxDelta: number): number {
   if (current < target) {

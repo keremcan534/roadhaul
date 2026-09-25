@@ -1,5 +1,6 @@
 import { BufferAttribute, BufferGeometry, Color, DoubleSide, Mesh, ShaderMaterial, Vector2, type Scene } from 'three';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import { LAMP_SCATTER_GLSL, type LampLighting } from '../world/LampLighting';
 
 /** Streaks in the heaviest rain; lighter rain draws a share of them. */
 const MAX_DROPS = 3000;
@@ -15,6 +16,13 @@ const STREAK_LENGTH_METERS = 1.1;
 const STREAK_WIDTH_METERS = 0.018;
 const COLOR = 0xc3d0dc;
 const OPACITY = 0.42;
+/**
+ * At night a drop sends this share of the lamps' light on it to the eye
+ * (LampLighting): the rain glitters in the headlights' beams and under the
+ * street lamps, and no brighter than this.
+ */
+const LAMP_SCATTERING = 0.012;
+const MOST_LAMPLIGHT = 2;
 const SEED = 61;
 
 /**
@@ -23,7 +31,9 @@ const SEED = 61;
  * frame, and the geometry is built once. The drops keep their places in the
  * world while the camera moves through them, and wrap round a box that
  * follows it, fading out at its edge and close to the eye. Heavier rain
- * draws more of them.
+ * draws more of them. Given the night's lamps, the drops in their light
+ * glitter: the beams of the headlights and the cones under the street lamps
+ * show in the rain, as they do not in clear air.
  */
 export class RainView {
   private readonly geometry = new BufferGeometry();
@@ -47,6 +57,7 @@ export class RainView {
   constructor(
     private readonly scene: Scene,
     density = 1,
+    lamps: LampLighting['uniforms'] | null = null,
   ) {
     this.maxDrops = Math.round(MAX_DROPS * Math.min(1, Math.max(0, density)));
     // Four corners per streak. `position` holds the drop's random place in the box (0..1 on each axis),
@@ -89,11 +100,12 @@ export class RainView {
       (-WIND_Z / speed) * STREAK_LENGTH_METERS,
     ].map((value) => value.toFixed(4));
     this.material = new ShaderMaterial({
-      uniforms: this.uniforms,
+      uniforms: { ...this.uniforms, ...lamps },
       transparent: true,
       depthWrite: false,
       side: DoubleSide,
       vertexShader: /* glsl */ `
+        ${lamps === null ? '' : `#define RAIN_LAMPS\n#include <common>\n${LAMP_SCATTER_GLSL}`}
         #define BOX_WIDTH ${BOX_WIDTH_METERS.toFixed(1)}
         #define BOX_HEIGHT ${BOX_HEIGHT_METERS.toFixed(1)}
         #define STREAK_WIDTH ${STREAK_WIDTH_METERS.toFixed(4)}
@@ -105,6 +117,7 @@ export class RainView {
         attribute vec2 corner;
         varying float vAlpha;
         varying float vSide;
+        varying vec3 vLamp;
         void main() {
           // The drop's place: carried by the wind, wrapped into the box round the camera, falling and wrapping to the top.
           vec2 around = mod(position.xz * BOX_WIDTH + drift - center + BOX_WIDTH * 0.5, BOX_WIDTH) - BOX_WIDTH * 0.5;
@@ -117,8 +130,16 @@ export class RainView {
             gl_Position = vec4(0.0, 0.0, 2.0, 1.0);
             vAlpha = 0.0;
             vSide = 0.0;
+            vLamp = vec3(0.0);
             return;
           }
+          // The lamps' light the drop catches, scattered to the eye, softly capped.
+          #ifdef RAIN_LAMPS
+            vec3 lamp = lampScatter((viewMatrix * vec4(drop, 1.0)).xyz) * ${LAMP_SCATTERING.toFixed(4)};
+            vLamp = lamp / (1.0 + max(lamp.r, max(lamp.g, lamp.b)) / ${MOST_LAMPLIGHT.toFixed(1)});
+          #else
+            vLamp = vec3(0.0);
+          #endif
           vec4 clip = corner.x < 0.5 ? head : tail;
           // Widen the streak across its direction on screen.
           vec2 along = tail.xy / tail.w * resolution - head.xy / head.w * resolution;
@@ -139,8 +160,10 @@ export class RainView {
         uniform float opacity;
         varying float vAlpha;
         varying float vSide;
+        varying vec3 vLamp;
         void main() {
-          gl_FragColor = vec4(color, opacity * vAlpha * (1.0 - vSide * vSide));
+          // Blended at the streak's opacity, the lamps' light comes through whole at its middle.
+          gl_FragColor = vec4(color + vLamp / opacity, opacity * vAlpha * (1.0 - vSide * vSide));
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }

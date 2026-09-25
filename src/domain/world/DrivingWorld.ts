@@ -19,6 +19,7 @@ import {
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
 import { cellKey, cellOf } from './gridCells';
+import { placeGuardRails, type GuardRail } from './guardRails';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork } from './RoadNetwork';
 import { createRoadPoint, RoadPath } from './RoadPath';
@@ -195,6 +196,20 @@ const LAMP_YARD_CLEARANCE = 8;
 /** …and this far from buildings and the map's edge. */
 const LAMP_BUILDING_CLEARANCE = 1.5;
 const LAMP_BOUNDARY_MARGIN = 2;
+/**
+ * A guard rail is a wall this thick either side of its line (the beam and
+ * the posts behind it). Its posts keep this far from junctions…
+ */
+const RAIL_HALF_WIDTH_METERS = 0.2;
+const RAIL_JUNCTION_CLEARANCE = 18;
+/** …from depot yards, rest area lots, turning circles and the spawn, where trucks swing round… */
+const RAIL_YARD_CLEARANCE = 8;
+const RAIL_SPAWN_CLEARANCE = 20;
+/** …and closer than this to no other road's edge, and this far from buildings, the water and the map's edge. */
+const RAIL_ROAD_CLEARANCE = 1;
+const RAIL_BUILDING_CLEARANCE = 1.5;
+const RAIL_SHORE_CLEARANCE = 1;
+const RAIL_BOUNDARY_MARGIN = 2;
 /** City name boards: how far their middle stands from the road's edge, and how far apart their posts are. */
 const CITY_SIGN_SETBACK_METERS = 4.6;
 export const CITY_SIGN_POST_SPACING_METERS = 4.8;
@@ -245,7 +260,8 @@ const AT_FAULT_SPEED = 0.5;
  * Everything the truck can drive on or into, built from a MapDefinition:
  * road paths, surfaces, buildings, the scenery (generated trees, street
  * lamps, the cities' name boards, farm fields with hay bales, wind
- * turbines), the sea with its quays and cranes, and the map boundary. Rendering reads the same data, so what
+ * turbines, guard rails on the sharper bends), the sea with its quays and
+ * cranes, and the map boundary. Rendering reads the same data, so what
  * you see is what you collide with.
  */
 export class DrivingWorld {
@@ -258,6 +274,8 @@ export class DrivingWorld {
   readonly trees: readonly TreeObstacle[];
   /** Lamps along the city roads, when the map lights them. */
   readonly streetLamps: readonly StreetLamp[];
+  /** Guard rails on the outside of the sharper bends out of town (placeGuardRails). They are walls. */
+  readonly guardRails: readonly GuardRail[];
   /** The cities' name boards beside the roads into them. */
   readonly citySigns: readonly CitySign[];
   /** Farm fields (they drive like grass), and the hay bales on the harvested ones. */
@@ -286,6 +304,17 @@ export class DrivingWorld {
   private readonly circleRadius: Float64Array;
   /** The largest circle's radius: how far round a footprint circle to look for them. */
   private readonly maxCircleRadius: number;
+  /**
+   * The guard rails' pieces, post to post (from a to b), with the way
+   * toward their road, filed by grid cell as indices into the arrays below.
+   */
+  private readonly railGrid = new Map<number, number[]>();
+  private readonly railAX: Float64Array;
+  private readonly railAZ: Float64Array;
+  private readonly railBX: Float64Array;
+  private readonly railBZ: Float64Array;
+  private readonly railRoadwardX: Float64Array;
+  private readonly railRoadwardZ: Float64Array;
   /** The road pieces by where they are: which ground a point is on, without visiting every road. */
   private readonly roadGrid: RoadGrid;
   /**
@@ -339,6 +368,35 @@ export class DrivingWorld {
     this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
     this.sea = map.sea === undefined ? null : createSea(map.sea, map.halfSizeMeters, map.scenery.seed);
     this.hayBales = placeHayBales(this.fields, map.scenery.seed);
+    this.guardRails = placeGuardRails(this.roads, (x, z) => this.isClearForRail(x, z));
+    const pieces = this.guardRails.flatMap((rail) =>
+      rail.points.slice(1).map((b, index) => {
+        const a = rail.points[index]!;
+        const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+        // Left of the rail's run is (dz, -dx).
+        const toRoad = rail.roadSide === 'left' ? 1 : -1;
+        return { a, b, nx: ((b[1] - a[1]) / length) * toRoad, nz: (-(b[0] - a[0]) / length) * toRoad };
+      }),
+    );
+    this.railAX = Float64Array.from(pieces, (piece) => piece.a[0]);
+    this.railAZ = Float64Array.from(pieces, (piece) => piece.a[1]);
+    this.railBX = Float64Array.from(pieces, (piece) => piece.b[0]);
+    this.railBZ = Float64Array.from(pieces, (piece) => piece.b[1]);
+    this.railRoadwardX = Float64Array.from(pieces, (piece) => piece.nx);
+    this.railRoadwardZ = Float64Array.from(pieces, (piece) => piece.nz);
+    pieces.forEach(({ a, b }, index) => {
+      for (let gx = cellOf(Math.min(a[0], b[0])); gx <= cellOf(Math.max(a[0], b[0])); gx++) {
+        for (let gz = cellOf(Math.min(a[1], b[1])); gz <= cellOf(Math.max(a[1], b[1])); gz++) {
+          const key = cellKey(gx, gz);
+          const bucket = this.railGrid.get(key);
+          if (bucket === undefined) {
+            this.railGrid.set(key, [index]);
+          } else {
+            bucket.push(index);
+          }
+        }
+      }
+    });
     this.trees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
     this.streetLamps = this.placeStreetLamps(map.scenery.streetLampSpacingMeters);
     const circles = [
@@ -437,7 +495,7 @@ export class DrivingWorld {
   }
 
   /**
-   * Pushes the truck out of trees and posts, buildings, the map boundary and moving
+   * Pushes the truck out of trees and posts, guard rails, buildings, the map boundary and moving
    * `obstacles` (traffic), then responds to the hardest contact: a head-on
    * hit stops the truck, a glancing one turns it along the obstacle and it
    * carries on with the speed it had along the surface. Driving into a
@@ -533,6 +591,39 @@ export class DrivingWorld {
           }
           const distance = Math.sqrt(distanceSquared);
           this.pushOut(state, offset, dx / distance, dz / distance, minDistance - distance);
+          cx = state.x + Math.sin(state.heading) * offset;
+          cz = state.z + Math.cos(state.heading) * offset;
+        }
+      }
+    }
+
+    const railReach = radius + RAIL_HALF_WIDTH_METERS;
+    for (let gx = cellOf(cx - railReach); gx <= cellOf(cx + railReach); gx++) {
+      for (let gz = cellOf(cz - railReach); gz <= cellOf(cz + railReach); gz++) {
+        const bucket = this.railGrid.get(cellKey(gx, gz));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let k = 0; k < bucket.length; k++) {
+          const index = bucket[k]!;
+          const ax = this.railAX[index]!;
+          const az = this.railAZ[index]!;
+          const dx = this.railBX[index]! - ax;
+          const dz = this.railBZ[index]! - az;
+          // The nearest point of the piece, a flat wall with rounded ends.
+          const t = clamp01(((cx - ax) * dx + (cz - az) * dz) / (dx * dx + dz * dz || 1));
+          const offX = cx - (ax + dx * t);
+          const offZ = cz - (az + dz * t);
+          const distanceSquared = offX * offX + offZ * offZ;
+          if (distanceSquared >= railReach * railReach) {
+            continue;
+          }
+          if (distanceSquared > 1e-12) {
+            const distance = Math.sqrt(distanceSquared);
+            this.pushOut(state, offset, offX / distance, offZ / distance, railReach - distance);
+          } else {
+            this.pushOut(state, offset, this.railRoadwardX[index]!, this.railRoadwardZ[index]!, railReach);
+          }
           cx = state.x + Math.sin(state.heading) * offset;
           cz = state.z + Math.cos(state.heading) * offset;
         }
@@ -825,6 +916,47 @@ export class DrivingWorld {
     return this.buildings.every(
       (box) =>
         Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= LAMP_BUILDING_CLEARANCE,
+    );
+  }
+
+  /**
+   * Whether a guard rail's post may stand at (x, z): not by the water or on
+   * a quay, not beside another road, clear of junctions, yards, lots,
+   * turning circles, the spawn and buildings, inside the map.
+   */
+  private isClearForRail(x: number, z: number): boolean {
+    const limit = this.halfSizeMeters - RAIL_BOUNDARY_MARGIN;
+    if (Math.abs(x) > limit || Math.abs(z) > limit) {
+      return false;
+    }
+    if (this.isWater(x, z, RAIL_SHORE_CLEARANCE) || this.isOnQuay(x, z, RAIL_YARD_CLEARANCE)) {
+      return false;
+    }
+    if (this.roadGrid.nearRoad(x, z, RAIL_ROAD_CLEARANCE)) {
+      return false;
+    }
+    if (this.network.junctions.some((junction) => Math.hypot(x - junction.x, z - junction.z) < RAIL_JUNCTION_CLEARANCE)) {
+      return false;
+    }
+    if (Math.hypot(x - this.spawn.x, z - this.spawn.z) < RAIL_SPAWN_CLEARANCE) {
+      return false;
+    }
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, RAIL_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, RAIL_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (
+      this.turningCircles.some(
+        (circle) => Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + RAIL_YARD_CLEARANCE,
+      )
+    ) {
+      return false;
+    }
+    return this.buildings.every(
+      (box) =>
+        Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= RAIL_BUILDING_CLEARANCE,
     );
   }
 

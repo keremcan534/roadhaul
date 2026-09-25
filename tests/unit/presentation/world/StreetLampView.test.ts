@@ -64,7 +64,7 @@ describe('StreetLampView', () => {
     });
   });
 
-  it('lights the lenses at night, with glows and pools of light on the road', () => {
+  it('lights the lenses at night, with glows', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, LAMPS);
     const lens = meshes(scene)[1]!.material as MeshBasicMaterial;
@@ -72,18 +72,40 @@ describe('StreetLampView', () => {
 
     view.setLamps(1);
 
-    expect(shownDrawCalls(scene)).toBe(4);
+    expect(shownDrawCalls(scene)).toBe(3);
     expect(lens.color.r + lens.color.g + lens.color.b).toBeGreaterThan(dayLens.r + dayLens.g + dayLens.b + 0.5);
     expect(glowsOf(scene).geometry.drawRange.count).toBe(LAMPS.length);
-    const pools = scene.getObjectByName('street-lamp-pools') as InstancedMesh;
-    expect((pools.material as MeshBasicMaterial).opacity).toBeGreaterThan(0.3);
 
     view.setLamps(0);
     expect(shownDrawCalls(scene)).toBe(2);
     expect(lens.color.equals(dayLens)).toBe(true);
   });
 
-  it('leaves the glows and pools out when the quality preset does', () => {
+  it('says where each lamp\'s light comes from (under its head, over the road, where its glow is) and the way it faces', () => {
+    const scene = new Scene();
+    const view = new StreetLampView(scene, LAMPS);
+    const glows = glowsOf(scene).geometry.getAttribute('position');
+
+    const lights = view.lampLights();
+
+    expect(lights).toHaveLength(LAMPS.length);
+    lights.forEach(({ x, y, z, facingX, facingZ }, index) => {
+      const lamp = LAMPS[index]!;
+      expect(x).toBeCloseTo(lamp.x, 6);
+      // Toward the road's centreline (z = 0), high over it, facing it.
+      expect(Math.abs(z)).toBeCloseTo(Math.abs(lamp.z) - STREET_LAMP_REACH_METERS, 6);
+      expect(y).toBeGreaterThan(6);
+      expect(facingX).toBeCloseTo(0, 9);
+      expect(facingZ).toBeCloseTo(-Math.sign(lamp.z), 9);
+      expect(glows.getX(index)).toBeCloseTo(x, 5);
+      expect(glows.getY(index)).toBeCloseTo(y, 5);
+      expect(glows.getZ(index)).toBeCloseTo(z, 5);
+    });
+    // Without glows (the low preset) the lamps still light the road.
+    expect(new StreetLampView(new Scene(), LAMPS, { lampGlows: false }).lampLights()).toEqual(lights);
+  });
+
+  it('leaves the glows out when the quality preset does', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, LAMPS, { lampGlows: false });
 
@@ -91,6 +113,21 @@ describe('StreetLampView', () => {
 
     expect(drawCallCount(scene)).toBe(2);
     expect(shownDrawCalls(scene)).toBe(2);
+  });
+
+  it('casts the posts\' real-time shadows when asked, never the lenses\'', () => {
+    const casting = (options: { castShadows?: boolean }): string[] => {
+      const scene = new Scene();
+      new StreetLampView(scene, LAMPS, options);
+      const names: string[] = [];
+      scene.traverse((object) => {
+        if (object instanceof InstancedMesh && object.castShadow) names.push(object.name);
+      });
+      return names;
+    };
+
+    expect(casting({})).toEqual([]);
+    expect(casting({ castShadows: true })).toHaveLength(1);
   });
 
   it('draws nothing where no road is lit', () => {

@@ -41,6 +41,14 @@ export function flatGroundLight(): Color {
   return sky.add(sun).multiplyScalar(1 / Math.PI);
 }
 
+/** Below this the light is taken as this, so the albedo stays finite in the dark. */
+const MIN_LIGHT = 0.01;
+
+/** 1 / `color`, per channel. */
+function inverseOf(color: Color): Color {
+  return new Color(1 / Math.max(color.r, MIN_LIGHT), 1 / Math.max(color.g, MIN_LIGHT), 1 / Math.max(color.b, MIN_LIGHT));
+}
+
 /**
  * The pre-lit materials of the views (ground, road, yards, lots) and the
  * baked shadow decals, so they follow the light when the weather changes
@@ -48,13 +56,26 @@ export function flatGroundLight(): Color {
  * setLight() rescales them all. Allocation-free.
  */
 export class PrelitMaterials {
+  /**
+   * What turns a pre-lit colour back into the surface's own (its albedo):
+   * one over the light it is lit with now, a clear day's flat-ground light
+   * times setLight()'s factor. Shaders that add more light (the headlights)
+   * read it.
+   */
+  readonly albedo = { value: inverseOf(flatGroundLight()) };
   private readonly lit: { readonly material: MeshBasicMaterial; readonly base: Color }[] = [];
   private readonly shadows: { readonly material: MeshBasicMaterial; readonly opacity: number }[] = [];
+  private readonly clearDay = flatGroundLight();
 
   /** Follows the light from now on. Returns the material. */
   add(material: MeshBasicMaterial): MeshBasicMaterial {
     this.lit.push({ material, base: material.color.clone() });
     return material;
+  }
+
+  /** Whether `material` is pre-lit here (add()). */
+  has(material: MeshBasicMaterial): boolean {
+    return this.lit.some((entry) => entry.material === material);
   }
 
   /** A shadow decal: it fades with the sunlight. Returns the material. */
@@ -69,6 +90,10 @@ export class PrelitMaterials {
    * the shadows are.
    */
   setLight(light: Color, sun: number): void {
+    const albedo = this.albedo.value;
+    albedo.r = 1 / Math.max(this.clearDay.r * light.r, MIN_LIGHT);
+    albedo.g = 1 / Math.max(this.clearDay.g * light.g, MIN_LIGHT);
+    albedo.b = 1 / Math.max(this.clearDay.b * light.b, MIN_LIGHT);
     for (let i = 0; i < this.lit.length; i++) {
       const entry = this.lit[i]!;
       entry.material.color.copy(entry.base).multiply(light);

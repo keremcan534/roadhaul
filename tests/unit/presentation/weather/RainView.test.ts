@@ -1,6 +1,7 @@
 import { Mesh, Scene, type ShaderMaterial, type Vector2 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { RainView } from '../../../../src/presentation/weather/RainView';
+import { LampLighting } from '../../../../src/presentation/world/LampLighting';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
 function setup() {
@@ -93,6 +94,22 @@ describe('RainView', () => {
     view.setViewport(1350, 630);
 
     expect((uniforms.resolution!.value as Vector2).toArray()).toEqual([1350, 630]);
+  });
+
+  it('lets the drops catch the light of the night\'s lamps when given them, sharing their uniforms', () => {
+    const lamps = new LampLighting();
+    const scene = new Scene();
+    new RainView(scene, 1, lamps.uniforms);
+    const material = (scene.getObjectByName('rain') as Mesh).material as ShaderMaterial;
+
+    expect(material.uniforms['truckLamps']).toBe(lamps.uniforms.truckLamps);
+    expect(material.uniforms['lampLevel']).toBe(lamps.uniforms.lampLevel);
+    expect(material.vertexShader).toContain('#define RAIN_LAMPS');
+    expect(material.vertexShader).toContain('vec3 lampScatter(');
+    // Without them, plain rain.
+    const plain = setup().rain.material as ShaderMaterial;
+    expect(plain.vertexShader).not.toContain('#define RAIN_LAMPS');
+    expect(plain.uniforms['truckLamps']).toBeUndefined();
   });
 
   it('releases its GPU resources on dispose', () => {

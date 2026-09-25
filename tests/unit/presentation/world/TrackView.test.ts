@@ -8,6 +8,7 @@ import {
   MeshLambertMaterial,
   PerspectiveCamera,
   Scene,
+  type Object3D,
   ShaderLib,
   UniformsUtils,
   Vector3,
@@ -19,6 +20,16 @@ import { TrackView } from '../../../../src/presentation/world/TrackView';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
+
+/** A mesh of building walls: their facade's material lights windows at night. */
+function isFacade(object: Object3D): object is Mesh {
+  return (
+    object instanceof Mesh &&
+    !(object instanceof InstancedMesh) &&
+    object.material instanceof MeshLambertMaterial &&
+    object.material.emissiveMap !== null
+  );
+}
 
 describe('TrackView', () => {
   it('draws the ground, roads and buildings in a handful of draw calls, and the forest in a few per tile', () => {
@@ -58,6 +69,79 @@ describe('TrackView', () => {
     // ARCHITECTURE.md §11: at most ~150 draw calls and ~300k triangles in view, with room for the truck and traffic.
     expect(drawCalls).toBeLessThanOrEqual(60);
     expect(triangles).toBeLessThan(150_000);
+  });
+
+  it('paints zebra crossings across the city streets where they meet, and none out on the country roads', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    // The painted lines: the one untextured overlay on the road (the dashes are instanced).
+    const painted: Mesh[] = [];
+    scene.traverse((object) => {
+      if (
+        object instanceof Mesh &&
+        !(object instanceof InstancedMesh) &&
+        object.material instanceof MeshBasicMaterial &&
+        object.material.polygonOffset &&
+        object.material.map === null
+      ) {
+        painted.push(object);
+      }
+    });
+    expect(painted).toHaveLength(1);
+    const position = painted[0]!.geometry.getAttribute('position');
+    const vertices = Array.from({ length: position.count }, (_, index) => ({ x: position.getX(index), z: position.getZ(index) }));
+    const nearestJunction = (x: number, z: number): number =>
+      Math.min(...world.network.junctions.map((junction) => Math.hypot(junction.x - x, junction.z - z)));
+
+    // The solid lines keep to a street's edges: paint across its middle is a crossing's stripe.
+    let arms = 0;
+    for (const junction of world.network.junctions) {
+      for (const member of junction.members) {
+        const road = world.roads[member.roadIndex]!;
+        if (road.kind !== 'street') {
+          continue;
+        }
+        arms++;
+        const across = vertices.filter((vertex) => {
+          const fromJunction = Math.hypot(vertex.x - junction.x, vertex.z - junction.z);
+          return fromJunction > 6 && fromJunction < 30 && road.distanceTo(vertex.x, vertex.z) < 1;
+        });
+        expect(across.length, `${road.id} at ${junction.x},${junction.z}`).toBeGreaterThanOrEqual(4);
+      }
+    }
+    expect(arms).toBeGreaterThan(0);
+    for (const road of world.roads.filter((candidate) => candidate.kind === 'rural')) {
+      const middle = vertices.filter((vertex) => road.distanceTo(vertex.x, vertex.z) < 1 && nearestJunction(vertex.x, vertex.z) > 40);
+      expect(middle, road.id).toHaveLength(0);
+    }
+  });
+
+  it('samples the ground\'s grass and meadow twice each, or once each without ground detail', () => {
+    /** The ground's material: the one that lays meadow blotches over the grass. */
+    const groundOf = (scene: Scene): MeshBasicMaterial => {
+      let ground: MeshBasicMaterial | undefined;
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
+          const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '#include <common>\n#include <map_fragment>' };
+          object.material.onBeforeCompile(probe as never, undefined as never);
+          if ('meadow' in probe.uniforms) {
+            ground = object.material;
+          }
+        }
+      });
+      return ground!;
+    };
+    const detailed = new Scene();
+    const plain = new Scene();
+    new TrackView(detailed, world);
+    new TrackView(plain, world, { groundDetail: false });
+
+    expect(groundOf(detailed).defines).toHaveProperty('GROUND_DETAIL');
+    expect(groundOf(plain).defines ?? {}).not.toHaveProperty('GROUND_DETAIL');
+    const shader = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '#include <common>\n#include <map_fragment>' };
+    groundOf(plain).onBeforeCompile(shader as never, undefined as never);
+    expect(shader.fragmentShader).toContain('uniform sampler2D meadow;');
+    expect(shader.fragmentShader).toContain('#ifdef GROUND_DETAIL');
   });
 
   it('paves the turning circle at each dead end with the road, in the same draw calls', () => {
@@ -109,12 +193,47 @@ describe('TrackView', () => {
     expect(shadows).toBe(world.trees.length);
   });
 
+  it('sways the trees\' crowns in the wind, harder in the rain, and not their trunks', () => {
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const crowns = new Set<MeshLambertMaterial>();
+    const trunks = new Set<MeshLambertMaterial>();
+    scene.getObjectByName('forest')!.traverse((object) => {
+      if (object instanceof InstancedMesh && object.material instanceof MeshLambertMaterial) {
+        (object.material.flatShading ? crowns : trunks).add(object.material);
+      }
+    });
+    expect(crowns.size).toBe(1);
+    const crown = [...crowns][0]!;
+    const shader = {
+      uniforms: {} as Record<string, { value: number }>,
+      vertexShader: '#include <common>\n#include <project_vertex>',
+      fragmentShader: '',
+    };
+    crown.onBeforeCompile(shader as never, undefined as never);
+    // Swayed in the world, after the tree is placed: the higher up the crown, the more.
+    expect(shader.vertexShader).not.toContain('#include <project_vertex>');
+    expect(shader.vertexShader).toContain('mvPosition = instanceMatrix * mvPosition');
+    expect(shader.vertexShader).toContain('up * up');
+    expect(crown.customProgramCacheKey()).toBe('tree-crown-wind');
+    for (const trunk of trunks) {
+      expect(trunk.customProgramCacheKey()).not.toBe('tree-crown-wind');
+    }
+
+    view.update(1.5);
+    view.update(0.5);
+    expect(shader.uniforms['windTime']!.value).toBeCloseTo(2, 9);
+    const calm = shader.uniforms['windStrength']!.value;
+    view.setWetness(1);
+    expect(shader.uniforms['windStrength']!.value).toBeGreaterThan(calm * 2);
+  });
+
   it('draws four textured walls and a roof for every building', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     let wallVertices = 0;
     scene.traverse((object) => {
-      if (object instanceof Mesh && !(object instanceof InstancedMesh) && object.geometry.getAttribute('color') !== undefined) {
+      if (isFacade(object)) {
         const positions = object.geometry.getAttribute('position');
         let vertical = 0;
         for (let i = 0; i < positions.count; i += 4) {
@@ -207,7 +326,7 @@ describe('TrackView', () => {
     let walls = 0;
 
     scene.traverse((object) => {
-      if (!(object instanceof Mesh) || object instanceof InstancedMesh || object.geometry.getAttribute('color') === undefined) {
+      if (!isFacade(object)) {
         return;
       }
       const positions = object.geometry.getAttribute('position');
@@ -241,7 +360,11 @@ describe('TrackView', () => {
     const wettable: MeshBasicMaterial[] = [];
     scene.traverse((object) => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
-        wettable.push(object.material);
+        const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '' };
+        object.material.onBeforeCompile(probe as never, undefined as never);
+        if ('wetness' in probe.uniforms) {
+          wettable.push(object.material);
+        }
       }
     });
     // Only the asphalt: the shoulders, markings and ground stay as they are.

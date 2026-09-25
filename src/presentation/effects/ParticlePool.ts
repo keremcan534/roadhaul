@@ -14,6 +14,7 @@ import { SeededRandom } from '../../core/random/SeededRandom';
 import { puffImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import type { PrelitMaterials } from '../world/lighting';
+import { scattersLamplight } from '../world/LampLighting';
 
 /**
  * A puff to throw into the air. Emitters keep one and fill it in for each
@@ -141,6 +142,8 @@ export class ParticlePool {
       transparent: true,
       depthWrite: false,
     });
+    // Smoke, dust and spray light up in lamplight, whichever way they drift.
+    scattersLamplight(this.material);
     prelit?.add(this.material);
     this.mesh = new Mesh(this.geometry, this.material);
     // The puffs are written in world space every frame: bounds computed once would go stale.

@@ -33,8 +33,26 @@ export interface GameConfig {
     readonly rainDensity: Fraction;
     /** Share of the exhaust, dust and spray puffs the truck throws. */
     readonly particleDensity: Fraction;
+    /** Share of the grass, flowers and bushes on the verges, and how far away they are drawn. */
+    readonly vegetationDensity: Fraction;
     /** Glows round lit lamps at night. */
     readonly lampGlows: boolean;
+    /**
+     * The renderer's last steps (PostProcessing): the scene drawn with its
+     * lights past white, then graded by the weather, with darker corners and
+     * smooth edges. Off: the scene goes straight to the screen.
+     */
+    readonly postProcessing: boolean;
+    /** With postProcessing: bright lights (lamps, the low sun) bloom into a soft glow. */
+    readonly bloom: boolean;
+    /** With postProcessing: multisampling of the scene (4: smooth edges); 0 smooths them in the colour pass (FXAA). */
+    readonly msaaSamples: number;
+    /**
+     * The sun's real-time shadows of the truck and the traffic, round the
+     * truck: the shadow map's size in texels (a power of two), or 0 for
+     * none (the soft shadows under them stay either way).
+     */
+    readonly shadowMapSize: number;
   };
   readonly missions: {
     /** Seconds the truck must stand still in a bay to load or unload (spec §12). */
@@ -129,7 +147,12 @@ export interface QualityPreset {
   readonly minResolutionScale: Fraction;
   readonly rainDensity: Fraction;
   readonly particleDensity: Fraction;
+  readonly vegetationDensity: Fraction;
   readonly lampGlows: boolean;
+  readonly postProcessing: boolean;
+  readonly bloom: boolean;
+  readonly msaaSamples: number;
+  readonly shadowMapSize: number;
   /** NPC vehicles around the truck. */
   readonly trafficVehicles: number;
 }
@@ -140,7 +163,12 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     minResolutionScale: 0.7,
     rainDensity: 0.5,
     particleDensity: 0.5,
+    vegetationDensity: 0.45,
     lampGlows: false,
+    postProcessing: false,
+    bloom: false,
+    msaaSamples: 0,
+    shadowMapSize: 0,
     trafficVehicles: 8,
   },
   medium: {
@@ -148,7 +176,12 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     minResolutionScale: 0.6,
     rainDensity: 0.75,
     particleDensity: 0.75,
+    vegetationDensity: 0.75,
     lampGlows: true,
+    postProcessing: true,
+    bloom: true,
+    msaaSamples: 0,
+    shadowMapSize: 0,
     trafficVehicles: 12,
   },
   high: {
@@ -156,12 +189,21 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     minResolutionScale: 0.6,
     rainDensity: 1,
     particleDensity: 1,
+    vegetationDensity: 1,
     lampGlows: true,
+    postProcessing: true,
+    bloom: true,
+    msaaSamples: 4,
+    shadowMapSize: 2048,
     trafficVehicles: 16,
   },
 });
 
-/** `config` with the graphics preset `level`: resolution, rain, smoke and dust, glows and how much traffic. */
+/**
+ * `config` with the graphics preset `level`: resolution, rain, smoke and
+ * dust, glows, the colour pass and its bloom and smoothing, the sun's
+ * shadows, and how much traffic.
+ */
 export function applyQualityPreset(config: GameConfig, level: QualityLevel): GameConfig {
   const { trafficVehicles, ...rendering } = QUALITY_PRESETS[level];
   return {
@@ -185,7 +227,12 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     minResolutionScale: 0.6,
     rainDensity: 1,
     particleDensity: 1,
+    vegetationDensity: 1,
     lampGlows: true,
+    postProcessing: true,
+    bloom: true,
+    msaaSamples: 4,
+    shadowMapSize: 2048,
   },
   missions: {
     loadingSeconds: 3,
@@ -257,7 +304,21 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   );
   validator.fraction(rendering.rainDensity, 'rendering.rainDensity');
   validator.fraction(rendering.particleDensity, 'rendering.particleDensity');
+  validator.fraction(rendering.vegetationDensity, 'rendering.vegetationDensity');
   validator.boolean(rendering.lampGlows, 'rendering.lampGlows');
+  validator.boolean(rendering.postProcessing, 'rendering.postProcessing');
+  validator.boolean(rendering.bloom, 'rendering.bloom');
+  validator.check(
+    Number.isInteger(rendering.msaaSamples) && rendering.msaaSamples >= 0 && rendering.msaaSamples <= 8,
+    'rendering.msaaSamples',
+    'must be a whole number from 0 to 8',
+  );
+  validator.check(
+    rendering.shadowMapSize === 0 ||
+      (Number.isInteger(Math.log2(rendering.shadowMapSize)) && rendering.shadowMapSize >= 256 && rendering.shadowMapSize <= 4096),
+    'rendering.shadowMapSize',
+    'must be 0 or a power of two from 256 to 4096',
+  );
   validator.check(
     Number.isFinite(missions.loadingSeconds) && missions.loadingSeconds > 0 && missions.loadingSeconds <= 30,
     'missions.loadingSeconds',

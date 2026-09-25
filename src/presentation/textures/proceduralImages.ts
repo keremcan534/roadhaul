@@ -14,7 +14,11 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Tileable meadow grass: blotches of greens and dry patches, with fine grain. */
+/**
+ * Tileable meadow grass: small blotches of greens with fine grain, even
+ * across the tile, so nothing larger repeats where it is tiled (the ground
+ * lays larger lusher and drier patches over it).
+ */
 export function grassImage(size = 256, seed = 11): PixelImage {
   const image = createImage(size, size);
   const dark: Rgb = [52, 86, 36];
@@ -24,10 +28,10 @@ export function grassImage(size = 256, seed = 11): PixelImage {
     for (let x = 0; x < size; x++) {
       const u = x / size;
       const v = y / size;
-      const patches = fractalNoise(u, v, 4, 3, seed);
+      const patches = fractalNoise(u, v, 8, 3, seed);
       const detail = fractalNoise(u, v, 24, 2, seed + 7);
-      const dryness = smoothstep(0.58, 0.8, fractalNoise(u, v, 3, 2, seed + 13));
-      const base = mixRgb(mixRgb(dark, light, patches * 0.65 + detail * 0.35), dry, dryness * 0.55);
+      const dryness = smoothstep(0.62, 0.85, fractalNoise(u, v, 12, 2, seed + 13));
+      const base = mixRgb(mixRgb(dark, light, patches * 0.55 + detail * 0.45), dry, dryness * 0.35);
       // Blades: per-pixel grain, stretched a little vertically by sampling pairs of rows.
       const blade = 0.8 + 0.4 * grain(x, y >> 1, seed + 3);
       blendPixel(image, x, y, [base[0] * blade, base[1] * blade, base[2] * blade], 1);
@@ -245,6 +249,50 @@ export function puffImage(size = 64, seed = 71): PixelImage {
 }
 
 /**
+ * Soft blotches that tile, grey (not sRGB: a factor): where a meadow grows
+ * lusher (dark) or drier (light), on a scale of tens of meters.
+ */
+export function meadowImage(size = 64, seed = 89): PixelImage {
+  const image = createImage(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const value = Math.round(255 * smoothstep(0.25, 0.75, fractalNoise((x + 0.5) / size, (y + 0.5) / size, 4, 3, seed)));
+      const i = (y * size + x) * 4;
+      image.data[i] = value;
+      image.data[i + 1] = value;
+      image.data[i + 2] = value;
+    }
+  }
+  return image;
+}
+
+/**
+ * One puff of a cumulus cloud, for the sky's billboards. Alpha is how dense
+ * it is: a soft ball whose rim is broken into billows by noise, clear well
+ * inside the square. The grey (not sRGB: a factor) mottles the light on it,
+ * brighter billows and darker folds, around 0.75.
+ */
+export function cloudPuffImage(size = 64, seed = 97): PixelImage {
+  const image = createImage(size, size, [255, 255, 255], 0);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = (x + 0.5) / size;
+      const v = (y + 0.5) / size;
+      const r = Math.hypot(u - 0.5, v - 0.5) * 2;
+      const rim = 0.62 + 0.3 * fractalNoise(u, v, 3, 3, seed);
+      const density = (1 - smoothstep(rim - 0.5, rim, r)) * (0.82 + 0.18 * fractalNoise(u, v, 6, 2, seed + 5));
+      const billows = Math.round(255 * (0.55 + 0.45 * fractalNoise(u, v, 5, 3, seed + 11)));
+      const i = (y * size + x) * 4;
+      image.data[i] = billows;
+      image.data[i + 1] = billows;
+      image.data[i + 2] = billows;
+      image.data[i + 3] = Math.round(255 * Math.min(1, density));
+    }
+  }
+  return image;
+}
+
+/**
  * The full moon, filling the square but for a pixel round it: pale highlands,
  * darker seas, a little grain, and a rim a shade darker than the middle. The
  * corners are transparent (in the highlands' colour, so filtering leaves no
@@ -318,18 +366,6 @@ export function fieldRowsImage(size = 64, rows = 4, seed = 61): PixelImage {
   return image;
 }
 
-/** A street lamp's pool of light on the ground: white, brightest under the lamp, fading smoothly to the rim. */
-export function lightPoolImage(size = 64): PixelImage {
-  const image = createImage(size, size, [255, 255, 255], 0);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const r = Math.hypot((x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5) * 2;
-      image.data[(y * size + x) * 4 + 3] = Math.round(255 * (1 - smoothstep(0, 1, r)) ** 1.6);
-    }
-  }
-  return image;
-}
-
 /** A soft round shadow (black with falling-off alpha) for trees and the truck. */
 export function softShadowImage(size = 64): PixelImage {
   const image = createImage(size, size, [0, 0, 0], 0);
@@ -337,6 +373,34 @@ export function softShadowImage(size = 64): PixelImage {
     for (let x = 0; x < size; x++) {
       const r = Math.hypot((x + 0.5) / size - 0.5, (y + 0.5) / size - 0.5) * 2;
       image.data[(y * size + x) * 4 + 3] = Math.round(255 * (1 - smoothstep(0.25, 1, r)) ** 1.4);
+    }
+  }
+  return image;
+}
+
+/**
+ * Clay roof tiles (u along the eaves, v up the slope): rows of rounded
+ * terracotta tiles, each row shifted half a tile from the one below and
+ * shadowed where the row above laps over it, every tile a little different.
+ * Four tiles across and four rows up; light, for a vertex colour to tint.
+ */
+export function roofTilesImage(size = 64, seed = 101): PixelImage {
+  const image = createImage(size, size);
+  const clay: Rgb = [196, 104, 70];
+  const columns = 4;
+  const rows = 4;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const v = ((y + 0.5) / size) * rows;
+      const row = Math.floor(v);
+      const up = v - row;
+      const u = ((x + 0.5) / size) * columns + (row % 2) * 0.5;
+      const column = Math.floor(u);
+      const across = u - column;
+      const crown = 0.7 + 0.3 * Math.sin(across * Math.PI);
+      const lapped = 1 - 0.38 * smoothstep(0.78, 1, up);
+      const light = crown * lapped * (0.88 + 0.22 * grain(column % columns, row, seed));
+      blendPixel(image, x, y, [clay[0] * light, clay[1] * light, clay[2] * light], 1);
     }
   }
   return image;

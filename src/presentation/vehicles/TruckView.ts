@@ -1,5 +1,4 @@
 import {
-  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -17,7 +16,6 @@ import {
   PlaneGeometry,
   Quaternion,
   TorusGeometry,
-  ShaderMaterial,
   Vector3,
   type Material,
   type Scene,
@@ -33,6 +31,8 @@ import type { VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
 import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
+import type { SkyUniforms } from '../world/EnvironmentView';
+import { reflectSky, type SkyReflectionOptions } from '../world/skyReflection';
 import { cabGeometry } from './cabGeometry';
 import { LampGlows } from './LampGlows';
 
@@ -73,13 +73,6 @@ const LAMP_NIGHT_BOOST = 1.5;
 const HEADLIGHT_GLOW = 0xfff1cf;
 const TAIL_LIGHT_GLOW = 0xff2a1a;
 const GLOW_SIZE_METERS = 1.8;
-/** The headlights' pool of light on the road: its extent ahead of the bumper and across, and its colour. */
-const POOL_LENGTH_METERS = 40;
-const POOL_WIDTH_METERS = 20;
-/** Above the road's markings and the GPS line, so it lights them too. */
-const POOL_Y = 0.11;
-const POOL_COLOR = 0xffe7b8;
-const POOL_STRENGTH = 0.5;
 /** Upgraded parts (TruckViewOptions.looks), by level 0..3: how much taller the stacks stand, meters. */
 const STACK_EXTRA_HEIGHT = [0, 0.12, 0.22, 0.34] as const;
 /** The fuel tank's length and radius, meters; at level 3 a second one hangs on the other side. */
@@ -87,12 +80,12 @@ const TANK_LENGTH = [1.1, 1.4, 1.7, 1.7] as const;
 const TANK_RADIUS = [0.28, 0.3, 0.31, 0.31] as const;
 /** Brake calipers on the wheels: none, yellow, orange, red (they stand out on the gold rims too). */
 const CALIPER_COLORS = [0, 0xffd21f, 0xff7a1a, 0xe0281f] as const;
-/** The rims: plain, polished, chrome, gold. */
+/** The rims: plain, polished, chrome, gold; `mirror` is how much of the sky they mirror head-on (skyReflection). */
 const RIM_FINISHES = [
-  { color: 0xffffff, shininess: 90, specular: 0x111111 },
-  { color: 0xe4ecf4, shininess: 120, specular: 0x555555 },
-  { color: 0xffffff, shininess: 200, specular: 0xffffff },
-  { color: 0xf0c050, shininess: 160, specular: 0xfff0c0 },
+  { color: 0xffffff, shininess: 90, specular: 0x111111, mirror: 0.12 },
+  { color: 0xe4ecf4, shininess: 120, specular: 0x555555, mirror: 0.35 },
+  { color: 0xffffff, shininess: 200, specular: 0xffffff, mirror: 0.75 },
+  { color: 0xf0c050, shininess: 160, specular: 0xfff0c0, mirror: 0.6 },
 ] as const;
 /** How far the body sits lower on an upgraded suspension, meters. */
 const STANCE_DROP = [0, 0.04, 0.07, 0.1] as const;
@@ -121,6 +114,10 @@ export interface TruckViewOptions {
   readonly paint?: number;
   /** Each upgraded part at its level (UpgradeDefinition.look); parts left out are as built. */
   readonly looks?: Partial<TruckLooks>;
+  /** The truck casts the sun's real-time shadows (the high preset's shadow map). Default: false. */
+  readonly castShadows?: boolean;
+  /** The sky its paint, glass and chrome mirror (EnvironmentView.sky); without it they mirror nothing. */
+  readonly sky?: SkyUniforms;
 }
 
 /**
@@ -157,11 +154,11 @@ export class TruckView {
   private readonly wheels: InstancedMesh;
   /** Brake calipers on the wheels' outer faces (a brakes upgrade); they steer but do not spin. */
   private readonly calipers: InstancedMesh | null = null;
-  /** Night: brighter lamps, their glows, and the headlights' light on the road ahead. */
+  /** Night: brighter lamps and their glows (their light on the world is LampLighting's, from headlamps()). */
   private readonly lampMaterial: MeshBasicMaterial;
   private readonly glows: LampGlows;
-  private readonly headlightPool: Mesh;
-  private readonly poolIntensity = { value: 0 };
+  /** In the model: the left headlamp (the right one mirrors it across x = 0). */
+  private readonly headlampAt: readonly [number, number, number];
   private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
@@ -373,22 +370,37 @@ export class TruckView {
 
     const accentRgb: Rgb = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
     this.lampMaterial = this.track(new MeshBasicMaterial({ vertexColors: true }));
+    // Glossy paint and glass mirror the sky the flatter they are seen; chrome and metal mirror it in their colour.
+    const shiny = (material: MeshPhongMaterial, reflection: SkyReflectionOptions): MeshPhongMaterial =>
+      options.sky === undefined ? material : reflectSky(material, options.sky, reflection);
     const materials: Readonly<Record<PartMaterial, Material>> = {
-      paint: this.track(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 })),
+      paint: this.track(shiny(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 }), { facing: 0.05 })),
       dark: this.track(new MeshLambertMaterial({ color: 0x2b2e33 })),
-      metal: this.track(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd })),
-      glass: this.track(new MeshPhongMaterial({ color: 0x1b2733, shininess: 140, specular: 0x9aa7b3 })),
+      metal: this.track(
+        shiny(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd }), { facing: 0.5, metal: true }),
+      ),
+      glass: this.track(shiny(new MeshPhongMaterial({ color: 0x1b2733, shininess: 140, specular: 0x9aa7b3 }), { facing: 0.07 })),
       lamps: this.lampMaterial,
       grille: this.track(new MeshLambertMaterial({ map: this.texture(toTexture(grilleImage())) })),
-      panels: this.track(new MeshPhongMaterial({ color: 0xf2f2ee, shininess: 25, specular: 0x222222 })),
+      panels: this.track(
+        shiny(new MeshPhongMaterial({ color: 0xf2f2ee, shininess: 25, specular: 0x222222 }), { facing: 0.03, strength: 0.5 }),
+      ),
       livery: this.track(
-        new MeshPhongMaterial({ map: this.texture(toTexture(liveryImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+        shiny(
+          new MeshPhongMaterial({ map: this.texture(toTexture(liveryImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          { facing: 0.03, strength: 0.5 },
+        ),
       ),
       doors: this.track(
-        new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+        shiny(
+          new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          { facing: 0.03, strength: 0.5 },
+        ),
       ),
       deck: this.track(new MeshLambertMaterial({ color: 0x6e5238 })),
-      chrome: this.track(new MeshPhongMaterial({ color: CHROME_COLOR, shininess: 160, specular: 0xffffff })),
+      chrome: this.track(
+        shiny(new MeshPhongMaterial({ color: CHROME_COLOR, shininess: 160, specular: 0xffffff }), { facing: 0.85, metal: true }),
+      ),
       mudflap: this.track(new MeshLambertMaterial({ color: MUDFLAP_COLOR })),
     };
     for (const [material, geometries] of parts) {
@@ -513,14 +525,25 @@ export class TruckView {
     }
     this.glows.setCount(4);
     this.body.add(this.glows.points);
-    this.headlightPool = this.createHeadlightPool(frontZ, headlightX);
+    // Where the headlights light the world from (LampLighting): on the body, as low as the suspension sets it.
+    this.headlampAt = [headlightX, bumperTop + 0.2 - drop, frontZ + 0.12];
 
     // An upgraded suspension sets the body lower over its wheels.
     this.body.position.y = -drop;
     this.cabin.position.y = -drop;
-    this.root.add(shadow, this.headlightPool, this.body, this.cabin, this.wheels);
+    this.root.add(shadow, this.body, this.cabin, this.wheels);
     if (this.calipers !== null) {
       this.root.add(this.calipers);
+    }
+    if (options.castShadows === true) {
+      // The truck itself, not its soft shadow, the light on the road or the glows.
+      for (const part of [this.body, this.cabin, this.wheels]) {
+        part.traverse((object) => {
+          if (object instanceof Mesh) {
+            object.castShadow = true;
+          }
+        });
+      }
     }
     scene.add(this.root);
   }
@@ -569,8 +592,8 @@ export class TruckView {
 
   /**
    * How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night):
-   * brighter lamps, a glow round them, and the headlights' pool of light on
-   * the road ahead. Cheap to call every frame.
+   * brighter lamps and a glow round them. Their light on the world is
+   * LampLighting's, from headlamps(). Cheap to call every frame.
    */
   setLamps(level: number): void {
     if (level === this.lamps) {
@@ -580,8 +603,19 @@ export class TruckView {
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
     this.cabinMaterial.color.setScalar(1 - level * (1 - CABIN_NIGHT_LEVEL));
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
-    this.poolIntensity.value = level * POOL_STRENGTH;
-    this.headlightPool.visible = level > 0.01;
+  }
+
+  /**
+   * Where the headlamps are in the world, left and right, and the way the
+   * truck faces (level), as of the last update(): what lights the road ahead.
+   * Writes into the arguments; allocation-free.
+   */
+  headlamps(left: Vector3, right: Vector3, forward: Vector3): void {
+    const [x, y, z] = this.headlampAt;
+    this.toWorld(x, y, z, left);
+    this.toWorld(-x, y, z, right);
+    const heading = this.root.rotation.y;
+    forward.set(Math.sin(heading), 0, Math.cos(heading));
   }
 
   /** From the driver's seat the windshield would block the view: swap it for the cab's inside. */
@@ -595,60 +629,6 @@ export class TruckView {
     for (const resource of this.resources) {
       resource.dispose();
     }
-  }
-
-  /**
-   * The headlights' light on the road: two beams from the lamps `lampX` either
-   * side of the middle, widening ahead of the bumper at `frontZ` and fading
-   * out with distance. Added onto the road, so it lights whatever lies there.
-   */
-  private createHeadlightPool(frontZ: number, lampX: number): Mesh {
-    const geometry = new PlaneGeometry(POOL_WIDTH_METERS, POOL_LENGTH_METERS)
-      .rotateX(-Math.PI / 2)
-      .translate(0, POOL_Y, frontZ + POOL_LENGTH_METERS / 2);
-    const material = new ShaderMaterial({
-      uniforms: { intensity: this.poolIntensity, color: { value: new Color(POOL_COLOR) } },
-      transparent: true,
-      depthWrite: false,
-      blending: AdditiveBlending,
-      // The road's layers are pulled toward the camera (TrackView): pull the light further, or far off, where
-      // the road is seen at a grazing angle, the road would cover it.
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-      polygonOffsetUnits: -12,
-      vertexShader: /* glsl */ `
-        varying vec2 vPlace;
-        void main() {
-          // Across the truck, and ahead of its front bumper, in meters.
-          vPlace = vec2(position.x, position.z - ${frontZ.toFixed(3)});
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */ `
-        #define LAMP_X ${lampX.toFixed(3)}
-        #define LENGTH ${POOL_LENGTH_METERS.toFixed(1)}
-        #define HALF_WIDTH ${(POOL_WIDTH_METERS / 2).toFixed(1)}
-        uniform float intensity;
-        uniform vec3 color;
-        varying vec2 vPlace;
-        float beam(float x, float ahead, float lampX) {
-          float across = (x - lampX) / (0.35 + ahead * 0.18);
-          return exp(-across * across * 1.5);
-        }
-        void main() {
-          float ahead = vPlace.y;
-          float light = min(beam(vPlace.x, ahead, -LAMP_X) + beam(vPlace.x, ahead, LAMP_X), 1.3);
-          float distance = ahead / 16.0;
-          light *= smoothstep(0.3, 4.0, ahead) * (1.0 - smoothstep(LENGTH * 0.5, LENGTH - 1.0, ahead)) / (1.0 + distance * distance);
-          light *= 1.0 - smoothstep(0.7, 1.0, abs(vPlace.x) / HALF_WIDTH);
-          gl_FragColor = vec4(color * light * intensity, 1.0);
-        }
-      `,
-    });
-    const pool = new Mesh(this.track(geometry), this.track(material));
-    pool.name = 'headlight-pool';
-    pool.visible = false;
-    return pool;
   }
 
   /** Tyres with a rim on each face, the rims in the finish of the tyres upgrade's `level`: two draw calls for all the wheels. */
@@ -669,6 +649,9 @@ export class TruckView {
         specular: finish.specular,
       }),
     );
+    if (this.options.sky !== undefined) {
+      reflectSky(rim, this.options.sky, { facing: finish.mirror, metal: true });
+    }
     return this.track(
       new InstancedMesh(this.track(wheel), [this.track(new MeshLambertMaterial({ color: 0x1d1d1f })), rim, rim], count),
     );
@@ -677,7 +660,11 @@ export class TruckView {
   /** A caliper on each wheel's outer face, over the rim's upper rear: one draw call for them all. */
   private createCalipers(radius: number, count: number, color: number): InstancedMesh {
     const caliper = new BoxGeometry(0.03, radius * 0.34, radius * 0.5).translate(0, radius * 0.36, -radius * 0.22);
-    const mesh = new InstancedMesh(this.track(caliper), this.track(new MeshPhongMaterial({ color, shininess: 70 })), count);
+    const material = new MeshPhongMaterial({ color, shininess: 70 });
+    if (this.options.sky !== undefined) {
+      reflectSky(material, this.options.sky, { facing: 0.05 });
+    }
+    const mesh = new InstancedMesh(this.track(caliper), this.track(material), count);
     mesh.name = 'brake-calipers';
     return this.track(mesh);
   }

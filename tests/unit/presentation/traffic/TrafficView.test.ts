@@ -1,4 +1,4 @@
-import { Box3, Color, InstancedMesh, Matrix4, Points, Scene, Vector3, type BufferAttribute, type MeshBasicMaterial } from 'three';
+import { Box3, Color, InstancedMesh, Matrix4, Points, Quaternion, Scene, Vector3, type BufferAttribute, type MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { TRAFFIC_VEHICLES } from '../../../../src/data/content/trafficVehicles';
 import { TrafficSimulation } from '../../../../src/domain/traffic/TrafficSimulation';
@@ -34,6 +34,10 @@ function lampsOf(scene: Scene): InstancedMesh {
   return scene.getObjectByName('traffic:lamps') as InstancedMesh;
 }
 
+function shadowsOf(scene: Scene): InstancedMesh {
+  return scene.getObjectByName('traffic:shadows') as InstancedMesh;
+}
+
 function glowsOf(scene: Scene): Points {
   let glows: Points | null = null;
   scene.traverse((object) => {
@@ -43,11 +47,11 @@ function glowsOf(scene: Scene): Points {
 }
 
 describe('TrafficView', () => {
-  it('draws all traffic in one draw call per kind of vehicle, one for all their lamps and one for their glow at night', () => {
+  it('draws all traffic in one draw call per kind of vehicle, one for all their lamps, one for their shadows and one for their glow at night', () => {
     const scene = new Scene();
     new TrafficView(scene, TRAFFIC_VEHICLES, 16);
 
-    expect(drawCallCount(scene)).toBe(TRAFFIC_VEHICLES.length + 2);
+    expect(drawCallCount(scene)).toBe(TRAFFIC_VEHICLES.length + 3);
     expect(glowsOf(scene).visible).toBe(false);
     for (const mesh of meshesOf(scene)) {
       expect(mesh.count).toBe(0);
@@ -55,7 +59,7 @@ describe('TrafficView', () => {
     }
   });
 
-  it('shapes every kind to its size, standing on the ground and facing +Z, in under 400 triangles', () => {
+  it('shapes every kind to its size, standing on the ground and facing +Z, rounded, in under 600 triangles', () => {
     for (const type of TRAFFIC_VEHICLES) {
       const geometry = vehicleGeometry(type);
       const box = new Box3().setFromBufferAttribute(geometry.getAttribute('position') as BufferAttribute);
@@ -65,7 +69,12 @@ describe('TrafficView', () => {
       expect(box.max.x - box.min.x, type.id).toBeLessThan(type.widthMeters + 0.1);
       expect(box.max.z - box.min.z, type.id).toBeLessThan(type.lengthMeters + 0.05);
       expect(box.max.z - box.min.z, type.id).toBeGreaterThan(type.lengthMeters - 0.1);
-      expect(geometry.index!.count / 3, type.id).toBeLessThan(400);
+      expect(geometry.index!.count / 3, type.id).toBeLessThan(600);
+      // Every part mirrors the sky as much as it shines: glossy paint and glass, dull tyres.
+      const shine = geometry.getAttribute('shine');
+      expect(shine.count, type.id).toBe(geometry.getAttribute('position').count);
+      const shines = new Set(Array.from(shine.array as Float32Array));
+      expect([...shines].sort(), type.id).toEqual(expect.arrayContaining([0, 1]));
       geometry.dispose();
     }
   });
@@ -112,7 +121,7 @@ describe('TrafficView', () => {
     cars.getColorAt(0, paint);
     expect(paint.getHex()).toBe(new Color(sim.color[car]).getHex());
     // Other kinds have nothing to draw.
-    const others = meshesOf(scene).filter((mesh) => mesh !== cars && mesh !== lampsOf(scene));
+    const others = meshesOf(scene).filter((mesh) => mesh !== cars && mesh !== lampsOf(scene) && mesh !== shadowsOf(scene));
     expect(others.every((mesh) => mesh.count === 0)).toBe(true);
     view.update(null, 1);
     expect(cars.count).toBe(0);
@@ -177,6 +186,96 @@ describe('TrafficView', () => {
 
     expect(lampsOf(scene).count).toBe(4);
     expect(glowsOf(scene).visible).toBe(false);
+  });
+
+  it('sets every vehicle on a soft shadow a little larger than itself, turned with it', () => {
+    const scene = new Scene();
+    const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8);
+    const sim = traffic();
+    const car = sim.addVehicle(0, north, 50, 10);
+    sim.addVehicle(0, north, 150, 10);
+    sim.update(1 / 60, truck, footprint);
+    const shadows = shadowsOf(scene);
+    expect((shadows.material as MeshBasicMaterial).transparent).toBe(true);
+    expect((shadows.material as MeshBasicMaterial).depthWrite).toBe(false);
+
+    view.update(sim, 1);
+
+    expect(shadows.count).toBe(2);
+    const matrix = new Matrix4();
+    shadows.getMatrixAt(0, matrix);
+    const position = new Vector3();
+    const scale = new Vector3();
+    matrix.decompose(position, new Quaternion(), scale);
+    expect(position.x).toBeCloseTo(sim.x[car]!, 3);
+    expect(position.z).toBeCloseTo(sim.z[car]!, 3);
+    const type = TRAFFIC_VEHICLES[0]!;
+    expect(scale.x).toBeGreaterThan(type.widthMeters);
+    expect(scale.z).toBeGreaterThan(type.lengthMeters);
+    view.update(null, 1);
+    expect(shadows.count).toBe(0);
+  });
+
+  it('casts the sun\'s real-time shadows only when asked, never from the lamps or the soft shadows', () => {
+    const plain = new Scene();
+    const shadowed = new Scene();
+    new TrafficView(plain, TRAFFIC_VEHICLES, 8);
+    new TrafficView(shadowed, TRAFFIC_VEHICLES, 8, { castShadows: true });
+
+    expect(meshesOf(plain).some((mesh) => mesh.castShadow)).toBe(false);
+    const casting = meshesOf(shadowed).filter((mesh) => mesh.castShadow).map((mesh) => mesh.name);
+    expect(casting).toEqual(TRAFFIC_VEHICLES.map((type) => `traffic:${type.id}`));
+  });
+
+  it('says where the headlamps of the vehicles nearest a point are, nearest first, fading out rather than popping', () => {
+    const view = new TrafficView(new Scene(), TRAFFIC_VEHICLES, 8);
+    const sim = traffic();
+    const near = sim.addVehicle(0, north, 50, 10);
+    const middle = sim.addVehicle(0, north, 150, 10);
+    const far = sim.addVehicle(0, north, 160, 10);
+    sim.update(1 / 60, truck, footprint);
+    view.update(sim, 1);
+    const lamps = Array.from({ length: 4 }, () => new Vector3());
+    const forwards = Array.from({ length: 2 }, () => new Vector3());
+    const strengths = [0, 0];
+    const from = { x: sim.x[near]!, z: sim.z[near]! };
+    const distance = (vehicle: number): number => Math.hypot(sim.x[vehicle]! - from.x, sim.z[vehicle]! - from.z);
+
+    const found = view.headlampsNear(from.x, from.z, 160, lamps, forwards, strengths);
+
+    expect(found).toBe(2);
+    // The nearest first: its front lamps, just ahead of it, left (+X, facing +Z) then right, at the lamps' height.
+    const forwardX = Math.sin(sim.heading[near]!);
+    const forwardZ = Math.cos(sim.heading[near]!);
+    expect(forwards[0]!.x).toBeCloseTo(forwardX, 6);
+    expect(forwards[0]!.y).toBe(0);
+    expect(forwards[0]!.z).toBeCloseTo(forwardZ, 6);
+    const [frontLeft, frontRight] = vehicleLamps(TRAFFIC_VEHICLES[0]!);
+    for (const [index, lamp] of [frontLeft!, frontRight!].entries()) {
+      const at = lamps[index]!;
+      const aheadMeters = (at.x - from.x) * forwardX + (at.z - from.z) * forwardZ;
+      const leftMeters = (at.x - from.x) * forwardZ - (at.z - from.z) * forwardX;
+      expect(aheadMeters).toBeCloseTo(lamp.glow[2], 4);
+      expect(leftMeters).toBeCloseTo(lamp.glow[0], 4);
+      expect(at.y).toBeCloseTo(lamp.glow[1], 6);
+    }
+    expect(strengths[0]).toBe(1);
+    // The farthest shown makes way for the next one out as it comes as near: half-way there, 10 m of 20 apart.
+    const second = lamps[2]!.clone().add(lamps[3]!).multiplyScalar(0.5);
+    expect(Math.hypot(second.x - sim.x[middle]!, second.z - sim.z[middle]!)).toBeLessThan(TRAFFIC_VEHICLES[0]!.lengthMeters);
+    expect(strengths[1]).toBeCloseTo(Math.min(1, (distance(far) - distance(middle)) / 20), 4);
+    expect(strengths[1]).toBeGreaterThan(0);
+    expect(strengths[1]).toBeLessThan(1);
+
+    // Only those within reach, fading toward it.
+    expect(view.headlampsNear(from.x, from.z, distance(middle) + 5, lamps, forwards, strengths)).toBe(2);
+    expect(strengths[1]).toBeCloseTo(5 / 20, 4);
+    expect(view.headlampsNear(from.x, from.z, 20, lamps, forwards, strengths)).toBe(1);
+    expect(strengths[0]).toBeCloseTo(1, 4);
+    // As many as asked for; none without traffic.
+    expect(view.headlampsNear(from.x, from.z, 500, lamps.slice(0, 2), forwards.slice(0, 1), [0])).toBe(1);
+    view.update(null, 1);
+    expect(view.headlampsNear(from.x, from.z, 500, lamps, forwards, strengths)).toBe(0);
   });
 
   it('releases every GPU resource on dispose', () => {

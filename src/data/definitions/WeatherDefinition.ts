@@ -51,6 +51,15 @@ export interface WeatherLook {
   readonly stars: Fraction;
   /** How brightly the moon shows where the light comes from, in the sun's place (0: not at all; 1: full). */
   readonly moon: Fraction;
+  /**
+   * The picture's grade (the renderer's colour pass): colour saturation and
+   * contrast (1: as drawn), warmth (−1 cool blue … 1 warm orange), and how
+   * strongly bright lights bloom into a glow (0: not at all … 1: strongly).
+   */
+  readonly saturation: number;
+  readonly contrast: number;
+  readonly warmth: number;
+  readonly bloom: Fraction;
 }
 
 export function validateWeatherDefinition(weather: WeatherDefinition, path: string, validator: Validator): void {
@@ -99,8 +108,34 @@ export function validateWeatherDefinition(weather: WeatherDefinition, path: stri
     `${path}.look.fogDensity`,
     'must be greater than 0 and at most 0.02',
   );
-  const fractions = ['sunlight', 'skylight', 'cloudCover', 'cloudBrightness', 'rain', 'lamps', 'sunHeight', 'stars', 'moon'] as const;
+  const fractions = [
+    'sunlight',
+    'skylight',
+    'cloudCover',
+    'cloudBrightness',
+    'rain',
+    'lamps',
+    'sunHeight',
+    'stars',
+    'moon',
+    'bloom',
+  ] as const;
   for (const key of fractions) {
     validator.fraction(look[key], `${path}.look.${key}`);
   }
+  validator.check(
+    Number.isFinite(look.saturation) && look.saturation >= 0.5 && look.saturation <= 1.5,
+    `${path}.look.saturation`,
+    'must be from 0.5 to 1.5',
+  );
+  validator.check(
+    Number.isFinite(look.contrast) && look.contrast >= 0.7 && look.contrast <= 1.3,
+    `${path}.look.contrast`,
+    'must be from 0.7 to 1.3',
+  );
+  validator.check(
+    Number.isFinite(look.warmth) && look.warmth >= -1 && look.warmth <= 1,
+    `${path}.look.warmth`,
+    'must be from -1 to 1',
+  );
 }

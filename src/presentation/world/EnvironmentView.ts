@@ -8,23 +8,24 @@ import {
   FogExp2,
   Group,
   HemisphereLight,
-  IcosahedronGeometry,
-  InstancedMesh,
-  Matrix4,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
   Mesh,
   MeshBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
-  Quaternion,
   ShaderMaterial,
+  ShadowMaterial,
   SphereGeometry,
   Vector3,
   type Scene,
 } from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { smoothstep } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { WeatherLook } from '../../data/definitions/WeatherDefinition';
-import { moonImage } from '../textures/proceduralImages';
+import { createColorGrade, type ColorGrade } from '../PostProcessing';
+import { fractalNoise } from '../textures/noise';
+import { cloudPuffImage, moonImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import {
   GROUND_LIGHT_COLOR,
@@ -36,20 +37,78 @@ import {
   SUN_INTENSITY,
   type PrelitMaterials,
 } from './lighting';
+import { unlitByLamps } from './LampLighting';
 
 const ZENITH = 0x3f7fc7;
 const HORIZON = 0xc4dcef;
 const GROUND_HAZE = 0xa9bfcf;
 /** Exponential fog: about 60% at 400 m, fully hazy by 700 m. */
 const FOG_DENSITY = 0.0023;
+/**
+ * Through the colour pass (EnvironmentViewOptions.hdr) the fog mixes into
+ * linear light, where the same share of haze shows much more than on the
+ * screen's curve: this share of the weather's density looks as hazy.
+ */
+const LINEAR_FOG_SCALE = 0.65;
 const DOME_RADIUS = 800;
-const HILL_RADIUS = 640;
+/**
+ * The hills round the horizon, in two ridges (createHills): how far from the
+ * camera their feet are and how deep they reach back, how high their ridges
+ * rise (between low and high, as the noise goes), how many swells go round
+ * the ring, their colours at the foot and the ridge (sRGB), and how much of
+ * the horizon's haze they take at the foot and more at the ridge. The far
+ * ridge is drawn first, so the near one stands before it.
+ */
+const HILL_LAYERS = [
+  { radius: 690, depth: 70, low: 38, high: 105, swells: 6, seed: 29, foot: 0x4a5f70, ridge: 0x7d90a2, haze: 0.5, hazeUp: 0.2 },
+  { radius: 590, depth: 60, low: 10, high: 52, swells: 10, seed: 7, foot: 0x3a5733, ridge: 0x6a8752, haze: 0.2, hazeUp: 0.14 },
+] as const;
+/** Steps round the ring and up each ridge's face. */
+const HILL_SEGMENTS = 240;
+const HILL_ROWS = 5;
 /** Clouds in a fully overcast sky; the weather shows a share of them. */
-const CLOUD_COUNT = 48;
-const CLOUD_COLOR = 0xf6f8fb;
-const CLOUD_EMISSIVE = 0x6d7a88;
-/** How far the clouds' shaded sides take the horizon's glow with the sun down on it (at the look's sunHeight 0). */
-const CLOUD_GLOW = 0.7;
+export const CLOUD_COUNT = 48;
+/**
+ * A cloud's puffs, in units of its size: along its length, up from its flat
+ * base, across it, and each puff's radius. A wide base, a heaped middle and
+ * a crown, like a fair-weather cumulus.
+ */
+const PUFF_LAYOUT = [
+  [0, 0.6, 0, 1.15],
+  [1.05, 0.42, 0.15, 0.95],
+  [-1.05, 0.45, -0.12, 0.95],
+  [0.5, 1.1, -0.15, 0.9],
+  [-0.55, 1, 0.2, 0.85],
+  [1.85, 0.28, -0.05, 0.7],
+  [-1.9, 0.3, 0.08, 0.72],
+  [0.15, 0.4, 0.8, 0.85],
+  [-0.2, 0.42, -0.75, 0.85],
+  [0.15, 1.55, 0, 0.7],
+  [1.4, 0.8, -0.3, 0.7],
+  [-1.35, 0.78, 0.3, 0.68],
+] as const;
+export const PUFFS_PER_CLOUD = PUFF_LAYOUT.length;
+/** A puff's billboard is this much wider than the puff: its picture's ball fills about three quarters of it. */
+const PUFF_QUAD = 1.33;
+/** How tall a cloud is, from its base to its crown, in units of its size: its light goes from grey to white up it. */
+const CLOUD_HEIGHT = 1.9;
+/** The clouds turn slowly round the camera: this many radians a second (once round in 40 minutes). */
+const CLOUD_DRIFT = (Math.PI * 2) / 2400;
+/**
+ * Real-time shadows (EnvironmentViewOptions.shadowMapSize) fall this far
+ * either way round their focus (focusShadows), meters; the sun's shadow
+ * camera stands this far up its rays from there. Without shadows the light
+ * stands this far from the middle of the map.
+ */
+const SHADOW_EXTENT_METERS = 50;
+const SHADOW_DISTANCE_METERS = 150;
+const SUN_DISTANCE_METERS = 300;
+/** How dark a shadow is in full sun, like the soft ones under trees; below this much sunlight there are none. */
+const SHADOW_OPACITY = 0.5;
+const MIN_SHADOW_SUNLIGHT = 0.2;
+/** The ground that shows the shadows lies this high, over the road's markings (polygon offset) and under the pools of light. */
+const SHADOW_Y = 0.02;
+const UP = new Vector3(0, 1, 0);
 /** The ground below the horizon is the horizon's colour, this much darker. */
 const GROUND_HAZE_SHADE = 0.86;
 /**
@@ -73,7 +132,30 @@ const MOON_SIZE_METERS = 42;
 const MOON_COLOR = 0xeef2ff;
 /** Time for the stars' twinkling runs round this many seconds, so it keeps its precision. */
 const TWINKLE_PERIOD_SECONDS = 3600;
+/** The picture's corners are this much darker by day, and this much more with the lamps on (the colour pass). */
+const VIGNETTE = 0.28;
+const NIGHT_VIGNETTE = 0.22;
 const Z_AXIS = new Vector3(0, 0, 1);
+
+export interface EnvironmentViewOptions {
+  /**
+   * The picture goes through the colour pass (RenderHost.postProcessing),
+   * where the scene's light stays linear and the fog is thinned to look the
+   * same. Default: false.
+   */
+  readonly hdr?: boolean;
+  /**
+   * The sun casts real-time shadows round a focus (focusShadows) into a map
+   * this many texels square (the renderer's shadow map must be on); 0 or
+   * absent: none. The objects that cast them set castShadow.
+   */
+  readonly shadowMapSize?: number;
+  /**
+   * The share of the weather's clouds shown, 0..1 (fewer, for rendering
+   * without a GPU, where every layer of a cloud's puffs costs). Default: 1.
+   */
+  readonly cloudShare?: number;
+}
 
 /** The sky as other shaders see it (the sea mirrors it): its colours and the sun, kept up to date by applyWeather(). */
 export interface SkyUniforms {
@@ -84,13 +166,14 @@ export interface SkyUniforms {
 }
 
 /**
- * Sky, horizon and light: a gradient dome with a sun glow, low-poly clouds,
- * a ring of hazy hills, fog, and the sun and sky lights; at night the stars
- * and the moon. The dome, clouds, hills, stars and moon follow the camera
+ * Sky, horizon and light: a gradient dome with a sun glow, soft drifting
+ * clouds, two ridges of hazy hills, fog, and the sun and sky lights; at
+ * night the stars and the moon. The dome, clouds, hills, stars and moon follow the camera
  * (call update() every frame), so they always sit at the horizon. About
  * three draw calls, two more at night. applyWeather() turns it all to the
  * weather and the time of day (spec §38–39): sky, haze, light, the sun's
- * height, clouds, stars and moon, and the pre-lit ground with it.
+ * height, clouds, stars and moon, the pre-lit ground with it, and the
+ * picture's grade (`grade`, for the renderer's colour pass).
  */
 export class EnvironmentView {
   private readonly backdrop = new Group();
@@ -108,14 +191,26 @@ export class EnvironmentView {
     /** 0 with the sun high, toward 1 as it nears the horizon: the sky round it glows. */
     readonly sunLow: { value: number };
   };
-  private readonly clouds: InstancedMesh;
-  private readonly cloudMaterial: MeshLambertMaterial;
+  private readonly clouds: Mesh;
+  private readonly cloudGeometry: InstancedBufferGeometry;
+  private readonly cloudUniforms = { brightness: { value: 1 }, drift: { value: 0 } };
   private readonly stars: Mesh;
   private readonly starUniforms = { time: { value: 0 }, level: { value: 0 } };
   private readonly moon: Mesh;
   private readonly moonMaterial: MeshBasicMaterial;
   private readonly toMoon = new Vector3();
   private readonly resources: { dispose(): void }[] = [];
+  private readonly colorGrade = createColorGrade();
+  private readonly fogScale: number;
+  /** Real-time shadows: the ground that shows them and its material, or null without them. */
+  private readonly shadowGround: Mesh | null = null;
+  private readonly shadowMaterial: ShadowMaterial | null = null;
+  private readonly shadowMapSize: number;
+  private readonly cloudShare: number;
+  private readonly shadowAcross = new Vector3();
+  private readonly shadowUp = new Vector3();
+  private shadowFocusX = 0;
+  private shadowFocusZ = 0;
   /** Scratch colours for blending looks, and what was last applied (so an unchanged look costs nothing). */
   private readonly tint = new Color();
   private readonly scratch = new Color();
@@ -124,17 +219,32 @@ export class EnvironmentView {
   private appliedTo: WeatherLook | null = null;
   private appliedBlend = Number.NaN;
 
-  constructor(private readonly scene: Scene) {
+  constructor(
+    private readonly scene: Scene,
+    options: EnvironmentViewOptions = {},
+  ) {
+    this.fogScale = options.hdr === true ? LINEAR_FOG_SCALE : 1;
     this.background = new Color(HORIZON);
     scene.background = this.background;
-    this.fog = new FogExp2(HORIZON, FOG_DENSITY);
+    this.fog = new FogExp2(HORIZON, FOG_DENSITY * this.fogScale);
     scene.fog = this.fog;
 
     this.sunLight = new DirectionalLight(SUN_COLOR, SUN_INTENSITY);
-    this.sunLight.position.set(SUN_DIRECTION.x * 300, SUN_DIRECTION.y * 300, SUN_DIRECTION.z * 300);
+    this.sunLight.position.set(
+      SUN_DIRECTION.x * SUN_DISTANCE_METERS,
+      SUN_DIRECTION.y * SUN_DISTANCE_METERS,
+      SUN_DIRECTION.z * SUN_DISTANCE_METERS,
+    );
     this.skyLight = new HemisphereLight(SKY_LIGHT_COLOR, GROUND_LIGHT_COLOR, SKY_LIGHT_INTENSITY);
     this.lights = [this.skyLight, this.sunLight];
     scene.add(...this.lights);
+    this.shadowMapSize = options.shadowMapSize ?? 0;
+    this.cloudShare = Math.min(1, Math.max(0, options.cloudShare ?? 1));
+    if (this.shadowMapSize > 0) {
+      [this.shadowGround, this.shadowMaterial] = this.createShadows(this.shadowMapSize);
+      // The shadow camera follows its focus: the light's target moves, so it must be in the scene.
+      scene.add(this.sunLight.target, this.shadowGround);
+    }
 
     this.skyUniforms = {
       zenith: { value: new Color(ZENITH) },
@@ -144,11 +254,9 @@ export class EnvironmentView {
       sunDirection: { value: new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z) },
       sunLow: { value: 0 },
     };
-    this.cloudMaterial = this.track(
-      new MeshLambertMaterial({ color: CLOUD_COLOR, emissive: CLOUD_EMISSIVE, flatShading: true, fog: false }),
-    );
-    this.clouds = this.createClouds();
-    this.clouds.count = Math.round(CLOUD_COUNT * 0.55);
+    this.cloudGeometry = this.track(new InstancedBufferGeometry());
+    this.clouds = this.createClouds(this.cloudGeometry);
+    this.showClouds(0.55);
     this.stars = this.createStars();
     this.moonMaterial = this.track(
       new MeshBasicMaterial({
@@ -162,11 +270,13 @@ export class EnvironmentView {
       }),
     );
     this.moon = new Mesh(this.track(new PlaneGeometry(MOON_SIZE_METERS, MOON_SIZE_METERS)), this.moonMaterial);
-    // Over the stars, under everything else see-through; hidden (no draw call) by day.
-    this.moon.renderOrder = -1;
+    // Over the stars, under the clouds and everything else see-through; hidden (no draw call) by day.
+    this.moon.renderOrder = -2;
     this.moon.frustumCulled = false;
     this.moon.visible = false;
     this.backdrop.add(this.createDome(), this.createHills(), this.clouds, this.stars, this.moon);
+    // The sky, its clouds and hills are far past the lamps' reach.
+    unlitByLamps(this.backdrop);
     scene.add(this.backdrop);
   }
 
@@ -200,7 +310,7 @@ export class EnvironmentView {
       Math.cos(SUN_AZIMUTH) * Math.cos(elevation),
     );
     uniforms.sunLow.value = (1 - sunHeight) * (1 - sunHeight);
-    this.sunLight.position.copy(sun).multiplyScalar(300);
+    this.placeSun();
     // At night the light is the moon's: it shows where the light comes from, facing the camera.
     const moon = mix(from.moon, to.moon, blend);
     this.moon.visible = moon > 0.01;
@@ -214,23 +324,40 @@ export class EnvironmentView {
     const groundSun = (sunlight * Math.sin(elevation)) / Math.sin(DAY_SUN_ELEVATION);
     this.background.copy(uniforms.horizon.value);
     this.fog.color.copy(uniforms.horizon.value);
-    this.fog.density = mix(from.fogDensity, to.fogDensity, blend);
+    this.fog.density = mix(from.fogDensity, to.fogDensity, blend) * this.fogScale;
 
     this.skyLight.intensity = SKY_LIGHT_INTENSITY * skylight;
     this.skyLight.color.setHex(SKY_LIGHT_COLOR).multiply(this.tint);
     this.sunLight.intensity = SUN_INTENSITY * sunlight;
     this.sunLight.color.setHex(SUN_COLOR).multiply(this.tint);
 
-    const brightness = mix(from.cloudBrightness, to.cloudBrightness, blend);
-    this.cloudMaterial.color.setHex(CLOUD_COLOR).multiplyScalar(brightness);
-    // A low sun lights the clouds from below: their shaded sides glow with the horizon.
-    this.cloudMaterial.emissive
-      .setHex(CLOUD_EMISSIVE)
-      .lerp(uniforms.horizon.value, uniforms.sunLow.value * CLOUD_GLOW)
-      .multiplyScalar(brightness);
-    this.clouds.count = Math.round(CLOUD_COUNT * mix(from.cloudCover, to.cloudCover, blend));
+    this.cloudUniforms.brightness.value = mix(from.cloudBrightness, to.cloudBrightness, blend);
+    this.showClouds(mix(from.cloudCover, to.cloudCover, blend));
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
+    if (this.shadowGround !== null && this.shadowMaterial !== null) {
+      // Long, fainter shadows from a low sun; none under a weak one (night, rain), and then the map is not drawn.
+      const shown = sunlight >= MIN_SHADOW_SUNLIGHT;
+      this.shadowMaterial.opacity = SHADOW_OPACITY * sunlight * (0.55 + 0.45 * Math.min(1, groundSun / Math.max(sunlight, 1e-3)));
+      this.shadowGround.visible = shown;
+      if (shown && !this.sunLight.shadow.autoUpdate) {
+        this.sunLight.shadow.needsUpdate = true;
+      }
+      this.sunLight.shadow.autoUpdate = shown;
+    }
+
+    const grade = this.colorGrade;
+    grade.saturation = mix(from.saturation, to.saturation, blend);
+    grade.contrast = mix(from.contrast, to.contrast, blend);
+    grade.warmth = mix(from.warmth, to.warmth, blend);
+    grade.bloom = mix(from.bloom, to.bloom, blend);
+    // At night the lamps light the middle of the picture: darker corners draw the eye there.
+    grade.vignette = VIGNETTE + NIGHT_VIGNETTE * mix(from.lamps, to.lamps, blend);
+  }
+
+  /** How the renderer's colour pass grades the picture for the weather shown (applyWeather). Updated in place. */
+  get grade(): Readonly<ColorGrade> {
+    return this.colorGrade;
   }
 
   /** The sky's colours and the sun as shader uniforms: share them, and they follow the weather. */
@@ -238,15 +365,45 @@ export class EnvironmentView {
     return this.skyUniforms;
   }
 
-  /** Keeps the backdrop centred on the camera, and twinkles the stars `deltaSeconds` on. Allocation-free. */
+  /**
+   * Keeps the sun's real-time shadows round (`x`, `z`), the truck: the
+   * shadow camera snapped to the shadow map's texels across the sun's rays,
+   * so the shadows keep still as it moves, and the ground that shows them
+   * under it. Does nothing without shadows. Allocation-free.
+   */
+  focusShadows(x: number, z: number): void {
+    if (this.shadowGround === null) {
+      return;
+    }
+    this.shadowFocusX = x;
+    this.shadowFocusZ = z;
+    this.shadowGround.position.set(x, SHADOW_Y, z);
+    this.placeSun();
+  }
+
+  /** How many clouds are in the sky (Math.round of `cover` × CLOUD_COUNT), each of PUFFS_PER_CLOUD puffs. */
+  get cloudCount(): number {
+    return this.clouds.visible ? this.cloudGeometry.instanceCount / PUFFS_PER_CLOUD : 0;
+  }
+
+  /**
+   * Keeps the backdrop centred on the camera, twinkles the stars and drifts
+   * the clouds `deltaSeconds` on. Allocation-free.
+   */
   update(cameraPosition: Readonly<{ x: number; z: number }>, deltaSeconds = 0): void {
     this.backdrop.position.set(cameraPosition.x, 0, cameraPosition.z);
     const time = this.starUniforms.time;
     time.value = (time.value + deltaSeconds) % TWINKLE_PERIOD_SECONDS;
+    const drift = this.cloudUniforms.drift;
+    drift.value = (drift.value + deltaSeconds * CLOUD_DRIFT) % (Math.PI * 2);
   }
 
   dispose(): void {
-    this.scene.remove(this.backdrop, ...this.lights);
+    this.scene.remove(this.backdrop, ...this.lights, this.sunLight.target);
+    if (this.shadowGround !== null) {
+      this.scene.remove(this.shadowGround);
+      this.sunLight.shadow.dispose();
+    }
     this.scene.background = null;
     this.scene.fog = null;
     for (const resource of this.resources) {
@@ -302,51 +459,71 @@ export class EnvironmentView {
     return dome;
   }
 
-  /** A ring of low-poly hills, coloured toward the haze with height so they read as far away. */
+  /**
+   * The hills round the horizon, in two ridges (HILL_LAYERS): bluer mountains
+   * far off and green hills before them, their ridgelines drawn from noise
+   * that goes round the ring without a seam. Smooth-shaded by the sun and the
+   * sky; the farther and the higher, the more they take the horizon's haze,
+   * whose colour is the sky's shared uniform, so it follows the weather. One
+   * draw call.
+   */
   private createHills(): Mesh {
-    const random = new SeededRandom(7);
-    const segments = 120;
-    const rows = 3;
-    const heights: number[] = [];
-    for (let i = 0; i < segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      heights.push(40 + 34 * Math.sin(a * 3 + 1.3) + 22 * Math.sin(a * 7 + 0.4) + random.range(0, 26));
-    }
     const positions: number[] = [];
     const colors: number[] = [];
+    const hazes: number[] = [];
     const indices: number[] = [];
-    const near = new Color(0x5e7d57);
-    const far = new Color(HORIZON);
-    const scratch = new Color();
-    for (let i = 0; i <= segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      const peak = heights[i % segments]!;
-      for (let row = 0; row <= rows; row++) {
-        const t = row / rows; // 0 = foot, 1 = ridge.
-        const radius = HILL_RADIUS + 60 * t;
-        const height = t === 0 ? -8 : peak * Math.sin((t * Math.PI) / 2) * (row === rows ? 0.92 : 1);
-        positions.push(Math.cos(a) * radius, height, Math.sin(a) * radius);
-        scratch.copy(near).lerp(far, 0.35 + 0.3 * t);
-        colors.push(scratch.r, scratch.g, scratch.b);
+    const color = new Color();
+    const ridge = new Color();
+    for (const layer of HILL_LAYERS) {
+      const first = positions.length / 3;
+      for (let i = 0; i <= HILL_SEGMENTS; i++) {
+        const u = i / HILL_SEGMENTS;
+        const angle = u * Math.PI * 2;
+        // Broad swells with sharper crests on them. The noise tiles across u, so the ring closes on itself.
+        const swell = smoothstep(0.25, 0.75, fractalNoise(u % 1, 0.5, layer.swells, 3, layer.seed));
+        const crests = 1 - Math.abs(2 * fractalNoise(u % 1, 0.5, layer.swells * 4, 3, layer.seed + 3) - 1);
+        const peak = layer.low + (layer.high - layer.low) * (swell * 0.78 + crests * 0.22);
+        for (let row = 0; row <= HILL_ROWS; row++) {
+          const t = row / HILL_ROWS; // 0 = foot, 1 = ridge.
+          const radius = layer.radius + layer.depth * t;
+          // Below the ground at the foot, rounding over to the ridge.
+          const height = row === 0 ? -10 : peak * Math.sin((t * Math.PI) / 2) ** 0.8;
+          positions.push(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
+          // Woods and clearings: the colour varies a little along the ridge and up it.
+          const patches = 0.82 + 0.36 * fractalNoise(u % 1, t * 0.5, 40, 2, layer.seed + 5);
+          color.setHex(layer.foot).lerp(ridge.setHex(layer.ridge), t).multiplyScalar(patches);
+          colors.push(color.r, color.g, color.b);
+          hazes.push(layer.haze + layer.hazeUp * t);
+        }
       }
-    }
-    for (let i = 0; i < segments; i++) {
-      for (let row = 0; row < rows; row++) {
-        const a = i * (rows + 1) + row;
-        const b = (i + 1) * (rows + 1) + row;
-        // Wound so the faces point inward, toward the camera at the centre.
-        indices.push(a, b, a + 1, b, b + 1, a + 1);
+      for (let i = 0; i < HILL_SEGMENTS; i++) {
+        for (let row = 0; row < HILL_ROWS; row++) {
+          const a = first + i * (HILL_ROWS + 1) + row;
+          const b = first + (i + 1) * (HILL_ROWS + 1) + row;
+          // Wound so the faces point inward, toward the camera at the centre.
+          indices.push(a, b, a + 1, b, b + 1, a + 1);
+        }
       }
     }
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
     geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+    geometry.setAttribute('haze', new BufferAttribute(new Float32Array(hazes), 1));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
-    const hills = new Mesh(
-      this.track(geometry),
-      this.track(new MeshLambertMaterial({ vertexColors: true, flatShading: true, fog: false })),
-    );
+    const material = this.track(new MeshLambertMaterial({ vertexColors: true, fog: false }));
+    const hazeColor = this.skyUniforms.horizon;
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms['hazeColor'] = hazeColor;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute float haze;\nvarying float vHaze;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHaze = haze;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 hazeColor;\nvarying float vHaze;')
+        .replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, vHaze);');
+    };
+    const hills = new Mesh(this.track(geometry), material);
+    hills.name = 'hills';
     hills.frustumCulled = false;
     return hills;
   }
@@ -441,48 +618,252 @@ export class EnvironmentView {
     });
     const stars = new Mesh(this.track(geometry), this.track(material));
     // Drawn first of everything see-through: behind it all.
-    stars.renderOrder = -2;
+    stars.renderOrder = -3;
     stars.frustumCulled = false;
     stars.visible = false;
     return stars;
   }
 
-  /** Flat-bottomed clusters of puffs, scattered around the sky. */
-  private createClouds(): InstancedMesh {
+  /**
+   * Puts the sun's light up its rays: from the middle of the map without
+   * shadows; with them, from the shadows' focus snapped to the map's texels
+   * (across the rays; along them it makes no difference).
+   */
+  private placeSun(): void {
+    const sun = this.skyUniforms.sunDirection.value;
+    const target = this.sunLight.target.position;
+    if (this.shadowGround === null) {
+      target.set(0, 0, 0);
+      this.sunLight.position.copy(sun).multiplyScalar(SUN_DISTANCE_METERS);
+      return;
+    }
+    const across = this.shadowAcross.crossVectors(sun, UP);
+    if (across.lengthSq() < 1e-8) {
+      across.set(1, 0, 0);
+    }
+    across.normalize();
+    const up = this.shadowUp.crossVectors(across, sun);
+    const texel = (2 * SHADOW_EXTENT_METERS) / this.shadowMapSize;
+    const x = this.shadowFocusX;
+    const z = this.shadowFocusZ;
+    const a = Math.round((x * across.x + z * across.z) / texel) * texel;
+    const b = Math.round((x * up.x + z * up.z) / texel) * texel;
+    const c = x * sun.x + z * sun.z;
+    target.copy(across).multiplyScalar(a).addScaledVector(up, b).addScaledVector(sun, c);
+    this.sunLight.position.copy(target).addScaledVector(sun, SHADOW_DISTANCE_METERS);
+  }
+
+  /**
+   * The sun's shadow camera and the ground that shows its shadows: a square
+   * as wide as the camera sees, lying over the road, with a material that
+   * only darkens where the shadow falls and fades out toward its edges, so
+   * no line shows where the map ends.
+   */
+  private createShadows(mapSize: number): [Mesh, ShadowMaterial] {
+    const shadow = this.sunLight.shadow;
+    this.sunLight.castShadow = true;
+    shadow.mapSize.set(mapSize, mapSize);
+    const camera = shadow.camera;
+    camera.left = -SHADOW_EXTENT_METERS;
+    camera.right = SHADOW_EXTENT_METERS;
+    camera.top = SHADOW_EXTENT_METERS;
+    camera.bottom = -SHADOW_EXTENT_METERS;
+    camera.near = 1;
+    camera.far = SHADOW_DISTANCE_METERS * 2;
+    camera.updateProjectionMatrix();
+    // Soft edges; nothing both casts and receives, so no bias is needed against acne.
+    shadow.radius = 3;
+    shadow.bias = 0;
+    // Drawn on the first frame whatever the weather: every lit shader samples the map, which must exist even
+    // while it is not updated (at night).
+    shadow.needsUpdate = true;
+    const material = this.track(
+      new ShadowMaterial({
+        color: 0x000000,
+        opacity: SHADOW_OPACITY,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -10,
+      }),
+    );
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vShadowUv;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvShadowUv = uv;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vShadowUv;')
+        .replace(
+          'gl_FragColor = vec4( color, opacity * ( 1.0 - getShadowMask() ) );',
+          'vec2 fromMiddle = abs(vShadowUv - 0.5) * 2.0;\n' +
+            'float edge = 1.0 - smoothstep(0.75, 1.0, max(fromMiddle.x, fromMiddle.y));\n' +
+            'gl_FragColor = vec4( color, opacity * edge * ( 1.0 - getShadowMask() ) );',
+        );
+    };
+    const ground = new Mesh(
+      this.track(new PlaneGeometry(SHADOW_EXTENT_METERS * 2, SHADOW_EXTENT_METERS * 2).rotateX(-Math.PI / 2)),
+      material,
+    );
+    ground.name = 'sun-shadows';
+    ground.receiveShadow = true;
+    // Over the ground's see-through decals and the sky's layers, before lights, glows and smoke.
+    ground.renderOrder = -0.5;
+    ground.frustumCulled = false;
+    return [ground, material];
+  }
+
+  /** Shows Math.round(`cover` × CLOUD_COUNT × the cloud share) clouds: no draw call for none. */
+  private showClouds(cover: number): void {
+    const count = Math.round(CLOUD_COUNT * Math.min(1, Math.max(0, cover)) * this.cloudShare);
+    this.cloudGeometry.instanceCount = count * PUFFS_PER_CLOUD;
+    this.clouds.visible = count > 0;
+  }
+
+  /**
+   * Cumulus clouds round the sky, drifting slowly round the camera: each a
+   * heap of soft puffs (PUFF_LAYOUT), billboards facing the camera that share
+   * one puff picture, turned and mirrored so no two look alike, and cut off
+   * softly at the cloud's flat base. The shader lights them from the sky's
+   * uniforms: sunlit tops over grey undersides, each puff rounded like a
+   * ball, a silver lining toward the sun, and a fade into the haze low down;
+   * at dusk the low sun colours their sides. One draw call.
+   */
+  private createClouds(geometry: InstancedBufferGeometry): Mesh {
     const random = new SeededRandom(19);
-    const puffs = [
-      [0, 0, 0, 1],
-      [1.3, -0.2, 0.3, 0.8],
-      [-1.2, -0.25, -0.2, 0.75],
-      [0.5, 0.35, -0.6, 0.7],
-      [-0.4, 0.2, 0.7, 0.65],
-    ].map(([x, y, z, r]) => new IcosahedronGeometry(r!, 1).translate(x!, y!, z!));
-    const cloud = mergeGeometries(puffs);
-    for (const puff of puffs) {
-      puff.dispose();
-    }
-    // Squash the underside flat, like cumulus.
-    const position = cloud.getAttribute('position');
-    for (let i = 0; i < position.count; i++) {
-      position.setY(i, Math.max(position.getY(i), -0.35));
-    }
-    cloud.computeVertexNormals();
-    const clouds = this.track(new InstancedMesh(this.track(cloud), this.cloudMaterial, CLOUD_COUNT));
-    const matrix = new Matrix4();
-    const where = new Vector3();
-    const rotation = new Quaternion();
-    const size = new Vector3();
-    const up = new Vector3(0, 1, 0);
-    for (let i = 0; i < CLOUD_COUNT; i++) {
+    const puffs = new Float32Array(CLOUD_COUNT * PUFFS_PER_CLOUD * 4);
+    const shapes = new Float32Array(CLOUD_COUNT * PUFFS_PER_CLOUD * 3);
+    const centres = new Float32Array(CLOUD_COUNT * PUFFS_PER_CLOUD * 4);
+    for (let cloud = 0; cloud < CLOUD_COUNT; cloud++) {
       const angle = random.range(0, Math.PI * 2);
-      const distance = random.range(380, 700);
-      where.set(Math.cos(angle) * distance, random.range(150, 260), Math.sin(angle) * distance);
-      rotation.setFromAxisAngle(up, random.range(0, Math.PI * 2));
-      const scale = random.range(18, 38);
-      size.set(scale * random.range(1.1, 1.8), scale * random.range(0.55, 0.8), scale);
-      clouds.setMatrixAt(i, matrix.compose(where, rotation, size));
+      // Some far and low, down toward the horizon's haze; some high overhead.
+      const distance = random.range(360, 760);
+      const x = Math.cos(angle) * distance;
+      const z = Math.sin(angle) * distance;
+      const base = random.range(110, 230);
+      const size = random.range(16, 34);
+      const stretch = random.range(1.1, 1.7);
+      const turn = random.range(0, Math.PI * 2);
+      const cos = Math.cos(turn);
+      const sin = Math.sin(turn);
+      PUFF_LAYOUT.forEach(([along, up, across, radius], index) => {
+        const a = (along + random.range(-0.15, 0.15)) * size * stretch;
+        const b = (across + random.range(-0.15, 0.15)) * size;
+        const puff = cloud * PUFFS_PER_CLOUD + index;
+        puffs[puff * 4] = x + cos * a - sin * b;
+        puffs[puff * 4 + 1] = base + (up + random.range(-0.1, 0.1)) * size;
+        puffs[puff * 4 + 2] = z + sin * a + cos * b;
+        puffs[puff * 4 + 3] = radius * size * random.range(0.85, 1.15) * PUFF_QUAD;
+        shapes[puff * 3] = base;
+        shapes[puff * 3 + 1] = size * CLOUD_HEIGHT;
+        shapes[puff * 3 + 2] = random.next();
+        // The whole cloud's middle and reach along its length: the light falls on the cloud, not on each puff.
+        centres.set([x, base + size * 0.75, z, size * (1.2 + stretch)], puff * 4);
+      });
     }
-    clouds.instanceMatrix.needsUpdate = true;
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
+    geometry.setIndex([0, 1, 2, 0, 2, 3]);
+    geometry.setAttribute('puff', new InstancedBufferAttribute(puffs, 4));
+    geometry.setAttribute('cloud', new InstancedBufferAttribute(shapes, 3));
+    geometry.setAttribute('centre', new InstancedBufferAttribute(centres, 4));
+    const sky = this.skyUniforms;
+    const material = this.track(
+      new ShaderMaterial({
+        uniforms: {
+          map: { value: this.track(toTexture(cloudPuffImage(), { srgb: false })) },
+          zenith: sky.zenith,
+          horizon: sky.horizon,
+          groundHaze: sky.groundHaze,
+          sunColor: sky.sunColor,
+          sunDirection: sky.sunDirection,
+          sunLow: sky.sunLow,
+          ...this.cloudUniforms,
+        },
+        transparent: true,
+        depthWrite: false,
+        fog: false,
+        vertexShader: /* glsl */ `
+          attribute vec4 puff;
+          attribute vec3 cloud;
+          attribute vec4 centre;
+          uniform float drift;
+          varying vec2 vCorner;
+          varying vec2 vUv;
+          varying vec3 vPosition;
+          varying vec3 vCloud;
+          varying vec4 vCentre;
+          void main() {
+            float c = cos(drift);
+            float s = sin(drift);
+            vec3 middle = vec3(c * puff.x - s * puff.z, puff.y, s * puff.x + c * puff.z);
+            vCentre = vec4(c * centre.x - s * centre.z, centre.y, s * centre.x + c * centre.z, centre.w);
+            // Facing the camera: along the view's right and up, in the world.
+            vec3 right = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
+            vec3 up = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
+            vPosition = middle + (right * position.x + up * position.y) * puff.w;
+            vCorner = position.xy;
+            // Each puff's picture turned and mirrored by its seed.
+            float turn = (cloud.z - 0.5) * 2.5;
+            vec2 corner = position.xy * vec2(cloud.z > 0.5 ? -1.0 : 1.0, 1.0);
+            vUv = mat2(cos(turn), sin(turn), -sin(turn), cos(turn)) * corner * 0.5 + 0.5;
+            vCloud = cloud;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(vPosition, 1.0);
+          }
+        `,
+        fragmentShader: /* glsl */ `
+          uniform sampler2D map;
+          uniform vec3 zenith;
+          uniform vec3 horizon;
+          uniform vec3 groundHaze;
+          uniform vec3 sunColor;
+          uniform vec3 sunDirection;
+          uniform float sunLow;
+          uniform float brightness;
+          varying vec2 vCorner;
+          varying vec2 vUv;
+          varying vec3 vPosition;
+          varying vec3 vCloud;
+          varying vec4 vCentre;
+          void main() {
+            vec4 puff = texture2D(map, vUv);
+            // A flat base, like cumulus: the puffs thin out just under it.
+            float above = vPosition.y - vCloud.x;
+            float density = puff.a * smoothstep(-4.0, 6.0, above);
+            if (density < 0.004) discard;
+            float height = clamp(above / vCloud.y, 0.0, 1.0);
+            // The light falls on the whole cloud, a squat ellipsoid round its middle; each puff, rounded like a
+            // ball facing the camera, bulges out of it.
+            vec3 ball = vec3(vCorner * 1.3, 0.0);
+            ball.z = sqrt(max(1.0 - dot(ball.xy, ball.xy), 0.0));
+            vec3 bulge = (vec4(ball, 0.0) * viewMatrix).xyz;
+            vec3 outward = (vPosition - vCentre.xyz) / vec3(vCentre.w, vCentre.w * 0.45, vCentre.w);
+            vec3 normal = normalize(normalize(outward + vec3(0.0, 1e-3, 0.0)) * 0.8 + bulge * 0.3);
+            float sunlit = clamp(dot(normal, sunDirection) * 0.55 + 0.5, 0.0, 1.0);
+            // A high sun leaves the undersides grey; a low one lights them from the side.
+            float shade = mix(mix(0.3, 1.0, height), 1.0, sunLow);
+            vec3 skyLight = mix(horizon, zenith, clamp(normal.y * 0.5 + 0.5, 0.0, 1.0));
+            vec3 sunlight = sunColor * (sunlit * shade * (0.75 + 0.3 * puff.r) * 1.25);
+            vec3 view = normalize(vPosition - vec3(0.0, cameraPosition.y, 0.0));
+            // Toward the sun, light shines through the thin edges: a silver lining.
+            float toward = pow(max(dot(view, sunDirection), 0.0), 10.0);
+            sunlight += sunColor * toward * (1.0 - puff.a) * 1.8;
+            // Grey rain clouds still take the sky's light: darker than it, not black.
+            vec3 ambient = skyLight * (0.4 + 0.35 * height) + groundHaze * (0.2 * (1.0 - height));
+            vec3 color = sunlight * brightness + ambient * (0.5 + 0.5 * brightness);
+            // Low in the sky the clouds sink into the haze.
+            float haze = 1.0 - smoothstep(0.02, 0.3, view.y);
+            color = mix(color, horizon, haze * 0.8);
+            gl_FragColor = vec4(color, density * (1.0 - haze * 0.35));
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          }
+        `,
+      }),
+    );
+    const clouds = new Mesh(geometry, material);
+    clouds.name = 'clouds';
+    // Over the stars and the moon, before everything else see-through (its origin is under the camera, so
+    // sorting by distance would draw it last).
+    clouds.renderOrder = -1;
     clouds.frustumCulled = false;
     return clouds;
   }

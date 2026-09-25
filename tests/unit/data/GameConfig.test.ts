@@ -151,7 +151,7 @@ describe('GameConfig', () => {
     }
   });
 
-  it('asks less of weaker devices: fewer pixels, less rain, smoke and traffic, no glows on low', () => {
+  it('asks less of weaker devices: fewer pixels, less rain, smoke and traffic, no glows or colour pass on low', () => {
     const [low, medium, high] = QUALITY_LEVELS.map((level) => QUALITY_PRESETS[level]);
 
     expect(low!.maxPixelRatio).toBeLessThan(medium!.maxPixelRatio);
@@ -160,7 +160,17 @@ describe('GameConfig', () => {
     expect(low!.rainDensity).toBeLessThan(high!.rainDensity);
     expect(low!.particleDensity).toBeLessThan(medium!.particleDensity);
     expect(medium!.particleDensity).toBeLessThan(high!.particleDensity);
+    expect(low!.vegetationDensity).toBeLessThan(medium!.vegetationDensity);
+    expect(medium!.vegetationDensity).toBeLessThan(high!.vegetationDensity);
     expect(low!.lampGlows).toBe(false);
+    // Low draws straight to the screen; medium grades, blooms and smooths the picture in one colour pass; high
+    // multisamples the scene for smoother edges.
+    expect(low).toMatchObject({ postProcessing: false, bloom: false });
+    expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0 });
+    expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4 });
+    // Real-time shadows are for the high preset only (CLAUDE.md: none by default on phones).
+    expect([low!.shadowMapSize, medium!.shadowMapSize]).toEqual([0, 0]);
+    expect(high!.shadowMapSize).toBeGreaterThanOrEqual(1024);
     const applied = applyQualityPreset(DEFAULT_GAME_CONFIG, 'low');
     expect(applied.rendering).toMatchObject({ quality: 'low', maxPixelRatio: low!.maxPixelRatio, lampGlows: false });
     expect(applied.traffic.maxVehicles).toBe(low!.trafficVehicles);
@@ -175,7 +185,12 @@ describe('GameConfig', () => {
         minResolutionScale: 0,
         rainDensity: 1.5,
         particleDensity: -0.5,
+        vegetationDensity: 2,
         lampGlows: 'yes' as never,
+        postProcessing: 1 as never,
+        bloom: undefined as never,
+        msaaSamples: 2.5,
+        shadowMapSize: 1000,
       },
     };
 
@@ -184,7 +199,12 @@ describe('GameConfig', () => {
       'rendering.minResolutionScale',
       'rendering.rainDensity',
       'rendering.particleDensity',
+      'rendering.vegetationDensity',
       'rendering.lampGlows',
+      'rendering.postProcessing',
+      'rendering.bloom',
+      'rendering.msaaSamples',
+      'rendering.shadowMapSize',
     ]);
   });
 

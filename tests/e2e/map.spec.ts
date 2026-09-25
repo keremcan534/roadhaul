@@ -37,7 +37,9 @@ test('shows the roads on the minimap, and opens the full map from it with the dr
   await openGame(page);
   const minimap = page.locator('.minimap');
   await expect(minimap).toBeVisible();
-  await expect.poll(() => pixelsOf(page, '.minimap__canvas', STREET)).toBeGreaterThan(50);
+  // The first frames on the road draw what the menu's view did not show yet: drawn in software, with its shaders
+  // still to compile, they can take seconds.
+  await expect.poll(() => pixelsOf(page, '.minimap__canvas', STREET), { timeout: 15_000 }).toBeGreaterThan(50);
 
   await minimap.click();
   const map = page.locator('.world-map');
