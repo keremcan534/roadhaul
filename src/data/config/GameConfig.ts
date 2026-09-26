@@ -147,8 +147,52 @@ export interface GameConfig {
     readonly repairAtDamage: Fraction;
     /** The workshop keeps it this long, seconds. */
     readonly repairSeconds: number;
-    /** While the game was closed, the fleet goes on working for at most this many hours. */
+    /** While the game was closed, the fleet (and the rivals) go on working for at most this many hours. */
     readonly awayHours: number;
+  };
+  /**
+   * The rival companies (RivalService): standing in the cities and who
+   * leads them, campaigns, tenders, and buying a rival out.
+   */
+  readonly rivals: {
+    /** Standing a contract the player drives wins the company in the city it leaves and in the one it reaches. */
+    readonly deliveryPoints: number;
+    /** Standing a contract a fleet truck delivers (the company's or a rival's) wins in both its cities. */
+    readonly fleetJobPoints: number;
+    /** Standing halves over this many seconds of play: what was delivered lately counts most. */
+    readonly pointsHalfLifeSeconds: number;
+    /** A rival's standing in its home city at the start. */
+    readonly startingHomePoints: number;
+    /** A city's leader has the most standing there, and at least this share of it. */
+    readonly leadShare: Fraction;
+    /** Contracts from a city the company leads pay this share more (and a rival's, likewise). */
+    readonly leaderBonus: Fraction;
+    /** A rival's contracts pay this share of what the same contract of the day would (as the fleet's). */
+    readonly payFactor: number;
+    /** A rival's drivers keep this share of each contract's pay. */
+    readonly driverPayShare: Fraction;
+    /** A campaign in a city costs this… */
+    readonly campaignCost: Credits;
+    /** …wins this much standing there… */
+    readonly campaignPoints: number;
+    /** …and the same company can run the next one there after this many seconds. */
+    readonly campaignCooldownSeconds: number;
+    /** A rival thinks over buying a truck or running a campaign this often, seconds. */
+    readonly decisionSeconds: number;
+    /** A rival keeps this much money back when it buys a truck or runs a campaign. */
+    readonly reserveCredits: Credits;
+    /** The first tender comes to the job board this long after the start, seconds… */
+    readonly firstTenderSeconds: number;
+    /** …and each one stays there this long, until the next replaces it. */
+    readonly tenderEverySeconds: number;
+    /** Winning a tender pays this share of its pay on top. */
+    readonly tenderPrize: Fraction;
+    /** A tender wins its winner this much standing in both its cities. */
+    readonly tenderPoints: number;
+    /** The rival in a tender drives at this average pace, km/h, times its speed factor. */
+    readonly tenderRivalSpeedKmh: number;
+    /** Buying a rival out costs its value times this. */
+    readonly acquisitionPremium: number;
   };
   readonly newGame: {
     readonly startingCredits: Credits;
@@ -321,6 +365,27 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     repairSeconds: 120,
     awayHours: 2,
   },
+  rivals: {
+    deliveryPoints: 20,
+    fleetJobPoints: 8,
+    pointsHalfLifeSeconds: 1800,
+    startingHomePoints: 60,
+    leadShare: 0.35,
+    leaderBonus: 0.15,
+    payFactor: 0.75,
+    driverPayShare: 0.25,
+    campaignCost: 6000,
+    campaignPoints: 40,
+    campaignCooldownSeconds: 600,
+    decisionSeconds: 60,
+    reserveCredits: 3000,
+    firstTenderSeconds: 90,
+    tenderEverySeconds: 480,
+    tenderPrize: 0.6,
+    tenderPoints: 30,
+    tenderRivalSpeedKmh: 40,
+    acquisitionPremium: 1.25,
+  },
   newGame: {
     startingCredits: 5000, // Placeholder until the economy step (roadmap step 14).
     startingVehicleId: 'rh_h1',
@@ -332,11 +397,75 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   },
 });
 
+function validateRivals(validator: Validator, rivals: GameConfig['rivals']): void {
+  for (const key of [
+    'deliveryPoints',
+    'fleetJobPoints',
+    'pointsHalfLifeSeconds',
+    'campaignPoints',
+    'campaignCooldownSeconds',
+    'decisionSeconds',
+    'tenderEverySeconds',
+    'tenderPoints',
+    'tenderRivalSpeedKmh',
+  ] as const) {
+    validator.positiveNumber(rivals[key], `rivals.${key}`);
+  }
+  validator.check(
+    Number.isFinite(rivals.startingHomePoints) && rivals.startingHomePoints >= 0,
+    'rivals.startingHomePoints',
+    'must be 0 or more',
+  );
+  validator.check(
+    Number.isFinite(rivals.leadShare) && rivals.leadShare > 0 && rivals.leadShare <= 1,
+    'rivals.leadShare',
+    'must be greater than 0 and at most 1',
+  );
+  validator.fraction(rivals.leaderBonus, 'rivals.leaderBonus');
+  validator.check(
+    Number.isFinite(rivals.payFactor) && rivals.payFactor > 0 && rivals.payFactor <= 2,
+    'rivals.payFactor',
+    'must be greater than 0 and at most 2',
+  );
+  validator.check(
+    Number.isFinite(rivals.driverPayShare) && rivals.driverPayShare >= 0 && rivals.driverPayShare < 1,
+    'rivals.driverPayShare',
+    'must be 0 or more and less than 1',
+  );
+  validator.nonNegativeInteger(rivals.campaignCost, 'rivals.campaignCost');
+  validator.nonNegativeInteger(rivals.reserveCredits, 'rivals.reserveCredits');
+  validator.check(
+    Number.isFinite(rivals.firstTenderSeconds) && rivals.firstTenderSeconds >= 0,
+    'rivals.firstTenderSeconds',
+    'must be 0 or more',
+  );
+  validator.fraction(rivals.tenderPrize, 'rivals.tenderPrize');
+  validator.check(
+    Number.isFinite(rivals.acquisitionPremium) && rivals.acquisitionPremium >= 1,
+    'rivals.acquisitionPremium',
+    'must be 1 or more',
+  );
+}
+
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, economy, fuel, traffic, navigation, weather, timeOfDay, company, fleet, newGame, debug } =
-    config;
+  const {
+    simulation,
+    rendering,
+    missions,
+    economy,
+    fuel,
+    traffic,
+    navigation,
+    weather,
+    timeOfDay,
+    company,
+    fleet,
+    rivals,
+    newGame,
+    debug,
+  } = config;
 
   validator.check(
     Number.isFinite(simulation.fixedStepSeconds) &&
@@ -523,6 +652,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'fleet.awayHours',
     'must be from 0 to 24',
   );
+  validateRivals(validator, rivals);
   validator.nonNegativeInteger(newGame.startingCredits, 'newGame.startingCredits');
   validator.check(
     content.vehicles.has(newGame.startingVehicleId),

@@ -10,6 +10,7 @@ import {
   contentFixture,
   mapFixture,
   missionFixture,
+  rivalFixture,
   vehicleFixture,
   weatherFixture,
 } from '../../support/contentFixtures';
@@ -72,6 +73,7 @@ describe('ContentCatalog', () => {
       'cargo[0].category',
       'cargo[0].damageSensitivity',
       'missions[0].requiredCompanyLevel',
+      'rivals[0].vehicleId', // The fixture's rival runs the truck renamed above.
     ]);
   });
 
@@ -163,6 +165,26 @@ describe('ContentCatalog', () => {
     ]);
   });
 
+  it('reports rivals at home where there is no depot, or in another rival\'s city, in its colour, or in trucks that do not exist', () => {
+    const content = contentFixture({
+      cities: [cityFixture(), cityFixture({ id: 'test_destination', specialization: 'industrial' }), cityFixture({ id: 'test_village', specialization: 'agricultural' })],
+      rivals: [
+        rivalFixture(),
+        rivalFixture({ id: 'test_twin', color: 0x3355cc }),
+        rivalFixture({ id: 'test_farmers', color: 0x22aa44, homeCityId: 'test_village', vehicleId: 'hovercraft' }),
+        rivalFixture({ id: 'test_ghosts', color: 0x999999, homeCityId: 'atlantis' }),
+      ],
+    });
+
+    expect(validateGameContent(content)).toEqual([
+      { path: 'rivals[1].homeCityId', message: 'another rival is at home in "test_destination"' },
+      { path: 'rivals[1].color', message: 'another rival has this colour' },
+      { path: 'rivals[2].homeCityId', message: 'city "test_village" has no depot on any map' },
+      { path: 'rivals[2].vehicleId', message: 'unknown vehicle "hovercraft"' },
+      { path: 'rivals[3].homeCityId', message: 'unknown city "atlantis"' },
+    ]);
+  });
+
   it('reports entries that are not objects instead of crashing on them', () => {
     const content = {
       vehicles: [null],
@@ -177,6 +199,7 @@ describe('ContentCatalog', () => {
       events: [null],
       paints: [null],
       drivers: [null],
+      rivals: [null],
     } as unknown as Parameters<typeof validateGameContent>[0];
 
     expect(issuePaths(content)).toEqual([
@@ -191,6 +214,7 @@ describe('ContentCatalog', () => {
       'events[0]',
       'paints[0]',
       'drivers[0]',
+      'rivals[0]',
       'missions[1].originCityId', // No maps, so no depots.
       'missions[1].destinationCityId',
       'missions[1].cargoId',
@@ -218,7 +242,8 @@ describe('ContentCatalog', () => {
     expect((thrown as ValidationError).issues.map((issue) => issue.path)).toEqual([
       'missions[0].destinationCityId',
       'missions[0].cargoId',
-      'maps[0].depots[1].cityId', // The fixture's destination depot lost its city too.
+      'maps[0].depots[1].cityId', // The fixture's destination depot lost its city too…
+      'rivals[0].homeCityId', // …and so did the rival at home there.
     ]);
   });
 });

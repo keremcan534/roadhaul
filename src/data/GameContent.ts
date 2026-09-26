@@ -6,6 +6,7 @@ import type { EventDefinition } from './definitions/EventDefinition';
 import type { MapDefinition } from './definitions/MapDefinition';
 import type { MissionDefinition } from './definitions/MissionDefinition';
 import type { PaintDefinition } from './definitions/PaintDefinition';
+import type { RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
 import type { TrafficVehicleDefinition } from './definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from './definitions/UpgradeDefinition';
 import type { VehicleDefinition } from './definitions/VehicleDefinition';
@@ -31,4 +32,6 @@ export interface GameContent {
   readonly paints: readonly PaintDefinition[];
   /** The drivers the company can hire for its fleet (spec §27). */
   readonly drivers: readonly DriverDefinition[];
+  /** The region's other haulage companies, the player's rivals. */
+  readonly rivals: readonly RivalCompanyDefinition[];
 }

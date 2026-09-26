@@ -6,6 +6,7 @@ import type { EventDefinition } from '../../src/data/definitions/EventDefinition
 import type { MapDefinition, SeaDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
 import type { PaintDefinition } from '../../src/data/definitions/PaintDefinition';
+import type { RivalCompanyDefinition } from '../../src/data/definitions/RivalCompanyDefinition';
 import type { TrafficVehicleDefinition } from '../../src/data/definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from '../../src/data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../src/data/definitions/VehicleDefinition';
@@ -176,6 +177,7 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     events: [eventFixture()],
     paints: [paintFixture(), paintFixture({ id: 'test_gold', color: 0xd4af37, price: 3000, requiredCompanyLevel: 2 })],
     drivers: [driverFixture(), driverFixture({ id: 'test_veteran', skill: 4, speedFactor: 1.1, incidentChance: 0.05, payShare: 0.3, hiringFee: 5000, requiredCompanyLevel: 2 })],
+    rivals: [rivalFixture()],
     ...overrides,
   };
 }
@@ -198,6 +200,22 @@ export function daylightFixtures(): DaylightDefinition[] {
 /** A steady driver: average pace, one contract in ten damages the truck, a quarter of the pay, 1,000 credits to hire. */
 export function driverFixture(overrides: Partial<DriverDefinition> = {}): DriverDefinition {
   return { id: 'test_driver', skill: 2, speedFactor: 1, incidentChance: 0.1, payShare: 0.25, hiringFee: 1000, ...overrides };
+}
+
+/** A rival at home in the second city, with one truck on the road and room for another. */
+export function rivalFixture(overrides: Partial<RivalCompanyDefinition> = {}): RivalCompanyDefinition {
+  return {
+    id: 'test_rival',
+    color: 0x3355cc,
+    homeCityId: 'test_destination',
+    vehicleId: 'test_truck',
+    startingTrucks: 1,
+    maxTrucks: 2,
+    startingCredits: 1000,
+    speedFactor: 1,
+    aggression: 0.5,
+    ...overrides,
+  };
 }
 
 /** A red paint for 1,000 credits, open from level 1. */

@@ -17,10 +17,13 @@ const MARKET: FleetMarket = {
 };
 const BOX_TRUCK = VEHICLES.find((vehicle) => vehicle.id === 'rh_h1')!;
 
-function plan(overrides: { seed?: number; fromCityId?: string; driver?: DriverDefinition; market?: FleetMarket; truckDamage?: number } = {}) {
+function plan(
+  overrides: { seed?: number; fromCityId?: string; toCityId?: string; driver?: DriverDefinition; market?: FleetMarket; truckDamage?: number } = {},
+) {
   return planFleetJob({
     market: overrides.market ?? MARKET,
     fromCityId: overrides.fromCityId ?? 'city_a',
+    ...(overrides.toCityId === undefined ? {} : { toCityId: overrides.toCityId }),
     truck: BOX_TRUCK,
     truckDamage: overrides.truckDamage ?? 0,
     driver: overrides.driver ?? driverFixture(),
@@ -83,6 +86,18 @@ describe('planFleetJob', () => {
     expect(plan({ fromCityId: 'nowhere' })!.originCityId).toBe('city_a');
     expect(plan({ market: { ...MARKET, cities: CITIES.slice(0, 1) } })).toBeNull();
     expect(plan({ market: { ...MARKET, cargo: [cargoFixture({ requiredBody: 'flatbed' })] } })).toBeNull();
+  });
+
+  it('goes where it is sent, if that is another city with a depot, and draws the same load for the same seed', () => {
+    for (let seed = 0; seed < 20; seed++) {
+      const sent = plan({ seed, toCityId: 'city_c' })!;
+      expect(sent.destinationCityId).toBe('city_c');
+      const free = plan({ seed })!;
+      expect([sent.cargoId, sent.cargoTons, sent.incident]).toEqual([free.cargoId, free.cargoTons, free.incident]);
+    }
+    // Not to the city it is in, nor to one without a depot: then anywhere else.
+    expect(plan({ toCityId: 'city_a' })!.destinationCityId).not.toBe('city_a');
+    expect(['city_b', 'city_c']).toContain(plan({ toCityId: 'atlantis' })!.destinationCityId);
   });
 
   it('seeds every contract of the company differently', () => {
