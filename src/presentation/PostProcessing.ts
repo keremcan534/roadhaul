@@ -505,7 +505,8 @@ export const COMPOSITE_FRAGMENT = /* glsl */ `
     vec2 fromSun = (uv - sunScreen) * vec2(aspect, 1.0);
     float d = length(fromSun);
     vec3 warm = vec3(1.0, 0.86, 0.66);
-    float spokes = pow(abs(cos(atan(fromSun.y, fromSun.x) * 3.0)), 60.0) * exp(-d * 9.0);
+    // atan(0, 0) is undefined on some GPUs: nudged off the sun's very middle.
+    float spokes = pow(abs(cos(atan(fromSun.y, fromSun.x + 1e-5) * 3.0)), 60.0) * exp(-d * 9.0);
     vec3 light = warm * (exp(-d * 5.0) * 0.28 + spokes * 0.35);
     vec2 across = vec2(0.5) - sunScreen;
     light += vec3(1.0, 0.72, 0.38) * ghost(uv, sunScreen + across * 0.55, 0.035) * 0.075;
