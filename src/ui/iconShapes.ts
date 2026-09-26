@@ -65,7 +65,8 @@ const ICONS = {
   hazardous: `<path ${ACCENT} ${HOLES} d="M10.3 3.2a2 2 0 0 1 3.4 0l8.6 15a2 2 0 0 1-1.7 3H3.4a2 2 0 0 1-1.7-3zM10.8 8.6v5.8h2.4V8.6zm1.2 7.2a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8z"/>`,
   oversized: `<rect x="5.4" y="5.5" width="13.2" height="13" rx="1.4"/><path ${ACCENT} d="M.8 12l3.6-3.4v6.8zM23.2 12l-3.6-3.4v6.8z"/>`,
   // The truck's parts (upgrade looks).
-  exhaust: `<path d="M9.4 7.2L14.6 4.6v17.4H9.4z"/><path ${HOLES} d="M8.6 10.6h6.8a.8.8 0 0 1 .8.8v7a.8.8 0 0 1-.8.8H8.6a.8.8 0 0 1-.8-.8v-7a.8.8 0 0 1 .8-.8zm1.2 1.8v1.3h4.4v-1.3zm0 3v1.3h4.4v-1.3z"/><circle ${ACCENT} cx="17.6" cy="4.4" r="2.1"/><circle ${ACCENT} cx="20.8" cy="2.6" r="1.3"/><circle ${ACCENT} cx="20.6" cy="6.6" r="1.1"/>`,
+  // The engine (the upgrade that shows as a bigger exhaust stack): a block with a spark.
+  engine: `<path d="M7 4.4h6.4v2.2H11v1.6h3.4l2.2 2.2h1.6V8.6h2.2A1.6 1.6 0 0 1 22 10.2v6a1.6 1.6 0 0 1-1.6 1.6h-2.2v-1.8h-1.6l-2.4 2.8H8.6L6.4 16H4.6v2.4H2V10h2.6V8.2H9V6.6H7z"/><path ${ACCENT} d="M13.2 9.4l-3.6 4.6h2.6l-.8 3.4 3.8-4.8h-2.6z"/>`,
   brakes: `<path ${HOLES} d="M12 2.6a9.4 9.4 0 1 1 0 18.8 9.4 9.4 0 0 1 0-18.8zm0 6.4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM7.4 11.2a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8zm9.2 0a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8zM12 16.8a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z"/><path ${ACCENT} d="M13.4 1.4a10.8 10.8 0 0 1 9.2 9.2l-3.2.5a7.5 7.5 0 0 0-6.5-6.5z"/>`,
   wheels: `<path ${HOLES} d="M12 1.6a10.4 10.4 0 1 1 0 20.8 10.4 10.4 0 0 1 0-20.8zm0 4.6a5.8 5.8 0 1 0 0 11.6 5.8 5.8 0 0 0 0-11.6z"/><path ${ACCENT} ${HOLES} d="M12 7.6a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8zm0 2.8a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2z"/>`,
   stance: `<rect x="3.5" y="2" width="17" height="2.6" rx="1"/><rect x="3.5" y="19.4" width="17" height="2.6" rx="1"/><path d="M12 4.6L6.8 7.2l10.4 2.6-10.4 2.6 10.4 2.6-10.4 2.6L12 19.4" ${accentLine(2.2)}/>`,
@@ -89,7 +90,16 @@ export function cargoIcon(category: CargoCategory): IconName {
   return category;
 }
 
+/** Each truck part's icon, by how its upgrade shows on the truck. */
+const UPGRADE_ICONS: Readonly<Record<UpgradeLook, IconName>> = {
+  exhaust: 'engine',
+  brakes: 'brakes',
+  wheels: 'wheels',
+  stance: 'stance',
+  fuelTank: 'fuelTank',
+};
+
 /** The icon of a truck part an upgrade improves. */
 export function upgradeIcon(look: UpgradeLook): IconName {
-  return look;
+  return UPGRADE_ICONS[look];
 }
