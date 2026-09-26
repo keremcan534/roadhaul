@@ -34,6 +34,18 @@ const ROW_OFFSETS_METERS = [0, 1.5, 4, 12, 40, 150] as const;
 const WATER_Y = 0.015;
 /** The water's own colour, deep blue-green, before the sky's reflection. */
 const DEEP_WATER = 0x1a5566;
+/**
+ * The sun (or the moon) glitters on the sea: the waves are covered in small
+ * facets, this many to a meter each way, each tilted its own way by up to
+ * this much (a slope) and turning over this many times a second, and the
+ * few that catch the light just right flash, as bright as this (times the
+ * sun's colour). Toward a low sun they lay a glittering path on the water.
+ */
+const SPARKLE_CELLS_PER_METER = 2.5;
+const SPARKLE_TILT = 0.16;
+const SPARKLE_RATE = 0.7;
+const SPARKLE_SHARPNESS = 700;
+const SPARKLE_LEVEL = 9;
 /** The beach along the natural shore: its width, and how big one texture tile of sand is. */
 const BEACH_WIDTH_METERS = 9;
 const SAND_TILE_METERS = 6;
@@ -54,7 +66,8 @@ export interface SeaViewOptions {
  * beach along the natural shore and boulders at the waterline. The water
  * mirrors the sky it is given (EnvironmentView.sky), so it follows the
  * weather and the time of day: small waves drift across it, the sky
- * shows in it more at grazing angles, the sun glitters on it and foam
+ * shows in it more at grazing angles, the sun (at night the moon)
+ * glitters on it, sparkling in a path toward it when it is low, and foam
  * breaks along the shore. It is fogged like the rest of the scene. The
  * quays, cranes and boats are HarbourView's. One draw call for the water,
  * one for the beach, one per stretch of boulders in view. update() runs
@@ -175,6 +188,12 @@ export class SeaView {
           vec2 ripple(vec2 p, vec2 k, float speed, float height) {
             return k * (height * cos(dot(p, k) + time * speed));
           }
+          // A hash of a cell, 0..1, steady on large coordinates.
+          float cellHash(vec2 cell) {
+            vec3 q = fract(vec3(cell.xyx) * 0.1031);
+            q += dot(q, q.yzx + 33.33);
+            return fract((q.x + q.y) * q.z);
+          }
           void main() {
             vec2 p = vWorld.xz;
             vec2 slope = ripple(p, vec2(0.21, 0.09), 1.1, 0.16)
@@ -192,8 +211,19 @@ export class SeaView {
             vec3 sky = mix(horizon * 0.85, zenith, pow(clamp(mirrored.y, 0.0, 1.0), 0.5));
             float daylight = dot(horizon, vec3(0.2126, 0.7152, 0.0722));
             vec3 color = mix(deepColor * (0.25 + daylight), sky, fresnel);
-            // The sun (or the moon) glitters on the ripples.
+            // The sun (or the moon) glitters on the ripples...
             color += sunColor * pow(max(dot(mirrored, sunDirection), 0.0), 180.0) * 2.5;
+            // ...and sparkles on the facets that catch it: one a cell, tilted its own way as it turns over, a round
+            // point of light while it faces the sun just right. Not once the sun's disc has set.
+            vec2 cells = p * ${SPARKLE_CELLS_PER_METER.toFixed(2)};
+            vec2 cell = floor(cells);
+            float seed = cellHash(cell);
+            float turn = fract(time * ${SPARKLE_RATE.toFixed(2)} + seed) * 6.2832;
+            vec2 tilt = (vec2(cellHash(cell + 31.7), cellHash(cell + 71.3)) * 2.0 - 1.0) * ${SPARKLE_TILT.toFixed(2)};
+            vec3 facet = normalize(vec3(-slope.x - tilt.x * cos(turn), 1.0, -slope.y - tilt.y * sin(turn)));
+            float glint = pow(max(dot(reflect(-toEye, facet), sunDirection), 0.0), ${SPARKLE_SHARPNESS.toFixed(1)});
+            float point = 1.0 - smoothstep(0.1, 0.4, length(cells - cell - 0.5));
+            color += sunColor * (glint * point * ${SPARKLE_LEVEL.toFixed(1)} * smoothstep(-0.01, 0.03, sunDirection.y));
             // Foam where the ripples break on the shore, coming and going.
             float surf = 0.6 + 0.4 * sin(time * 1.7 - vShore * 1.8 + slope.x * 6.0);
             float foam = (1.0 - smoothstep(0.0, 3.0, vShore)) * surf;

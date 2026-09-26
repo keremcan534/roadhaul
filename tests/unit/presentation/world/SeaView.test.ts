@@ -73,6 +73,10 @@ describe('SeaView', () => {
     environment.applySky(sky, { sun: { x: 0, y: -0.5, z: 0.87 }, moon: { x: 0, y: 0.5, z: -0.87 }, moonPhase: 0.5, starTurn: 0 });
     expect((uniforms['horizon']!.value as { getHex(): number }).getHex()).toBe(night.horizonColor);
     expect((named(scene, 'water').material as ShaderMaterial).fog).toBe(true);
+    // The sun (or the moon) glitters on the ripples and sparkles on the facets that catch it, not once it has set.
+    const shader = (named(scene, 'water').material as ShaderMaterial).fragmentShader;
+    expect(shader).toContain('float glint = pow(max(dot(reflect(-toEye, facet), sunDirection), 0.0)');
+    expect(shader).toContain('smoothstep(-0.01, 0.03, sunDirection.y)');
   });
 
   it('moves the waves on with time, and holds them while it stands still', () => {
