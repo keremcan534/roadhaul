@@ -208,10 +208,12 @@ const TREE_TRUNK_RADIUS = 0.45;
 /**
  * A pavement's middle keeps this far from any road's edge (its own is
  * farther: half the pavement's width), and its whole width this far from
- * yards, lots, turning circles and quays.
+ * yards, lots, turning circles and quays; its middle this far from a
+ * building (half its width, and a little).
  */
 const WALK_ROAD_CLEARANCE = 0.9;
 const WALK_YARD_CLEARANCE = 2;
+const WALK_BUILDING_CLEARANCE = 1.5;
 /** Trees keep at least this much space from the road edge… */
 const TREE_ROAD_CLEARANCE = 4;
 /** …and are scattered up to this far beyond it. */
@@ -1067,7 +1069,8 @@ export class DrivingWorld {
   /**
    * Whether a pavement may run through (x, z): off every road's surface (with
    * a little margin: its own lies beside it), out of the depot yards, rest
-   * area lots, turning circles and quays, where trucks drive in.
+   * area lots, turning circles and quays, where trucks drive in, and clear of
+   * the buildings.
    */
   private isClearForWalk(x: number, z: number): boolean {
     if (this.roadGrid.nearRoad(x, z, WALK_ROAD_CLEARANCE)) {
@@ -1082,7 +1085,12 @@ export class DrivingWorld {
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, WALK_YARD_CLEARANCE))) {
       return false;
     }
-    return this.turningCircles.every((circle) => Math.hypot(x - circle.x, z - circle.z) > circle.radiusMeters + WALK_YARD_CLEARANCE);
+    if (!this.turningCircles.every((circle) => Math.hypot(x - circle.x, z - circle.z) > circle.radiusMeters + WALK_YARD_CLEARANCE)) {
+      return false;
+    }
+    return this.buildings.every(
+      (box) => Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= WALK_BUILDING_CLEARANCE,
+    );
   }
 
   private isClearForTree(x: number, z: number): boolean {

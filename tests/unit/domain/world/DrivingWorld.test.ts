@@ -747,6 +747,20 @@ describe('DrivingWorld', () => {
       expect(scenic.sidewalks.filter((sidewalk) => sidewalk.side === -1).length).toBeGreaterThan(1);
     });
 
+    it('breaks a pavement where a building stands on it', () => {
+      // A kiosk right at the street's edge, on its right (+z), from x = -10 to 10.
+      const kiosk = { x: 0, z: 9, widthMeters: 20, depthMeters: 6, heightMeters: 4 };
+      const built = new DrivingWorld({ ...map, buildings: [kiosk], scenery: { ...map.scenery, streetscape: true } });
+
+      const right = built.sidewalks.filter((sidewalk) => sidewalk.roadIndex === 0 && sidewalk.side === 1);
+      expect(right).toHaveLength(2);
+      // The street runs east from x = -150: the pavement stops before the kiosk and starts again after it.
+      expect(-150 + right[0]!.toMeters).toBeLessThan(-10);
+      expect(-150 + right[1]!.fromMeters).toBeGreaterThan(10);
+      expect(built.surfaceAt(0, 6.5)).toBe(GRASS);
+      expect(built.surfaceAt(-40, 6.5)).toBe(ASPHALT);
+    });
+
     it('makes the benches, bins, shelters, billboard legs, speed signs, poles, boulders and animals solid', () => {
       const bench = scenic.streetFurniture.find((item) => item.kind === 'bench' && item.z > 0)!;
       expect(hits(bench.x, bench.z, bench.radius, true)).toBe(true);
