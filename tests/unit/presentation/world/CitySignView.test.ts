@@ -10,7 +10,7 @@ const SIGNS: readonly CitySign[] = [
   { cityId: 'city_b', x: 140, z: -9.6, heading: Math.PI / 2 },
   { cityId: 'city_a', x: 0, z: 40, heading: 0 },
 ];
-const NAMES: Readonly<Record<string, string>> = { city_a: 'Yeniliman', city_b: 'Demirkent' };
+const NAMES: Readonly<Record<string, string>> = { city_a: 'Havenport', city_b: 'Ironford' };
 const nameOf = (cityId: string): string => NAMES[cityId]!;
 
 function faceMesh(scene: Scene): Mesh {

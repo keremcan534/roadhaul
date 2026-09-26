@@ -114,7 +114,7 @@ describe('RivalService', () => {
 
   it('wins the company standing with its deliveries and its fleet\'s, where they start and end', async () => {
     const game = await newCompany(1, 5000);
-    deliver(game, 'first_package'); // Yeniliman (city_a) to Demirkent (city_b).
+    deliver(game, 'first_package'); // Havenport (city_a) to Ironford (city_b).
     expect(standingIn(game, 'city_a')['player']).toBeCloseTo(RIVALS.deliveryPoints, 0);
     expect(standingIn(game, 'city_b')['player']).toBeCloseTo(RIVALS.deliveryPoints, 0);
     expect(standingIn(game, 'city_c')['player']).toBeUndefined();
@@ -145,7 +145,7 @@ describe('RivalService', () => {
     expect(game.economy.credits).toBe(15_000 - RIVALS.campaignCost);
     expect(standingIn(game, 'city_a')['player']).toBe(RIVALS.campaignPoints);
     expect(campaigns).toEqual([{ companyId: 'player', cityId: 'city_a', away: false }]);
-    // 40 points against Yeniliman's 10: the city is the company's.
+    // 40 points against Havenport's 10: the city is the company's.
     expect(leaders).toEqual([{ cityId: 'city_a', previousId: 'rival_yeniliman', leaderId: 'player', away: false }]);
     expect(game.rivals.leaderOf('city_a')).toBe('player');
     expect(game.rivals.league().find((entry) => entry.companyId === 'player')!.cities).toBe(1);
@@ -166,7 +166,7 @@ describe('RivalService', () => {
     const bonuses = listen(game, 'LeaderBonusPaid');
     const completed = listen(game, 'MissionCompleted');
     deliver(game, 'first_package');
-    expect(bonuses).toEqual([]); // Yeniliman still led the city.
+    expect(bonuses).toEqual([]); // Havenport still led the city.
 
     game.rivals.runCampaign('city_a');
     const before = game.economy.credits;
@@ -254,7 +254,7 @@ describe('RivalService', () => {
   it('buys a rival out once the company is worth more: its trucks leave the roads, and its standing is the company\'s', async () => {
     const game = await newCompany(1, 5000);
     expect(game.rivals.acquire('rival_yeniliman')).toEqual({ ok: false, error: 'tooStrong' });
-    game.economy.restore(20_000); // Worth 32,000 with its truck against Yeniliman's 27,000, but short of its price.
+    game.economy.restore(20_000); // Worth 32,000 with its truck against Havenport's 27,000, but short of its price.
     const yeniliman = game.rivals.statuses().find((rival) => rival.definition.id === 'rival_yeniliman')!;
     expect(yeniliman).toMatchObject({ value: 27_000, price: 33_800, withinReach: true });
     expect(game.rivals.acquire('rival_yeniliman')).toEqual({ ok: false, error: 'insufficientFunds' });

@@ -14,7 +14,7 @@ test('keeps a busy city scene at night in the rain within the draw budget', asyn
   test.slow(); // The game started twice, drawn in software, the busiest scene there is.
   const problems = watchForProblems(page);
   // The most there is to draw: dense traffic, lit lamps and glows, the headlights, and rain.
-  // Parked in the pickup bay, in Yeniliman's yard, among its buildings. The lamps light the world here, drawn in
+  // Parked in the pickup bay, in Havenport's yard, among its buildings. The lamps light the world here, drawn in
   // software too (?lamps=1), so their shaders compile and draw without a problem.
   await openCompanyHq(page, '?debug&lang=en&traffic=24&weather=night&lamps=1');
   await takeContract(page, 'first_package');

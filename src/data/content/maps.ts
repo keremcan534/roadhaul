@@ -4,11 +4,11 @@ import type { MapDefinition } from '../definitions/MapDefinition';
  * The MVP's region (spec §20, roadmap step 21): three original cities joined
  * by the four kinds of road.
  *
- * - City A, Yeniliman (west): the starting town, where the high street
+ * - City A, Havenport (west): the starting town, where the high street
  *   crosses the harbour road. The company's home depot is on the high street.
  *   The harbour road ends at the quay, on the sea along the map's west edge.
- * - City B, Demirkent (east): an industrial estate inside a ring road.
- * - City C, Başakova (north): a farm village on one street.
+ * - City B, Ironford (east): an industrial estate inside a ring road.
+ * - City C, Amberfield (north): a farm village on one street.
  * - The highway joins A's harbour road to B's ring road, with a rest area
  *   half way (spec §25). Country roads join A to C and C to B.
  *
@@ -204,7 +204,7 @@ export const MAPS: readonly MapDefinition[] = [
       { cityId: 'city_c', roadId: 'rural_a_c', distanceMeters: 2080, direction: 'forward' },
       { cityId: 'city_c', roadId: 'rural_c_b', distanceMeters: 70, direction: 'backward' },
     ],
-    // Farmland: fields line the country roads, with Başakova's own behind the village houses, and a few along the
+    // Farmland: fields line the country roads, with Amberfield's own behind the village houses, and a few along the
     // highway. Each lies beside a stretch of road, a few meters back from its edge.
     fields: [
       { roadId: 'rural_a_c', fromMeters: 140, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'wheat' },
@@ -229,7 +229,7 @@ export const MAPS: readonly MapDefinition[] = [
       { roadId: 'highway_a_b', fromMeters: 500, lengthMeters: 220, side: 'right', setbackMeters: 15, depthMeters: 130, crop: 'wheat' },
       { roadId: 'highway_a_b', fromMeters: 1900, lengthMeters: 220, side: 'left', setbackMeters: 15, depthMeters: 130, crop: 'green' },
     ],
-    // A wind farm in the valley beside the highway, and three turbines beside the country road into Demirkent.
+    // A wind farm in the valley beside the highway, and three turbines beside the country road into Ironford.
     windTurbines: [
       { x: -560, z: -380 },
       { x: -340, z: -360 },
@@ -241,7 +241,7 @@ export const MAPS: readonly MapDefinition[] = [
       { x: 1330, z: 430 },
       { x: 1250, z: 650 },
     ],
-    // The sea along the west edge. The harbour road ends at Yeniliman's quay, where a coaster lies under two cranes
+    // The sea along the west edge. The harbour road ends at Havenport's quay, where a coaster lies under two cranes
     // and a tug waits; fishing boats lie off the shore south of it and out in the bay.
     sea: {
       shoreline: [

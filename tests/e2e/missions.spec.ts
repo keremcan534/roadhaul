@@ -50,7 +50,7 @@ test('boots into the main menu, goes straight into the game, and opens the job b
   await expect(page.locator('.job-card.is-locked:not(.job-card--daily)')).toHaveCount(16);
   const first = own.first();
   await expect(first.locator('.job-card__title')).toHaveText('First Package');
-  await expect(first.locator('.job-card__route')).toHaveText('Yeniliman → Demirkent');
+  await expect(first.locator('.job-card__route')).toHaveText('Havenport → Ironford');
   await expect(first.locator('.job-card__pay')).toHaveText('900 credits');
   expect(problems).toEqual([]);
 });
@@ -70,14 +70,14 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
 
   const hud = page.locator('.mission-hud');
   await expect(hud).toBeVisible();
-  await expect(page.locator('.mission-hud__objective')).toHaveText('Pick up at Yeniliman depot');
+  await expect(page.locator('.mission-hud__objective')).toHaveText('Pick up at Havenport depot');
   await expect(html(page)).toHaveAttribute('data-mission-state', 'travellingToPickup');
 
   // Debug key: park in the bay the mission needs next. Loading takes 3 s of standing still.
   await page.keyboard.press('KeyT');
   await expect(page.locator('.mission-hud__hint')).toHaveText('Loading…');
   await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
-  await expect(page.locator('.mission-hud__objective')).toHaveText('Deliver to Demirkent depot');
+  await expect(page.locator('.mission-hud__objective')).toHaveText('Deliver to Ironford depot');
   await expect(page.locator('.mission-hud__cargo')).toHaveText('Cargo 100%');
   await testInfo.attach('loaded', { body: await page.screenshot(), contentType: 'image/png' });
 
@@ -104,7 +104,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(25);
   // The truck waits in the delivery depot's yard, where it can be serviced.
   await openPanel(page, 'truck');
-  await expect(page.locator('.hq__truck-location')).toHaveText('At Demirkent depot');
+  await expect(page.locator('.hq__truck-location')).toHaveText('At Ironford depot');
   await expect(page.locator('.hq__service-note')).toBeHidden();
   expect(problems).toEqual([]);
 });
@@ -221,7 +221,7 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
   ]) {
     await page.setViewportSize(size);
     await openCompanyHq(page, '?debug&lang=tr');
-    // A long objective: the pickup at Başakova (open at level 1).
+    // A long objective: the pickup at Amberfield (open at level 1).
     await takeContract(page, 'farm_harvest');
     await expect(page.locator('.mission-hud')).toBeVisible();
 
@@ -247,7 +247,7 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
 
     await page.keyboard.press('KeyT');
     await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
-    await expect(page.locator('.mission-hud__objective')).toContainText('Yeniliman');
+    await expect(page.locator('.mission-hud__objective')).toContainText('Havenport');
     expect(await truncated('.mission-hud__objective'), `${size.width}×${size.height}: delivery objective`).toBe(false);
     // Parked at the delivery bay before driving off: the (long) stop-to-unload hint shows.
     await page.keyboard.press('KeyT');

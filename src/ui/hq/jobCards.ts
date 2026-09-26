@@ -127,7 +127,7 @@ export function blockerText(strings: Strings, offer: JobOffer): string {
   return strings.t('hq.needsTruck', { trucks });
 }
 
-/** "Yeniliman → Demirkent". */
+/** "Havenport → Ironford". */
 export function routeText(strings: Strings, mission: MissionDefinition): string {
   return `${strings.cityName(mission.originCityId)} → ${strings.cityName(mission.destinationCityId)}`;
 }

@@ -100,7 +100,7 @@ describe('nextManoeuvre', () => {
     expect(manoeuvreFor(0, 100, SOUTH, -150, 200, false).manoeuvre.kind).toBe('right');
   });
 
-  it('turns left at the high street crossing on the way from Yeniliman to Demirkent', () => {
+  it('turns left at the high street crossing on the way from Havenport to Ironford', () => {
     const world = new DrivingWorld(GAME_CONTENT.maps[0]!);
     const from = world.depotOf('city_a')!.bay;
     const to = world.depotOf('city_b')!.bay;

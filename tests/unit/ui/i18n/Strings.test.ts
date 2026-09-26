@@ -60,7 +60,7 @@ describe('string tables', () => {
     // A generated contract has no title of its own: it is named after its cargo.
     expect(tr.missionTitle({ id: 'daily_81960_1', cargoId: 'farm_produce' })).toBe('Tarım ürünleri sevkiyatı');
     expect(en.cargoName('farm_produce')).toBe('Farm produce');
-    expect(tr.cityName('city_b')).toBe('Demirkent');
+    expect(tr.cityName('city_b')).toBe('Ironford');
   });
 
   it('keep every placeholder of the English text in the Turkish one', () => {
@@ -73,7 +73,7 @@ describe('string tables', () => {
 
 describe('Strings', () => {
   it('fills placeholders and shows missing keys as themselves', () => {
-    expect(en.t('hud.pickup', { depot: 'Yeniliman depot' })).toBe('Pick up at Yeniliman depot');
+    expect(en.t('hud.pickup', { depot: 'Havenport depot' })).toBe('Pick up at Havenport depot');
     expect(en.t('hud.pickup')).toBe('Pick up at {depot}');
     expect(en.t('no.such.key')).toBe('no.such.key');
   });
