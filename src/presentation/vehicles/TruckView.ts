@@ -31,6 +31,7 @@ import type { Rgb } from '../textures/pixelImage';
 import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import type { SceneLight, SkyUniforms } from '../world/EnvironmentView';
+import type { LampMirror } from '../world/WetReflections';
 import { reflectSky, type SkyReflectionOptions } from '../world/skyReflection';
 import { CabInterior, type DashboardReadings } from './CabInterior';
 import { cabGeometry, type CabGeometry } from './cabGeometry';
@@ -202,6 +203,12 @@ export class TruckView {
   private readonly glows: LampGlows;
   /** In the model: the left headlamp (the right one mirrors it across x = 0). */
   private readonly headlampAt: readonly [number, number, number];
+  /** Where the left tail light shines from, on the body (the right one mirrors it): for a wet road to mirror. */
+  private readonly taillampAt: readonly [number, number, number];
+  /** The box that stands in the way of the lamps' light to the road behind (mirrorLamps): its middle along the truck, half its length and width, its height. */
+  private readonly shadeBox: readonly [number, number, number, number];
+  /** Scratch for mirrorLamps(). */
+  private readonly lampAt = new Vector3();
   private lamps = 0;
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
@@ -674,6 +681,8 @@ export class TruckView {
     this.body.add(this.glows.points);
     // Where the headlights light the world from (LampLighting): on the body, as low as the suspension sets it.
     this.headlampAt = [headlightX, bumperTop + 0.2 - drop, frontZ + 0.12];
+    this.taillampAt = [halfW - 0.3, R + 0.26 - drop, rearZ - 0.12];
+    this.shadeBox = [(frontZ + rearZ) / 2, (frontZ - rearZ) / 2, halfW, H];
 
     // An upgraded suspension sets the body lower over its wheels.
     this.body.position.y = -drop;
@@ -803,6 +812,30 @@ export class TruckView {
     this.toWorld(-x, y, z, right);
     const heading = this.root.rotation.y;
     forward.set(Math.sin(heading), 0, Math.cos(heading));
+  }
+
+  /**
+   * The lamps a wet road mirrors (WetReflections): the headlights facing
+   * ahead and the tail lights facing back, where they are in the world as
+   * of the last update(); and the truck in the way of the other lamps'
+   * light to the road behind it. Allocation-free.
+   */
+  mirrorLamps(into: LampMirror): void {
+    const heading = this.root.rotation.y;
+    const forwardX = Math.sin(heading);
+    const forwardZ = Math.cos(heading);
+    const [headX, headY, headZ] = this.headlampAt;
+    const [tailX, tailY, tailZ] = this.taillampAt;
+    const [middle, halfLength, halfWidth, height] = this.shadeBox;
+    const at = this.lampAt;
+    this.toWorld(0, 0, middle, at);
+    into.shade(at.x, at.z, heading, halfLength, halfWidth, height);
+    for (let side = 1; side >= -1; side -= 2) {
+      this.toWorld(side * headX, headY, headZ, at);
+      into.add('head', at.x, at.y, at.z, forwardX, forwardZ);
+      this.toWorld(side * tailX, tailY, tailZ, at);
+      into.add('tail', at.x, at.y, at.z, -forwardX, -forwardZ);
+    }
   }
 
   /** From the driver's seat the windshield would block the view: swap it for the cab's inside and the glass seen from within. */

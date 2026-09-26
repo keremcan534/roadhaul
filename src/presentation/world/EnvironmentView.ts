@@ -189,6 +189,56 @@ const TOWNS_GLOW = /* glsl */ `
     return vec3( 1.0, 0.55, 0.28 ) * glow;
   }
 `;
+/**
+ * A rainbow stands opposite the sun in the drops of rain passing by, or just
+ * gone with the ground still wet (setWetness), while the sun shines on them
+ * (fully from RAINBOW_SUNLIT of a clear day's light): only with the sun low
+ * enough for the bow to clear the hills, from RAINBOW_HIGHEST_SUN down,
+ * fully from RAINBOW_LOW_SUN, and not once it has set. Its colours and the
+ * brighter sky inside it, the darker band out to the fainter second bow,
+ * are the dome's (RAINBOW).
+ */
+const RAINBOW_LOW_SUN = degreesToRadians(20);
+const RAINBOW_HIGHEST_SUN = degreesToRadians(34);
+const RAINBOW_SUNLIT = 0.55;
+/**
+ * The rainbow on the sky, `strength` (the rainbow uniform) strong, lit by the
+ * sun (`light`) round the point opposite it (`direction` is toward the
+ * sun), `up` the height of the sky's point (a sine): the primary bow 40° to
+ * 42.4° round (violet inside, red outside), the secondary, fainter and the
+ * other way round, 50° to 53.4°; the sky brighter inside the primary and
+ * darker between them (Alexander's band). Strongest in the bows' feet,
+ * where the rain is thickest.
+ */
+const RAINBOW = /* glsl */ `
+  uniform float rainbow;
+  vec3 bowColours( float t ) {
+    // t: 0 violet … 1 red, fading at both edges (the red one sharper) and fainter toward the violet.
+    float h = 0.78 * clamp( ( 1.0 - t ) * 1.15 - 0.05, 0.0, 1.0 );
+    vec3 hue = clamp( abs( mod( h * 6.0 + vec3( 0.0, 4.0, 2.0 ), 6.0 ) - 3.0 ) - 1.0, 0.0, 1.0 );
+    return hue * ( 0.4 + 0.6 * t ) * smoothstep( 0.0, 0.3, t ) * ( 1.0 - smoothstep( 0.9, 1.0, t ) );
+  }
+  vec3 rainbowOver( vec3 sky, vec3 direction, float up, vec3 toSun, vec3 light, float strength ) {
+    float angle = degrees( acos( clamp( -dot( direction, toSun ), -1.0, 1.0 ) ) );
+    float feet = smoothstep( -0.02, 0.03, up ) * mix( 1.0, 0.6, smoothstep( 0.1, 0.7, up ) ) * strength;
+    vec3 bows = bowColours( clamp( ( angle - 40.0 ) / 2.4, 0.0, 1.0 ) )
+      + 0.4 * bowColours( clamp( ( 53.4 - angle ) / 3.4, 0.0, 1.0 ) );
+    float inside = 1.0 - smoothstep( 36.0, 40.5, angle );
+    float between = smoothstep( 42.0, 43.0, angle ) * ( 1.0 - smoothstep( 49.5, 50.5, angle ) );
+    // Under the primary bow the sky gives way a little to its colours, so they show on a bright sky too.
+    float primary = smoothstep( 39.8, 40.6, angle ) * ( 1.0 - smoothstep( 42.0, 42.6, angle ) );
+    return sky * ( 1.0 - ( 0.12 * between + 0.22 * primary ) * feet ) + ( bows * 0.4 + inside * 0.05 ) * light * feet;
+  }
+`;
+/**
+ * Lightning's flash (setLightning, 0..1) lights up the sky and the haze in
+ * this bluish white, the clouds by this much of their full brightness, and
+ * the world by this much of a clear day's light from the sky.
+ */
+const LIGHTNING_SKY = 0xc2cbff;
+const LIGHTNING_SKY_LEVEL = 0.85;
+const LIGHTNING_CLOUDS = 1.2;
+const LIGHTNING_SKYLIGHT = 1.3;
 /** With the moon down, the night's faint key light (the stars', the towns') comes from high up. */
 const NIGHT_KEY = new Vector3(0.25, 0.9, 0.35).normalize();
 /** The moon's glow round it, as the sun's is round the sun (times the moonlight). */
@@ -287,7 +337,8 @@ export interface SceneLight {
  * horizon. About three draw calls, two more at night. applySky() turns it
  * all to the time of day and the weather (spec §38–39): sky, haze, light,
  * the sun and the moon where they stand, the moon's phase, the turning
- * stars, clouds, the pre-lit ground with it, and the picture's grade
+ * stars, clouds, a rainbow after the rain, the pre-lit ground with it, and
+ * the picture's grade
  * (`grade`, for the renderer's colour pass).
  */
 export class EnvironmentView {
@@ -314,6 +365,8 @@ export class EnvironmentView {
      * glows and how fast the glow fades up the sky (per unit of height's sine): the farther, the faster.
      */
     readonly townGlow: { value: Vector4[] };
+    /** How strongly the rainbow shows, 0..1. */
+    readonly rainbow: { value: number };
   };
   private readonly towardSun = new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z).normalize();
   private glare = 0;
@@ -321,6 +374,11 @@ export class EnvironmentView {
   /** Where the towns are (setTowns), and how brightly their lamps light the night's haze (applySky). */
   private readonly towns: { readonly x: number; readonly z: number }[] = [];
   private townLight = 0;
+  /** How wet the ground is (setWetness): the rain's drops still in the air, for a rainbow. */
+  private wetness = 0;
+  /** How bright lightning flashes now (setLightning), and its light in the sky as it adds to the sky's colours. */
+  private lightning = 0;
+  private readonly lightningSky = new Color();
   private readonly clouds: Mesh;
   private readonly cloudGeometry: InstancedBufferGeometry;
   private readonly cloudUniforms = { brightness: { value: 1 }, drift: { value: 0 } };
@@ -394,6 +452,7 @@ export class EnvironmentView {
       twilightAway: { value: new Vector2(0, 1) },
       earthShadow: { value: EARTH_SHADOW_LOW },
       townGlow: { value: Array.from({ length: GLOWING_TOWNS }, () => new Vector4()) },
+      rainbow: { value: 0 },
     };
     this.cloudGeometry = this.track(new InstancedBufferGeometry());
     this.clouds = this.createClouds(this.cloudGeometry);
@@ -429,7 +488,8 @@ export class EnvironmentView {
    * (the sun's; at night the moon's, or the night sky's with the moon down)
    * and the sky's, the glow round the sun (after sunset, where it went
    * down; at night, round the moon), the moon's lit side toward the sun,
-   * the stars, clouds, real-time shadows and the grade. By day a low sun
+   * the stars, clouds, a rainbow in the rain passing or just gone (as wet
+   * as setWetness() says), real-time shadows and the grade. By day a low sun
    * is exposed a little brighter, as the eye adapts. Allocation-free.
    */
   applySky(look: Readonly<SkyLook>, sky: SkyPlacement, prelit?: PrelitMaterials): void {
@@ -439,7 +499,9 @@ export class EnvironmentView {
     const adapted = clamp(Math.sqrt(REFERENCE_SUN_SINE / Math.max(sun.y, 0.05)), 1, MAX_DAY_EXPOSURE);
     const exposure = 1 + (adapted - 1) * smoothstep(LOW_SUN_ELEVATION, DAY_ELEVATION, elevation);
     const sunlight = look.sunlight * exposure;
-    const skylight = look.skylight * exposure;
+    // A lightning flash lights the world from the whole sky.
+    const flash = this.lightning;
+    const skylight = look.skylight * exposure + flash * LIGHTNING_SKYLIGHT;
     const moonlight = look.moonlight;
     this.tint.setHex(look.lightColor);
 
@@ -462,6 +524,11 @@ export class EnvironmentView {
     const uniforms = this.skyUniforms;
     uniforms.zenith.value.setHex(look.zenithColor).multiplyScalar(exposure);
     uniforms.horizon.value.setHex(look.horizonColor).multiplyScalar(exposure);
+    if (flash > 0) {
+      this.lightningSky.setHex(LIGHTNING_SKY).multiplyScalar(flash * LIGHTNING_SKY_LEVEL);
+      uniforms.zenith.value.add(this.lightningSky);
+      uniforms.horizon.value.add(this.lightningSky);
+    }
     uniforms.groundHaze.value.copy(uniforms.horizon.value).multiplyScalar(GROUND_HAZE_SHADE);
     // The glow in the sky: round the sun while it is up and while its twilight lasts (orange at dusk), then
     // round the moon, pale.
@@ -485,6 +552,13 @@ export class EnvironmentView {
       uniforms.twilightAway.value.normalize();
     }
     uniforms.earthShadow.value = EARTH_SHADOW_LOW + Math.max(0, -elevation) * EARTH_SHADOW_RISE;
+    // A rainbow in the rain passing by (halfway through a turn of the weather) or just gone (the ground still wet).
+    const showers = Math.max(this.wetness - look.rain, 4 * look.rain * (1 - look.rain));
+    uniforms.rainbow.value =
+      smoothstep(0.05, 0.5, showers) *
+      smoothstep(0.15, RAINBOW_SUNLIT, look.sunlight) *
+      smoothstep(SUNSET_BELOW, SUNSET_ABOVE, elevation) *
+      (1 - smoothstep(RAINBOW_LOW_SUN, RAINBOW_HIGHEST_SUN, elevation));
     // The sun glares while it is up and bright: less through haze and cloud, not at all in the rain.
     this.towardSun.set(sun.x, sun.y, sun.z).normalize();
     this.glare = Math.min(1, look.sunlight) * smoothstep(-0.01, 0.04, sun.y) * (1 - look.rain) * (1 - 0.7 * look.cloudCover);
@@ -519,7 +593,7 @@ export class EnvironmentView {
 
     this.keepSceneLight();
 
-    this.cloudUniforms.brightness.value = look.cloudBrightness * exposure;
+    this.cloudUniforms.brightness.value = look.cloudBrightness * exposure + flash * LIGHTNING_CLOUDS;
     this.showClouds(look.cloudCover);
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
@@ -561,6 +635,24 @@ export class EnvironmentView {
     for (const town of towns.slice(0, GLOWING_TOWNS)) {
       this.towns.push({ x: town.x, z: town.z });
     }
+  }
+
+  /**
+   * How wet the ground is, 0..1 (WeatherService.wetness): with the rain gone
+   * or passing, its drops are still in the air out there, and a low sun
+   * shows a rainbow in them. Takes effect at the next applySky().
+   */
+  setWetness(wetness: number): void {
+    this.wetness = clamp(wetness, 0, 1);
+  }
+
+  /**
+   * How bright lightning flashes now, 0..1 (Thunderstorm.flash): it lights
+   * up the sky, the haze and the clouds, and the world from the sky. Takes
+   * effect at the next applySky().
+   */
+  setLightning(flash: number): void {
+    this.lightning = clamp(flash, 0, 1);
   }
 
   /** Toward the sun (unit; below the horizon at night), as applySky() last placed it. Updated in place. */
@@ -673,6 +765,7 @@ export class EnvironmentView {
           uniform vec2 twilightAway;
           uniform float earthShadow;
           ${TOWNS_GLOW}
+          ${RAINBOW}
           varying vec3 vDirection;
           void main() {
             vec3 direction = normalize(vDirection);
@@ -700,6 +793,9 @@ export class EnvironmentView {
             sky += vec3(0.95, 0.42, 0.55) * dot(horizon, vec3(0.2126, 0.7152, 0.0722)) * belt * opposite * 0.65;
             // At night the towns' lamps glow warm on the haze over them.
             sky += townsGlow(bearing, height);
+            if (rainbow > 0.0) {
+              sky = rainbowOver(sky, direction, up, sunDirection, sunColor, rainbow);
+            }
             gl_FragColor = vec4(sky, 1.0);
             #include <tonemapping_fragment>
             #include <colorspace_fragment>

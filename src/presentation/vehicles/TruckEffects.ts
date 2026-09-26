@@ -20,8 +20,8 @@ export interface TruckEffectsState {
   heading: number;
   /** On grass: the wheels throw dust. */
   offRoad: boolean;
-  /** How hard it rains, 0..1: the wheels throw spray off a wet road, and wet ground raises less dust. */
-  rain: number;
+  /** How wet the ground is, 0..1 (WeatherService.wetness): the wheels throw spray off a wet road, and wet ground raises less dust. */
+  wetness: number;
 }
 
 export function createTruckEffectsState(): TruckEffectsState {
@@ -35,7 +35,7 @@ export function createTruckEffectsState(): TruckEffectsState {
     speed: 0,
     heading: 0,
     offRoad: false,
-    rain: 0,
+    wetness: 0,
   };
 }
 
@@ -50,7 +50,7 @@ const EXHAUST_LOAD_COLOR = 0x3e3e3e;
 const DUST_MIN_SPEED = 1.5;
 const DUST_MAX_RATE = 36;
 const DUST_COLOR = 0xc4ae88;
-/** Spray off a wet road: puffs a second in full rain (more the faster), from this speed, m/s. */
+/** Spray off a wet road: puffs a second on a soaked one (more the faster), from this speed, m/s. */
 const SPRAY_MIN_SPEED = 5;
 const SPRAY_MAX_RATE = 44;
 const SPRAY_COLOR = 0xd6dde5;
@@ -141,7 +141,7 @@ export class TruckEffects {
     const random = this.random;
     const puff = this.puff;
     if (state.offRoad && speed > DUST_MIN_SPEED) {
-      const dryness = 1 - 0.8 * clamp(state.rain, 0, 1);
+      const dryness = 1 - 0.8 * clamp(state.wetness, 0, 1);
       this.dustDue += Math.min(DUST_MAX_RATE, 6 + speed * 2.2) * dryness * this.density * deltaSeconds;
       while (this.dustDue >= 1) {
         this.dustDue -= 1;
@@ -163,8 +163,8 @@ export class TruckEffects {
     } else {
       this.dustDue = 0;
     }
-    if (!state.offRoad && state.rain > 0.05 && speed > SPRAY_MIN_SPEED) {
-      this.sprayDue += state.rain * Math.min(SPRAY_MAX_RATE, speed * 2.2) * this.density * deltaSeconds;
+    if (!state.offRoad && state.wetness > 0.05 && speed > SPRAY_MIN_SPEED) {
+      this.sprayDue += state.wetness * Math.min(SPRAY_MAX_RATE, speed * 2.2) * this.density * deltaSeconds;
       while (this.sprayDue >= 1) {
         this.sprayDue -= 1;
         this.side = this.side === 1 ? -1 : 1;
@@ -177,7 +177,7 @@ export class TruckEffects {
         puff.endSizeMeters = 2.4 + speed * 0.03;
         puff.lifeSeconds = random.range(0.8, 1.2);
         puff.color = SPRAY_COLOR;
-        puff.opacity = 0.45 * state.rain;
+        puff.opacity = 0.45 * state.wetness;
         puff.lift = -0.8;
         puff.drag = 2;
         this.pool.spawn(puff);

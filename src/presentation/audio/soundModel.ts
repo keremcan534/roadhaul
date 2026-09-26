@@ -51,3 +51,41 @@ export function brakeNoiseLevel(brake: number, speed: number): number {
 export function crashLevel(impactSpeed: number): number {
   return clamp01(0.25 + (0.75 * Math.max(0, impactSpeed)) / LOUDEST_CRASH_SPEED);
 }
+
+/** Sound travels this fast, m/s: thunder follows its flash by the strike's distance over this. */
+const SPEED_OF_SOUND = 343;
+/** Thunder from nearer than this cracks before it rumbles. */
+const CRACK_WITHIN_METERS = 1500;
+/** Thunder is loudest from nearer than this, and fades to a fifth of that by FAINT_THUNDER_METERS. */
+const LOUD_THUNDER_METERS = 800;
+const FAINT_THUNDER_METERS = 6000;
+
+/** How a strike's thunder sounds: when it comes, how loud, how long it rolls, how deep, and how it cracks first. */
+export interface ThunderSound {
+  /** Seconds after the flash. */
+  delaySeconds: number;
+  /** 0..1 */
+  level: number;
+  /** How long it rolls, seconds: the farther, the longer. */
+  seconds: number;
+  /** The rumble's low-pass cutoff as it starts, Hz: the air takes the highs out of far thunder. */
+  cutoffHz: number;
+  /** How loud the crack before the rumble is, 0..1: only near strikes crack. */
+  crack: number;
+}
+
+export function createThunderSound(): ThunderSound {
+  return { delaySeconds: 0, level: 0, seconds: 0, cutoffHz: 0, crack: 0 };
+}
+
+/** The thunder of a strike `distanceMeters` away. Writes into `out`, allocation-free. */
+export function thunderSound(distanceMeters: number, out: ThunderSound): ThunderSound {
+  const distance = Math.max(0, distanceMeters);
+  const far = clamp01((distance - LOUD_THUNDER_METERS) / (FAINT_THUNDER_METERS - LOUD_THUNDER_METERS));
+  out.delaySeconds = distance / SPEED_OF_SOUND;
+  out.level = 1 - 0.8 * far;
+  out.seconds = 4.5 + distance / 1500;
+  out.cutoffHz = Math.max(160, 1200 * Math.exp(-distance / 2500));
+  out.crack = clamp01(1 - distance / CRACK_WITHIN_METERS);
+  return out;
+}

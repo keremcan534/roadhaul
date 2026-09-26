@@ -6,6 +6,7 @@ import {
   requestedLampLight,
   requestedSpawn,
   requestedTimeOfDay,
+  requestedWetness,
   type QueryParameters,
 } from '../../../src/platform/browser/configOverrides';
 
@@ -91,6 +92,17 @@ describe('requestedLampLight', () => {
     expect(requestedLampLight(query('?lamps=1'))).toBe(true);
     expect(requestedLampLight(query('?lamps=yes'))).toBeNull();
     expect(requestedLampLight(query(''))).toBeNull();
+  });
+});
+
+describe('requestedWetness', () => {
+  it('keeps the roads as wet as the URL says, from dry to soaked, and leaves them to the weather otherwise', () => {
+    expect(requestedWetness(query('?wet=1'))).toBe(1);
+    expect(requestedWetness(query('?wet=0.4'))).toBe(0.4);
+    expect(requestedWetness(query('?wet=0'))).toBe(0);
+    for (const search of ['', '?wet=', '?wet=2', '?wet=-1', '?wet=soaked']) {
+      expect(requestedWetness(query(search)), search).toBeNull();
+    }
   });
 });
 

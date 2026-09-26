@@ -10,6 +10,7 @@ import {
   Scene,
   type Object3D,
   ShaderLib,
+  type DataTexture,
   UniformsUtils,
   Vector3,
 } from 'three';
@@ -250,7 +251,10 @@ describe('TrackView', () => {
     view.update(0.5);
     expect(shader.uniforms['windTime']!.value).toBeCloseTo(2, 9);
     const calm = shader.uniforms['windStrength']!.value;
+    // The wet roads after the rain bring no wind; the rain does.
     view.setWetness(1);
+    expect(shader.uniforms['windStrength']!.value).toBe(calm);
+    view.setRain(1);
     expect(shader.uniforms['windStrength']!.value).toBeGreaterThan(calm * 2);
   });
 
@@ -377,11 +381,12 @@ describe('TrackView', () => {
     expect(walls).toBe(8); // Four walls, two triangles each.
   });
 
-  it('wets the asphalt in the rain: it darkens and mirrors the sky it is given', () => {
+  it('wets the asphalt in the rain: it darkens and mirrors the sky it is given, and holds puddles the rain rings', () => {
     const scene = new Scene();
     const horizon = { value: new Color(0x123456) };
+    const zenith = { value: new Color(0x0a1a2a) };
     const view = new TrackView(scene, world, {
-      sky: { zenith: { value: new Color() }, horizon, sunColor: { value: new Color() }, sunDirection: { value: new Vector3() } },
+      sky: { zenith, horizon, sunColor: { value: new Color() }, sunDirection: { value: new Vector3() } },
     });
     const wettable: MeshBasicMaterial[] = [];
     scene.traverse((object) => {
@@ -403,12 +408,20 @@ describe('TrackView', () => {
     wettable[0]!.onBeforeCompile(shader as never, undefined as never);
 
     expect(shader.uniforms['wetSky']).toBe(horizon);
+    expect(shader.uniforms['wetZenith']).toBe(zenith);
     expect(shader.fragmentShader).toContain('wetness');
     expect(shader.fragmentShader).toContain('#include <opaque_fragment>');
     expect(shader.vertexShader).toContain('vToEye = -mvPosition.xyz;');
     expect(shader.uniforms['wetness']!.value).toBe(0);
     view.setWetness(0.7);
     expect(shader.uniforms['wetness']!.value).toBe(0.7);
+    // Puddles where the map says, filling as the road gets wetter (the same wetness), ringed by the rain.
+    expect(shader.fragmentShader).toContain('float puddle = puddleAt( vGround );');
+    expect(shader.vertexShader).toContain('vGround = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    expect(shader.uniforms['puddleWetness']).toBe(shader.uniforms['wetness']);
+    expect((shader.uniforms['puddleMap']!.value as DataTexture).image.width).toBeGreaterThan(0);
+    view.setRain(0.6);
+    expect(shader.uniforms['rainfall']!.value).toBe(0.6);
   });
 
   it('releases every GPU resource, textures included, on dispose', () => {

@@ -1,6 +1,14 @@
 import { clamp01 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
-import { brakeNoiseLevel, crashLevel, createEngineTone, engineTone, roadNoiseLevel } from './soundModel';
+import {
+  brakeNoiseLevel,
+  crashLevel,
+  createEngineTone,
+  createThunderSound,
+  engineTone,
+  roadNoiseLevel,
+  thunderSound,
+} from './soundModel';
 
 /** What the sound follows, written by the entry point every frame into one reused object. */
 export interface SoundState {
@@ -45,6 +53,9 @@ const ROAD_VOLUME = 0.22;
 const BRAKE_VOLUME = 0.1;
 const RAIN_VOLUME = 0.14;
 const HORN_VOLUME = 0.2;
+const THUNDER_VOLUME = 0.9;
+/** Thunder's rumble swells again this many times as the sound comes in from farther along the channel. */
+const THUNDER_ROLLS = 3;
 /** Seconds for a level to settle: quick enough to follow the pedal, slow enough not to click. */
 const SMOOTHING_SECONDS = 0.06;
 const NOISE_SECONDS = 2;
@@ -77,7 +88,7 @@ interface Graph {
 
 /**
  * The game's sound, spec §37's first version: the engine, the brakes, the
- * horn, the road, wind and rain, and the interface. All of it is made with
+ * horn, the road, wind, rain and thunder, and the interface. All of it is made with
  * the Web Audio API from oscillators and noise: no sound files, nothing to
  * download, original by construction. The engine note follows the rpm and
  * the pedal, the tyres and wind the speed, the rain the weather.
@@ -93,6 +104,7 @@ export class GameAudio {
   private on: boolean;
   private hornPressed = false;
   private readonly tone = createEngineTone();
+  private readonly thunderShape = createThunderSound();
   /** Braking from speed: stopping will let out the air brakes' hiss. */
   private hissArmed = false;
   /** Where in the noise each burst starts, so no two sound quite alike. */
@@ -228,6 +240,45 @@ export class GameAudio {
     this.noiseBurst('bandpass', 220, 0.2, 0.3);
   }
 
+  /**
+   * Thunder from a strike `distanceMeters` off (thunderSound): after the
+   * time sound takes to come that far, a crack if it was near, then a long,
+   * deep rumble that swells a few times as it rolls, getting deeper.
+   */
+  thunder(distanceMeters: number): void {
+    const context = this.context;
+    const graph = this.graph;
+    if (context === null || graph === null || context.state !== 'running') {
+      return;
+    }
+    const sound = thunderSound(distanceMeters, this.thunderShape);
+    const start = context.currentTime + sound.delaySeconds;
+    const end = start + sound.seconds;
+    const level = sound.level * THUNDER_VOLUME;
+    const source = context.createBufferSource();
+    source.buffer = graph.noise;
+    source.loop = true;
+    const filter = context.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(sound.cutoffHz, start);
+    filter.frequency.exponentialRampToValueAtTime(90, end);
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0, start);
+    let at = start + 0.15;
+    gain.gain.linearRampToValueAtTime(level, at);
+    for (let roll = 0; roll < THUNDER_ROLLS; roll++) {
+      at += this.random.range(0.3, 0.8);
+      gain.gain.linearRampToValueAtTime(level * this.random.range(0.35, 0.9), at);
+    }
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    source.connect(filter).connect(gain).connect(graph.master);
+    source.start(start, this.random.range(0, NOISE_SECONDS));
+    source.stop(end + 0.1);
+    if (sound.crack > 0) {
+      this.noiseBurst('highpass', 300, 0.35, 0.6 * sound.crack * THUNDER_VOLUME, sound.delaySeconds);
+    }
+  }
+
   dispose(): void {
     void this.context?.close();
     this.context = null;
@@ -251,14 +302,14 @@ export class GameAudio {
     oscillator.stop(start + seconds);
   }
 
-  /** A short burst of filtered noise. */
-  private noiseBurst(type: BiquadFilterType, frequency: number, seconds: number, level: number): void {
+  /** A short burst of filtered noise, `delay` seconds from now. */
+  private noiseBurst(type: BiquadFilterType, frequency: number, seconds: number, level: number, delay = 0): void {
     const context = this.context;
     const graph = this.graph;
     if (context === null || graph === null || context.state !== 'running') {
       return;
     }
-    const start = context.currentTime;
+    const start = context.currentTime + delay;
     const source = context.createBufferSource();
     source.buffer = graph.noise;
     const filter = context.createBiquadFilter();

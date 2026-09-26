@@ -22,6 +22,7 @@ import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
 import { softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
+import type { LampMirror } from '../world/WetReflections';
 import type { SkyUniforms } from '../world/EnvironmentView';
 import type { TrafficHeadlamps } from '../world/LampLighting';
 import { reflectSky } from '../world/skyReflection';
@@ -316,6 +317,36 @@ export class TrafficView implements TrafficHeadlamps {
       forwards[slot]!.set(sin, 0, cos);
     }
     return found;
+  }
+
+  /**
+   * Every vehicle's lamps as last drawn (update), for a wet road to mirror
+   * (WetReflections): the headlights facing ahead, the tail lights facing
+   * back. Allocation-free.
+   */
+  mirrorLamps(into: LampMirror): void {
+    for (let vehicle = 0; vehicle < this.placedCount; vehicle++) {
+      const heading = this.placedHeading[vehicle]!;
+      const sin = Math.sin(heading);
+      const cos = Math.cos(heading);
+      const spots = this.glowSpots[this.placedType[vehicle]!]!;
+      const vx = this.placedX[vehicle]!;
+      const vz = this.placedZ[vehicle]!;
+      for (let lamp = 0; lamp < LAMPS_PER_VEHICLE; lamp++) {
+        const localX = spots[lamp * 3]!;
+        const localZ = spots[lamp * 3 + 2]!;
+        // The front lamps come first, turned by the heading like makeRotationY.
+        const facing = lamp < 2 ? 1 : -1;
+        into.add(
+          lamp < 2 ? 'head' : 'tail',
+          vx + localX * cos + localZ * sin,
+          spots[lamp * 3 + 1]!,
+          vz - localX * sin + localZ * cos,
+          facing * sin,
+          facing * cos,
+        );
+      }
+    }
   }
 
   dispose(): void {

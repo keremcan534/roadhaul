@@ -35,6 +35,29 @@ export function cloudShadowImage(size = 128, seed = 107): PixelImage {
 }
 
 /**
+ * Where the road holds water, seen from above: tileable fractal noise in
+ * grey, stretched to the full range, so the dips (the brightest spots)
+ * stand out a few meters across. The wetter the road, the lower the water
+ * line it fills to (TrackView). Not a colour image.
+ */
+export function puddleImage(size = 128, seed = 113): PixelImage {
+  const image = createImage(size, size);
+  const { data } = image;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      // Fractal noise gathers round a half: stretched so the water line can pick out a few dips.
+      const noise = fractalNoise(x / size, y / size, 5, 3, seed);
+      const value = Math.round(Math.min(1, Math.max(0, (noise - 0.25) / 0.55)) * 255);
+      const i = (y * size + x) * 4;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+  }
+  return image;
+}
+
+/**
  * Tileable meadow grass: small blotches of greens with fine grain, even
  * across the tile, so nothing larger repeats where it is tiled (the ground
  * lays larger lusher and drier patches over it).

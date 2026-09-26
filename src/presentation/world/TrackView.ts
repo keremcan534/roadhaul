@@ -54,7 +54,8 @@ import {
 } from './buildingParts';
 import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
-import { glossyUnderLamps } from './LampLighting';
+import { wetUnderLamps } from './LampLighting';
+import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
@@ -181,8 +182,64 @@ mvPosition = modelViewMatrix * mvPosition;
 gl_Position = projectionMatrix * mvPosition;
 `;
 
-/** The sky a wet road mirrors when there is none given (a rainy day's haze). */
+/** The sky a wet road mirrors when there is none given (a rainy day's haze, a little darker overhead). */
 const WET_SKY = 0x7f8b97;
+const WET_ZENITH = 0x46525f;
+/**
+ * The rain rings the puddles: a drop at a time in every cell this many to a
+ * meter each way, at its own place and moment, its ring spreading over
+ * RING_SECONDS to about half a cell and fading.
+ */
+const RING_CELLS_PER_METER = 1.6;
+const RING_SECONDS = 0.8;
+
+const f = (value: number): string => (Number.isInteger(value) ? `${value}.0` : `${value}`);
+
+/** The wet road's uniforms and helpers (TrackView.wettable). */
+const WET_ROAD_PARS = /* glsl */ `
+uniform float wetness;
+uniform float rainfall;
+uniform float rainTime;
+uniform vec3 wetSky;
+uniform vec3 wetZenith;
+varying vec3 vToEye;
+varying vec2 vGround;
+${PUDDLE_GLSL}
+// A hash of a cell, 0..1, steady on large coordinates.
+float cellHash( vec2 cell ) {
+  vec3 p = fract( vec3( cell.xyx ) * 0.1031 );
+  p += dot( p, p.yzx + 33.33 );
+  return fract( ( p.x + p.y ) * p.z );
+}
+`;
+
+/**
+ * The wet road, over its lit colour: darker, and mirroring the sky, dully
+ * where it is only wet, like glass in its puddles, which the rain rings.
+ */
+const WET_ROAD = /* glsl */ `
+vec3 roadUp = normalize( ( viewMatrix * vec4( 0.0, 1.0, 0.0, 0.0 ) ).xyz );
+float facing = max( dot( normalize( vToEye ), roadUp ), 0.0 );
+float grazing = pow( 1.0 - facing, 4.0 );
+float puddle = puddleAt( vGround );
+// Still water mirrors like glass by Fresnel's term, and seen from above a puddle shows the bright sky over its dark
+// bottom more than the term says: the sky outshines the asphalt.
+float mirror = wetness * mix( grazing * 0.6, 0.3 + 0.7 * pow( 1.0 - facing, 5.0 ), puddle );
+// Along the road it mirrors the horizon; looking down into a puddle, the sky higher up.
+vec3 mirrored = mix( wetSky, wetZenith, sqrt( facing ) * puddle );
+if ( puddle > 0.0 && rainfall > 0.0 ) {
+  // A drop at a time in each cell, at its own place and moment: a ring spreading and fading, tilting the water
+  // to mirror more of the sky.
+  vec2 cells = vGround * ${f(RING_CELLS_PER_METER)};
+  vec2 cell = floor( cells );
+  float seed = cellHash( cell );
+  float age = fract( rainTime * ${f(1 / RING_SECONDS)} + seed );
+  vec2 drop = 0.2 + 0.6 * vec2( seed, cellHash( cell + 17.0 ) );
+  float ring = 1.0 - smoothstep( 0.0, 0.05, abs( length( cells - cell - drop ) - age * 0.5 ) );
+  mirror = mix( mirror, 1.0, ring * ( 1.0 - age ) * rainfall * puddle * 0.5 );
+}
+outgoingLight = mix( outgoingLight * ( 1.0 - ( 0.35 + 0.3 * puddle ) * wetness ), mirrored, mirror );
+`;
 
 export interface TrackViewOptions {
   /** The sky, for a wet road to mirror (EnvironmentView.sky); without it, a rainy day's haze. */
@@ -219,8 +276,14 @@ export class TrackView {
   /** Facades whose windows light up at night. */
   private readonly facades: MeshLambertMaterial[] = [];
   private lamps = 0;
-  /** How wet the asphalt is (0..1), and the sky it mirrors: its shader's uniforms. */
-  private readonly wet: { readonly wetness: { value: number }; readonly wetSky: { readonly value: Color } };
+  /** How wet the asphalt is (0..1) and how hard it rains, the sky it mirrors and where it holds puddles: its shader's uniforms. */
+  private readonly wet: {
+    readonly wetness: { value: number };
+    readonly rainfall: { value: number };
+    readonly wetSky: { readonly value: Color };
+    readonly wetZenith: { readonly value: Color };
+    readonly puddleMap: { readonly value: Texture };
+  };
   /** The wind in the trees' crowns: its clock (seconds) and strength. */
   private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
 
@@ -230,7 +293,13 @@ export class TrackView {
     options: TrackViewOptions = {},
   ) {
     this.prelit = options.prelit;
-    this.wet = { wetness: { value: 0 }, wetSky: options.sky?.horizon ?? { value: new Color(WET_SKY) } };
+    this.wet = {
+      wetness: { value: 0 },
+      rainfall: { value: 0 },
+      wetSky: options.sky?.horizon ?? { value: new Color(WET_SKY) },
+      wetZenith: options.sky?.zenith ?? { value: new Color(WET_ZENITH) },
+      puddleMap: { value: this.texture(createPuddleMap()) },
+    };
     const anisotropy = options.anisotropy ?? 1;
     this.root.add(this.createGround(world.halfSizeMeters, anisotropy, options.groundDetail ?? true));
     if (world.roads.length > 0) {
@@ -260,13 +329,18 @@ export class TrackView {
   }
 
   /**
-   * How wet the roads are, 0..1 (the rain's): wet asphalt darkens and
-   * mirrors the sky, the more the flatter it is seen, so the road ahead
-   * shines. Cheap to call every frame.
+   * How wet the roads are, 0..1 (WeatherService.wetness): wet asphalt
+   * darkens and mirrors the sky, the more the flatter it is seen, so the
+   * road ahead shines; the wetter, the more of its dips hold puddles, which
+   * mirror it like glass. Cheap to call every frame.
    */
   setWetness(level: number): void {
     this.wet.wetness.value = level;
-    // The rain comes with wind: the trees sway harder.
+  }
+
+  /** How hard it rains, 0..1: the drops ring the puddles, and the wind that comes with it sways the trees harder. */
+  setRain(level: number): void {
+    this.wet.rainfall.value = level;
     this.wind.windStrength.value = 1 + level * RAIN_WIND;
   }
 
@@ -681,29 +755,32 @@ export class TrackView {
 
   /**
    * Lets the rain wet `material` (setWetness): it darkens, and mirrors the
-   * sky by a Fresnel term, the view grazing the road mirroring the most (and
-   * the lamps at night: LampLighting).
+   * sky by a Fresnel term, the view grazing the road mirroring the most (the
+   * lamps' streaks are WetReflections'). Its dips fill with puddles, darker,
+   * that mirror the sky like still water, toward the zenith's colour looking
+   * down into them; the rain rings them (setRain).
    */
   private wettable(material: MeshBasicMaterial): MeshBasicMaterial {
-    glossyUnderLamps(material);
+    wetUnderLamps(material);
     const wet = this.wet;
+    const clock = this.wind.windTime;
     material.onBeforeCompile = (shader) => {
       shader.uniforms['wetness'] = wet.wetness;
+      shader.uniforms['puddleWetness'] = wet.wetness;
+      shader.uniforms['rainfall'] = wet.rainfall;
+      shader.uniforms['rainTime'] = clock;
       shader.uniforms['wetSky'] = wet.wetSky;
+      shader.uniforms['wetZenith'] = wet.wetZenith;
+      shader.uniforms['puddleMap'] = wet.puddleMap;
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vToEye;')
-        .replace('#include <project_vertex>', '#include <project_vertex>\nvToEye = -mvPosition.xyz;');
-      shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform float wetness;\nuniform vec3 wetSky;\nvarying vec3 vToEye;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vToEye;\nvarying vec2 vGround;')
         .replace(
-          '#include <opaque_fragment>',
-          [
-            'vec3 roadUp = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);',
-            'float grazing = pow(1.0 - max(dot(normalize(vToEye), roadUp), 0.0), 4.0);',
-            'outgoingLight = mix(outgoingLight * (1.0 - 0.35 * wetness), wetSky, wetness * grazing * 0.6);',
-            '#include <opaque_fragment>',
-          ].join('\n'),
+          '#include <project_vertex>',
+          '#include <project_vertex>\nvToEye = -mvPosition.xyz;\nvGround = (modelMatrix * vec4(transformed, 1.0)).xz;',
         );
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\n${WET_ROAD_PARS}`)
+        .replace('#include <opaque_fragment>', `${WET_ROAD}\n#include <opaque_fragment>`);
     };
     return material;
   }

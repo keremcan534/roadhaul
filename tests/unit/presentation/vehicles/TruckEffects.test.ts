@@ -60,7 +60,7 @@ describe('TruckEffects', () => {
   it('raises dust from the wheels off the road, less on wet ground, and none standing still', () => {
     const exhaustOnly = puffsAfter(1, driving({ speed: 10 }));
     const dust = puffsAfter(1, driving({ speed: 10, offRoad: true }));
-    const wetDust = puffsAfter(1, driving({ speed: 10, offRoad: true, rain: 1 }));
+    const wetDust = puffsAfter(1, driving({ speed: 10, offRoad: true, wetness: 1 }));
 
     expect(dust).toBeGreaterThan(exhaustOnly + 15);
     expect(wetDust).toBeLessThan(dust);
@@ -69,15 +69,15 @@ describe('TruckEffects', () => {
     expect(puffsAfter(1, driving({ offRoad: true }))).toBe(puffsAfter(1, driving()));
   });
 
-  it('throws spray off a wet road at speed, more the harder it rains', () => {
+  it('throws spray off a wet road at speed, more the wetter it is', () => {
     const dry = puffsAfter(1, driving({ speed: 20 }));
-    const drizzle = puffsAfter(1, driving({ speed: 20, rain: 0.3 }));
-    const pouring = puffsAfter(1, driving({ speed: 20, rain: 1 }));
+    const drizzle = puffsAfter(1, driving({ speed: 20, wetness: 0.3 }));
+    const pouring = puffsAfter(1, driving({ speed: 20, wetness: 1 }));
 
     expect(drizzle).toBeGreaterThan(dry);
     expect(pouring).toBeGreaterThan(drizzle);
     // Too slow to throw any.
-    expect(puffsAfter(1, driving({ speed: 3, rain: 1 }))).toBe(puffsAfter(1, driving({ speed: 3 })));
+    expect(puffsAfter(1, driving({ speed: 3, wetness: 1 }))).toBe(puffsAfter(1, driving({ speed: 3 })));
   });
 
   it('throws nothing while paused or off the road behind the menus, and lets what is in the air settle', () => {

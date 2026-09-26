@@ -3,8 +3,10 @@ import {
   brakeNoiseLevel,
   crashLevel,
   createEngineTone,
+  createThunderSound,
   engineTone,
   roadNoiseLevel,
+  thunderSound,
 } from '../../../../src/presentation/audio/soundModel';
 
 describe('engineTone', () => {
@@ -56,5 +58,31 @@ describe('noise levels', () => {
     expect(crashLevel(0)).toBeGreaterThan(0);
     expect(crashLevel(6)).toBeGreaterThan(crashLevel(2));
     expect(crashLevel(30)).toBe(1);
+  });
+});
+
+describe('thunderSound', () => {
+  it('follows the flash by the time sound takes to come that far: about three seconds a kilometer', () => {
+    expect(thunderSound(1029, createThunderSound()).delaySeconds).toBeCloseTo(3, 6);
+    expect(thunderSound(0, createThunderSound()).delaySeconds).toBe(0);
+  });
+
+  it('cracks and booms near, and rumbles long, low and faint far off', () => {
+    const near = { ...thunderSound(400, createThunderSound()) };
+    const far = { ...thunderSound(5000, createThunderSound()) };
+
+    expect(near.crack).toBeGreaterThan(0.6);
+    expect(far.crack).toBe(0);
+    expect(near.level).toBe(1);
+    expect(far.level).toBeLessThan(near.level / 2);
+    expect(far.level).toBeGreaterThan(0);
+    expect(far.seconds).toBeGreaterThan(near.seconds);
+    expect(far.cutoffHz).toBeLessThan(near.cutoffHz / 2);
+    expect(far.cutoffHz).toBeGreaterThanOrEqual(160);
+  });
+
+  it('writes into the object it is given', () => {
+    const out = createThunderSound();
+    expect(thunderSound(2000, out)).toBe(out);
   });
 });
