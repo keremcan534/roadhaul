@@ -34,7 +34,16 @@ import {
   type TreeSpecies,
 } from './countryside';
 import { bankWalls, findBridges, parapetWalls, type Bridge, type WallPiece } from './bridges';
-import { createForest, FOREST_TRUNK_RADIUS_METERS, forestContains, plantForest, type Forest, type ForestTreeKind } from './forests';
+import {
+  createForest,
+  FOREST_ROADSIDE_METERS,
+  forestContains,
+  forestRoadside,
+  FOREST_TRUNK_RADIUS_METERS,
+  plantForest,
+  type Forest,
+  type ForestTreeKind,
+} from './forests';
 import { cellKey, cellOf } from './gridCells';
 import { placeGuardRails, type GuardRail } from './guardRails';
 import { hedgeWalls, layoutPark, onParkPath, type Park } from './parks';
@@ -555,8 +564,15 @@ export class DrivingWorld {
     this.powerLines = countryside ? placePowerLines(ground, occupancy) : [];
     this.fieldEdges = countryside ? placeFieldEdges(ground) : [];
     // The forests, round whatever stands already, before the country's own trees, rocks and herds (kept out of them).
+    // Their edges grow close only where a road passes near.
     const forestTrees: TreeObstacle[] = this.forests.flatMap((forest) =>
-      plantForest(forest, seed, (x, z) => this.isClearForForestTree(x, z), occupancy).map((tree) => ({
+      plantForest(
+        forest,
+        seed,
+        (x, z) => this.isClearForForestTree(x, z),
+        occupancy,
+        forestRoadside(forest, this.roads, FOREST_ROADSIDE_METERS),
+      ).map((tree) => ({
         x: tree.x,
         z: tree.z,
         scale: tree.scale,
