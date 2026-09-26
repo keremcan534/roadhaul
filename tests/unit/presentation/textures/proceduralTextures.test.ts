@@ -4,6 +4,7 @@ import { createImage, type PixelImage } from '../../../../src/presentation/textu
 import {
   asphaltImage,
   cloudPuffImage,
+  cloudShadowImage,
   concreteImage,
   glowImage,
   grassImage,
@@ -95,6 +96,30 @@ describe('stroke font', () => {
     }
   });
 
+  it('writes the figures within the cap height, for dials and clocks, and can leave a mask in the alpha', () => {
+    for (const figure of '0123456789/.:-') {
+      expect(hasGlyph(figure), figure).toBe(true);
+      // Clear white, so the strokes' own alpha shows.
+      const image = createImage(80, 80, [255, 255, 255], 0);
+      drawText(image, figure, 10, 20, { ...style, alpha: 200 });
+      let inked = 0;
+      for (let y = 0; y < image.height; y++) {
+        for (let x = 0; x < image.width; x++) {
+          const [red, , , alpha] = pixel(image, x, y);
+          if (red! < 128) {
+            inked++;
+            expect(y, figure).toBeGreaterThanOrEqual(20 - 4);
+            expect(y, figure).toBeLessThanOrEqual(20 + style.height + 4);
+            expect(alpha, figure).toBeGreaterThanOrEqual(99);
+            expect(alpha, figure).toBeLessThanOrEqual(200);
+          }
+        }
+      }
+      expect(inked, figure).toBeGreaterThan(figure === '.' || figure === ':' ? 20 : 60);
+    }
+    expect(measureText('125', style)).toBeGreaterThan(measureText('12', style));
+  });
+
   it('puts the dots and hooks of Turkish letters above the capitals and below the line', () => {
     /** The lowest and highest inked rows of `text` drawn with its baseline at y = 30. */
     const inkedRows = (text: string): [number, number] => {
@@ -129,6 +154,28 @@ describe('stroke font', () => {
 });
 
 describe('procedural images', () => {
+  it('maps the clouds\' shadows in grey that tiles, big blobs of it high and low', () => {
+    const size = 64;
+    const image = cloudShadowImage(size);
+    const values: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const [r, g, b, a] = pixel(image, x, y);
+        expect(g).toBe(r);
+        expect(b).toBe(r);
+        expect(a).toBe(255);
+        values.push(r!);
+      }
+    }
+    // Enough spread for a threshold to pick shadows out of it, and no seam where it tiles.
+    expect(Math.max(...values) - Math.min(...values)).toBeGreaterThan(80);
+    for (let y = 0; y < size; y += 3) {
+      expect(Math.abs(pixel(image, 0, y)[0]! - pixel(image, size - 1, y)[0]!)).toBeLessThan(24);
+      expect(Math.abs(pixel(image, y, 0)[0]! - pixel(image, y, size - 1)[0]!)).toBeLessThan(24);
+    }
+    expect(cloudShadowImage(size).data).toEqual(image.data);
+  });
+
   it('are deterministic', () => {
     expect(grassImage(64).data).toEqual(grassImage(64).data);
     expect(liveryImage([224, 98, 42], 256, 128).data).toEqual(liveryImage([224, 98, 42], 256, 128).data);

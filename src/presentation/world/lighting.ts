@@ -1,4 +1,4 @@
-import { Color, type MeshBasicMaterial } from 'three';
+import { Color, Vector2, type MeshBasicMaterial } from 'three';
 
 /**
  * The scene's light, shared by the lights themselves, the sky's sun glow, the
@@ -20,7 +20,8 @@ export const SKY_LIGHT_INTENSITY = 1.15;
 
 /**
  * Horizontal offset of a shadow per meter of object height: shadows fall away
- * from the sun, longer the lower it is.
+ * from the sun, longer the lower it is. For the reference sun; the decals
+ * follow the sun where it stands (PrelitMaterials.shadowReach).
  */
 export const SHADOW_OFFSET_PER_METER = Object.freeze({
   x: -SUN_DIRECTION.x / SUN_DIRECTION.y,
@@ -43,6 +44,12 @@ export function flatGroundLight(): Color {
 
 /** Below this the light is taken as this, so the albedo stays finite in the dark. */
 const MIN_LIGHT = 0.01;
+/**
+ * A decal's shadow reaches at most this far per meter of height: the sun
+ * this high (a sine) or lower casts shadows too long for a soft decal to
+ * show; they fade with its light instead.
+ */
+const MIN_SHADOW_SUN_HEIGHT = 0.35;
 
 /** 1 / `color`, per channel. */
 function inverseOf(color: Color): Color {
@@ -63,6 +70,12 @@ export class PrelitMaterials {
    * read it.
    */
   readonly albedo = { value: inverseOf(flatGroundLight()) };
+  /**
+   * How far the baked shadow decals reach along the ground per meter of the
+   * height of what casts them (x, z): away from the key light (setSun). The
+   * decals' shaders read it (shadowDecal in TrackView).
+   */
+  readonly shadowReach = { value: new Vector2(SHADOW_OFFSET_PER_METER.x, SHADOW_OFFSET_PER_METER.z) };
   private readonly lit: { readonly material: MeshBasicMaterial; readonly base: Color }[] = [];
   private readonly shadows: { readonly material: MeshBasicMaterial; readonly opacity: number }[] = [];
   private readonly clearDay = flatGroundLight();
@@ -84,6 +97,12 @@ export class PrelitMaterials {
     return material;
   }
 
+  /** The key light stands toward `direction` (x, y, z; y up): the shadow decals fall away from it. Allocation-free. */
+  setSun(direction: Readonly<{ x: number; y: number; z: number }>): void {
+    const height = Math.max(direction.y, MIN_SHADOW_SUN_HEIGHT);
+    this.shadowReach.value.set(-direction.x / height, -direction.z / height);
+  }
+
   /**
    * `light` is the light on flat ground as a factor of a clear day's (per
    * colour channel); `sun` how strong the sun is, 0..1, which is how dark
@@ -103,6 +122,17 @@ export class PrelitMaterials {
       entry.material.opacity = entry.opacity * sun;
     }
   }
+}
+
+/**
+ * The sun's share of the light on flat ground (0..1) with the sun at
+ * `sunlight` and the sky at `skylight` of a clear day's: what a cloud's
+ * shadow can take away (CloudShadows.setClouds).
+ */
+export function sunShareOfGroundLight(sunlight: number, skylight: number): number {
+  const sun = FLAT_LIGHT_PARTS.sun.g * Math.max(0, sunlight);
+  const sky = FLAT_LIGHT_PARTS.sky.g * Math.max(0, skylight);
+  return sun / Math.max(sun + sky, 1e-6);
 }
 
 /**

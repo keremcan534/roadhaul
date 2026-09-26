@@ -1,4 +1,5 @@
 import type { DrivingService } from '../../systems/driving/DrivingService';
+import { setText } from '../dom';
 import type { Strings } from '../i18n';
 import type { MapPainter, PaintOptions } from '../map/MapPainter';
 import { MapViewport } from '../map/MapViewport';
@@ -15,13 +16,15 @@ const MAX_PIXEL_RATIO = 2;
 /**
  * The round map on the driving screen: the roads round the truck with the
  * way it heads up, the route, the next bay (at the rim when it is further),
- * rest areas and north. It repaints twelve times a second while shown.
- * Tapping it opens the full map.
+ * rest areas and north, with the time of day at its foot. It repaints
+ * twelve times a second while shown. Tapping it opens the full map.
  */
 export class Minimap {
   private readonly button: HTMLButtonElement;
   private readonly canvas: HTMLCanvasElement;
+  private readonly clock: HTMLSpanElement;
   private readonly context: CanvasRenderingContext2D | null;
+  private paints = 0;
   private readonly viewport = new MapViewport();
   private readonly options: PaintOptions = { labels: false, truckPixels: 16, pinRimPixels: 0, northRimPixels: 0 };
   private readonly resizeObserver: ResizeObserver | null = null;
@@ -45,7 +48,9 @@ export class Minimap {
     this.button.addEventListener('click', onOpen);
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'minimap__canvas';
-    this.button.append(this.canvas);
+    this.clock = document.createElement('span');
+    this.clock.className = 'minimap__clock';
+    this.button.append(this.canvas, this.clock);
     this.context = this.canvas.getContext('2d');
     parent.append(this.button);
     const view = document.defaultView;
@@ -65,6 +70,20 @@ export class Minimap {
     this.sinceRepaint = Number.POSITIVE_INFINITY; // Paint at once when it shows.
   }
 
+  /** Shows the time of day at the map's foot ("07:05"). Touches the page only when it changes. */
+  showClock(text: string): void {
+    setText(this.clock, text);
+  }
+
+  /** The map as last painted, and how many times it has been: the cabin's navigation screen shows it too. */
+  get picture(): HTMLCanvasElement {
+    return this.canvas;
+  }
+
+  get paintCount(): number {
+    return this.paints;
+  }
+
   /** Per frame while driving: repaints a dozen times a second. */
   update(deltaSeconds: number): void {
     if (this.button.hidden || this.context === null || this.canvas.width === 0) {
@@ -81,6 +100,7 @@ export class Minimap {
     view.centerX = x + Math.sin(heading) * RADIUS_METERS * LOOK_AHEAD;
     view.centerZ = z + Math.cos(heading) * RADIUS_METERS * LOOK_AHEAD;
     this.painter.paint(this.context, view, this.pixelRatio, this.options);
+    this.paints++;
   }
 
   dispose(): void {

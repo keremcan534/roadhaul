@@ -1,5 +1,6 @@
 import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition';
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
+import type { DaylightDefinition } from '../../src/data/definitions/DaylightDefinition';
 import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
 import type { MapDefinition, SeaDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
@@ -170,10 +171,26 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
         look: { ...weatherFixture().look, fogDensity: 0.005, sunlight: 0.1, skylight: 0.6, rain: 1, lamps: 0.4 },
       }),
     ],
+    daylight: daylightFixtures(),
     events: [eventFixture()],
     paints: [paintFixture(), paintFixture({ id: 'test_gold', color: 0xd4af37, price: 3000, requiredCompanyLevel: 2 })],
     ...overrides,
   };
+}
+
+/** Dawn and dusk with the sun 3° up, and the night from 12° below the horizon: the clear day's look, warmer or darker. */
+export function daylightFixtures(): DaylightDefinition[] {
+  const day = weatherFixture().look;
+  return [
+    { id: 'dawn', sunElevationDegrees: 3, trafficSpeedFactor: 1, look: { ...day, sunlight: 0.7, warmth: 0.3, lamps: 0.2 } },
+    { id: 'dusk', sunElevationDegrees: 3, trafficSpeedFactor: 1, look: { ...day, sunlight: 0.7, warmth: 0.4, lamps: 0.5 } },
+    {
+      id: 'night',
+      sunElevationDegrees: -12,
+      trafficSpeedFactor: 0.9,
+      look: { ...day, zenithColor: 0x070d1c, horizonColor: 0x1b2740, sunlight: 0.1, skylight: 0.3, lamps: 1, stars: 1, moon: 1 },
+    },
+  ];
 }
 
 /** A red paint for 1,000 credits, open from level 1. */
@@ -228,7 +245,6 @@ export function weatherFixture(overrides: Partial<WeatherDefinition> = {}): Weat
       cloudBrightness: 1,
       rain: 0,
       lamps: 0,
-      sunHeight: 1,
       stars: 0,
       moon: 0,
       saturation: 1,

@@ -50,9 +50,9 @@ const U_STROKE: Point[] = [[0, 1], [0, 0.32], ...arc(0.3, 0.32, 0.3, 0.32, 180, 
 
 /**
  * A small geometric stroke font: the capital letters of the English and
- * Turkish alphabets, for the game's logos and signs. Diacritics reach above
- * the cap height and below the baseline. Unknown characters render as a
- * space.
+ * Turkish alphabets and the figures, for the game's logos, signs and dials.
+ * Diacritics reach above the cap height and below the baseline. Unknown
+ * characters render as a space.
  */
 const GLYPHS: Readonly<Record<string, Glyph>> = {
   A: {
@@ -280,6 +280,65 @@ const GLYPHS: Readonly<Record<string, Glyph>> = {
       ],
     ],
   },
+  // Figures and the marks round them, for dials, clocks and plates.
+  '0': { width: 0.54, strokes: [arc(0.27, 0.5, 0.27, 0.5, 0, 360)] },
+  '1': {
+    width: 0.36,
+    strokes: [
+      [
+        [0.06, 0.78],
+        [0.3, 1],
+        [0.3, 0],
+      ],
+    ],
+  },
+  '2': { width: 0.54, strokes: [[...arc(0.27, 0.72, 0.27, 0.28, 160, -35), [0, 0], [0.54, 0]]] },
+  '3': { width: 0.54, strokes: [[...arc(0.26, 0.76, 0.25, 0.24, 150, -90), ...arc(0.26, 0.27, 0.28, 0.27, 90, -150)]] },
+  '4': {
+    width: 0.56,
+    strokes: [
+      [
+        [0.42, 0],
+        [0.42, 1],
+        [0, 0.3],
+        [0.56, 0.3],
+      ],
+    ],
+  },
+  '5': { width: 0.54, strokes: [[[0.5, 1], [0.08, 1], [0.04, 0.56], ...arc(0.26, 0.33, 0.28, 0.33, 120, -150)]] },
+  '6': { width: 0.54, strokes: [[...arc(0.5, 0.3, 0.5, 0.68, 110, 180), ...arc(0.27, 0.3, 0.27, 0.3, 180, 540)]] },
+  '7': {
+    width: 0.54,
+    strokes: [
+      [
+        [0, 1],
+        [0.54, 1],
+        [0.18, 0],
+      ],
+    ],
+  },
+  '8': { width: 0.54, strokes: [arc(0.27, 0.76, 0.23, 0.24, 0, 360), arc(0.27, 0.27, 0.27, 0.27, 0, 360)] },
+  '9': { width: 0.54, strokes: [[...arc(0.04, 0.7, 0.5, 0.68, 290, 360), ...arc(0.27, 0.7, 0.27, 0.3, 0, 360)]] },
+  '/': {
+    width: 0.42,
+    strokes: [
+      [
+        [0, 0],
+        [0.42, 1],
+      ],
+    ],
+  },
+  '.': { width: 0.1, strokes: [dot(0.05, 0.05)] },
+  ':': { width: 0.1, strokes: [dot(0.05, 0.2), dot(0.05, 0.75)] },
+  '-': {
+    width: 0.45,
+    strokes: [
+      [
+        [0.05, 0.45],
+        [0.4, 0.45],
+      ],
+    ],
+  },
 };
 
 const SPACE_WIDTH = 0.45;
@@ -294,6 +353,8 @@ export interface TextStyle {
   /** Italic shear: x shifts by `slant × y`. */
   readonly slant: number;
   readonly color: Rgb;
+  /** The alpha the strokes leave, 0..255 (a mask, such as what glows at night). Default 255. */
+  readonly alpha?: number;
 }
 
 /** Whether `character` has a glyph (anything else draws as a space). */
@@ -333,13 +394,19 @@ export function drawText(image: PixelImage, text: string, x: number, y: number, 
           ]);
         }
       }
-      drawSegments(image, segments, radius, style.color);
+      drawSegments(image, segments, radius, style.color, style.alpha ?? 255);
     }
     penX += ((glyph?.width ?? SPACE_WIDTH) + style.spacing) * style.height;
   }
 }
 
-function drawSegments(image: PixelImage, segments: readonly [number, number, number, number][], radius: number, color: Rgb): void {
+function drawSegments(
+  image: PixelImage,
+  segments: readonly [number, number, number, number][],
+  radius: number,
+  color: Rgb,
+  alpha: number,
+): void {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -350,16 +417,32 @@ function drawSegments(image: PixelImage, segments: readonly [number, number, num
     maxX = Math.max(maxX, ax, bx);
     maxY = Math.max(maxY, ay, by);
   }
-  for (let py = Math.floor(minY - radius - 1); py <= Math.ceil(maxY + radius + 1); py++) {
-    for (let px = Math.floor(minX - radius - 1); px <= Math.ceil(maxX + radius + 1); px++) {
-      const cx = px + 0.5;
-      const cy = py + 0.5;
-      let nearest = Infinity;
-      for (const [ax, ay, bx, by] of segments) {
-        nearest = Math.min(nearest, distanceToSegment(cx, cy, ax, ay, bx, by));
+  const x0 = Math.floor(minX - radius - 1);
+  const y0 = Math.floor(minY - radius - 1);
+  const width = Math.ceil(maxX + radius + 1) - x0 + 1;
+  const height = Math.ceil(maxY + radius + 1) - y0 + 1;
+  // Each pixel's distance to the nearest stroke: each segment visits only the pixels near it.
+  const nearest = new Float32Array(width * height).fill(Infinity);
+  const reach = radius + 1;
+  for (const [ax, ay, bx, by] of segments) {
+    const fromY = Math.max(0, Math.floor(Math.min(ay, by) - reach) - y0);
+    const toY = Math.min(height - 1, Math.ceil(Math.max(ay, by) + reach) - y0);
+    const fromX = Math.max(0, Math.floor(Math.min(ax, bx) - reach) - x0);
+    const toX = Math.min(width - 1, Math.ceil(Math.max(ax, bx) + reach) - x0);
+    for (let row = fromY; row <= toY; row++) {
+      for (let column = fromX; column <= toX; column++) {
+        const distance = distanceToSegment(x0 + column + 0.5, y0 + row + 0.5, ax, ay, bx, by);
+        const cell = row * width + column;
+        if (distance < nearest[cell]!) {
+          nearest[cell] = distance;
+        }
       }
+    }
+  }
+  for (let row = 0; row < height; row++) {
+    for (let column = 0; column < width; column++) {
       // One pixel of anti-aliasing at the stroke edge.
-      blendPixel(image, px, py, color, radius - nearest + 0.5);
+      blendPixel(image, x0 + column, y0 + row, color, radius - nearest[row * width + column]! + 0.5, alpha);
     }
   }
 }
@@ -369,5 +452,7 @@ function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: n
   const dy = by - ay;
   const lengthSquared = dx * dx + dy * dy;
   const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared)) : 0;
-  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+  const ex = px - (ax + dx * t);
+  const ey = py - (ay + dy * t);
+  return Math.sqrt(ex * ex + ey * ey);
 }

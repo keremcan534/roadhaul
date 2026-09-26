@@ -122,6 +122,7 @@ test('steers with the left and right buttons', async ({ page }) => {
 });
 
 test('draws the controls in the size picked, and remembers the controls picked', async ({ page }) => {
+  test.setTimeout(60_000); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   await openGame(page);
   const width = async (): Promise<number> => (await page.locator('.steering-wheel').boundingBox())!.width;

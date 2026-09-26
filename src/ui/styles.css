@@ -4,11 +4,77 @@
   --rh-fg: #e8edf2;
   --rh-muted: #a9b4c0;
   --rh-overlay-bg: rgb(0 0 0 / 55%);
-  --rh-panel-bg: linear-gradient(180deg, rgb(30 38 48 / 94%), rgb(14 18 24 / 94%));
   --rh-accent: #f2b233;
   --rh-accent-dark: #d9901b;
   --rh-good: #5fd38a;
   --rh-danger: #ff8a7a;
+  /*
+   * Liquid glass (src/ui/glass.ts marks <html data-glass>: lens, blur or tint): menus, panels and the road's
+   * buttons let the world show through, blurred and brightened like thick glass, under a rim lit from above.
+   * A tint keeps white text readable over a bright sky. Glass inside glass (buttons and cards in a panel) takes
+   * no filter of its own: it could only blur the panel.
+   */
+  --rh-glass-tint: rgb(22 28 38 / 30%);
+  --rh-glass-tint-strong: rgb(14 19 27 / 46%);
+  --rh-glass-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 16%),
+    rgb(255 255 255 / 5%) 34%,
+    rgb(255 255 255 / 0%) 62%,
+    rgb(255 255 255 / 6%)
+  );
+  --rh-glass-fill: var(--rh-glass-sheen), var(--rh-glass-tint);
+  --rh-glass-fill-strong: var(--rh-glass-sheen), var(--rh-glass-tint-strong);
+  /* Glass inside glass: a lighter pane with its own rim. */
+  --rh-glass-inner: linear-gradient(180deg, rgb(255 255 255 / 10%), rgb(255 255 255 / 4%));
+  --rh-glass-filter: blur(16px) saturate(180%) brightness(1.06);
+  /* Menus and panels: on the lens, the rim bends what shows through it. */
+  --rh-glass-filter-panel: var(--rh-glass-filter);
+  /* The lit rim: bright along the top, light caught in the thick bottom edge, a hairline all round, a soft sheen inside. */
+  --rh-glass-rim:
+    inset 0 1px 1px rgb(255 255 255 / 55%),
+    inset 0 -1px 1px rgb(255 255 255 / 18%),
+    inset 0 0 0 1px rgb(255 255 255 / 15%),
+    inset 0 14px 24px -18px rgb(255 255 255 / 45%);
+  --rh-glass-rim-inner:
+    inset 0 1px 0 rgb(255 255 255 / 20%),
+    inset 0 0 0 1px rgb(255 255 255 / 8%);
+  --rh-glass-drop: 0 10px 30px rgb(0 0 0 / 26%);
+  --rh-glass-drop-small: 0 4px 14px rgb(0 0 0 / 30%);
+  /* A press squeezes the glass; let go, it springs back past its size and settles, as a drop of liquid would. */
+  --rh-glass-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* The bending lens, where the high preset runs in a browser that draws it (glass.ts). */
+html[data-glass='lens'] {
+  --rh-glass-filter-panel: url(#rh-glass-lens) blur(14px) saturate(180%) brightness(1.06);
+}
+
+/* No filter (the low preset, software rendering): the glass is a denser tint, with the same rim. */
+html[data-glass='tint'] {
+  --rh-glass-tint: rgb(22 28 38 / 80%);
+  --rh-glass-tint-strong: rgb(14 19 27 / 92%);
+  --rh-glass-filter: none;
+  --rh-glass-filter-panel: none;
+}
+
+/* Players who ask their system for less transparency get the tint too. */
+@media (prefers-reduced-transparency: reduce) {
+  :root:root {
+    --rh-glass-tint: rgb(22 28 38 / 88%);
+    --rh-glass-tint-strong: rgb(14 19 27 / 95%);
+    --rh-glass-filter: none;
+    --rh-glass-filter-panel: none;
+  }
+}
+
+/* The lens filter's home: in the page, never in sight. */
+.glass-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 html,
@@ -188,42 +254,45 @@ body {
   padding: 3px;
   gap: 3px;
   border: 0;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(46 54 64 / 88%), rgb(16 20 26 / 88%));
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 22%),
-    0 0 0 2px rgb(255 255 255 / 55%),
-    0 6px 12px rgb(0 0 0 / 40%);
+  border-radius: 16px;
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   font: 800 calc(18px * var(--rh-control-scale)) / 1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  transition: transform 420ms var(--rh-glass-spring);
 }
 
 .gear-button > span {
   display: grid;
   flex: 1;
   place-items: center;
-  border-radius: 10px;
-  color: rgb(255 255 255 / 45%);
+  border-radius: 12px;
+  color: rgb(255 255 255 / 55%);
 }
 
 .touch-controls[data-gear='drive'] .gear-button__drive {
-  background: rgb(76 214 120 / 90%);
+  background: linear-gradient(180deg, rgb(140 240 170 / 92%), rgb(60 196 104 / 88%));
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 60%);
   color: #0d1a12;
 }
 
 .touch-controls[data-gear='reverse'] .gear-button__reverse {
-  background: var(--rh-accent);
+  background: linear-gradient(180deg, rgb(255 214 120 / 94%), rgb(236 160 36 / 90%));
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 60%);
   color: #1d1400;
 }
 
 .touch-controls[data-gear='reverse'] .gear-button {
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 22%),
-    0 0 0 2px var(--rh-accent),
-    0 0 14px var(--rh-accent);
+    var(--rh-glass-rim),
+    0 0 0 2px rgb(242 178 51 / 80%),
+    0 0 16px rgb(242 178 51 / 60%);
 }
 
 .gear-button:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
+  transition-duration: 90ms;
 }
 
 /* Steering by tilt: both thumbs are free, so the brake moves under the left one, the tilt button beside it. */
@@ -245,11 +314,14 @@ body {
   width: 52px;
   height: 52px;
   padding: 0;
-  border: 2px solid rgb(255 255 255 / 70%);
+  border: 0;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   color: var(--rh-control-line);
+  transition: transform 420ms var(--rh-glass-spring);
 }
 
 .tilt-button__icon {
@@ -264,12 +336,12 @@ body {
 }
 
 .tilt-button[data-status='locked'] {
-  border-color: var(--rh-accent);
   animation: tutorial-glow 1.4s ease-in-out infinite;
 }
 
 .tilt-button:active {
-  transform: scale(0.94);
+  transform: scale(0.92);
+  transition-duration: 90ms;
 }
 
 /* Steering by buttons: left and right under the left thumb, held to steer. */
@@ -332,11 +404,11 @@ body {
   align-items: center;
   gap: 10px;
   padding: 4px 14px 6px 10px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgb(28 34 42 / 84%), rgb(10 13 17 / 84%));
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 14%),
-    0 6px 16px rgb(0 0 0 / 35%);
+  border-radius: 20px;
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   transform: translateX(-50%);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
@@ -406,8 +478,9 @@ body {
 .dashboard__gear {
   min-width: 2.2ch;
   padding: 4px 8px;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #f2b233, #d9901b);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgb(255 214 120 / 94%), rgb(236 160 36 / 90%));
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 60%);
   color: #1b1e22;
   font-size: 16px;
   font-weight: 800;
@@ -472,10 +545,13 @@ body {
   right: calc(env(safe-area-inset-right, 0px) + 12px);
   width: 48px;
   height: 48px;
-  border: 2px solid rgb(255 255 255 / 70%);
+  border: 0;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+  transition: transform 420ms var(--rh-glass-spring);
 }
 
 /* A small camera drawn in CSS: body and lens. */
@@ -509,10 +585,13 @@ body {
   right: calc(env(safe-area-inset-right, 0px) + 12px);
   width: 48px;
   height: 48px;
-  border: 2px solid rgb(255 255 255 / 70%);
+  border: 0;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+  transition: transform 420ms var(--rh-glass-spring);
   touch-action: none;
 }
 
@@ -529,8 +608,17 @@ body {
 }
 
 .horn-button.is-pressed {
-  border-color: var(--rh-accent);
-  transform: scale(0.94);
+  box-shadow:
+    var(--rh-glass-rim),
+    0 0 0 2px rgb(242 178 51 / 80%),
+    0 0 16px rgb(242 178 51 / 60%);
+  transform: scale(0.92);
+  transition-duration: 90ms;
+}
+
+.camera-button:active {
+  transform: scale(0.92);
+  transition-duration: 90ms;
 }
 
 /* Upright phones: the mission HUD takes the width under the corner buttons, so the horn joins their row. */
@@ -570,11 +658,11 @@ body {
   overflow-y: auto;
   padding: 18px 20px;
   box-sizing: border-box;
-  border-radius: 18px;
-  background: var(--rh-panel-bg);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 10%),
-    0 16px 40px rgb(0 0 0 / 45%);
+  border-radius: 28px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop);
+  -webkit-backdrop-filter: var(--rh-glass-filter-panel);
+  backdrop-filter: var(--rh-glass-filter-panel);
 }
 
 .panel__title {
@@ -588,42 +676,52 @@ body {
   min-height: 44px;
   padding: 10px 18px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 999px;
   color: var(--rh-fg);
   font: inherit;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
-  transition: transform 80ms ease-out, filter 80ms ease-out;
+  transition:
+    transform 420ms var(--rh-glass-spring),
+    filter 160ms ease-out;
 }
 
 .button:active {
-  transform: scale(0.97);
-  filter: brightness(1.1);
+  transform: scale(0.96);
+  filter: brightness(1.18);
+  transition-duration: 90ms;
 }
 
 .button[hidden] {
   display: none;
 }
 
+/* Tinted glass: the accent, lit through. */
 .button--primary {
-  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
+  background:
+    var(--rh-glass-sheen),
+    linear-gradient(180deg, rgb(255 208 110 / 92%), rgb(236 158 34 / 90%));
   color: #1b1e22;
-  box-shadow: 0 4px 12px rgb(242 178 51 / 30%);
+  box-shadow: var(--rh-glass-rim), 0 6px 18px rgb(242 178 51 / 32%);
 }
 
+/* Clear glass. */
 .button--secondary {
-  background: linear-gradient(180deg, rgb(70 80 94 / 95%), rgb(40 47 56 / 95%));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 12%);
+  background: var(--rh-glass-sheen), rgb(255 255 255 / 11%);
+  box-shadow: var(--rh-glass-rim);
 }
 
 .button--ghost {
-  background: rgb(0 0 0 / 25%);
-  box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 35%);
+  background: rgb(255 255 255 / 6%);
+  box-shadow: var(--rh-glass-rim-inner);
 }
 
 .button--danger {
-  background: linear-gradient(180deg, #d9543f, #a8392a);
+  background:
+    var(--rh-glass-sheen),
+    linear-gradient(180deg, rgb(232 102 82 / 92%), rgb(176 58 42 / 90%));
+  box-shadow: var(--rh-glass-rim);
 }
 
 .badge {
@@ -695,9 +793,12 @@ body {
 .main-menu__message {
   max-width: 420px;
   margin: 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgb(0 0 0 / 45%);
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   color: var(--rh-fg);
   font-size: 14px;
   text-align: center;
@@ -718,12 +819,23 @@ body {
   gap: 10px;
 }
 
+/* On the title screen the buttons float over the world itself: glass of their own. */
+.main-menu .button {
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+}
+
+.main-menu .button--ghost {
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+}
+
 /* ---- Settings (src/ui/menus/SettingsDialog.ts) ---- */
 
 .settings {
   /* A dialog over the main menu, which is a screen too. */
   z-index: 12;
-  background: rgb(8 11 15 / 70%);
+  background: radial-gradient(ellipse at 50% 50%, rgb(8 11 15 / 22%), rgb(8 11 15 / 55%));
 }
 
 .settings__label {
@@ -758,6 +870,24 @@ body {
   margin: 0;
   color: var(--rh-muted);
   font-size: 13px;
+}
+
+/* The clock's time beside its label, and the slider under the presets. */
+.settings__clock-time {
+  color: var(--rh-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__slider {
+  width: 100%;
+  height: 28px;
+  margin: 2px 0 0;
+  accent-color: var(--rh-accent);
+  touch-action: pan-x;
+}
+
+.settings__slider:disabled {
+  opacity: 0.4;
 }
 
 /* Phones on their side: two columns of settings, so they fit the short screen. */
@@ -810,21 +940,22 @@ body {
 
 .hq__sheet {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  top: calc(env(safe-area-inset-top, 0px) + 6px);
+  right: calc(env(safe-area-inset-right, 0px) + 6px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 6px);
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: min(640px, 70vw);
-  padding:
-    calc(env(safe-area-inset-top, 0px) + 10px) calc(env(safe-area-inset-right, 0px) + 12px)
-    calc(env(safe-area-inset-bottom, 0px) + 6px) 12px;
+  padding: 10px 12px 6px;
   box-sizing: border-box;
-  background: linear-gradient(180deg, rgb(22 28 36 / 95%), rgb(11 15 20 / 96%));
-  box-shadow: -14px 0 34px rgb(0 0 0 / 40%);
+  border-radius: 28px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop);
+  -webkit-backdrop-filter: var(--rh-glass-filter-panel);
+  backdrop-filter: var(--rh-glass-filter-panel);
   pointer-events: auto;
-  animation: hq-slide-in 160ms ease-out;
+  animation: hq-slide-in 220ms var(--rh-glass-spring);
 }
 
 @keyframes hq-slide-in {
@@ -844,14 +975,10 @@ body {
 @media (orientation: portrait) {
   .hq__sheet {
     top: auto;
-    left: 0;
+    left: calc(env(safe-area-inset-left, 0px) + 6px);
     width: auto;
     height: 66%;
-    padding:
-      12px calc(env(safe-area-inset-right, 0px) + 12px) calc(env(safe-area-inset-bottom, 0px) + 6px)
-      calc(env(safe-area-inset-left, 0px) + 12px);
-    border-radius: 20px 20px 0 0;
-    box-shadow: 0 -14px 34px rgb(0 0 0 / 40%);
+    padding: 12px 12px 6px;
     animation-name: hq-slide-up;
   }
 }
@@ -938,11 +1065,13 @@ body {
   height: 42px;
   padding: 0;
   border: 0;
-  border-radius: 12px;
-  background: rgb(255 255 255 / 9%);
+  border-radius: 50%;
+  background: var(--rh-glass-sheen), rgb(255 255 255 / 10%);
+  box-shadow: var(--rh-glass-rim);
   color: var(--rh-fg);
   cursor: pointer;
   touch-action: manipulation;
+  transition: transform 420ms var(--rh-glass-spring);
 }
 
 .hq__icon-button .icon {
@@ -951,17 +1080,22 @@ body {
 }
 
 .hq__icon-button:active {
-  transform: scale(0.94);
+  transform: scale(0.92);
+  transition-duration: 90ms;
 }
 
 /* The four pages, each with its picture. */
+/* A groove in the glass; the page open sits in it as a bright drop of glass. */
 .hq__tabs {
   display: flex;
   flex: none;
   gap: 4px;
   padding: 3px;
-  border-radius: 14px;
-  background: rgb(0 0 0 / 32%);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 24%);
+  box-shadow:
+    inset 0 1px 3px rgb(0 0 0 / 35%),
+    inset 0 -1px 0 rgb(255 255 255 / 10%);
 }
 
 .hq__tab {
@@ -974,7 +1108,7 @@ body {
   min-height: 40px;
   padding: 6px 8px;
   border: 0;
-  border-radius: 11px;
+  border-radius: 999px;
   background: transparent;
   color: var(--rh-muted);
   font: inherit;
@@ -982,6 +1116,9 @@ body {
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out;
 }
 
 .hq__tab-label {
@@ -991,8 +1128,9 @@ body {
 }
 
 .hq__tab.is-selected {
-  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
-  color: #1b1e22;
+  background: var(--rh-glass-sheen), rgb(255 255 255 / 16%);
+  box-shadow: var(--rh-glass-rim), 0 2px 8px rgb(0 0 0 / 22%);
+  color: var(--rh-accent);
 }
 
 /* Narrow: the picture over its name, so every name fits. */
@@ -1216,9 +1354,9 @@ body {
 .truck-gauge,
 .truck-page__cargo {
   padding: 10px 12px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  border-radius: 20px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
 }
 
 .truck-page__head {
@@ -1403,14 +1541,17 @@ body {
   gap: 6px;
   min-height: 44px;
   padding: 6px 13px 6px 10px;
-  border: 2px solid rgb(255 255 255 / 60%);
+  border: 0;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgb(46 54 64 / 88%), rgb(16 20 26 / 88%));
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   color: var(--rh-fg);
   font: 700 14px / 1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   cursor: pointer;
   touch-action: manipulation;
+  transition: transform 420ms var(--rh-glass-spring);
 }
 
 .hud-dock__icon {
@@ -1423,13 +1564,16 @@ body {
 }
 
 .hud-dock__button--jobs {
-  border-color: var(--rh-accent);
-  background: linear-gradient(180deg, var(--rh-accent), var(--rh-accent-dark));
+  background:
+    var(--rh-glass-sheen),
+    linear-gradient(180deg, rgb(255 208 110 / 90%), rgb(236 158 34 / 86%));
+  box-shadow: var(--rh-glass-rim), 0 6px 18px rgb(242 178 51 / 32%);
   color: #1b1e22;
 }
 
 .hud-dock__button:active {
-  transform: scale(0.95);
+  transform: scale(0.93);
+  transition-duration: 90ms;
 }
 
 /* With a contract under way: round buttons without names, under the minimap, out of the mission HUD's way. */
@@ -1472,7 +1616,7 @@ body {
     min-width: 0;
     min-height: 52px;
     padding: 5px 4px;
-    border-radius: 16px;
+    border-radius: 22px;
     font-size: 13px;
   }
 
@@ -1494,9 +1638,9 @@ body {
   flex-direction: column;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  border-radius: 20px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
 }
 
 .job-card--daily {
@@ -1655,14 +1799,14 @@ body {
   flex-direction: column;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  border-radius: 20px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
 }
 
 .truck-card.is-active {
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 8%),
+    var(--rh-glass-rim-inner),
     inset 0 0 0 2px var(--rh-accent);
 }
 
@@ -1811,11 +1955,16 @@ body {
   max-width: min(92vw, 540px);
   padding: 8px 10px 8px 16px;
   box-sizing: border-box;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(62 52 28 / 96%), rgb(34 30 22 / 96%));
+  border-radius: 20px;
+  background:
+    var(--rh-glass-sheen),
+    linear-gradient(180deg, rgb(92 72 28 / 62%), rgb(46 38 22 / 70%));
   box-shadow:
-    0 6px 24px rgb(0 0 0 / 45%),
-    inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+    var(--rh-glass-rim),
+    inset 0 0 0 1.5px rgb(242 178 51 / 65%),
+    var(--rh-glass-drop);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   transform: translateX(-50%);
 }
 
@@ -1836,7 +1985,11 @@ body {
   width: auto;
   max-width: none;
   padding: 5px 6px 5px 12px;
-  box-shadow: inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+  box-shadow:
+    var(--rh-glass-rim-inner),
+    inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   transform: none;
 }
 
@@ -1888,15 +2041,15 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   flex-direction: column;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgb(40 49 60 / 96%), rgb(26 32 40 / 96%));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  border-radius: 20px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
 }
 
 .event-card.is-running {
-  background: linear-gradient(180deg, rgb(58 50 30 / 96%), rgb(30 30 34 / 96%));
+  background: linear-gradient(180deg, rgb(242 178 51 / 18%), rgb(242 178 51 / 6%));
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 8%),
+    var(--rh-glass-rim-inner),
     inset 0 0 0 2px rgb(242 178 51 / 55%);
 }
 
@@ -2026,9 +2179,11 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   max-width: min(92vw, 520px);
   padding: 12px 16px;
   box-sizing: border-box;
-  border-radius: 16px;
-  background: var(--rh-panel-bg);
-  box-shadow: 0 12px 30px rgb(0 0 0 / 40%);
+  border-radius: 24px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   transform: translateX(-50%);
 }
 
@@ -2078,12 +2233,14 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   max-width: min(440px, calc(100vw - 2 * (env(safe-area-inset-left, 0px) + 76px)));
   padding: 6px 12px 6px 8px;
   box-sizing: border-box;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgb(28 34 42 / 86%), rgb(10 13 17 / 86%));
+  border-radius: 20px;
+  background: var(--rh-glass-fill);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 14%),
-    inset 3px 0 0 var(--rh-target),
-    0 6px 16px rgb(0 0 0 / 35%);
+    var(--rh-glass-rim),
+    inset 4px 0 0 var(--rh-target),
+    var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   transform: translateX(-50%);
   pointer-events: none;
   font-variant-numeric: tabular-nums;
@@ -2300,11 +2457,19 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   min-height: 48px;
   height: 48px;
   padding: 0;
-  border: 2px solid rgb(255 255 255 / 70%);
+  border: 0;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgb(46 54 64 / 85%), rgb(16 20 26 / 85%));
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  background: var(--rh-glass-fill);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   touch-action: manipulation;
+  transition: transform 420ms var(--rh-glass-spring);
+}
+
+.pause-button:active {
+  transform: scale(0.92);
+  transition-duration: 90ms;
 }
 
 /* Two bars. */
@@ -2330,7 +2495,7 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 .pause-menu,
 .result-dialog {
-  background: rgb(8 11 15 / 55%);
+  background: radial-gradient(ellipse at 50% 50%, rgb(8 11 15 / 10%), rgb(8 11 15 / 45%));
 }
 
 .pause-menu__panel {
@@ -2342,7 +2507,7 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 .new-company {
   /* A dialog over the main menu, which is a screen too. */
   z-index: 12;
-  background: rgb(8 11 15 / 70%);
+  background: radial-gradient(ellipse at 50% 50%, rgb(8 11 15 / 22%), rgb(8 11 15 / 55%));
 }
 
 .new-company__label {
@@ -2440,8 +2605,10 @@ html[data-panel='open'] .toasts {
 .toast {
   padding: 7px 14px;
   border-radius: 999px;
-  background: rgb(14 18 24 / 90%);
-  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   font-size: 14px;
   font-weight: 700;
   text-align: center;
@@ -2449,11 +2616,11 @@ html[data-panel='open'] .toasts {
 }
 
 .toast--success {
-  box-shadow: inset 0 0 0 2px var(--rh-good), 0 6px 16px rgb(0 0 0 / 35%);
+  box-shadow: var(--rh-glass-rim), inset 0 0 0 2px var(--rh-good), var(--rh-glass-drop-small);
 }
 
 .toast--warning {
-  box-shadow: inset 0 0 0 2px var(--rh-danger), 0 6px 16px rgb(0 0 0 / 35%);
+  box-shadow: var(--rh-glass-rim), inset 0 0 0 2px var(--rh-danger), var(--rh-glass-drop-small);
 }
 
 .toast.is-leaving {
@@ -2616,13 +2783,27 @@ html[data-panel='open'] .toasts {
   width: var(--rh-minimap-size);
   height: var(--rh-minimap-size);
   padding: 0;
-  overflow: hidden;
-  border: 2px solid rgb(255 255 255 / 70%);
+  border: 2px solid rgb(255 255 255 / 30%);
   border-radius: 50%;
   background: #1b2923;
-  box-shadow: 0 4px 10px rgb(0 0 0 / 35%);
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 45%),
+    var(--rh-glass-drop-small);
   cursor: pointer;
   touch-action: manipulation;
+}
+
+/* The map under a glass dome: light caught at the top, the rim bright all round. */
+.minimap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(120% 80% at 32% 8%, rgb(255 255 255 / 30%), rgb(255 255 255 / 0%) 46%),
+    radial-gradient(closest-side, rgb(255 255 255 / 0%) 80%, rgb(255 255 255 / 16%));
+  box-shadow: var(--rh-glass-rim);
+  pointer-events: none;
 }
 
 .minimap[hidden] {
@@ -2633,6 +2814,31 @@ html[data-panel='open'] .toasts {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: 50%;
+}
+
+/* The time of day on the map's rim at its foot, like a watch's date: clear of north's mark inside it. */
+.minimap__clock {
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  z-index: 1;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), 0 2px 6px rgb(0 0 0 / 30%);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+  color: var(--rh-fg);
+  font: 700 11px / 1.2 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.minimap__clock:empty {
+  display: none;
 }
 
 /*
@@ -2709,9 +2915,12 @@ html[data-panel='open'] .toasts {
 
 .world-map__title {
   margin: 0;
-  padding: 6px 14px;
-  border-radius: 12px;
-  background: rgb(14 18 24 / 80%);
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   font-size: 18px;
   font-weight: 800;
 }
@@ -2730,12 +2939,21 @@ html[data-panel='open'] .toasts {
   min-height: 48px;
   height: 48px;
   padding: 0;
-  border: 2px solid rgb(255 255 255 / 70%);
+  border: 0;
   border-radius: 50%;
-  background: linear-gradient(180deg, rgb(46 54 64 / 92%), rgb(16 20 26 / 92%));
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
   color: var(--rh-fg);
   font-size: 24px;
   line-height: 1;
+  transition: transform 420ms var(--rh-glass-spring);
+}
+
+.world-map__tool:active {
+  transform: scale(0.92);
+  transition-duration: 90ms;
 }
 
 /* ---- The paint shop on an owned truck's garage card (src/ui/hq/paintPicker.ts) ---- */

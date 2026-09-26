@@ -17,6 +17,11 @@ import {
 import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
+import {
+  DAYLIGHT_PHASES,
+  validateDaylightDefinition,
+  type DaylightDefinition,
+} from './definitions/DaylightDefinition';
 import { validateWeatherDefinition, type WeatherDefinition } from './definitions/WeatherDefinition';
 import type { GameContent } from './GameContent';
 
@@ -68,6 +73,8 @@ export class ContentCatalog {
   readonly upgrades: DefinitionTable<UpgradeDefinition>;
   readonly trafficVehicles: DefinitionTable<TrafficVehicleDefinition>;
   readonly weather: DefinitionTable<WeatherDefinition>;
+  /** The times of day with a look of their own, one of each DAYLIGHT_PHASES. */
+  readonly daylight: DefinitionTable<DaylightDefinition>;
   readonly events: DefinitionTable<EventDefinition>;
   readonly paints: DefinitionTable<PaintDefinition>;
 
@@ -80,6 +87,7 @@ export class ContentCatalog {
     this.upgrades = new DefinitionTable('upgrade', content.upgrades);
     this.trafficVehicles = new DefinitionTable('traffic vehicle', content.trafficVehicles);
     this.weather = new DefinitionTable('weather', content.weather);
+    this.daylight = new DefinitionTable('daylight', content.daylight);
     this.events = new DefinitionTable('event', content.events);
     this.paints = new DefinitionTable('paint', content.paints);
   }
@@ -105,11 +113,13 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'upgrades', content.upgrades, validateUpgradeDefinition);
   validateTable(validator, 'trafficVehicles', content.trafficVehicles, validateTrafficVehicleDefinition);
   validateTable(validator, 'weather', content.weather, validateWeatherDefinition);
+  validateTable(validator, 'daylight', content.daylight, validateDaylightDefinition);
   validateTable(validator, 'events', content.events, validateEventDefinition);
   validateTable(validator, 'paints', content.paints, validatePaintDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);
+  validateDaylightPhases(validator, content);
   return validator.issues;
 }
 
@@ -126,6 +136,29 @@ function validateWeatherSuccessions(validator: Validator, content: GameContent):
       });
     }
   });
+}
+
+/** Every time of day with a look of its own is there, and night falls after dusk and dawn. */
+function validateDaylightPhases(validator: Validator, content: GameContent): void {
+  if (!Array.isArray(content.daylight)) {
+    return; // Already reported by validateTable.
+  }
+  const phases = content.daylight.filter(isObject);
+  for (const phase of DAYLIGHT_PHASES) {
+    validator.check(
+      phases.some((daylight) => daylight.id === phase),
+      'daylight',
+      `must have the "${phase}" look`,
+    );
+  }
+  const night = phases.find((daylight) => daylight.id === 'night');
+  for (const twilight of phases.filter((daylight) => daylight.id !== 'night')) {
+    validator.check(
+      night === undefined || !(twilight.sunElevationDegrees <= night.sunElevationDegrees),
+      `daylight.${String(twilight.id)}.sunElevationDegrees`,
+      "must be higher than the night's",
+    );
+  }
 }
 
 /**

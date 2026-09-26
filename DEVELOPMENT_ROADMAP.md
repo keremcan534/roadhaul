@@ -213,6 +213,24 @@ The player asked for the best graphics the game can have ("grafiksel iyileştirm
 - The draw budget holds: the verges add three draw calls, the road furniture two and one per rail tile in view, the buildings two, the colour pass ten or eleven full-screen passes.
 - None of it has been seen on a phone yet: step 29 checks the frame rate of each preset on real devices.
 
+### The world in detail, the cab, the time of day and glass menus (between steps 28 and 29)
+
+The player asked for the most detail round the roads, a realistic cab with its steering wheel, a time of day to pick, more graphical touches ("etrafı maks detaylandır, içten görünümde direksiyon vs gerçekçi yap, oyun saatini seçebilelim, ekstra grafiksel iyileştirmeler") and liquid glass menus ("menü için liquid glass kullan").
+
+| Item | Status | Notes |
+|---|---|---|
+| Liquid glass | ✅ | The menus, panels and road buttons are glass: blurred and brightened, bending what shows through near the rim where the device can (high preset, Chromium); a plain blur on medium, a tint on low, in software and elsewhere; `?glass=lens|blur|tint` |
+| The time of day | ✅ | A game clock apart from the weather (spec §39): Settings pick dawn, the morning, noon, dusk or the night and whether the clock runs; `?time=19:30`. The sun and the moon on their real paths over the region for the date, the moon's phase, the stars round the pole; the sky's look mixed from the day's, the twilight's and the night's with the weather's |
+| A realistic cab | ✅ | Built the first time the cabin view shows: a dashboard in one atlas with live needles and a seven-segment display, the navigation screen, a steering wheel that turns with the front wheels, pedals, seats, visors, the radio, a nazar charm swinging on its cord, mirrors painted with the road behind; lit by the sky through the glass, the instruments glowing at night. The body keeps level in the cabin view and the head sways. Wipers sweep the rain off the windscreen, drops beading again behind them |
+| The towns | ✅ | Pavements with kerbs along every street (paved ground: asphalt grip, no grass), benches, bins and a bus shelter, billboards for four original local businesses on the roads in, speed limits where the roads enter (map flag `streetscape`) |
+| The country | ✅ | Power lines on wooden poles along the country roads with their wires, fences round the grain and dry-stone walls round the other fields, boulders, grazing sheep and cows, poplar windbreaks, olive groves and cypress avenues into the towns (map flag `countryside`); the poles, boulders, animals and furniture are solid |
+| Road studs | ✅ | Cat's eyes on the highway's lines, lighting up in the headlights |
+| The sky and the light | ✅ | The Earth's shadow and the Belt of Venus opposite the sun at twilight; the towns' glow on the night's horizon; the sun's glare and the lens's ghosts where it shows (the colour pass); broken cloud's shadows drifting over the land and all on it |
+
+- The scenery costs about 25 ms to place and 90 ms to build on a desktop (the parts are stamped from shared ones and merged per 600 m tile); a phone takes several times that at boot.
+- The cloud shadows and the sun's glare are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.
+- `?spawn=x,z,heading` starts a new game's truck anywhere on the map, to look round a place.
+
 ## Next step: 29 Device testing
 
 Suggested request:

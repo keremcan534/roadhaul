@@ -279,7 +279,8 @@ export const MAPS: readonly MapDefinition[] = [
     },
     // On A's high street, in the lane heading north past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
-    // Street lamps light the three towns' streets and B's ring road, on alternate sides.
-    scenery: { seed: 20260923, treesPerKilometer: 70, streetLampSpacingMeters: 26 },
+    // Street lamps light the three towns' streets and B's ring road, on alternate sides; the towns have their
+    // pavements and street furniture, the country its power lines, walls, rocks, herds and planted trees.
+    scenery: { seed: 20260923, treesPerKilometer: 70, streetLampSpacingMeters: 26, streetscape: true, countryside: true },
   },
 ];

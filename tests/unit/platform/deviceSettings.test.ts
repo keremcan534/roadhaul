@@ -10,6 +10,8 @@ const DEFAULTS: DeviceSettings = {
   tiltSensitivity: 'normal',
   controlSize: 'normal',
   camera: 'chase',
+  timeFlow: 'passes',
+  clockMinutes: 600,
 };
 
 describe('device settings', () => {
@@ -25,6 +27,8 @@ describe('device settings', () => {
       tiltSensitivity: 'high',
       controlSize: 'large',
       camera: 'rear',
+      timeFlow: 'stopped',
+      clockMinutes: 21 * 60 + 15,
     };
     expect(saveSettings(storage, picked)).toBe(true);
 
@@ -37,7 +41,7 @@ describe('device settings', () => {
       '{',
       'null',
       '[]',
-      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone"}',
+      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440}',
     ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);

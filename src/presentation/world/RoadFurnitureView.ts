@@ -8,6 +8,7 @@ import {
   Matrix4,
   Mesh,
   MeshLambertMaterial,
+  PlaneGeometry,
   Quaternion,
   Vector3,
   type Scene,
@@ -59,6 +60,35 @@ const RAIL_TILE_METERS = 600;
 const REFLECTOR_REACH_METERS = { bright: 50, gone: 150 } as const;
 const REFLECTOR_CONE_COS = 0.88;
 const REFLECTOR_COLOR = 0xffb21e;
+/**
+ * Road studs (cat's eyes) on the highway: white ones between the lines of
+ * its double centre line, amber ones on its edge lines (EDGE_LINE_INSET in
+ * TrackView), this far apart and clear of junctions. They catch the
+ * headlights like the reflectors.
+ */
+const STUD_SPACING_METERS = { centre: 12, edge: 24 } as const;
+const STUD_EDGE_INSET_METERS = 0.6;
+const STUD_SIZE = { width: 0.1, length: 0.14 } as const;
+/**
+ * A stud is drawn flat, in the road's own layers: TrackView pulls those
+ * toward the camera (polygon offset), which hides anything standing a few
+ * centimeters on the road further off. Its layer is one over the markings'.
+ */
+const STUD_Y = 0.085;
+const STUD_LAYER = 4;
+/** A stud's grey body by day, the colour of its lenses (white in the middle, amber at the edges) by its instance. */
+const STUD_BODY = 0x8a8a88;
+const STUD_WHITE = 0xf4f1e4;
+/**
+ * A stud is far smaller than a pixel a little way off: it grows with
+ * distance so it never looks smaller than this (radians, a couple of
+ * pixels) either way, lengthening for how slantwise the road is seen, but
+ * never longer than this share of the gap to the next; and it shines this
+ * much brighter than a post's reflector for the grey it is by day.
+ */
+const STUD_LEAST_ANGLE = 0.0025;
+const STUD_LONGEST_SHARE = 0.4;
+const STUD_GLOW = 4;
 
 export interface RoadFurnitureViewOptions {
   /** The sky the rails' galvanised steel mirrors (EnvironmentView.sky). */
@@ -72,16 +102,18 @@ export interface RoadFurnitureViewOptions {
 /**
  * The roads' furniture (roadmap: graphics): white delineator posts along
  * rural roads and highways, each with an amber reflector that lights up in
- * the truck's headlights at night, and the world's guard rails
- * (DrivingWorld.guardRails) in galvanised steel. Posts and reflectors are
- * instanced (two draw calls), holding only the posts near the truck; the
- * rails are merged per 600 m tile, which the camera culls. Placed once,
- * deterministically.
+ * the truck's headlights at night, road studs on the highway's lines that
+ * light up the same way, and the world's guard rails
+ * (DrivingWorld.guardRails) in galvanised steel. Posts, reflectors and
+ * studs are instanced (three draw calls), the posts holding only those
+ * near the truck; the rails are merged per 600 m tile, which the camera
+ * culls. Placed once, deterministically.
  */
 export class RoadFurnitureView {
   private readonly root = new Group();
   private readonly posts: InstancedMesh;
   private readonly reflectors: InstancedMesh;
+  private readonly studs: InstancedMesh;
   private readonly rails: Mesh[] = [];
   private readonly resources: { dispose(): void }[] = [];
   /** Every post: where it stands, its matrix and its two reflectors' (16 floats each), in the same order. */
@@ -116,7 +148,7 @@ export class RoadFurnitureView {
     this.posts.name = 'road-furniture:posts';
     // Lit like the posts, so by night they are dark until the headlights catch them.
     const reflectorMaterial = this.track(new MeshLambertMaterial({ color: REFLECTOR_COLOR }));
-    this.glowInHeadlights(reflectorMaterial);
+    this.glowInHeadlights(reflectorMaterial, 'road-furniture-reflector');
     this.reflectors = this.track(
       new InstancedMesh(this.track(new BoxGeometry(0.1, 0.18, 0.02)), reflectorMaterial, Math.max(1, spots.length * 2)),
     );
@@ -145,6 +177,26 @@ export class RoadFurnitureView {
     }
     this.posts.castShadow = options.castShadows === true;
 
+    // The studs keep still, all of them drawn (a few hundred small boxes, one draw call).
+    const studs = studSpots(world);
+    const studMaterial = this.track(
+      new MeshLambertMaterial({ color: STUD_BODY, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 * STUD_LAYER }),
+    );
+    this.glowInHeadlights(studMaterial, 'road-furniture-stud', true);
+    // Flat, facing up: its width across the road (x), its length along it (z).
+    const studGeometry = this.track(new PlaneGeometry(STUD_SIZE.width, STUD_SIZE.length).rotateX(-Math.PI / 2));
+    this.studs = this.track(new InstancedMesh(studGeometry, studMaterial, Math.max(1, studs.length)));
+    this.studs.name = 'road-furniture:studs';
+    const tint = new Color();
+    studs.forEach(({ x, z, heading, amber }, index) => {
+      rotation.setFromAxisAngle(up, heading);
+      this.studs.setMatrixAt(index, matrix.compose(position.set(x, STUD_Y, z), rotation, one));
+      this.studs.setColorAt(index, tint.setHex(amber ? REFLECTOR_COLOR : STUD_WHITE));
+    });
+    this.studs.count = studs.length;
+    this.studs.visible = studs.length > 0;
+    this.studs.computeBoundingSphere();
+
     const railMaterial = this.track(new MeshLambertMaterial({ vertexColors: true }));
     if (options.sky !== undefined) {
       reflectSky(railMaterial, options.sky, { facing: 0.3, strength: 0.7, metal: true });
@@ -158,14 +210,14 @@ export class RoadFurnitureView {
       mesh.castShadow = options.castShadows === true;
       this.rails.push(mesh);
     }
-    this.root.add(this.posts, this.reflectors, ...this.rails);
+    this.root.add(this.posts, this.reflectors, this.studs, ...this.rails);
     this.root.name = 'road-furniture';
     scene.add(this.root);
   }
 
-  /** How many delineator posts there are, how many are drawn now, and how many rail tiles. */
-  get counts(): { readonly posts: number; readonly drawnPosts: number; readonly railTiles: number } {
-    return { posts: this.postX.length, drawnPosts: this.posts.count, railTiles: this.rails.length };
+  /** How many delineator posts there are, how many are drawn now, how many road studs and rail tiles. */
+  get counts(): { readonly posts: number; readonly drawnPosts: number; readonly studs: number; readonly railTiles: number } {
+    return { posts: this.postX.length, drawnPosts: this.posts.count, studs: this.studs.count, railTiles: this.rails.length };
   }
 
   /** How brightly the truck's lamps shine, 0..1 (the weather's): the reflectors ahead catch them. Cheap. */
@@ -223,15 +275,33 @@ export class RoadFurnitureView {
     this.reflectors.instanceMatrix.needsUpdate = true;
   }
 
-  /** Lights a reflector up in the headlights: bright dead ahead and near, nothing behind or far. */
-  private glowInHeadlights(material: MeshLambertMaterial): void {
+  /**
+   * Lights a reflector up in the headlights: bright dead ahead and near,
+   * nothing behind or far. A road stud (`stud`) also grows with distance,
+   * never looking smaller than STUD_LEAST_ANGLE either way, and shines
+   * brighter.
+   */
+  private glowInHeadlights(material: MeshLambertMaterial, cacheKey: string, stud = false): void {
     const headlights = this.headlights;
+    const longest = (STUD_SPACING_METERS.centre * STUD_LONGEST_SHARE).toFixed(2);
+    const grow = stud
+      ? `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+            float studDistance = max( -( modelViewMatrix * instanceMatrix * vec4( 0.0, 0.0, 0.0, 1.0 ) ).z, 0.1 );
+            float studLeast = studDistance * ${STUD_LEAST_ANGLE.toFixed(4)};
+            // Seen from this high over the road, its length shows foreshortened by about height / distance.
+            float studSlant = max( cameraPosition.y - ${STUD_Y.toFixed(3)}, 0.3 ) / studDistance;
+            transformed.x *= max( 1.0, studLeast / ${STUD_SIZE.width.toFixed(3)} );
+            transformed.z *= clamp( studLeast / studSlant / ${STUD_SIZE.length.toFixed(3)}, 1.0, ${longest} / ${STUD_SIZE.length.toFixed(3)} );
+          #endif`
+      : '#include <begin_vertex>';
     material.onBeforeCompile = (shader) => {
       shader.uniforms['truck'] = headlights.truck;
       shader.uniforms['forward'] = headlights.forward;
       shader.uniforms['lamps'] = headlights.lamps;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vReflectorWorld;')
+        .replace('#include <begin_vertex>', grow)
         .replace(
           '#include <project_vertex>',
           `#include <project_vertex>
@@ -255,12 +325,12 @@ export class RoadFurnitureView {
             float caught = lamps * smoothstep( ${REFLECTOR_CONE_COS.toFixed(3)}, 1.0, ahead )
               * ( 1.0 - smoothstep( ${REFLECTOR_REACH_METERS.bright.toFixed(1)}, ${REFLECTOR_REACH_METERS.gone.toFixed(1)}, distance ) );
             // It sends the headlights straight back: far brighter than white, so it blooms.
-            outgoingLight += diffuseColor.rgb * caught * 6.0;
+            outgoingLight += diffuseColor.rgb * caught * ${(stud ? 6 * STUD_GLOW : 6).toFixed(1)};
           }
           #include <opaque_fragment>`,
         );
     };
-    material.customProgramCacheKey = () => 'road-furniture-reflector';
+    material.customProgramCacheKey = () => cacheKey;
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {
@@ -310,6 +380,40 @@ function delineatorSpots(world: DrivingWorld): { x: number; z: number; heading: 
       }
     }
   }
+  return spots;
+}
+
+/**
+ * Where road studs sit: along the highway's centre line and both its edge
+ * lines, heading along the road, clear of junctions.
+ */
+function studSpots(world: DrivingWorld): { x: number; z: number; heading: number; amber: boolean }[] {
+  const spots: { x: number; z: number; heading: number; amber: boolean }[] = [];
+  const junctions = world.network.junctions;
+  const point = createRoadPoint();
+  world.roads.forEach((road) => {
+    if (road.kind !== 'highway') {
+      return;
+    }
+    const edge = road.widthMeters / 2 - STUD_EDGE_INSET_METERS;
+    for (const [offsets, spacing, amber] of [
+      [[0], STUD_SPACING_METERS.centre, false],
+      [[-edge, edge], STUD_SPACING_METERS.edge, true],
+    ] as const) {
+      for (let along = spacing / 2; along < road.lengthMeters; along += spacing) {
+        road.pointAt(along, point);
+        const heading = Math.atan2(point.directionX, point.directionZ);
+        for (const offset of offsets) {
+          const x = point.x - point.directionZ * offset;
+          const z = point.z + point.directionX * offset;
+          const clear = junctions.every((junction) => Math.hypot(junction.x - x, junction.z - z) > road.widthMeters + JUNCTION_CLEARANCE_METERS);
+          if (clear) {
+            spots.push({ x, z, heading, amber });
+          }
+        }
+      }
+    }
+  });
   return spots;
 }
 

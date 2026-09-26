@@ -5,6 +5,7 @@ import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import { DrivingWorld, type MovingObstacles } from '../../../../src/domain/world/DrivingWorld';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
+import { billboardLegs } from '../../../../src/domain/world/townscape';
 import { mapFixture, seaFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const truck = vehicleFixture();
@@ -679,6 +680,132 @@ describe('DrivingWorld', () => {
       expect(world.sea).toBeNull();
       expect(world.isWater(-199, 0)).toBe(false);
       expect(world.isOnQuay(-170, 0)).toBe(false);
+    });
+  });
+
+  describe('the streetscape and the countryside', () => {
+    /** The fixture's street along z = 0 (x -150..150), and a country road 150 m south of it, a field beside that. */
+    const country = {
+      id: 'test_country',
+      kind: 'rural',
+      widthMeters: 8,
+      closed: false,
+      controlPoints: [
+        [-560, -150],
+        [560, -150],
+      ],
+    } as const;
+    const field = {
+      roadId: 'test_country',
+      fromMeters: 500,
+      lengthMeters: 120,
+      side: 'right',
+      setbackMeters: 12,
+      depthMeters: 40,
+      crop: 'wheat',
+    } as const;
+    const map = mapFixture({ halfSizeMeters: 600, roads: [...mapFixture().roads, country], fields: [field] });
+    const scenic = new DrivingWorld({ ...map, scenery: { ...map.scenery, streetscape: true, countryside: true } });
+    const plain = new DrivingWorld(map);
+
+    /** Drives the truck's front circle straight at (x, z) from the north (or the south), just short of touching. */
+    const hits = (x: number, z: number, radius: number, fromSouth = false): boolean => {
+      const heading = fromSouth ? 0 : Math.PI;
+      const reach = front + footprint.radius + radius - 0.2;
+      const state = truckAt(x, z - Math.cos(heading) * reach, 0, 8);
+      state.heading = heading;
+      return scenic.resolveCollisions(state, footprint) > 7 && Math.abs(state.speed) < 1;
+    };
+
+    it('only comes where the map asks for it', () => {
+      for (const key of ['sidewalks', 'streetFurniture', 'billboards', 'speedSigns', 'powerLines', 'fieldEdges', 'rocks', 'grazers'] as const) {
+        expect(plain[key], key).toEqual([]);
+      }
+      expect(plain.trees.every((tree) => tree.species === undefined)).toBe(true);
+      expect(scenic.sidewalks.length).toBeGreaterThan(0);
+      expect(scenic.streetFurniture.length).toBeGreaterThan(0);
+      expect(scenic.billboards.length).toBeGreaterThan(0);
+      expect(scenic.powerLines.length).toBeGreaterThan(0);
+      expect(scenic.fieldEdges).toHaveLength(2);
+      expect(scenic.rocks.length).toBeGreaterThan(0);
+      expect(scenic.grazers.length).toBeGreaterThan(0);
+      expect(scenic.trees.some((tree) => tree.species === 'cypress')).toBe(true);
+    });
+
+    it("paves the street's pavements, clear of the depot yards: they drive like asphalt", () => {
+      // Right of the street (+z) all along; the left broken where the yards open off it.
+      expect(scenic.surfaceAt(0, 6.5)).toBe(ASPHALT);
+      expect(scenic.surfaceAt(0, -6.5)).toBe(ASPHALT);
+      expect(scenic.surfaceAt(0, 8)).toBe(GRASS);
+      expect(plain.surfaceAt(0, 6.5)).toBe(GRASS);
+      for (const sidewalk of scenic.sidewalks.filter((candidate) => candidate.side === -1)) {
+        for (const depot of scenic.depots) {
+          const x = -150 + (sidewalk.fromMeters + sidewalk.toMeters) / 2;
+          expect(rectangleContains(depot.yard, x, -6.3, 1.9)).toBe(false);
+        }
+      }
+      expect(scenic.sidewalks.filter((sidewalk) => sidewalk.side === -1).length).toBeGreaterThan(1);
+    });
+
+    it('breaks a pavement where a building stands on it', () => {
+      // A kiosk right at the street's edge, on its right (+z), from x = -10 to 10.
+      const kiosk = { x: 0, z: 9, widthMeters: 20, depthMeters: 6, heightMeters: 4 };
+      const built = new DrivingWorld({ ...map, buildings: [kiosk], scenery: { ...map.scenery, streetscape: true } });
+
+      const right = built.sidewalks.filter((sidewalk) => sidewalk.roadIndex === 0 && sidewalk.side === 1);
+      expect(right).toHaveLength(2);
+      // The street runs east from x = -150: the pavement stops before the kiosk and starts again after it.
+      expect(-150 + right[0]!.toMeters).toBeLessThan(-10);
+      expect(-150 + right[1]!.fromMeters).toBeGreaterThan(10);
+      expect(built.surfaceAt(0, 6.5)).toBe(GRASS);
+      expect(built.surfaceAt(-40, 6.5)).toBe(ASPHALT);
+    });
+
+    it('makes the benches, bins, shelters, billboard legs, speed signs, poles, boulders and animals solid', () => {
+      const bench = scenic.streetFurniture.find((item) => item.kind === 'bench' && item.z > 0)!;
+      expect(hits(bench.x, bench.z, bench.radius, true)).toBe(true);
+      const shelter = scenic.streetFurniture.find((item) => item.kind === 'busStop')!;
+      expect(hits(shelter.x, shelter.z, shelter.radius, true)).toBe(true);
+      const leg = billboardLegs(scenic.billboards[0]!)[0]!;
+      expect(hits(leg.x, leg.z, leg.radius)).toBe(true);
+      const pole = scenic.powerLines[0]!.poles[3]!;
+      expect(hits(pole.x, pole.z, pole.radius, pole.z > -150)).toBe(true);
+      const rock = scenic.rocks.find((candidate) => candidate.radius > 0.4)!;
+      expect(hits(rock.x, rock.z, rock.radius)).toBe(true);
+      const cow = scenic.grazers[0]!;
+      expect(hits(cow.x, cow.z, cow.radius)).toBe(true);
+    });
+
+    it('keeps it all off the roads, and the country clear of the fields', () => {
+      const solid = [
+        ...scenic.streetFurniture,
+        ...scenic.billboards.flatMap(billboardLegs),
+        ...scenic.speedSigns,
+        ...scenic.powerLines.flatMap((line) => line.poles),
+        ...scenic.rocks,
+        ...scenic.grazers,
+      ];
+      for (const thing of solid) {
+        expect(scenic.roads.every((road) => road.distanceTo(thing.x, thing.z) > road.widthMeters / 2)).toBe(true);
+      }
+      for (const thing of [...scenic.rocks, ...scenic.grazers]) {
+        expect(scenic.fields.some(({ area }) => rectangleContains(area, thing.x, thing.z))).toBe(false);
+      }
+    });
+
+    it('dresses the shipped region: its towns and its countryside', () => {
+      const region = new DrivingWorld(MAPS[0]!);
+      expect(region.sidewalks.length).toBeGreaterThan(6);
+      expect(region.streetFurniture.filter((item) => item.kind === 'busStop').length).toBeGreaterThanOrEqual(2);
+      expect(region.billboards.length).toBeGreaterThanOrEqual(4);
+      expect(region.speedSigns.length).toBeGreaterThanOrEqual(8);
+      expect(region.powerLines.flatMap((line) => line.poles).length).toBeGreaterThan(60);
+      expect(region.fieldEdges.length).toBe(region.fields.length * 2);
+      expect(region.rocks.length).toBeGreaterThan(80);
+      expect(region.grazers.length).toBeGreaterThan(40);
+      for (const species of ['poplar', 'cypress', 'olive'] as const) {
+        expect(region.trees.filter((tree) => tree.species === species).length, species).toBeGreaterThan(20);
+      }
     });
   });
 });

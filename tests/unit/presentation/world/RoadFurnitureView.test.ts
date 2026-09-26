@@ -1,4 +1,4 @@
-import { Box3, InstancedMesh, Matrix4, Mesh, Scene, Vector3, type BufferAttribute } from 'three';
+import { Box3, Color, InstancedMesh, Matrix4, Mesh, Scene, Vector3, type BufferAttribute } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
@@ -187,14 +187,56 @@ describe('RoadFurnitureView', () => {
     }
   });
 
-  it('costs two draw calls and one per rail tile, casts shadows only when asked, and frees what it made', () => {
+  it("sets road studs along the highway's centre line and edge lines, clear of junctions, glowing in the headlights", () => {
+    const scene = new Scene();
+    const view = new RoadFurnitureView(scene, world);
+    const studs = scene.getObjectByName('road-furniture:studs') as InstancedMesh;
+    const highway = world.roads.find((road) => road.kind === 'highway')!;
+    const edge = highway.widthMeters / 2 - 0.6;
+
+    expect(view.counts.studs).toBe(studs.count);
+    // Every 12 m along the middle, every 24 m along each edge, less those near the junctions.
+    const expected = highway.lengthMeters / 12 + (2 * highway.lengthMeters) / 24;
+    expect(studs.count).toBeGreaterThan(expected * 0.85);
+    expect(studs.count).toBeLessThanOrEqual(expected + 1);
+    const color = new Color();
+    let ambers = 0;
+    placesOf(studs).forEach((stud, index) => {
+      const offset = highway.distanceTo(stud.x, stud.z);
+      studs.getColorAt(index, color);
+      const amber = color.r > color.b * 2;
+      ambers += amber ? 1 : 0;
+      // White between the double centre line, amber on the edge lines.
+      expect(offset).toBeCloseTo(amber ? edge : 0, 1);
+      expect(stud.y).toBeCloseTo(0.085, 6);
+      expect(nearestJunction(stud.x, stud.z)).toBeGreaterThan(highway.widthMeters + 18);
+    });
+    expect(ambers).toBeGreaterThan(studs.count / 3);
+    expect(ambers).toBeLessThan(studs.count * 0.6);
+
+    // Its own program: the reflectors' glow, grown with distance.
+    const material = studs.material as Mesh['material'] & { onBeforeCompile(shader: unknown, renderer: unknown): void; customProgramCacheKey(): string };
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      vertexShader: '#include <common>\n#include <begin_vertex>\n#include <project_vertex>',
+      fragmentShader: '#include <common>\n#include <opaque_fragment>',
+    };
+    material.onBeforeCompile(shader, undefined);
+    expect(shader.vertexShader).toContain('studDistance');
+    expect(shader.fragmentShader).toContain('caught');
+    expect(material.customProgramCacheKey()).toBe('road-furniture-stud');
+    expect(shader.uniforms['lamps']).toBeDefined();
+  });
+
+  it('costs three draw calls and one per rail tile, casts shadows only when asked, and frees what it made', () => {
     const plainScene = new Scene();
     new RoadFurnitureView(plainScene, world);
     expect((plainScene.getObjectByName('road-furniture:posts') as InstancedMesh).castShadow).toBe(false);
 
     const scene = new Scene();
     const view = new RoadFurnitureView(scene, world, { castShadows: true });
-    expect(drawCallCount(scene)).toBe(2 + view.counts.railTiles);
+    expect(drawCallCount(scene)).toBe(3 + view.counts.railTiles);
+    expect((scene.getObjectByName('road-furniture:studs') as InstancedMesh).castShadow).toBe(false);
     expect((scene.getObjectByName('road-furniture:posts') as InstancedMesh).castShadow).toBe(true);
     expect((scene.getObjectByName('road-furniture:reflectors') as InstancedMesh).castShadow).toBe(false);
     for (const rail of railsOf(scene)) {

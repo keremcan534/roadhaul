@@ -39,8 +39,9 @@ describe('TrackView', () => {
     const tiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 600)},${Math.floor(tree.z / 600)}`));
 
     expect(drawCallCount(scene) - drawCallCount(forest)).toBeLessThanOrEqual(12);
-    // Trunks, two crown species and shadows per tile.
-    expect(drawCallCount(forest)).toBeLessThanOrEqual(4 * tiles.size);
+    // Trunks and shadows per tile, and a crown for each kind of tree in it: the wild pines and broadleaves
+    // everywhere, the planted poplars, olives and cypresses where people planted them.
+    expect(drawCallCount(forest)).toBeLessThanOrEqual(5 * tiles.size);
   });
 
   it('keeps what the chase camera sees at the spawn well inside the mobile budget', () => {
@@ -191,6 +192,31 @@ describe('TrackView', () => {
     expect(crowns).toBe(world.trees.length); // Pines and broadleaves together.
     expect(trunks).toBe(world.trees.length);
     expect(shadows).toBe(world.trees.length);
+  });
+
+  it('grows each planted tree as its species, and the wild ones as pines and broadleaves', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    const counts = new Map<string, number>();
+    const heights = new Map<string, number>();
+    scene.traverse((object) => {
+      if (object instanceof InstancedMesh && object.name.startsWith('forest:crowns:')) {
+        const kind = object.name.split(':')[2]!;
+        counts.set(kind, (counts.get(kind) ?? 0) + object.count);
+        object.geometry.computeBoundingBox();
+        heights.set(kind, object.geometry.boundingBox!.max.y);
+      }
+    });
+
+    for (const species of ['poplar', 'cypress', 'olive'] as const) {
+      expect(counts.get(species), species).toBe(world.trees.filter((tree) => tree.species === species).length);
+      expect(counts.get(species)).toBeGreaterThan(0);
+    }
+    expect((counts.get('pine') ?? 0) + (counts.get('broadleaf') ?? 0)).toBe(world.trees.filter((tree) => tree.species === undefined).length);
+    // Slim columns and flames stand tall; an olive's crown is low and wide.
+    expect(heights.get('poplar')).toBeGreaterThan(7);
+    expect(heights.get('cypress')).toBeGreaterThan(7);
+    expect(heights.get('olive')).toBeLessThan(3);
   });
 
   it('sways the trees\' crowns in the wind, harder in the rain, and not their trunks', () => {

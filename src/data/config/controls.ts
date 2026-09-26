@@ -46,3 +46,15 @@ export function isTiltSensitivity(value: unknown): value is TiltSensitivity {
 export function isControlSize(value: unknown): value is ControlSize {
   return (CONTROL_SIZES as readonly unknown[]).includes(value);
 }
+
+/**
+ * How the game's clock goes (Settings): the day passes (faster than real
+ * time, TimeOfDayService), stands still at the time picked, or keeps the
+ * phone's own time.
+ */
+export const TIME_FLOWS = ['passes', 'stopped', 'device'] as const;
+export type TimeFlow = (typeof TIME_FLOWS)[number];
+
+export function isTimeFlow(value: unknown): value is TimeFlow {
+  return (TIME_FLOWS as readonly unknown[]).includes(value);
+}

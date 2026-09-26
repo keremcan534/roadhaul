@@ -123,6 +123,15 @@ describe('validateMapDefinition', () => {
     }
   });
 
+  it('dresses the towns and the country only when the map asks, with a plain yes or no', () => {
+    const dressed = (flags: Record<string, unknown>): MapDefinition =>
+      mapFixture({ scenery: { seed: 1, treesPerKilometer: 0, ...flags } as MapDefinition['scenery'] });
+
+    expect(issuePaths(dressed({}))).toEqual([]);
+    expect(issuePaths(dressed({ streetscape: true, countryside: false }))).toEqual([]);
+    expect(issuePaths(dressed({ streetscape: 'yes', countryside: 1 }))).toEqual(['map.scenery.streetscape', 'map.scenery.countryside']);
+  });
+
   it('reports depots that are not objects or have broken rectangles', () => {
     const [depot] = mapFixture().depots;
     const broken: DepotDefinition = {

@@ -12,7 +12,9 @@ import {
   Vector2,
   WebGLRenderTarget,
   type Camera,
+  type PerspectiveCamera,
   type Texture,
+  type Vector3,
   type WebGLRenderer,
 } from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
@@ -236,6 +238,11 @@ export class PostProcessing {
       {
         tScene: { value: this.sceneTarget.texture },
         tBloom: { value: this.bloom ? this.bloomTargets[0]!.texture : null },
+        // The most blurred level: how much bright light there is round a spot of the picture.
+        tGlare: { value: this.bloom ? this.bloomTargets[BLOOM_LEVELS - 1]!.texture : null },
+        sunScreen: { value: new Vector2(-10, -10) },
+        sunFlare: { value: 0 },
+        aspect: { value: 1 },
         bloomStrength: { value: 0 },
         exposure: { value: 1 },
         saturation: { value: 1 },
@@ -280,6 +287,7 @@ export class PostProcessing {
     this.height = h;
     this.sceneTarget.setSize(w, h);
     this.pictureTarget?.setSize(w, h);
+    this.composite.uniforms['aspect']!.value = w / h;
     if (this.fxaa !== null) {
       (this.fxaa.uniforms['resolution']!.value as Vector2).set(1 / w, 1 / h);
     }
@@ -295,6 +303,20 @@ export class PostProcessing {
     uniforms['warmth']!.value = grade.warmth;
     uniforms['vignette']!.value = grade.vignette;
     uniforms['bloomStrength']!.value = grade.bloom * BLOOM_STRENGTH;
+  }
+
+  /**
+   * Where the sun is on the picture (0..1 across and up, outside when it
+   * is off it) and how strongly it may glare (0..1: the day's sunlight, a
+   * clear sky). Where it shows, a soft glare spreads round it and faint
+   * ghosts of the lens lie across the picture from it; behind a wall, a
+   * tree or the cab's roof it shows no more, and neither do they (the
+   * bloom there tells). Only with bloom. Cheap: it writes three uniforms.
+   */
+  setSun(screenX: number, screenY: number, strength: number): void {
+    const uniforms = this.composite.uniforms;
+    (uniforms['sunScreen']!.value as Vector2).set(screenX, screenY);
+    uniforms['sunFlare']!.value = this.bloom ? Math.max(0, Math.min(1, strength)) : 0;
   }
 
   /**
@@ -371,6 +393,22 @@ function halfFloatSamples(renderer: WebGLRenderer): ArrayLike<number> {
 }
 
 /**
+ * Where a sun toward `direction` (unit: it is that far off) lies on the
+ * picture `camera` takes (its matrices up to date): written into `out` as
+ * 0..1 across and up, beyond them off the picture. False, and `out` left
+ * as it may be, when the sun is behind the camera or square to it.
+ */
+export function sunOnPicture(camera: PerspectiveCamera, direction: Readonly<{ x: number; y: number; z: number }>, out: Vector3): boolean {
+  const toward = out.set(direction.x, direction.y, direction.z).transformDirection(camera.matrixWorldInverse);
+  if (toward.z > -0.05) {
+    return false;
+  }
+  out.set(direction.x, direction.y, direction.z).multiplyScalar(100).add(camera.position).project(camera);
+  out.set((out.x + 1) / 2, (out.y + 1) / 2, 0);
+  return true;
+}
+
+/**
  * three.js's FXAA (Catlike Coding's, after NVIDIA's), blending lone pixels
  * into their neighbours at half its strength: stars and far lamps, a pixel
  * or two across, keep their sparkle.
@@ -408,9 +446,13 @@ function pass(
  * writes sRGB, for the screen or for FXAA, which works on the colours as the
  * eye sees them.
  */
-const COMPOSITE_FRAGMENT = /* glsl */ `
+export const COMPOSITE_FRAGMENT = /* glsl */ `
   uniform sampler2D tScene;
   uniform sampler2D tBloom;
+  uniform sampler2D tGlare;
+  uniform vec2 sunScreen;
+  uniform float sunFlare;
+  uniform float aspect;
   uniform float bloomStrength;
   uniform float exposure;
   uniform float saturation;
@@ -440,10 +482,46 @@ const COMPOSITE_FRAGMENT = /* glsl */ `
     return clamp(outputMatrix * color, 0.0, 1.0);
   }
 
+  #ifdef BLOOM
+  /** A soft disc of the lens's ghosts: \`radius\` across (the picture's height 1), brightest in the middle. */
+  float ghost(vec2 uv, vec2 at, float radius) {
+    float d = length((uv - at) * vec2(aspect, 1.0));
+    return 1.0 - smoothstep(radius * 0.35, radius, d);
+  }
+
+  /**
+   * The sun's glare and the lens's ghosts at \`uv\`: a wide soft glow round the sun and faint spokes, and ghosts
+   * along the line from it through the middle of the picture, each its own tint. As much as the sun shows:
+   * the bright light round it (tGlare), none when something hides it; fading as it leaves the picture.
+   */
+  vec3 sunGlare(vec2 uv) {
+    vec2 outside = max(max(-sunScreen, sunScreen - 1.0), 0.0);
+    float onPicture = 1.0 - smoothstep(0.0, 0.12, max(outside.x, outside.y));
+    float shows = smoothstep(0.08, 0.7, dot(texture2D(tGlare, clamp(sunScreen, 0.0, 1.0)).rgb, vec3(0.3333)));
+    float strength = sunFlare * onPicture * shows;
+    if (strength <= 0.0) {
+      return vec3(0.0);
+    }
+    vec2 fromSun = (uv - sunScreen) * vec2(aspect, 1.0);
+    float d = length(fromSun);
+    vec3 warm = vec3(1.0, 0.86, 0.66);
+    // atan(0, 0) is undefined on some GPUs: nudged off the sun's very middle.
+    float spokes = pow(abs(cos(atan(fromSun.y, fromSun.x + 1e-5) * 3.0)), 60.0) * exp(-d * 9.0);
+    vec3 light = warm * (exp(-d * 5.0) * 0.28 + spokes * 0.35);
+    vec2 across = vec2(0.5) - sunScreen;
+    light += vec3(1.0, 0.72, 0.38) * ghost(uv, sunScreen + across * 0.55, 0.035) * 0.075;
+    light += vec3(0.5, 0.9, 0.62) * ghost(uv, sunScreen + across * 1.25, 0.07) * 0.045;
+    light += vec3(0.62, 0.66, 1.0) * ghost(uv, sunScreen + across * 1.6, 0.11) * 0.04;
+    light += vec3(1.0, 0.56, 0.76) * ghost(uv, sunScreen + across * 2.1, 0.05) * 0.06;
+    return light * strength;
+  }
+  #endif
+
   void main() {
     vec3 color = texture2D(tScene, vUv).rgb;
     #ifdef BLOOM
     color += texture2D(tBloom, vUv).rgb * bloomStrength;
+    color += sunGlare(vUv);
     #endif
     color = acesFilmic(color * exposure);
     // White balance: warm lifts the reds and lowers the blues, cool the other way.

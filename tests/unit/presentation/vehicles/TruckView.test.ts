@@ -45,16 +45,18 @@ function glowsOf(scene: Scene): Points {
   return glows;
 }
 
+/** Whether a mesh named `name` is part of the cab's inside (CabInterior). */
+const insideTheCab = (name: string): boolean => name === 'steering-wheel' || name.startsWith('cab-');
+
 /** The self-lit lamps' material: the one unlit, opaque material painted per vertex outside the cab. */
 function lampMaterialOf(scene: Scene): MeshBasicMaterial {
   const materials = new Set<MeshBasicMaterial>();
-  const insideTheCab = new Set(['cab-interior', 'steering-wheel']);
   scene.traverse((object) => {
     if (
       object instanceof Mesh &&
       object.material instanceof MeshBasicMaterial &&
       !object.material.transparent &&
-      !insideTheCab.has(object.name)
+      !insideTheCab(object.name)
     ) {
       materials.add(object.material);
     }
@@ -206,16 +208,94 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
 
     view.setCabinView(true);
     const inside = visible();
-    // Out: the windshield. In: the dashboard, gauges and pillars, and the steering wheel on its column.
+    // Out: the windshield. In: the cab's inside (dashboard, pillars, roof, doors, seats), the instruments' needles
+    // and display, the charm, the navigation screen, the side mirrors' pictures, the steering wheel on its column,
+    // and the glass from within.
     expect([...outside].filter((object) => !inside.has(object))).toHaveLength(1);
     const added = [...inside].filter((object) => !outside.has(object));
     expect(added.filter((object) => object instanceof Mesh).map((mesh) => (mesh as Mesh).name).sort()).toEqual([
+      'cab-charm',
+      'cab-display',
       'cab-interior',
+      'cab-mirror',
+      'cab-mirror',
+      'cab-navigation',
+      'cab-needles',
       'steering-wheel',
+      'windscreen-inside',
     ]);
 
     view.setCabinView(false);
     expect(visible()).toEqual(outside);
+  });
+
+  it('builds the cab\'s inside only the first time it is seen from the driver\'s seat', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    expect(scene.getObjectByName('cab-interior')).toBeUndefined();
+
+    view.setCabinView(true);
+    const inside = scene.getObjectByName('cab-interior');
+    expect(inside).toBeDefined();
+    view.setCabinView(false);
+    view.setCabinView(true);
+    let interiors = 0;
+    scene.traverse((object) => {
+      interiors += object.name === 'cab-interior' ? 1 : 0;
+    });
+    expect(interiors).toBe(1);
+    expect(scene.getObjectByName('cab-interior')).toBe(inside);
+  });
+
+  it('sweeps its wipers in the rain, and leaves them parked when it is dry', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const wipers = scene.getObjectByName('wipers') as InstancedMesh;
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    const blade = (): number[] => {
+      const matrix = new Matrix4();
+      wipers.getMatrixAt(0, matrix);
+      return matrix.toArray();
+    };
+    view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
+    const parked = blade();
+    for (let frame = 0; frame < 30; frame++) {
+      view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
+    }
+    expect(blade()).toEqual(parked);
+
+    view.setRain(1);
+    for (let frame = 0; frame < 30; frame++) {
+      view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
+    }
+    expect(blade()).not.toEqual(parked);
+  });
+
+  it('keeps its body level from the driver\'s seat, round the cab\'s steady inside', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    /** Where the windscreen's inside (on the body) is in the world. */
+    const glassAt = (): Vector3 => {
+      scene.updateMatrixWorld(true);
+      return new Box3().setFromObject(scene.getObjectByName('windscreen-inside')!).getCenter(new Vector3());
+    };
+    const brake = (): void => {
+      state.longitudinalAcceleration = -6;
+      for (let frame = 0; frame < 120; frame++) {
+        view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
+      }
+    };
+    view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
+    const atRest = glassAt();
+
+    brake();
+    // From outside the nose dips...
+    expect(glassAt().y).toBeLessThan(atRest.y - 0.05);
+    // ...from the driver's seat it keeps still.
+    view.setCabinView(true);
+    brake();
+    expect(glassAt().distanceTo(atRest)).toBeLessThan(1e-9);
   });
 
   /** The cabin camera of a rig at the driver's seat, and the truck at rest there. */
@@ -428,11 +508,12 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(mirroring(shiny)).toBeGreaterThanOrEqual(4);
   });
 
-  it('releases every GPU resource on dispose', () => {
+  it('releases every GPU resource on dispose, the cab\'s inside too', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
     view.setLoaded(true);
     view.setLamps(1);
+    view.setCabinView(true);
     const resources = gpuResources(scene);
     const disposed = watchDisposal(resources);
 

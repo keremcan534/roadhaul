@@ -10,7 +10,8 @@ import {
   type BufferGeometry,
 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { WEATHER } from '../../../../src/data/content/weather';
+import { DAYLIGHT } from '../../../../src/data/content/daylight';
+import { createSkyLook } from '../../../../src/domain/sky/skyLook';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { EnvironmentView } from '../../../../src/presentation/world/EnvironmentView';
 import { PrelitMaterials } from '../../../../src/presentation/world/lighting';
@@ -67,8 +68,9 @@ describe('SeaView', () => {
 
     expect(uniforms['horizon']).toBe(environment.sky.horizon);
     expect(uniforms['sunDirection']).toBe(environment.sky.sunDirection);
-    const night = WEATHER.find((weather) => weather.id === 'night')!.look;
-    environment.applyWeather(night, night, 1);
+    const night = DAYLIGHT.find((daylight) => daylight.id === 'night')!.look;
+    const sky = { ...createSkyLook(), ...night, moonlight: 0.1 };
+    environment.applySky(sky, { sun: { x: 0, y: -0.5, z: 0.87 }, moon: { x: 0, y: 0.5, z: -0.87 }, moonPhase: 0.5, starTurn: 0 });
     expect((uniforms['horizon']!.value as { getHex(): number }).getHex()).toBe(night.horizonColor);
     expect((named(scene, 'water').material as ShaderMaterial).fog).toBe(true);
   });

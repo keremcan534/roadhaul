@@ -193,6 +193,18 @@ export interface MapDefinition {
      * apart, on alternate sides. Absent: the roads are unlit.
      */
     readonly streetLampSpacingMeters?: number;
+    /**
+     * The towns' streetscape: pavements with kerbs along the streets,
+     * benches, bins and bus shelters on them, billboards on the roads into
+     * the towns and speed limits where they enter. Absent or false: none.
+     */
+    readonly streetscape?: boolean;
+    /**
+     * The countryside's detail: power lines along the country roads, fences
+     * and walls along the fields, boulders, grazing sheep and cows, and
+     * planted poplars, olives and cypresses. Absent or false: none.
+     */
+    readonly countryside?: boolean;
   };
 }
 
@@ -314,6 +326,12 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
         `${path}.scenery.streetLampSpacingMeters`,
         `must be at least ${MIN_STREET_LAMP_SPACING_METERS} m`,
       );
+    }
+    for (const flag of ['streetscape', 'countryside'] as const) {
+      const value = scenery[flag];
+      if (value !== undefined) {
+        validator.check(typeof value === 'boolean', `${path}.scenery.${flag}`, 'must be true or false');
+      }
     }
   }
 }
