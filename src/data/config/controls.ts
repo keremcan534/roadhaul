@@ -58,3 +58,20 @@ export type TimeFlow = (typeof TIME_FLOWS)[number];
 export function isTimeFlow(value: unknown): value is TimeFlow {
   return (TIME_FLOWS as readonly unknown[]).includes(value);
 }
+
+/**
+ * The weather (Settings): as it comes (`auto`: it changes by itself,
+ * WeatherService), or held as one kind of weather, by its id in the
+ * weather content.
+ */
+export const WEATHER_CHOICES = ['auto', 'clear', 'cloudy', 'rain'] as const;
+export type WeatherChoice = (typeof WEATHER_CHOICES)[number];
+
+export function isWeatherChoice(value: unknown): value is WeatherChoice {
+  return (WEATHER_CHOICES as readonly unknown[]).includes(value);
+}
+
+/** The choice that shows the weather `held` (its id, or null while it changes by itself): `auto` for one not offered. */
+export function weatherChoiceFor(held: string | null): WeatherChoice {
+  return held !== null && isWeatherChoice(held) ? held : 'auto';
+}

@@ -4,10 +4,12 @@ import {
   STEERING_MODES,
   TILT_SENSITIVITIES,
   TIME_FLOWS,
+  WEATHER_CHOICES,
   type ControlSize,
   type SteeringMode,
   type TiltSensitivity,
   type TimeFlow,
+  type WeatherChoice,
 } from '../../data/config/controls';
 import { QUALITY_CHOICES, type QualityChoice, type QualityLevel } from '../../data/config/GameConfig';
 import { CLOCK_PRESETS, type ClockPreset } from '../../systems/weather/TimeOfDayService';
@@ -30,6 +32,8 @@ export interface SettingsShown {
   readonly timeFlow: TimeFlow;
   /** The time today of each of the clock's presets (dawn, the morning, noon, dusk, the night). */
   readonly clockPresets: Readonly<Record<ClockPreset, number>>;
+  /** The weather: as it comes, or the one held. */
+  readonly weather: WeatherChoice;
 }
 
 export interface SettingsActions {
@@ -44,6 +48,7 @@ export interface SettingsActions {
   /** The player set the clock, minutes after midnight (a preset, or the slider). */
   readonly onClock: (minutes: number) => void;
   readonly onTimeFlow: (flow: TimeFlow) => void;
+  readonly onWeather: (choice: WeatherChoice) => void;
   readonly onClose: () => void;
 }
 
@@ -65,8 +70,9 @@ interface ChoiceRow<T> {
  * on-screen wheel, turning the phone, or buttons), how sensitive tilt
  * steering is, and how big the controls are; the time of day (a preset,
  * or any time on a slider) and whether the day passes, stands still or
- * keeps the phone's time; sound on or off; and the performance display,
- * for testing on phones. A new graphics setting
+ * keeps the phone's time; the weather, as it comes or held as one kind;
+ * sound on or off; and the performance display, for testing on phones. A
+ * new graphics setting
  * restarts the game, which picks it up at boot; everything else applies at
  * once. It opens from the main menu and from the pause menu.
  */
@@ -171,6 +177,13 @@ export class SettingsDialog {
     this.clockSlider.disabled = shown.timeFlow === 'device';
     this.showClock(shown.clockMinutes, shown.clockPresets);
 
+    const weather = choiceRow(document, strings.t('settings.weather'), 'weather', WEATHER_CHOICES, shown.weather, (choice) =>
+      strings.t(`settings.weather.${choice}`),
+    );
+    weather.row.dataset.setting = 'weather';
+    weather.row.append(element(document, 'p', 'settings__note', strings.t('settings.weatherNote')));
+    weather.onPick(actions.onWeather);
+
     const onOff = (value: boolean): string => strings.t(value ? 'settings.on' : 'settings.off');
     const sound = choiceRow(document, strings.t('settings.sound'), 'sound', ON_OFF, shown.sound, onOff);
     sound.row.dataset.setting = 'sound';
@@ -187,6 +200,7 @@ export class SettingsDialog {
       size.row,
       this.clockRow,
       flow.row,
+      weather.row,
       sound.row,
       stats.row,
       button(document, 'button--ghost settings__close', strings.t('settings.close'), 'close-settings', actions.onClose),

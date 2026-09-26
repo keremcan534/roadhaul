@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ValidationError } from '../../../src/core/validation/Validator';
+import { WEATHER_CHOICES } from '../../../src/data/config/controls';
 import { ContentCatalog, validateGameContent } from '../../../src/data/ContentCatalog';
 import { GAME_CONTENT } from '../../../src/data/content';
 import type { CargoCategory } from '../../../src/data/definitions/CargoDefinition';
@@ -136,6 +137,14 @@ describe('ContentCatalog', () => {
       { path: 'weather[0].next[0]', message: 'unknown weather "test_rain"' },
       { path: 'weather[0].next[1]', message: 'unknown weather "blizzard"' },
     ]);
+  });
+
+  it('has every weather the player may hold in Settings', () => {
+    const catalog = ContentCatalog.create(GAME_CONTENT);
+
+    for (const choice of WEATHER_CHOICES.filter((choice) => choice !== 'auto')) {
+      expect(catalog.weather.has(choice), choice).toBe(true);
+    }
   });
 
   it('keeps the ids of generated contracts out of the game\'s own', () => {

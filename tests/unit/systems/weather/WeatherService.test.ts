@@ -219,6 +219,45 @@ describe('WeatherService', () => {
     expect(changes).toEqual([{ weatherId: 'test_rain', previousId: 'test_clear' }]);
   });
 
+  it('holds the weather the player picks, turning to it at once, and lets it change again', () => {
+    const { weather, changes, grip } = setup();
+    expect(weather.held).toBeNull();
+
+    weather.hold('test_rain');
+
+    expect(weather.current.id).toBe('test_rain');
+    expect(weather.blend).toBe(1);
+    expect(weather.held).toBe('test_rain');
+    expect(grip.at(-1)).toBe(0.8);
+    expect(changes).toEqual([{ weatherId: 'test_rain', previousId: 'test_clear' }]);
+    // The roads wet as the rain falls: not at once.
+    expect(weather.wetness).toBe(0);
+    run(weather, 1200);
+    expect(weather.current.id).toBe('test_rain');
+    expect(changes).toHaveLength(1);
+    expect(weather.wetness).toBe(1);
+
+    // Let go, it rains on a while (a spell of 60 to 120 s), then turns.
+    weather.hold(null);
+    expect(weather.held).toBeNull();
+    run(weather, 50);
+    expect(changes).toHaveLength(1);
+    run(weather, 300);
+    expect(changes.length).toBeGreaterThan(1);
+    expect(changes[1]).toEqual({ weatherId: 'test_clear', previousId: 'test_rain' });
+  });
+
+  it('holds the weather it starts in when it may not change, until the player lets it', () => {
+    const { weather, changes } = setup({ changes: false });
+    expect(weather.held).toBe('test_clear');
+
+    weather.hold(null);
+    run(weather, 300);
+
+    expect(weather.held).toBeNull();
+    expect(changes.length).toBeGreaterThan(0);
+  });
+
   it('gives the truck its grip back when disposed', () => {
     const { weather, grip } = setup({ initialWeatherId: 'test_rain' });
 

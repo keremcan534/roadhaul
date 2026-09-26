@@ -162,3 +162,43 @@ test('sets the time of day from Settings: night falls at once, the minimap shows
   await expect(html).toHaveAttribute('data-daylight', 'night');
   expect(problems).toEqual([]);
 });
+
+test('holds the weather picked in Settings from the moment it is picked, keeps it, and lets it change again', async ({
+  page,
+}, testInfo) => {
+  test.slow(); // The game started twice, drawn in software.
+  const problems = watchForProblems(page);
+  await openGame(page, '?lang=en');
+  const html = page.locator('html');
+  // A new company's day starts clear, and the weather changes as it comes.
+  await expect(html).toHaveAttribute('data-weather', 'clear');
+
+  await openSettingsWhileDriving(page);
+  const settings = page.locator('.settings');
+  const row = settings.locator('[data-setting="weather"]');
+  await expect(row.locator('.settings__label')).toHaveText('Weather');
+  await expect(row.locator('[data-weather="auto"]')).toHaveAttribute('aria-checked', 'true');
+  await row.locator('[data-weather="rain"]').click();
+  await expect(row.locator('[data-weather="rain"]')).toHaveAttribute('aria-checked', 'true');
+  await closeSettingsAndResume(page);
+
+  await expect(html).toHaveAttribute('data-weather', 'rain');
+  await waitForFrames(page, 10);
+  await testInfo.attach('rain from settings', { body: await sceneScreenshot(page), contentType: 'image/png' });
+
+  // Kept on the phone: a new visit starts in the rain, and the setting says so.
+  await page.reload();
+  await expect(html).toHaveAttribute('data-boot-state', 'ready');
+  await expect(html).toHaveAttribute('data-weather', 'rain');
+  await page.locator('[data-action="settings"]').click();
+  await expect(row.locator('[data-weather="rain"]')).toHaveAttribute('aria-checked', 'true');
+
+  // Changing again: it rains on for now, and the next visit starts as it comes.
+  await row.locator('[data-weather="auto"]').click();
+  await page.locator('[data-action="close-settings"]').click();
+  await expect(html).toHaveAttribute('data-weather', 'rain');
+  await page.reload();
+  await expect(html).toHaveAttribute('data-boot-state', 'ready');
+  await expect(html).toHaveAttribute('data-weather', 'clear');
+  expect(problems).toEqual([]);
+});
