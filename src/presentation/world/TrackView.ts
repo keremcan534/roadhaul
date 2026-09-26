@@ -56,6 +56,7 @@ import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMat
 import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
+import { createChannelMask, type ChannelMask } from './riverChannel';
 import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 
 const MARKING_COLOR = 0xf4f3ec;
@@ -126,6 +127,20 @@ const WINDOW_GLOW = 1.2;
 const WAREHOUSE_MIN_AREA = 350;
 /** The ground reaches this far past the map edge, so it fades into the haze instead of ending. */
 const GROUND_MARGIN = 1000;
+/** The ground's colour patches (lush, plain, dry) are this big, meters. */
+const GROUND_PATCH_METERS = 900;
+const LUSH_GROUND = new Color(0.82, 0.98, 0.8);
+const DRY_GROUND = new Color(1.12, 1.04, 0.78);
+
+/**
+ * The ground's colour at (x, z): large, soft patches of lusher and drier
+ * grass, so the tiled grass does not look repeated. Its vertex colour, for
+ * the ground and whatever continues it (a river's banks).
+ */
+export function groundTint(x: number, z: number, target: Color): Color {
+  const patch = fractalNoise(x / GROUND_PATCH_METERS, z / GROUND_PATCH_METERS, 6, 3, 77);
+  return target.copy(LUSH_GROUND).lerp(DRY_GROUND, Math.max(0, Math.min(1, (patch - 0.35) * 1.8)));
+}
 /** Side of the square tiles the forest is cut into, so trees out of view are not drawn. */
 const TREE_TILE_METERS = 600;
 
@@ -163,6 +178,25 @@ float groundSnow = 0.0;
   #endif
   diffuseColor *= sampledDiffuseColor;
 #endif
+`;
+
+/**
+ * The ground plane is left out where the rivers' channels cut it open
+ * (createChannelMask): their banks and water lie below, at their own depth.
+ */
+const CHANNEL_CUT_PARS_VERTEX = /* glsl */ `
+uniform vec4 channelFrame;
+varying vec2 vChannelUv;
+`;
+const CHANNEL_CUT_VERTEX = /* glsl */ `
+vChannelUv = ( ( modelMatrix * vec4( transformed, 1.0 ) ).xz - channelFrame.xy ) * channelFrame.zw;
+`;
+const CHANNEL_CUT_PARS_FRAGMENT = /* glsl */ `
+uniform sampler2D channelMask;
+varying vec2 vChannelUv;
+`;
+const CHANNEL_CUT_FRAGMENT = /* glsl */ `
+if ( texture2D( channelMask, vChannelUv ).r < 0.5 ) discard;
 `;
 
 /** After the ground's vertex colours: the snow lying on it, white in the ground's light. */
@@ -323,6 +357,10 @@ export class TrackView {
   private readonly resources: { dispose(): void }[] = [];
   /** Flat, upward-facing surfaces are pre-lit: see flatGroundLight(). */
   private readonly groundLight = flatGroundLight();
+  /** The ground plane's width (and depth), meters: its grass's uv runs 0..1 across it. */
+  groundSizeMeters = 0;
+  /** What the ground's material is made of, shared with bankMaterial(). */
+  private ground: { readonly grass: Texture; readonly meadow: { value: Texture }; readonly detail: boolean } | null = null;
   /** Where the shadow decals reach without pre-lit materials to follow the sun: the reference sun's way. */
   private readonly fixedShadowReach = { value: new Vector2(SHADOW_OFFSET_PER_METER.x, SHADOW_OFFSET_PER_METER.z) };
   private readonly prelit: PrelitMaterials | undefined;
@@ -356,7 +394,7 @@ export class TrackView {
       puddleMap: { value: this.texture(createPuddleMap()) },
     };
     const anisotropy = options.anisotropy ?? 1;
-    this.root.add(this.createGround(world.halfSizeMeters, anisotropy, options.groundDetail ?? true));
+    this.root.add(this.createGround(world, anisotropy, options.groundDetail ?? true));
     if (world.roads.length > 0) {
       this.root.add(...this.createRoads(world, anisotropy));
     }
@@ -411,40 +449,83 @@ export class TrackView {
     }
   }
 
-  private createGround(halfSize: number, anisotropy: number, detail: boolean): Mesh {
-    const size = (halfSize + GROUND_MARGIN) * 2;
+  /**
+   * The ground's material again, for what continues the ground below the
+   * fields where the ground plane is cut open (a river's banks): the same
+   * grass, patches, seasons and snow. Its mesh maps the grass like the
+   * ground's: uv (0.5 + x / groundSizeMeters, 0.5 - z / groundSizeMeters),
+   * with groundTint for its vertex colours.
+   */
+  bankMaterial(): MeshBasicMaterial {
+    return this.groundMaterial(null);
+  }
+
+  /** The ground plane, cut open over the rivers' channels (createChannelMask). */
+  private createGround(world: DrivingWorld, anisotropy: number, detail: boolean): Mesh {
+    const size = (world.halfSizeMeters + GROUND_MARGIN) * 2;
+    this.groundSizeMeters = size;
     const geometry = this.track(new PlaneGeometry(size, size, 96, 96));
     geometry.rotateX(-Math.PI / 2);
     // Large, soft colour patches (lush, plain, dry) so the tiled grass does not look repeated.
     const positions = geometry.getAttribute('position');
     const colors = new Float32Array(positions.count * 3);
-    const lush = new Color(0.82, 0.98, 0.8);
-    const dry = new Color(1.12, 1.04, 0.78);
     const tint = new Color();
     for (let i = 0; i < positions.count; i++) {
-      const u = positions.getX(i) / 900;
-      const v = positions.getZ(i) / 900;
-      const patch = fractalNoise(u, v, 6, 3, 77);
-      tint.copy(lush).lerp(dry, Math.max(0, Math.min(1, (patch - 0.35) * 1.8)));
+      groundTint(positions.getX(i), positions.getZ(i), tint);
       colors.set([tint.r, tint.g, tint.b], i * 3);
     }
     geometry.setAttribute('color', new BufferAttribute(colors, 3));
     const grass = this.texture(toTexture(grassImage(), { repeat: true, anisotropy }));
     grass.repeat.set(size / GRASS_TILE_METERS, size / GRASS_TILE_METERS);
-    const material = this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight }));
+    this.ground = {
+      grass,
+      meadow: { value: this.texture(toTexture(meadowImage(), { repeat: true, srgb: false })) },
+      detail,
+    };
+    const channels = createChannelMask(world.rivers);
+    if (channels !== null) {
+      this.texture(channels.texture);
+    }
+    return new Mesh(geometry, this.groundMaterial(channels));
+  }
+
+  /**
+   * The ground's material: grass, meadows, the seasons and snow, pre-lit.
+   * With `channels`, left out where they cut the ground open, the banks and
+   * water below showing through.
+   */
+  private groundMaterial(channels: ChannelMask | null): MeshBasicMaterial {
+    const ground = this.ground;
+    if (ground === null) {
+      throw new Error('The ground has not been made yet.');
+    }
+    const material = this.track(new MeshBasicMaterial({ map: ground.grass, vertexColors: true, color: this.groundLight }));
     const seasons = this.seasons;
-    material.defines = { ...(detail ? { GROUND_DETAIL: '' } : {}), ...(seasons === null ? {} : { SEASONS: '' }) };
-    const meadow = { value: this.texture(toTexture(meadowImage(), { repeat: true, srgb: false })) };
+    material.defines = {
+      ...(ground.detail ? { GROUND_DETAIL: '' } : {}),
+      ...(seasons === null ? {} : { SEASONS: '' }),
+      ...(channels === null ? {} : { CHANNELS: '' }),
+    };
     material.onBeforeCompile = (shader) => {
-      shader.uniforms['meadow'] = meadow;
+      shader.uniforms['meadow'] = ground.meadow;
       seasons?.attach(shader);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\nuniform sampler2D meadow;\n${seasons === null ? '' : SEASON_GLSL}`)
         .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT)
         .replace('#include <color_fragment>', GROUND_SNOW_FRAGMENT);
+      if (channels !== null) {
+        shader.uniforms['channelMask'] = { value: channels.texture };
+        shader.uniforms['channelFrame'] = { value: channels.frame };
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', `#include <common>\n${CHANNEL_CUT_PARS_VERTEX}`)
+          .replace('#include <project_vertex>', `#include <project_vertex>\n${CHANNEL_CUT_VERTEX}`);
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', `#include <common>\n${CHANNEL_CUT_PARS_FRAGMENT}`)
+          .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${CHANNEL_CUT_FRAGMENT}`);
+      }
     };
     this.prelit?.add(material);
-    return new Mesh(geometry, material);
+    return material;
   }
 
   /**

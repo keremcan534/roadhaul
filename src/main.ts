@@ -62,6 +62,7 @@ import { CloudShadows } from './presentation/world/cloudShadows';
 import { SeasonShading } from './presentation/world/SeasonShading';
 import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
+import { RiverView } from './presentation/world/RiverView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
@@ -329,6 +330,16 @@ async function start(): Promise<void> {
       : new SeaView(renderHost.scene, coast, driving.world.halfSizeMeters, environment.sky, {
           anisotropy: renderHost.anisotropy,
           prelit,
+          rivers: driving.world.rivers,
+        });
+  // The rivers in their channels, under the bridges that carry the roads over them.
+  const riverView =
+    driving.world.rivers.length === 0
+      ? null
+      : new RiverView(renderHost.scene, driving.world, {
+          sky: environment.sky,
+          bankMaterial: track.bankMaterial(),
+          groundSizeMeters: track.groundSizeMeters,
         });
   const harbour =
     coast === null
@@ -1406,6 +1417,7 @@ async function start(): Promise<void> {
         harbour?.setLamps(lamps);
         harbour?.update(paused ? 0 : deltaSeconds);
         seaView?.update(paused ? 0 : deltaSeconds);
+        riverView?.update(paused ? 0 : deltaSeconds);
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);

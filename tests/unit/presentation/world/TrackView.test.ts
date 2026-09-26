@@ -147,6 +147,50 @@ describe('TrackView', () => {
     expect(shader.fragmentShader).toContain('#ifdef GROUND_DETAIL');
   });
 
+  it('cuts the ground open over the rivers\' channels, and lines them with the same grass, uncut', () => {
+    const compile = (material: MeshBasicMaterial) => {
+      const shader = {
+        uniforms: {} as Record<string, { value: unknown }>,
+        vertexShader: '#include <common>\n#include <begin_vertex>\n#include <project_vertex>',
+        fragmentShader: '#include <common>\nvoid main() {\n#include <clipping_planes_fragment>\n#include <map_fragment>\n}',
+      };
+      material.onBeforeCompile(shader as never, undefined as never);
+      return shader;
+    };
+    const groundOf = (scene: Scene): MeshBasicMaterial =>
+      scene.children
+        .flatMap((root) => root.children)
+        .find((object): object is Mesh => object instanceof Mesh && object.geometry.type === 'PlaneGeometry')!
+        .material as MeshBasicMaterial;
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const ground = groundOf(scene);
+    const cut = compile(ground);
+
+    expect(world.rivers.length).toBeGreaterThan(0);
+    expect(ground.defines).toHaveProperty('CHANNELS');
+    expect(cut.fragmentShader).toContain('discard');
+    expect(cut.vertexShader).toContain('vChannelUv');
+    const mask = cut.uniforms['channelMask']!.value as DataTexture;
+    expect(mask.image.width).toBeGreaterThan(0);
+    // The banks: the same grass and meadows, not cut, and a program of their own.
+    const banks = view.bankMaterial();
+    expect(banks.defines ?? {}).not.toHaveProperty('CHANNELS');
+    expect(compile(banks).fragmentShader).not.toContain('discard');
+    expect(banks.map).toBe(ground.map);
+    // Without rivers, the ground is whole.
+    const dry = new Scene();
+    new TrackView(dry, new DrivingWorld({ ...MAPS[0]!, rivers: [] }));
+    expect(groundOf(dry).defines ?? {}).not.toHaveProperty('CHANNELS');
+    // The mask goes with the rest on dispose.
+    let released = false;
+    mask.addEventListener('dispose', () => {
+      released = true;
+    });
+    view.dispose();
+    expect(released).toBe(true);
+  });
+
   it('paves the turning circle at each dead end with the road, in the same draw calls', () => {
     const scene = new Scene();
     new TrackView(scene, world);
