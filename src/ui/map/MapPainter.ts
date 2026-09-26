@@ -156,8 +156,8 @@ export class MapPainter {
     );
     const colors = new Map<string, { solid: string; tint: string; rim: string }>();
     colors.set(PLAYER_COMPANY_ID, companyColor(0xffb020));
-    for (const status of sources.rivals.statuses()) {
-      colors.set(status.definition.id, companyColor(status.definition.color));
+    for (const rival of sources.rivals.definitions) {
+      colors.set(rival.id, companyColor(rival.color));
     }
     this.companyColors = colors;
   }

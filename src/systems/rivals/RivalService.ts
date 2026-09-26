@@ -161,6 +161,8 @@ export class RivalService {
   private tendersPosted = 0;
   private jobsPlanned = 0;
   private away = false;
+  /** A game is loaded (restore): until then the market stands still. */
+  private loaded = false;
   private readonly recentNews: MarketNews[] = [];
   /** Reused markers, one per truck on the map, filled by updateMarkers(). */
   readonly markers: RivalMarker[] = [];
@@ -279,6 +281,11 @@ export class RivalService {
   leaderOf(cityId: string): string | null {
     const index = this.board.cityIds.indexOf(cityId);
     return index < 0 ? null : this.leaders[index]!;
+  }
+
+  /** The rival companies of the content, in order: known before any game is loaded. */
+  get definitions(): readonly RivalCompanyDefinition[] {
+    return this.content.rivals.all;
   }
 
   /** `companyId`'s colour on the map; null for the player's company (the UI picks its own). */
@@ -405,9 +412,9 @@ export class RivalService {
     return ok(undefined);
   }
 
-  /** The market moves on for `dt` seconds of game time: call every fixed step while the game runs. */
+  /** The market moves on for `dt` seconds of game time: call every fixed step while the game runs. Nothing before a game is loaded. */
   update(dt: number): void {
-    if (!(dt > 0)) {
+    if (!(dt > 0) || !this.loaded) {
       return;
     }
     this.advance(dt);
@@ -429,7 +436,7 @@ export class RivalService {
    */
   catchUp(seconds: number): void {
     let left = Math.min(Math.max(0, seconds), this.fleetConfig.awayHours * 3600);
-    if (!(left > 0)) {
+    if (!(left > 0) || !this.loaded) {
       return;
     }
     this.away = true;
@@ -517,6 +524,7 @@ export class RivalService {
     this.board.cityIds.forEach((cityId, index) => {
       this.leaders[index] = this.board.leaderOf(cityId, this.config.leadShare);
     });
+    this.loaded = true;
   }
 
   snapshot(): RivalsSaveData {

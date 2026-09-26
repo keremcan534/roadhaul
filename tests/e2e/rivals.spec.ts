@@ -44,7 +44,9 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   await expect(league).toHaveCount(3);
   await expect(yeniliman).toHaveClass(/is-yours/);
   await expect(yeniliman.locator('.city-card__share')).toHaveText('You lead: contracts from here pay 15% more');
-  await expect(page.locator('.rival-news__item').first()).toHaveText(/^You bought Yeniliman Express out/);
+  // The news, newest first: the city changing hands, and the buy-out that did it.
+  await expect(page.locator('.rival-news__item').nth(0)).toHaveText(/^Yeniliman: Kuzey Lojistik takes the lead/);
+  await expect(page.locator('.rival-news__item').nth(1)).toHaveText(/^You bought Yeniliman Express out(just now|1 min ago)$/);
   await testInfo.attach('rivals', { body: await page.screenshot(), contentType: 'image/png' });
 
   // Ten minutes on (debug F): a tender on the job board, raced by a rival still in business.
@@ -63,13 +65,16 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   // Taken and loaded: the race is on, and the HUD shows the rival's time.
   await tender.locator('[data-action="accept"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-panel', 'none');
-  await expect(page.locator('.mission-hud__race')).toHaveText(/ it starts when you load$/);
+  await expect(page.locator('.mission-hud__race')).toHaveText('The race starts at loading');
   await page.keyboard.press('KeyT');
   await expect(page.locator('html')).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
-  await expect(page.locator('.mission-hud__race')).toHaveText(/ unloads in \d+:\d\d$/);
+  await expect(page.locator('.mission-hud__race')).toHaveText(/^Rival ETA \d+:\d\d$/);
   await testInfo.attach('race', { body: await page.screenshot(), contentType: 'image/png' });
 
-  // Parked at the delivery bay at once: well ahead of the rival.
+  // Off the bay, then parked at the delivery bay at once: well ahead of the rival.
+  await page.keyboard.down('ArrowUp');
+  await expect(page.locator('html')).toHaveAttribute('data-mission-state', 'delivering', { timeout: 10_000 });
+  await page.keyboard.up('ArrowUp');
   await page.keyboard.press('KeyT');
   const result = page.locator('.result-dialog');
   await expect(result).toBeVisible({ timeout: 15_000 });

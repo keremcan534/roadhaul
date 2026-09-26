@@ -265,7 +265,7 @@ export class RivalsPage {
       entry.append(
         this.swatch(item.companyId ?? ''),
         element(document, 'span', 'rival-news__text', this.newsText(item)),
-        element(document, 'span', 'rival-news__time', strings.t('hq.rivals.ago', { time: strings.timeSpan(now - item.atMs) })),
+        element(document, 'span', 'rival-news__time', this.ago(now - item.atMs)),
       );
       list.append(entry);
     }
@@ -290,6 +290,17 @@ export class RivalsPage {
       case 'acquired':
         return strings.t('hq.rivals.newsAcquired', { company: strings.rivalName(item.companyId) });
     }
+  }
+
+  /** How long ago something happened: just now, minutes, or hours. */
+  private ago(ms: number): string {
+    const minutes = Math.floor(ms / 60_000);
+    if (minutes < 1) {
+      return this.strings.t('hq.rivals.justNow');
+    }
+    return minutes < 60
+      ? this.strings.t('hq.rivals.minutesAgo', { minutes })
+      : this.strings.t('hq.rivals.hoursAgo', { hours: Math.floor(minutes / 60) });
   }
 
   /** A company's name: the player's own ("… (you)" in the league), or a rival's. */

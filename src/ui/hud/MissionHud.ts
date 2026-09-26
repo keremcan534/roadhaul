@@ -276,23 +276,24 @@ export class MissionHud {
     const stage = !started ? 'waiting' : left > 0 ? 'running' : 'lost';
     const key = `${race.contract.id}:${stage}`;
     const strings = this.strings;
-    const company = strings.rivalName(race.rivalId);
     if (key !== this.shownRaceKey) {
       this.shownRaceKey = key;
       this.shownRaceClock = Number.NaN;
       this.race.hidden = false;
       this.race.dataset.stage = stage;
+      // The rival's colour and name: the line itself is short, to fit beside the arrival time.
       const color = this.rivals!.colorOf(race.rivalId);
       this.race.style.setProperty('--company-color', color === null ? '' : `#${color.toString(16).padStart(6, '0')}`);
+      this.race.title = strings.rivalName(race.rivalId);
       if (stage !== 'running') {
-        setText(this.raceText, strings.t(stage === 'waiting' ? 'hud.race.waiting' : 'hud.race.lost', { company }));
+        setText(this.raceText, strings.t(stage === 'waiting' ? 'hud.race.waiting' : 'hud.race.lost'));
       }
     }
     if (stage === 'running') {
       const clock = Math.ceil(left);
       if (clock !== this.shownRaceClock) {
         this.shownRaceClock = clock;
-        setText(this.raceText, strings.t('hud.race.running', { company, time: strings.duration(left) }));
+        setText(this.raceText, strings.t('hud.race.running', { time: strings.duration(left) }));
       }
     }
     const progress = Math.round(Math.min(1, elapsed / race.rivalSeconds) * 100);

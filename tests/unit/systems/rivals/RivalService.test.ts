@@ -41,6 +41,17 @@ function standingIn(game: Game, cityId: string): Record<string, number> {
 }
 
 describe('RivalService', () => {
+  it('stands still until a game is loaded: behind the main menu nothing moves, and no tender comes', async () => {
+    const game = await bootGame();
+    const posted = listen(game, 'TenderPosted');
+    runRivals(game, RIVALS.firstTenderSeconds + 60);
+    game.rivals.catchUp(3600);
+    expect(posted).toEqual([]);
+    expect(game.rivals.snapshot().jobsPlanned).toBe(0);
+    expect(game.rivals.updateMarkers()).toBe(0);
+    expect(game.rivals.definitions.map((rival) => rival.id)).toEqual(['rival_yeniliman', 'rival_basakova', 'rival_demirkent']);
+  });
+
   it('starts each rival at home with its trucks and money, leading its city, and the company last in the league', async () => {
     const game = await newCompany(1, 5000);
 
