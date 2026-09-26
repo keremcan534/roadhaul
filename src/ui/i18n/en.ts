@@ -7,7 +7,7 @@ export const EN: StringTable = {
   'format.kilometers': '{value} km',
   'format.tons': '{value} t',
 
-  'menu.tagline': 'Take the contract. Haul the load. Grow the company.',
+  'menu.tagline': 'Drive · Deliver · Grow',
   'menu.play': 'Play',
   'menu.language': 'Türkçe',
 

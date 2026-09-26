@@ -1,13 +1,23 @@
 :root {
   color-scheme: dark;
-  --rh-bg: #1b2430;
-  --rh-fg: #e8edf2;
+  /*
+   * The brand's palette (the icon sheet): asphalt, steel, amber, signal white, road green, brake red and night
+   * blue. Text on the dark glass takes lighter tints of the green and red (--rh-good, --rh-danger).
+   */
+  --rh-bg: #16191d;
+  --rh-steel: #2a3038;
+  --rh-fg: #f2f4f5;
   --rh-muted: #a9b4c0;
   --rh-overlay-bg: rgb(0 0 0 / 55%);
-  --rh-accent: #f2b233;
-  --rh-accent-dark: #d9901b;
+  --rh-accent: #f2a33a;
+  --rh-accent-dark: #d98a1f;
+  --rh-green: #2e9e5b;
+  --rh-red: #d8453b;
+  --rh-blue: #3d7fd6;
   --rh-good: #5fd38a;
   --rh-danger: #ff8a7a;
+  /* The icons' accent (src/ui/icons.ts): amber, unless a button sets its own. */
+  --rh-icon-accent: var(--rh-accent);
   /*
    * Liquid glass (src/ui/glass.ts marks <html data-glass>: lens, blur or tint): menus, panels and the road's
    * buttons let the world show through, blurred and brightened like thick glass, under a rim lit from above.
@@ -286,8 +296,8 @@ body {
 .touch-controls[data-gear='reverse'] .gear-button {
   box-shadow:
     var(--rh-glass-rim),
-    0 0 0 2px rgb(242 178 51 / 80%),
-    0 0 16px rgb(242 178 51 / 60%);
+    0 0 0 2px rgb(242 163 58 / 80%),
+    0 0 16px rgb(242 163 58 / 60%);
 }
 
 .gear-button:active {
@@ -526,7 +536,7 @@ body {
 }
 
 .dashboard__gauge--damage .dashboard__gauge-fill {
-  background: #f2b233;
+  background: var(--rh-accent);
 }
 
 .dashboard__gauge--fuel.is-low {
@@ -610,8 +620,8 @@ body {
 .horn-button.is-pressed {
   box-shadow:
     var(--rh-glass-rim),
-    0 0 0 2px rgb(242 178 51 / 80%),
-    0 0 16px rgb(242 178 51 / 60%);
+    0 0 0 2px rgb(242 163 58 / 80%),
+    0 0 16px rgb(242 163 58 / 60%);
   transform: scale(0.92);
   transition-duration: 90ms;
 }
@@ -693,6 +703,21 @@ body {
   transition-duration: 90ms;
 }
 
+/* A button with an icon before its label (icons.ts withIcon). */
+.button--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  --rh-icon-accent: currentColor;
+}
+
+.button__icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
 .button[hidden] {
   display: none;
 }
@@ -703,7 +728,7 @@ body {
     var(--rh-glass-sheen),
     linear-gradient(180deg, rgb(255 208 110 / 92%), rgb(236 158 34 / 90%));
   color: #1b1e22;
-  box-shadow: var(--rh-glass-rim), 0 6px 18px rgb(242 178 51 / 32%);
+  box-shadow: var(--rh-glass-rim), 0 6px 18px rgb(242 163 58 / 32%);
 }
 
 /* Clear glass. */
@@ -762,26 +787,48 @@ body {
     linear-gradient(180deg, rgb(10 14 20 / 20%), rgb(10 14 20 / 55%));
 }
 
+/* The brand's lockup (src/ui/brand.ts): the mark over the wordmark, the motto under it. */
 .main-menu__logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 2.2vmin, 16px);
   margin: 0;
-  font-size: clamp(40px, 11vmin, 76px);
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-shadow: 0 4px 18px rgb(0 0 0 / 55%);
+  color: var(--rh-fg);
+  filter: drop-shadow(0 4px 14px rgb(0 0 0 / 55%));
 }
 
-.main-menu__logo-accent {
-  color: var(--rh-accent);
+.main-menu__mark {
+  width: clamp(60px, 16vmin, 118px);
+  height: auto;
+}
+
+.main-menu__wordmark {
+  width: clamp(210px, 56vmin, 400px);
+  height: auto;
 }
 
 .main-menu__tagline {
   margin: 0 0 8px;
-  color: var(--rh-fg);
-  font-size: clamp(13px, 3.4vmin, 17px);
+  padding-left: 0.42em;
+  color: var(--rh-muted);
+  font-size: clamp(11px, 2.7vmin, 14px);
+  font-weight: 700;
+  letter-spacing: 0.42em;
   text-align: center;
+  text-transform: uppercase;
   text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+/* Landscape on a phone: the mark beside the wordmark, so the buttons keep their room. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .main-menu__logo {
+    flex-direction: row;
+  }
+
+  .main-menu__mark {
+    width: clamp(48px, 13vmin, 72px);
+  }
 }
 
 .main-menu__play {
@@ -1046,7 +1093,7 @@ body {
   gap: 5px;
   padding: 7px 11px;
   border-radius: 999px;
-  background: rgb(242 178 51 / 14%);
+  background: rgb(242 163 58 / 14%);
   color: var(--rh-accent);
 }
 
@@ -1347,7 +1394,7 @@ body {
   background: #f0a04b;
 }
 
-/* Line icons (src/ui/icons.ts): stroked in the text colour. */
+/* Icons (src/ui/icons.ts): solid glyphs in the text colour, with an amber accent. */
 .icon {
   flex: none;
   width: 20px;
@@ -1459,7 +1506,7 @@ body {
   padding: 9px;
   box-sizing: border-box;
   border-radius: 12px;
-  background: rgb(242 178 51 / 14%);
+  background: rgb(242 163 58 / 14%);
   color: var(--rh-accent);
 }
 
@@ -1510,7 +1557,7 @@ body {
 }
 
 .truck-part.is-fitted {
-  background: rgb(242 178 51 / 10%);
+  background: rgb(242 163 58 / 10%);
   color: var(--rh-fg);
 }
 
@@ -1573,8 +1620,9 @@ body {
   background:
     var(--rh-glass-sheen),
     linear-gradient(180deg, rgb(255 208 110 / 90%), rgb(236 158 34 / 86%));
-  box-shadow: var(--rh-glass-rim), 0 6px 18px rgb(242 178 51 / 32%);
+  box-shadow: var(--rh-glass-rim), 0 6px 18px rgb(242 163 58 / 32%);
   color: #1b1e22;
+  --rh-icon-accent: currentColor;
 }
 
 .hud-dock__button:active {
@@ -1691,43 +1739,40 @@ body {
   font-weight: 800;
 }
 
-/* The picture of what a card is about: the cargo, the truck's part, the event's terms. */
+/*
+ * The picture of what a card is about (the cargo, the truck's part, the event's terms): a white glyph on a
+ * chamfered steel tile, as on the brand sheet. Cargo that needs care says so in its colours: frozen food
+ * in cold blue, medical supplies and hazardous goods with red for their accent.
+ */
 .job-card__icon,
 .upgrade-card__icon,
 .event-card__icon {
   display: grid;
   flex: none;
   place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  background: rgb(242 178 51 / 14%);
-  color: var(--rh-accent);
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(180deg, #353c46, var(--rh-steel) 60%);
+  clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 9px, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px), 0 9px);
+  color: var(--rh-fg);
 }
 
 .job-card__icon .icon,
 .upgrade-card__icon .icon,
 .event-card__icon .icon {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 
 .job-card[data-cargo-category='frozenFood'] .job-card__icon {
-  background: rgb(127 211 255 / 15%);
-  color: #7fd3ff;
+  color: #8cc4ff;
 }
 
 .job-card[data-cargo-category='medical'] .job-card__icon,
 .job-card[data-cargo-category='hazardous'] .job-card__icon {
-  background: rgb(255 138 122 / 15%);
-  color: var(--rh-danger);
+  --rh-icon-accent: #ef5a4f;
 }
 
-.job-card[data-cargo-category='agriculture'] .job-card__icon,
-.job-card[data-cargo-category='food'] .job-card__icon {
-  background: rgb(95 211 138 / 15%);
-  color: var(--rh-good);
-}
 
 .job-card__route {
   display: flex;
@@ -2137,7 +2182,7 @@ body {
 
 .pip.is-on {
   background: var(--rh-accent);
-  box-shadow: 0 0 6px rgb(242 178 51 / 60%);
+  box-shadow: 0 0 6px rgb(242 163 58 / 60%);
 }
 
 .badge--light {
@@ -2173,7 +2218,7 @@ body {
     linear-gradient(180deg, rgb(92 72 28 / 62%), rgb(46 38 22 / 70%));
   box-shadow:
     var(--rh-glass-rim),
-    inset 0 0 0 1.5px rgb(242 178 51 / 65%),
+    inset 0 0 0 1.5px rgb(242 163 58 / 65%),
     var(--rh-glass-drop);
   -webkit-backdrop-filter: var(--rh-glass-filter);
   backdrop-filter: var(--rh-glass-filter);
@@ -2199,7 +2244,7 @@ body {
   padding: 5px 6px 5px 12px;
   box-shadow:
     var(--rh-glass-rim-inner),
-    inset 0 0 0 1.5px rgb(242 178 51 / 65%);
+    inset 0 0 0 1.5px rgb(242 163 58 / 65%);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   transform: none;
@@ -2230,10 +2275,10 @@ body {
 @keyframes tutorial-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(242 178 51 / 0%);
+    box-shadow: 0 0 0 0 rgb(242 163 58 / 0%);
   }
   50% {
-    box-shadow: 0 0 0 5px rgb(242 178 51 / 60%);
+    box-shadow: 0 0 0 5px rgb(242 163 58 / 60%);
   }
 }
 
@@ -2259,10 +2304,10 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 }
 
 .event-card.is-running {
-  background: linear-gradient(180deg, rgb(242 178 51 / 18%), rgb(242 178 51 / 6%));
+  background: linear-gradient(180deg, rgb(242 163 58 / 18%), rgb(242 163 58 / 6%));
   box-shadow:
     var(--rh-glass-rim-inner),
-    inset 0 0 0 2px rgb(242 178 51 / 55%);
+    inset 0 0 0 2px rgb(242 163 58 / 55%);
 }
 
 .event-card.is-completed {
@@ -2371,7 +2416,7 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 .job-card__event {
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgb(242 178 51 / 18%);
+  background: rgb(242 163 58 / 18%);
   color: var(--rh-accent);
   font-size: 12px;
   font-weight: 800;
@@ -3257,7 +3302,7 @@ html[data-panel='open'] .toasts {
   margin: 0;
   padding: 8px 12px;
   border-radius: 10px;
-  background: linear-gradient(90deg, rgb(242 178 51 / 25%), rgb(242 178 51 / 8%));
+  background: linear-gradient(90deg, rgb(242 163 58 / 25%), rgb(242 163 58 / 8%));
   color: var(--rh-accent);
   font-weight: 800;
   text-align: center;
@@ -3267,7 +3312,7 @@ html[data-panel='open'] .toasts {
   margin: 0;
   padding: 6px 12px;
   border-radius: 10px;
-  background: rgb(242 178 51 / 10%);
+  background: rgb(242 163 58 / 10%);
 }
 
 .result-dialog__event.is-completed {
