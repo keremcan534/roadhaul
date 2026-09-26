@@ -344,8 +344,8 @@ export class WetReflections implements LampMirror {
     this.lookX = look > 1e-6 ? lookX / look : 0;
     this.lookZ = look > 1e-6 ? lookZ / look : 1;
     this.uniforms.blockerSize.value.set(0, 0, 0);
-    for (const source of sources) {
-      source?.mirrorLamps(this);
+    for (let i = 0; i < sources.length; i++) {
+      sources[i]?.mirrorLamps(this);
     }
     this.addStreetLamps();
 
