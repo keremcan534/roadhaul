@@ -29,7 +29,7 @@ test('starts the sound at the first touch, and lets the player switch it off on 
 });
 
 test('drives a contract with the engine, brakes, horn and rain sounding, without an error', async ({ page }) => {
-  test.setTimeout(60_000);
+  test.slow();
   const problems = watchForProblems(page);
   const html = page.locator('html');
   await openCompanyHq(page, '?debug&lang=en&weather=rain');

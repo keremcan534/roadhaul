@@ -132,6 +132,11 @@ export class TimeOfDayService {
     return this.starTurnValue;
   }
 
+  /** Whether the sun is rising (from midnight to noon: the morning), not setting. */
+  get sunRising(): boolean {
+    return this.rising;
+  }
+
   /** The twilight the sky passes through now: dawn's with the sun rising (the morning), dusk's with it setting. */
   get twilight(): DaylightDefinition {
     return this.rising ? this.dawn : this.dusk;

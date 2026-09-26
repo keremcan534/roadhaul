@@ -43,6 +43,7 @@ import {
   type PrelitMaterials,
 } from './lighting';
 import { unlitByLamps } from './LampLighting';
+import { Mist, MIST_GLSL, MIST_SKY_METERS } from './Mist';
 
 const ZENITH = 0x3f7fc7;
 const HORIZON = 0xc4dcef;
@@ -202,6 +203,21 @@ const RAINBOW_LOW_SUN = degreesToRadians(20);
 const RAINBOW_HIGHEST_SUN = degreesToRadians(34);
 const RAINBOW_SUNLIT = 0.55;
 /**
+ * The morning mist's light (Mist): the horizon's, this much of the way to
+ * its own grey (its droplets scatter every colour alike), and toward the
+ * sun this share of the sky's glow round it more.
+ */
+const MIST_GREY = 0.45;
+const MIST_SUN_GLOW = 1.2;
+/**
+ * The sun's shafts (sunShafts) show this strongly in clear air, fully in
+ * the mist; with any real sunlight, while the sun is no further under the
+ * horizon than its glow over it (a sine).
+ */
+const CLEAR_AIR_SHAFTS = 0.45;
+const SHAFTS_SUNLIGHT = 0.3;
+const SHAFTS_SUN_BELOW = -0.03;
+/**
  * The rainbow on the sky, `strength` (the rainbow uniform) strong, lit by the
  * sun (`light`) round the point opposite it (`direction` is toward the
  * sun), `up` the height of the sky's point (a sine): the primary bow 40° to
@@ -337,9 +353,9 @@ export interface SceneLight {
  * horizon. About three draw calls, two more at night. applySky() turns it
  * all to the time of day and the weather (spec §38–39): sky, haze, light,
  * the sun and the moon where they stand, the moon's phase, the turning
- * stars, clouds, a rainbow after the rain, the pre-lit ground with it, and
- * the picture's grade
- * (`grade`, for the renderer's colour pass).
+ * stars, clouds, a rainbow after the rain, the morning mist (`mist`), the
+ * pre-lit ground with it, the picture's grade (`grade`) and the sun's glare
+ * and shafts, for the renderer's colour pass.
  */
 export class EnvironmentView {
   private readonly backdrop = new Group();
@@ -368,8 +384,17 @@ export class EnvironmentView {
     /** How strongly the rainbow shows, 0..1. */
     readonly rainbow: { value: number };
   };
+  /**
+   * The morning mist over the land (setMist): its uniforms, shared by the
+   * sky, the hills and, through Mist.shadeScene(), the world's materials.
+   */
+  readonly mist = new Mist();
+  private mistAmount = 0;
+  private readonly mistLight = new Color();
+  private readonly mistGlow = new Color();
   private readonly towardSun = new Vector3(SUN_DIRECTION.x, SUN_DIRECTION.y, SUN_DIRECTION.z).normalize();
   private glare = 0;
+  private shafts = 0;
   private groundSunShare = 0;
   /** Where the towns are (setTowns), and how brightly their lamps light the night's haze (applySky). */
   private readonly towns: { readonly x: number; readonly z: number }[] = [];
@@ -562,6 +587,13 @@ export class EnvironmentView {
     // The sun glares while it is up and bright: less through haze and cloud, not at all in the rain.
     this.towardSun.set(sun.x, sun.y, sun.z).normalize();
     this.glare = Math.min(1, look.sunlight) * smoothstep(-0.01, 0.04, sun.y) * (1 - look.rain) * (1 - 0.7 * look.cloudCover);
+    // Its shafts: in hazy air, through gaps in trees and cloud; the strongest in the morning's mist.
+    this.shafts =
+      smoothstep(0, SHAFTS_SUNLIGHT, look.sunlight) *
+      smoothstep(SHAFTS_SUN_BELOW, 0.03, sun.y) *
+      (1 - look.rain) *
+      (1 - 0.5 * look.cloudCover) *
+      (CLEAR_AIR_SHAFTS + (1 - CLEAR_AIR_SHAFTS) * this.mistAmount);
     // The towns glow once it is dark (not under a day's rain clouds, lamps lit or not), more back off cloud.
     this.townLight =
       TOWN_GLOW * look.lamps * (1 - smoothstep(TWILIGHT_ENDS, SUNSET_BELOW, elevation)) * (0.6 + 0.8 * look.cloudCover);
@@ -585,6 +617,12 @@ export class EnvironmentView {
     this.background.copy(uniforms.horizon.value);
     this.fog.color.copy(uniforms.horizon.value);
     this.fog.density = look.fogDensity * this.fogScale;
+    // The mist: the horizon's light, greyer, and glowing round the sky's light (the sun's; before dawn, its glow).
+    const horizon = uniforms.horizon.value;
+    this.mistLight.setScalar(horizon.r * 0.2126 + horizon.g * 0.7152 + horizon.b * 0.0722);
+    this.mistLight.lerp(horizon, 1 - MIST_GREY);
+    this.mistGlow.copy(uniforms.sunColor.value).multiplyScalar(MIST_SUN_GLOW);
+    this.mist.set(this.mistAmount, this.mistLight, this.mistGlow, uniforms.sunDirection.value);
 
     this.skyLight.intensity = SKY_LIGHT_INTENSITY * skylight;
     this.skyLight.color.setHex(SKY_LIGHT_COLOR).multiply(this.tint);
@@ -647,6 +685,15 @@ export class EnvironmentView {
   }
 
   /**
+   * How thick the morning mist lies, 0..1 (morningMist): over the land, the
+   * sky's horizon and the hills, and the sun's shafts through it. Takes
+   * effect at the next applySky().
+   */
+  setMist(amount: number): void {
+    this.mistAmount = clamp(amount, 0, 1);
+  }
+
+  /**
    * How bright lightning flashes now, 0..1 (Thunderstorm.flash): it lights
    * up the sky, the haze and the clouds, and the world from the sky. Takes
    * effect at the next applySky().
@@ -663,6 +710,11 @@ export class EnvironmentView {
   /** How strongly the sun may glare on the picture (0..1): up, bright, the sky clear (RenderHost.setSun). */
   get sunGlare(): number {
     return this.glare;
+  }
+
+  /** How strongly the sun's shafts may show (0..1): the sun up or just under the horizon, hazy air, most in mist (RenderHost.setSun). */
+  get sunShafts(): number {
+    return this.shafts;
   }
 
   /** The sun's share of the light on flat ground now (0..1): what the clouds' shadows can take (CloudShadows). */
@@ -746,7 +798,7 @@ export class EnvironmentView {
         side: BackSide,
         depthWrite: false,
         fog: false,
-        uniforms: { ...this.skyUniforms },
+        uniforms: { ...this.skyUniforms, ...this.mist.uniforms },
         vertexShader: /* glsl */ `
           varying vec3 vDirection;
           void main() {
@@ -766,6 +818,7 @@ export class EnvironmentView {
           uniform float earthShadow;
           ${TOWNS_GLOW}
           ${RAINBOW}
+          ${MIST_GLSL}
           varying vec3 vDirection;
           void main() {
             vec3 direction = normalize(vDirection);
@@ -795,6 +848,10 @@ export class EnvironmentView {
             sky += townsGlow(bearing, height);
             if (rainbow > 0.0) {
               sky = rainbowOver(sky, direction, up, sunDirection, sunColor, rainbow);
+            }
+            // The morning mist: a white band along the horizon, thinning up the sky; the sun low in it a soft ball.
+            if (mistDensity > 0.0) {
+              sky = mistOver(sky, direction * ${MIST_SKY_METERS.toFixed(1)});
             }
             gl_FragColor = vec4(sky, 1.0);
             #include <tonemapping_fragment>
@@ -864,9 +921,11 @@ export class EnvironmentView {
     geometry.computeVertexNormals();
     const material = this.track(new MeshLambertMaterial({ vertexColors: true, fog: false }));
     const { horizon: hazeColor, townGlow } = this.skyUniforms;
+    const mist = this.mist.uniforms;
     material.onBeforeCompile = (shader) => {
       shader.uniforms['hazeColor'] = hazeColor;
       shader.uniforms['townGlow'] = townGlow;
+      Object.assign(shader.uniforms, mist);
       // The towns' lit haze lies before them (they stand for far mountains): its glow shows on them as on
       // the sky over them. Per vertex: it changes slowly round the ring.
       shader.vertexShader = shader.vertexShader
@@ -878,9 +937,17 @@ export class EnvironmentView {
           vec3 toHill = normalize((modelMatrix * vec4(transformed, 1.0)).xyz - cameraPosition);
           vTownGlow = townsGlow(normalize(toHill.xz + vec2(1e-5)), max(toHill.y, 0.0));`,
         );
+      // The morning mist hides their feet; their ridges rise out of it.
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 hazeColor;\nvarying float vHaze;\nvarying vec3 vTownGlow;')
-        .replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, vHaze) + vTownGlow;');
+        .replace('#include <common>', `#include <common>\nuniform vec3 hazeColor;\nvarying float vHaze;\nvarying vec3 vTownGlow;\n${MIST_GLSL}`)
+        .replace(
+          '#include <opaque_fragment>',
+          `#include <opaque_fragment>
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, hazeColor, vHaze) + vTownGlow;
+          if (mistDensity > 0.0) {
+            gl_FragColor.rgb = mistOver(gl_FragColor.rgb, -(vec4(vViewPosition, 0.0) * viewMatrix).xyz);
+          }`,
+        );
     };
     const hills = new Mesh(this.track(geometry), material);
     hills.name = 'hills';

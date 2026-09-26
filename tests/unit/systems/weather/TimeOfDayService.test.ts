@@ -75,11 +75,13 @@ describe('TimeOfDayService', () => {
     time.set(dawn);
     expect(time.shown).toBe('dawn');
     expect(time.twilight.id).toBe('dawn');
+    expect(time.sunRising).toBe(true);
     expect(time.sunElevationDegrees).toBeCloseTo(catalog.daylight.get('dawn').sunElevationDegrees, 0);
     const dusk = time.timeOf('dusk');
     time.set(dusk);
     expect(time.shown).toBe('dusk');
     expect(time.twilight.id).toBe('dusk');
+    expect(time.sunRising).toBe(false);
     // A summer's evening: sunset past eight o'clock.
     expect(dusk).toBeGreaterThan(19 * 60);
   });

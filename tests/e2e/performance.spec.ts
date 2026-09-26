@@ -11,7 +11,7 @@ async function renderCost(page: Page): Promise<{ draws: number; triangles: numbe
 }
 
 test('keeps a busy city scene at night in the rain within the draw budget', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software, the busiest scene there is.
   const problems = watchForProblems(page);
   // The most there is to draw: dense traffic, lit lamps and glows, the headlights, and rain.
   // Parked in the pickup bay, in Yeniliman's yard, among its buildings. The lamps light the world here, drawn in

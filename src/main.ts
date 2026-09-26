@@ -10,6 +10,7 @@ import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { bayParkingPose } from './domain/missions/loadingBay';
+import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import {
@@ -24,6 +25,7 @@ import {
   applyConfigOverrides,
   requestedDateMs,
   requestedLampLight,
+  requestedMist,
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
@@ -117,11 +119,13 @@ const SOFTWARE_SHADOW_MAP_SIZE = 1024;
 const SOFTWARE_VEGETATION_SHARE = 0.5;
 const SOFTWARE_CLOUD_SHARE = 0.5;
 /**
- * Drawn in software, a frame takes about 100 ms; a fixed step, well under a
- * millisecond. Up to this many steps a frame keep the simulation in real
- * time down to 5 FPS (the configured cap would slow it to half speed).
+ * Drawn in software, a frame takes 200 ms or more, half a second on a slow
+ * machine; a fixed step, well under a millisecond. Frames simulated up to
+ * this long, in up to this many steps, keep the game in real time down to
+ * 2 FPS, where the configured caps would slow it to a sixth.
  */
-const SOFTWARE_MAX_STEPS_PER_FRAME = 12;
+const SOFTWARE_MAX_SIMULATION_DELTA_SECONDS = 0.5;
+const SOFTWARE_MAX_STEPS_PER_FRAME = 30;
 /**
  * How many lamps light the night (LampLighting), per graphics preset: the
  * nearest street lamps and vehicles. Drawn in software (with ?lamps=1), as
@@ -141,6 +145,8 @@ const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehic
 const CLOCK_KEEP_SECONDS = 30;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
+/** From this thick (0..1, morningMist) the mist hides the road ahead: the driver is told. */
+const THICK_MIST = 0.5;
 
 async function start(): Promise<void> {
   const root = document.documentElement;
@@ -195,6 +201,8 @@ async function start(): Promise<void> {
   );
   /** How wet the roads are: the weather's, or as the address keeps them (`?wet=`). */
   const keptWetness = requestedWetness(query);
+  /** How thick the morning mist lies: the morning's, or as the address keeps it (`?mist=`). */
+  const keptMist = requestedMist(query);
   /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
   const clearDay = content.weather.get(config.weather.clearWeatherId).look;
   const weatherLook = createSkyLook();
@@ -325,6 +333,8 @@ async function start(): Promise<void> {
   /** The time of day's look (day, dawn, dusk, night) and the clock's minute, as last shown. */
   let shownDaylight = '';
   let shownClockMinute = -1;
+  /** Whether the morning mist lies thick, as last shown ('' before the first frame). */
+  let shownMist = '';
   /** Seconds since the clock's time was last kept in the settings (keepClock). */
   let sinceClockKept = 0;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
@@ -531,6 +541,7 @@ async function start(): Promise<void> {
       // clouds shade it.
       if (!software) {
         cloudShadows.shadeScene(renderHost.scene, prelit);
+        environment.mist.shadeScene(renderHost.scene);
       }
       if (lampLight) {
         lampLighting.lightScene(renderHost.scene, prelit);
@@ -600,6 +611,19 @@ async function start(): Promise<void> {
     root.dataset.daylight = shown;
     if (!first && shown !== 'day' && isDriving()) {
       toasts.show(strings.t(`daylight.${shown}.message`), 'info');
+    }
+  };
+  /** Says so when the morning mist comes down thick while driving (e2e tests read the page's data-mist). */
+  const showMist = (mist: number): void => {
+    const shown = mist >= THICK_MIST ? 'thick' : 'none';
+    if (shown === shownMist) {
+      return;
+    }
+    const first = shownMist === '';
+    shownMist = shown;
+    root.dataset.mist = shown;
+    if (!first && shown === 'thick' && isDriving()) {
+      toasts.show(strings.t('mist.message'), 'info');
     }
   };
   /** The time today of each of the Settings' clock presets (they move with the seasons). */
@@ -1213,6 +1237,11 @@ async function start(): Promise<void> {
         lightning.update(storm.flash, renderHost.camera.position);
         environment.setLightning(storm.flash);
         environment.setWetness(wetness);
+        // Mist lies in the morning after a clear night, thicker after rain, and lifts as the sun climbs.
+        const mist =
+          keptMist ?? morningMist(timeOfDay.sunElevationDegrees, timeOfDay.sunRising, weather.rain, skyLook.cloudCover, wetness);
+        environment.setMist(mist);
+        showMist(mist);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
@@ -1264,7 +1293,7 @@ async function start(): Promise<void> {
         menuFrames = onRoad() && !paused ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.setGrade(environment.grade);
-          renderHost.setSun(environment.sunTowards, environment.sunGlare);
+          renderHost.setSun(environment.sunTowards, environment.sunGlare, environment.sunShafts);
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
@@ -1294,12 +1323,19 @@ async function start(): Promise<void> {
         showFatalError(document, 'RoadHaul stopped because of an error.', error);
       },
     },
-    { maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds },
+    {
+      maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds,
+      maxSimulationDeltaSeconds: software
+        ? Math.max(SOFTWARE_MAX_SIMULATION_DELTA_SECONDS, config.simulation.maxFrameDeltaSeconds)
+        : config.simulation.maxFrameDeltaSeconds,
+    },
   );
-  // Every view is in the scene: the clouds' shadows on the pre-lit ground, the lamps' light on everything, and the
-  // GPU compiling the shaders now, behind the menu, not on the road.
+  // Every view is in the scene: the clouds' shadows and the morning mist on the land (not drawn in software, where
+  // every pixel's instructions count: the sky and its hills still show the mist), the lamps' light on everything, and
+  // the GPU compiling the shaders now, behind the menu, not on the road.
   if (!software) {
     cloudShadows.shadeScene(renderHost.scene, prelit);
+    environment.mist.shadeScene(renderHost.scene);
   }
   if (lampLight) {
     lampLighting.lightScene(renderHost.scene, prelit);

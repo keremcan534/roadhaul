@@ -143,7 +143,7 @@ test('turns the truck right when the on-screen wheel turns clockwise', async ({ 
 });
 
 test('steps through the cameras with the button, names each, and keeps the last one picked', async ({ page }) => {
-  test.setTimeout(90_000); // Six views drawn in software, and a reload.
+  test.slow(); // Six views drawn in software, and a reload.
   const problems = watchForProblems(page);
   await openGame(page, '?lang=en&traffic=0');
   const html = page.locator('html');

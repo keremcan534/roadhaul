@@ -7,6 +7,10 @@ import {
   createColorGrade,
   FXAA_FRAGMENT,
   multisampling,
+  SHAFT_LIGHT_FRAGMENT,
+  SHAFT_ROUND_FRAGMENT,
+  SHAFTS_FRAGMENT,
+  shaftsShow,
   sunOnPicture,
 } from '../../../src/presentation/PostProcessing';
 
@@ -56,6 +60,40 @@ describe('PostProcessing', () => {
     // Added in linear light, before the tone curve.
     const main = COMPOSITE_FRAGMENT.slice(COMPOSITE_FRAGMENT.indexOf('void main()'));
     expect(main.indexOf('color += sunGlare(vUv);')).toBeLessThan(main.indexOf('acesFilmic('));
+  });
+});
+
+describe('the sun\'s shafts', () => {
+  it('come from the light brighter than the sky\'s shade, the sun\'s disc capped, at a quarter of the size', () => {
+    // Four smooth taps: the sixteen pixels under one of a quarter-size picture.
+    expect(SHAFT_LIGHT_FRAGMENT.match(/texture2D\(tSource, vUv \+ texel \* vec2\(/g)).toHaveLength(4);
+    expect(SHAFT_LIGHT_FRAGMENT).toContain('min(color * 0.25, vec3(8.0))');
+    expect(SHAFT_LIGHT_FRAGMENT).toMatch(/max\(luma - [\d.]+, 0\.0\)/);
+  });
+
+  it("streak it out from the sun, less what shines round it every way: a gap's light and a trunk's shadow, not a veil", () => {
+    // Every spot samples from the sun out toward it, so a whole line gets the same: straight shafts.
+    expect(SHAFTS_FRAGMENT).toContain('vec2 uv = sunScreen + stride * k;');
+    expect(SHAFTS_FRAGMENT).toMatch(/max\(sum \/ weights - [\d.]+ \* texture2D\(tRound, vec2\(0\.5\)\)\.rgb, 0\.0\)/);
+    // What shines round the sun every way: sixteen ways out, weighed as the shafts weigh their steps.
+    expect(SHAFT_ROUND_FRAGMENT).toContain('for (int a = 0; a < 16; a++)');
+    const focus = (shader: string) => /exp\(-[\w *]+\* ([\d.]+)\)/.exec(shader)?.[1];
+    expect(focus(SHAFT_ROUND_FRAGMENT)).toBeDefined();
+    expect(focus(SHAFT_ROUND_FRAGMENT)).toBe(focus(SHAFTS_FRAGMENT));
+    // Added in linear light, before the tone curve, and only while they show.
+    const main = COMPOSITE_FRAGMENT.slice(COMPOSITE_FRAGMENT.indexOf('void main()'));
+    expect(main).toContain('if (shafts > 0.0)');
+    expect(main.indexOf('texture2D(tShafts, vUv).rgb * shafts')).toBeLessThan(main.indexOf('acesFilmic('));
+  });
+
+  it('show while the sun is on the picture, fading as it leaves it', () => {
+    expect(shaftsShow(0.5, 0.5)).toBe(1);
+    expect(shaftsShow(0, 1)).toBe(1);
+    expect(shaftsShow(1.1, 0.5)).toBeGreaterThan(0);
+    expect(shaftsShow(1.1, 0.5)).toBeLessThan(1);
+    expect(shaftsShow(0.5, -0.1)).toBeCloseTo(shaftsShow(1.1, 0.5), 9);
+    expect(shaftsShow(-0.3, 0.5)).toBe(0);
+    expect(shaftsShow(0.5, 1.4)).toBe(0);
   });
 });
 

@@ -18,6 +18,7 @@ import {
   type WebGLRenderer,
 } from 'three';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { clamp01, smoothstep } from '../core/math/scalar';
 
 export interface PostProcessingSettings {
   /** Bright lights (lamps, headlights, the low sun) bloom into a soft glow. */
@@ -60,6 +61,31 @@ const BLOOM_KNEE = 0.5;
 /** How bright the glow gets at the grade's full bloom. */
 const BLOOM_STRENGTH = 0.22;
 
+/**
+ * The sun's shafts (setSun). The light they come from is what is brighter
+ * than SHAFT_THRESHOLD (linear: the sky round the sun, glowing mist; not
+ * what stands before it). Each spot of the picture takes that light along
+ * the line from the sun out toward it, the nearer the sun the more (to 1/e
+ * every 1/SHAFT_FOCUS picture heights, as far as SHAFT_REACH), in
+ * SHAFT_SAMPLES steps: the light through the gap in the trees in its
+ * direction, or none behind a trunk. Less SHAFT_EVEN_SHARE of the light
+ * round the sun every way (SHAFT_ROUND samples: directions × steps), so an
+ * open sky adds a soft glow and a gap a shaft. Fading with the spot's
+ * distance from the sun (SHAFT_FALLOFF); at SHAFT_STRENGTH at full
+ * strength. At a quarter of the picture's size, and one pixel for the
+ * light round the sun: three cheap passes.
+ */
+const SHAFT_THRESHOLD = 0.45;
+const SHAFT_FOCUS = 14;
+const SHAFT_REACH = 0.22;
+const SHAFT_SAMPLES = 24;
+const SHAFT_ROUND = [16, 8] as const;
+const SHAFT_EVEN_SHARE = 0.7;
+const SHAFT_FALLOFF = 1.8;
+const SHAFT_STRENGTH = 1;
+/** The shafts fade as the sun leaves the picture, gone this far (picture widths or heights) off it. */
+const SHAFTS_OFF_PICTURE = 0.25;
+
 /** The sizes of bloom's chain of targets for a picture of `width` × `height` pixels: half, quarter, … */
 export function bloomLevelSizes(width: number, height: number, levels = BLOOM_LEVELS): [number, number][] {
   const sizes: [number, number][] = [];
@@ -71,6 +97,17 @@ export function bloomLevelSizes(width: number, height: number, levels = BLOOM_LE
     sizes.push([w, h]);
   }
   return sizes;
+}
+
+/**
+ * How much of the sun's shafts show with the sun at (`screenX`, `screenY`)
+ * on the picture (0..1 across and up): all while it is on it, fading as it
+ * leaves, none from SHAFTS_OFF_PICTURE off it, where the light round it is
+ * off the picture too.
+ */
+export function shaftsShow(screenX: number, screenY: number): number {
+  const outside = Math.max(-screenX, screenX - 1, -screenY, screenY - 1, 0);
+  return 1 - smoothstep(0, SHAFTS_OFF_PICTURE, outside);
 }
 
 /**
@@ -105,7 +142,11 @@ const VERTEX = /* glsl */ `
  * cheap passes at small sizes), and one colour pass adds that bloom, maps
  * the tones (ACES filmic, as the renderer's own), grades the colour by the
  * weather (saturation, contrast, warmth), darkens the corners a little and
- * dithers the result, so the sky's gradients do not band. Without
+ * dithers the result, so the sky's gradients do not band. With bloom, the
+ * sun's shafts: while it is on the picture, the bright light round it is
+ * streaked out away from it at a quarter of the size, so the gaps between
+ * what stands before it (trees, buildings, a cloud's edge) send shafts of
+ * light out through the air, with its shadows between. Without
  * multisampling, a last pass smooths the edges of the finished picture
  * (FXAA). Every pass draws one full-screen quad; nothing is allocated per
  * frame.
@@ -115,6 +156,22 @@ export class PostProcessing {
   /** The finished picture, before FXAA smooths it onto the screen; null with multisampling. */
   private readonly pictureTarget: WebGLRenderTarget | null;
   private readonly bloomTargets: WebGLRenderTarget[] = [];
+  /**
+   * With bloom: the light the sun's shafts come from and the shafts, a
+   * quarter of the picture's size; how much of it there is round the sun
+   * every way, one pixel; and their passes.
+   */
+  private readonly shaftLight: WebGLRenderTarget | null;
+  private readonly shaftRound: WebGLRenderTarget | null;
+  private readonly shaftTarget: WebGLRenderTarget | null;
+  private readonly shaftMask: ShaderMaterial | null;
+  private readonly shaftAround: ShaderMaterial | null;
+  private readonly shaftRays: ShaderMaterial | null;
+  /** Where the sun is on the picture (setSun), shared by the colour pass and the shafts. */
+  private readonly sunScreen = new Vector2(-10, -10);
+  private readonly aspect = { value: 1 };
+  /** How strongly the shafts show now (0..1); 0 skips their passes. */
+  private shaftStrength = 0;
   private readonly quadScene = new Scene();
   private readonly quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   private readonly quad: Mesh;
@@ -149,16 +206,7 @@ export class PostProcessing {
     });
     if (this.bloom) {
       for (let level = 0; level < BLOOM_LEVELS; level++) {
-        this.bloomTargets.push(
-          new WebGLRenderTarget(1, 1, {
-            type: HalfFloatType,
-            depthBuffer: false,
-            stencilBuffer: false,
-            minFilter: LinearFilter,
-            magFilter: LinearFilter,
-            generateMipmaps: false,
-          }),
-        );
+        this.bloomTargets.push(lightTarget());
       }
     }
     this.pictureTarget =
@@ -234,15 +282,29 @@ export class PostProcessing {
     );
     // Added onto the bigger level, which holds its own downsampled light.
     this.upsample.blending = AdditiveBlending;
+    this.shaftLight = this.bloom ? lightTarget() : null;
+    this.shaftRound = this.bloom ? lightTarget() : null;
+    this.shaftTarget = this.bloom ? lightTarget() : null;
+    const sun = { sunScreen: { value: this.sunScreen }, aspect: this.aspect };
+    this.shaftMask = this.bloom ? pass({ tSource: { value: null }, texel: { value: new Vector2() } }, SHAFT_LIGHT_FRAGMENT) : null;
+    this.shaftAround = this.bloom ? pass({ tSource: { value: null }, texel: { value: new Vector2() }, ...sun }, SHAFT_ROUND_FRAGMENT) : null;
+    this.shaftRays = this.bloom
+      ? pass(
+          { tSource: { value: null }, texel: { value: new Vector2() }, tRound: { value: this.shaftRound?.texture ?? null }, ...sun },
+          SHAFTS_FRAGMENT,
+        )
+      : null;
     this.composite = pass(
       {
         tScene: { value: this.sceneTarget.texture },
         tBloom: { value: this.bloom ? this.bloomTargets[0]!.texture : null },
         // The most blurred level: how much bright light there is round a spot of the picture.
         tGlare: { value: this.bloom ? this.bloomTargets[BLOOM_LEVELS - 1]!.texture : null },
-        sunScreen: { value: new Vector2(-10, -10) },
+        tShafts: { value: this.shaftTarget?.texture ?? null },
+        sunScreen: { value: this.sunScreen },
         sunFlare: { value: 0 },
-        aspect: { value: 1 },
+        shafts: { value: 0 },
+        aspect: this.aspect,
         bloomStrength: { value: 0 },
         exposure: { value: 1 },
         saturation: { value: 1 },
@@ -287,11 +349,16 @@ export class PostProcessing {
     this.height = h;
     this.sceneTarget.setSize(w, h);
     this.pictureTarget?.setSize(w, h);
-    this.composite.uniforms['aspect']!.value = w / h;
+    this.aspect.value = w / h;
     if (this.fxaa !== null) {
       (this.fxaa.uniforms['resolution']!.value as Vector2).set(1 / w, 1 / h);
     }
-    bloomLevelSizes(w, h).forEach(([levelWidth, levelHeight], level) => this.bloomTargets[level]?.setSize(levelWidth, levelHeight));
+    const levels = bloomLevelSizes(w, h);
+    levels.forEach(([levelWidth, levelHeight], level) => this.bloomTargets[level]?.setSize(levelWidth, levelHeight));
+    // The shafts at a quarter of the size, as bloom's second level.
+    const [quarterWidth, quarterHeight] = levels[1]!;
+    this.shaftLight?.setSize(quarterWidth, quarterHeight);
+    this.shaftTarget?.setSize(quarterWidth, quarterHeight);
   }
 
   /** The grade from now on. Cheap: it writes a few uniforms. */
@@ -307,16 +374,21 @@ export class PostProcessing {
 
   /**
    * Where the sun is on the picture (0..1 across and up, outside when it
-   * is off it) and how strongly it may glare (0..1: the day's sunlight, a
-   * clear sky). Where it shows, a soft glare spreads round it and faint
-   * ghosts of the lens lie across the picture from it; behind a wall, a
-   * tree or the cab's roof it shows no more, and neither do they (the
-   * bloom there tells). Only with bloom. Cheap: it writes three uniforms.
+   * is off it), how strongly it may glare (0..1: the day's sunlight, a
+   * clear sky) and how strongly its shafts show (0..1: more in haze and
+   * mist). Where it shows, a soft glare spreads round it and faint ghosts
+   * of the lens lie across the picture from it; behind a wall, a tree or
+   * the cab's roof it shows no more, and neither do they (the bloom there
+   * tells). The shafts show round it, on the picture or a little off it,
+   * behind a tree too: through its gaps. Only with bloom. Cheap: it writes
+   * a few uniforms; without shafts their passes are skipped.
    */
-  setSun(screenX: number, screenY: number, strength: number): void {
+  setSun(screenX: number, screenY: number, strength: number, shafts = 0): void {
     const uniforms = this.composite.uniforms;
-    (uniforms['sunScreen']!.value as Vector2).set(screenX, screenY);
-    uniforms['sunFlare']!.value = this.bloom ? Math.max(0, Math.min(1, strength)) : 0;
+    this.sunScreen.set(screenX, screenY);
+    uniforms['sunFlare']!.value = this.bloom ? clamp01(strength) : 0;
+    this.shaftStrength = this.bloom ? clamp01(shafts) * shaftsShow(screenX, screenY) : 0;
+    uniforms['shafts']!.value = this.shaftStrength * SHAFT_STRENGTH;
   }
 
   /**
@@ -349,6 +421,19 @@ export class PostProcessing {
         this.draw(this.upsample, targets[level]!.texture, targets[level]!, targets[level - 1]!);
       }
     }
+    if (
+      this.shaftStrength > 0 &&
+      this.shaftMask !== null &&
+      this.shaftAround !== null &&
+      this.shaftRays !== null &&
+      this.shaftLight !== null &&
+      this.shaftRound !== null &&
+      this.shaftTarget !== null
+    ) {
+      this.draw(this.shaftMask, this.sceneTarget.texture, this.sceneTarget, this.shaftLight);
+      this.draw(this.shaftAround, this.shaftLight.texture, this.shaftLight, this.shaftRound);
+      this.draw(this.shaftRays, this.shaftLight.texture, this.shaftLight, this.shaftTarget);
+    }
     this.quad.material = this.composite;
     renderer.setRenderTarget(this.pictureTarget);
     renderer.render(this.quadScene, this.quadCamera);
@@ -366,8 +451,11 @@ export class PostProcessing {
     for (const target of this.bloomTargets) {
       target.dispose();
     }
+    this.shaftLight?.dispose();
+    this.shaftRound?.dispose();
+    this.shaftTarget?.dispose();
     this.quad.geometry.dispose();
-    for (const material of [this.prefilter, this.downsample, this.upsample, this.composite, this.fxaa]) {
+    for (const material of [this.prefilter, this.downsample, this.upsample, this.shaftMask, this.shaftAround, this.shaftRays, this.composite, this.fxaa]) {
       material?.dispose();
     }
   }
@@ -380,6 +468,18 @@ export class PostProcessing {
     this.renderer.setRenderTarget(target);
     this.renderer.render(this.quadScene, this.quadCamera);
   }
+}
+
+/** A target for light, past white too (half-float), smoothly sampled, without depth. */
+function lightTarget(): WebGLRenderTarget {
+  return new WebGLRenderTarget(1, 1, {
+    type: HalfFloatType,
+    depthBuffer: false,
+    stencilBuffer: false,
+    minFilter: LinearFilter,
+    magFilter: LinearFilter,
+    generateMipmaps: false,
+  });
 }
 
 /** The sample counts the GPU can multisample a half-float colour buffer with, most first (none on WebGL 1). */
@@ -441,6 +541,94 @@ function pass(
 }
 
 /**
+ * The light the sun's shafts come from, at a quarter of the picture's size:
+ * four taps, each a smooth average of four pixels, cover the sixteen under
+ * one of its own; of that, only what is brighter than SHAFT_THRESHOLD (the
+ * sky round a low sun, glowing mist), capped so the sun's disc does not
+ * outshine the rest.
+ */
+export const SHAFT_LIGHT_FRAGMENT = /* glsl */ `
+  uniform sampler2D tSource;
+  uniform vec2 texel;
+  varying vec2 vUv;
+  void main() {
+    vec3 color = texture2D(tSource, vUv + texel * vec2(-1.0, -1.0)).rgb;
+    color += texture2D(tSource, vUv + texel * vec2(1.0, -1.0)).rgb;
+    color += texture2D(tSource, vUv + texel * vec2(-1.0, 1.0)).rgb;
+    color += texture2D(tSource, vUv + texel * vec2(1.0, 1.0)).rgb;
+    color = min(color * 0.25, vec3(8.0));
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    gl_FragColor = vec4(color * (max(luma - ${SHAFT_THRESHOLD.toFixed(3)}, 0.0) / max(luma, 1e-4)), 1.0);
+  }
+`;
+
+/**
+ * How much of the shafts' light there is round the sun every way, into one
+ * pixel: SHAFT_ROUND[0] directions, SHAFT_ROUND[1] steps out along each,
+ * weighed as the shafts weigh them (SHAFTS_FRAGMENT). Off the picture none.
+ */
+export const SHAFT_ROUND_FRAGMENT = /* glsl */ `
+  uniform sampler2D tSource;
+  uniform vec2 sunScreen;
+  uniform float aspect;
+  void main() {
+    vec3 sum = vec3(0.0);
+    float weights = 0.0;
+    for (int a = 0; a < ${SHAFT_ROUND[0]}; a++) {
+      float angle = float(a) * ${((2 * Math.PI) / SHAFT_ROUND[0]).toFixed(6)};
+      vec2 direction = vec2(cos(angle) / aspect, sin(angle));
+      for (int i = 0; i < ${SHAFT_ROUND[1]}; i++) {
+        float outward = (float(i) + 0.5) * ${(SHAFT_REACH / SHAFT_ROUND[1]).toFixed(6)};
+        vec2 uv = sunScreen + direction * outward;
+        float weight = exp(-outward * ${SHAFT_FOCUS.toFixed(2)});
+        vec2 inside = step(vec2(0.0), uv) * step(uv, vec2(1.0));
+        sum += texture2D(tSource, uv).rgb * (weight * inside.x * inside.y);
+        weights += weight;
+      }
+    }
+    gl_FragColor = vec4(sum / weights, 1.0);
+  }
+`;
+
+/**
+ * The sun's shafts, at a quarter of the picture's size: at each spot, the
+ * light (SHAFT_LIGHT_FRAGMENT) along the line from the sun out toward it,
+ * no further than SHAFT_REACH, the nearer the sun the more; less
+ * SHAFT_EVEN_SHARE of the light round it every way (tRound); fading with
+ * the spot's distance from the sun. A spot in line with a gap between the
+ * trees gets the light through it, one in line with a trunk none. The
+ * samples start at the sun, so every spot along a line gets the same:
+ * straight shafts, without the steps of marching from the spot.
+ */
+export const SHAFTS_FRAGMENT = /* glsl */ `
+  uniform sampler2D tSource;
+  uniform sampler2D tRound;
+  uniform vec2 sunScreen;
+  uniform float aspect;
+  varying vec2 vUv;
+  void main() {
+    vec2 away = vUv - sunScreen;
+    float apart = length(away * vec2(aspect, 1.0));
+    float reach = min(apart, ${SHAFT_REACH.toFixed(3)});
+    vec2 stride = away * (reach / max(apart, 1e-4) / ${SHAFT_SAMPLES.toFixed(1)});
+    float strideLength = reach / ${SHAFT_SAMPLES.toFixed(1)};
+    vec3 sum = vec3(0.0);
+    float weights = 0.0;
+    for (int i = 0; i < ${SHAFT_SAMPLES}; i++) {
+      float k = float(i) + 0.5;
+      vec2 uv = sunScreen + stride * k;
+      float weight = exp(-strideLength * k * ${SHAFT_FOCUS.toFixed(2)});
+      // Off the picture nothing is known of the light: none.
+      vec2 inside = step(vec2(0.0), uv) * step(uv, vec2(1.0));
+      sum += texture2D(tSource, uv).rgb * (weight * inside.x * inside.y);
+      weights += weight;
+    }
+    vec3 shaft = max(sum / weights - ${SHAFT_EVEN_SHARE.toFixed(2)} * texture2D(tRound, vec2(0.5)).rgb, 0.0);
+    gl_FragColor = vec4(shaft * exp(-apart * ${SHAFT_FALLOFF.toFixed(2)}), 1.0);
+  }
+`;
+
+/**
  * The colour pass. ACES filmic is three.js's own (tonemapping_pars_fragment),
  * so the picture matches the renderer's where there is no colour pass. It
  * writes sRGB, for the screen or for FXAA, which works on the colours as the
@@ -450,8 +638,10 @@ export const COMPOSITE_FRAGMENT = /* glsl */ `
   uniform sampler2D tScene;
   uniform sampler2D tBloom;
   uniform sampler2D tGlare;
+  uniform sampler2D tShafts;
   uniform vec2 sunScreen;
   uniform float sunFlare;
+  uniform float shafts;
   uniform float aspect;
   uniform float bloomStrength;
   uniform float exposure;
@@ -522,6 +712,9 @@ export const COMPOSITE_FRAGMENT = /* glsl */ `
     #ifdef BLOOM
     color += texture2D(tBloom, vUv).rgb * bloomStrength;
     color += sunGlare(vUv);
+    if (shafts > 0.0) {
+      color += texture2D(tShafts, vUv).rgb * shafts;
+    }
     #endif
     color = acesFilmic(color * exposure);
     // White balance: warm lifts the reds and lowers the blues, cool the other way.

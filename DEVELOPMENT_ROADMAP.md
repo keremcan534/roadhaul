@@ -209,7 +209,7 @@ The player asked for the best graphics the game can have ("grafiksel iyileştirm
 | Realistic lamps | ✅ | The player found the headlights' pool of light poor ("far ışığı bok gibi"): the night's lamps are now real lights in the materials' shaders (`LampLighting`). The truck's low beams (ECE, right-hand traffic: the cut-off, the step up to the right, the hot zone, the wide light near the bumper), the nearest vehicles' and the nearest street lamps' (full cut-off, batwing, less behind) light the road by its own colour, the verges, trees, posts, buildings and cars; in the rain the wet road mirrors them in streaks and the drops glitter in the beams. No draw calls: the decal pools and the beam cones are gone |
 
 - The presets decide the cost: low has no colour pass, no real-time shadows, 45% of the verges' plants, no lamp glows, the truck's headlights and three street lamps and no wet mirroring; medium adds the colour pass (FXAA), 75% of the plants, six street lamps and one vehicle's headlights; high adds 4× MSAA, the shadows, all the plants, eight street lamps and two vehicles.
-- Drawn in software (CI's headless browser, some virtual machines) the host also leaves out the edge smoothing and draws half the plants and clouds, a plainer ground and a 1024² shadow map; the simulation runs up to 12 steps a frame there, so it keeps real time and the end-to-end tests do not wait on the drawing.
+- Drawn in software (CI's headless browser, some virtual machines) the host also leaves out the edge smoothing and draws half the plants and clouds, a plainer ground and a 1024² shadow map; the simulation catches up on frames of up to half a second there (30 steps), so it keeps real time down to 2 FPS and the end-to-end tests do not wait on the drawing.
 - The draw budget holds: the verges add three draw calls, the road furniture two and one per rail tile in view, the buildings two, the colour pass ten or eleven full-screen passes.
 - None of it has been seen on a phone yet: step 29 checks the frame rate of each preset on real devices.
 
@@ -228,7 +228,7 @@ The player asked for the most detail round the roads, a realistic cab with its s
 | The sky and the light | ✅ | The Earth's shadow and the Belt of Venus opposite the sun at twilight; the towns' glow on the night's horizon; the sun's glare and the lens's ghosts where it shows (the colour pass); broken cloud's shadows drifting over the land and all on it |
 
 - The scenery costs about 25 ms to place and 90 ms to build on a desktop (the parts are stamped from shared ones and merged per 600 m tile); a phone takes several times that at boot.
-- The cloud shadows and the sun's glare are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.
+- The cloud shadows, the sun's glare and shafts and the land's mist are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.
 - `?spawn=x,z,heading` starts a new game's truck anywhere on the map, to look round a place.
 
 ### Tester feedback: the truck's looks and the driving feel (between steps 28 and 29)
@@ -256,7 +256,8 @@ The player asked for graphics that make you say "wow" (rainbows, rain reflection
 | People on the pavements | ✅ | Walkers up and down the town pavements and people waiting at the bus stops, placed from a seed, their walk in the vertex shader. Fewer at night and in the rain, umbrellas up in the rain. One draw call; 40, 80 or 140 at most by preset |
 | Detailed buses | ✅ | Two-tone, with window panes, doors, a route sign and air-conditioning. Their windows and route signs light up at night. Only painted parts take a vehicle's paint now |
 | Parked cars | Later | Along the kerb they would narrow the lanes; in yards and lots they need collisions and must leave room to manoeuvre |
-| Light shafts, morning mist | Later | Light shafts on the high preset only |
+| Morning mist | ✅ | After a clear night, from before dawn until about an hour and a half after sunrise; thicker after rain, none in the rain. It lies on the ground and thins upward, hiding the far land and the feet of trees and masts while their tops and the hills rise out of it: a white band along the horizon, glowing toward the sun. Drawn in each material's fog, with no draw calls; the driver is told when it comes down thick. `?mist=0..1` |
+| The sun's shafts | ✅ | The light round the sun streaks out through the gaps in trees, buildings and cloud, with a trunk's shadow between; strongest in the mist. Three small passes (a quarter of the picture, and one pixel) while the sun is on the picture, on medium and high; none on low |
 
 ## Next step: 29 Device testing
 

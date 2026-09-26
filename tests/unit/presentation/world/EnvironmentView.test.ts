@@ -29,6 +29,7 @@ import {
   type SkyPlacement,
 } from '../../../../src/presentation/world/EnvironmentView';
 import { PrelitMaterials, SKY_LIGHT_INTENSITY, SUN_DIRECTION, SUN_INTENSITY } from '../../../../src/presentation/world/lighting';
+import { MIST_DENSITY } from '../../../../src/presentation/world/Mist';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
 function look(weatherId: string): WeatherLook {
@@ -526,6 +527,49 @@ describe('EnvironmentView', () => {
     view.applySky(skyAt(-6), placed(toward(-6, 250)));
     expect(view.sunGlare).toBe(0);
     expect(view.sunShare).toBeLessThan(noon.share / 2);
+  });
+
+  it("lays the morning mist over the sky's horizon and the hills, glowing toward the sun, and sends the sun's shafts through it", () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const sky = dome(scene);
+    const sunrise = placed(toward(4, 90));
+    view.applySky(skyAt(4, 'clear', true), sunrise);
+    expect(sky.uniforms['mistDensity']!.value).toBe(0);
+    const clearAir = view.sunShafts;
+    expect(clearAir).toBeGreaterThan(0);
+
+    view.setMist(1);
+    view.applySky(skyAt(4, 'clear', true), sunrise);
+    expect(sky.uniforms['mistDensity']!.value).toBeCloseTo(MIST_DENSITY, 12);
+    expect(view.sunShafts).toBeGreaterThan(clearAir * 1.5);
+    // Its light: the horizon's, greyer (a droplet scatters every colour alike); its glow the sun's.
+    const { mistColor, mistGlow, mistSun } = view.mist.uniforms;
+    const horizon = sky.uniforms['horizon']!.value as Color;
+    const spread = (color: Color) => Math.max(color.r, color.g, color.b) - Math.min(color.r, color.g, color.b);
+    expect(spread(mistColor.value)).toBeLessThan(spread(horizon));
+    expect(mistGlow.value.r).toBeGreaterThan(mistGlow.value.b);
+    expect(mistSun.value.distanceTo(new Vector3(sunrise.sun.x, sunrise.sun.y, sunrise.sun.z))).toBeLessThan(1e-9);
+    // The sky shows it as a band along the horizon, the hills with their feet in it.
+    expect(sky.fragmentShader).toContain('sky = mistOver(sky, direction * 1200.0)');
+    const hills = scene.getObjectByName('hills') as Mesh;
+    const shader = {
+      uniforms: {} as Record<string, unknown>,
+      vertexShader: ShaderLib.lambert.vertexShader,
+      fragmentShader: ShaderLib.lambert.fragmentShader,
+    };
+    (hills.material as MeshLambertMaterial).onBeforeCompile(shader as never, {} as never);
+    expect(shader.fragmentShader).toContain('gl_FragColor.rgb = mistOver(gl_FragColor.rgb, -(vec4(vViewPosition, 0.0) * viewMatrix).xyz);');
+    expect(shader.uniforms['mistDensity']).toBe(sky.uniforms['mistDensity']);
+
+    // No shafts in the rain, nor with the sun well down; none of it once the mist has lifted.
+    view.applySky(skyAt(4, 'rain', true), sunrise);
+    expect(view.sunShafts).toBe(0);
+    view.applySky(skyAt(-8, 'clear', true), placed(toward(-8, 90)));
+    expect(view.sunShafts).toBe(0);
+    view.setMist(0);
+    view.applySky(skyAt(4, 'clear', true), sunrise);
+    expect(sky.uniforms['mistDensity']!.value).toBe(0);
   });
 
   it('grades the picture by the time and the weather: warm at dusk, cool at night, grey in the rain, darker corners under lit lamps', () => {

@@ -17,7 +17,8 @@ jobs:
   verify:
     name: Typecheck, test, build, e2e
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The e2e suite draws in software: about 13 minutes on a quick runner, over 15 on a slow one.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
 

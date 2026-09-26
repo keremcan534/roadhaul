@@ -15,10 +15,14 @@ interface SceneColor {
   readonly b: number;
 }
 
-/** Mean colour of the scene (0..255 a channel), decoded in the page from a screenshot of the canvas. */
-async function sceneColor(page: Page): Promise<SceneColor> {
+/**
+ * Mean colour of the scene (0..255 a channel), decoded in the page from a
+ * screenshot of the canvas; of its rows from `top` to `bottom` (shares of
+ * its height, the whole picture by default).
+ */
+async function sceneColor(page: Page, top = 0, bottom = 1): Promise<SceneColor> {
   const png = (await sceneScreenshot(page)).toString('base64');
-  return page.evaluate(async (data) => {
+  return page.evaluate(async ({ data, top, bottom }) => {
     const image = new Image();
     image.src = `data:image/png;base64,${data}`;
     await image.decode();
@@ -27,7 +31,9 @@ async function sceneColor(page: Page): Promise<SceneColor> {
     canvas.height = image.height;
     const context = canvas.getContext('2d')!;
     context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const from = Math.floor(canvas.height * top);
+    const rows = Math.max(1, Math.floor(canvas.height * bottom) - from);
+    const pixels = context.getImageData(0, from, canvas.width, rows).data;
     let r = 0;
     let g = 0;
     let b = 0;
@@ -38,7 +44,7 @@ async function sceneColor(page: Page): Promise<SceneColor> {
     }
     const count = pixels.length / 4;
     return { r: r / count, g: g / count, b: b / count };
-  }, png);
+  }, { data: png, top, bottom });
 }
 
 /** How bright a colour looks (0..255). */
@@ -55,7 +61,7 @@ async function driveIn(page: Page, weather: string): Promise<void> {
 }
 
 test('starts the weather given with ?weather=, and draws the rain', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // A new game and thirty frames of rain, drawn in software beside other tests.
+  test.slow(); // A new game and thirty frames of rain, drawn in software beside other tests.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=rain');
@@ -67,7 +73,7 @@ test('starts the weather given with ?weather=, and draws the rain', async ({ pag
 });
 
 test('darkens the world at night, with the lamps and headlights lit', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=clear');
@@ -87,7 +93,7 @@ test('darkens the world at night, with the lamps and headlights lit', async ({ p
 });
 
 test('turns the light warm at dusk, with the sun low in a glowing sky', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=clear');
@@ -103,10 +109,31 @@ test('turns the light warm at dusk, with the sun low in a glowing sky', async ({
   expect(problems).toEqual([]);
 });
 
+test('lays a morning mist at sunrise, and none when the address clears it', async ({ page }, testInfo) => {
+  test.slow(); // The game started twice, drawn in software.
+  const problems = watchForProblems(page);
+
+  // On the highway, looking along it to the hills.
+  await openGame(page, '?weather=dawn&spawn=300,-641,84');
+  await waitForFrames(page, 10);
+  await expect(page.locator('html')).toHaveAttribute('data-mist', 'thick');
+  const misty = await sceneColor(page, 0.2, 0.5);
+  await testInfo.attach('morning mist', { body: await sceneScreenshot(page), contentType: 'image/png' });
+  // The same company, the same truck, the same morning: without the mist.
+  await driveIn(page, 'dawn&mist=0&spawn=300,-641,84');
+  await expect(page.locator('html')).toHaveAttribute('data-mist', 'none');
+  const clear = await sceneColor(page, 0.2, 0.5);
+
+  // The mist's light veils the hills and the horizon: the band across them is lighter. Drawn in software, only the
+  // sky and its hills take the mist (the land's costs too much there), so the band shows less of it than a GPU would.
+  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.04);
+  expect(problems).toEqual([]);
+});
+
 test('sets the time of day from Settings: night falls at once, the minimap shows the time, and it is kept', async ({
   page,
 }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   await openGame(page, '?weather=clear');
   const html = page.locator('html');
