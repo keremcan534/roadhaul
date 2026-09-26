@@ -205,14 +205,14 @@ export const MAPS: readonly MapDefinition[] = [
       { cityId: 'city_c', roadId: 'rural_c_b', distanceMeters: 70, direction: 'backward' },
     ],
     // Farmland: fields line the country roads, with Amberfield's own behind the village houses, and a few along the
-    // highway. Each lies beside a stretch of road, a few meters back from its edge.
+    // highway (clear of the river). Each lies beside a stretch of road, a few meters back from its edge.
     fields: [
       { roadId: 'rural_a_c', fromMeters: 140, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'wheat' },
       { roadId: 'rural_a_c', fromMeters: 330, lengthMeters: 160, side: 'right', setbackMeters: 12, depthMeters: 120, crop: 'green' },
       { roadId: 'rural_a_c', fromMeters: 560, lengthMeters: 180, side: 'left', setbackMeters: 10, depthMeters: 100, crop: 'stubble' },
       { roadId: 'rural_a_c', fromMeters: 800, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 110, crop: 'ploughed' },
       { roadId: 'rural_a_c', fromMeters: 1040, lengthMeters: 190, side: 'left', setbackMeters: 12, depthMeters: 120, crop: 'wheat' },
-      { roadId: 'rural_a_c', fromMeters: 1300, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 100, crop: 'stubble' },
+      { roadId: 'rural_a_c', fromMeters: 1330, lengthMeters: 160, side: 'right', setbackMeters: 10, depthMeters: 100, crop: 'stubble' },
       { roadId: 'rural_a_c', fromMeters: 1560, lengthMeters: 180, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'green' },
       { roadId: 'rural_a_c', fromMeters: 1800, lengthMeters: 160, side: 'right', setbackMeters: 12, depthMeters: 120, crop: 'wheat' },
       { roadId: 'c_village_street', fromMeters: 60, lengthMeters: 170, side: 'right', setbackMeters: 72, depthMeters: 160, crop: 'green' },
@@ -226,7 +226,7 @@ export const MAPS: readonly MapDefinition[] = [
       { roadId: 'rural_c_b', fromMeters: 620, lengthMeters: 180, side: 'right', setbackMeters: 10, depthMeters: 120, crop: 'green' },
       { roadId: 'rural_c_b', fromMeters: 880, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'ploughed' },
       { roadId: 'rural_c_b', fromMeters: 1150, lengthMeters: 170, side: 'right', setbackMeters: 12, depthMeters: 100, crop: 'wheat' },
-      { roadId: 'highway_a_b', fromMeters: 500, lengthMeters: 220, side: 'right', setbackMeters: 15, depthMeters: 130, crop: 'wheat' },
+      { roadId: 'highway_a_b', fromMeters: 500, lengthMeters: 220, side: 'left', setbackMeters: 15, depthMeters: 130, crop: 'wheat' },
       { roadId: 'highway_a_b', fromMeters: 1900, lengthMeters: 220, side: 'left', setbackMeters: 15, depthMeters: 130, crop: 'green' },
     ],
     // A wind farm in the valley beside the highway, and three turbines beside the country road into Ironford.
@@ -277,6 +277,36 @@ export const MAPS: readonly MapDefinition[] = [
         { x: -2140, z: -245, headingDegrees: -90 },
       ],
     },
+    // A river from the hills beyond the north edge: under the country road to Amberfield and the highway to
+    // Ironford, then west past Havenport's south side into the sea. The roads cross it on bridges, near a right
+    // angle and clear of junctions and fields.
+    rivers: [
+      {
+        id: 'kestrel_river',
+        widthMeters: 22,
+        points: [
+          [-900, 2400],
+          [-880, 2100],
+          [-950, 1780],
+          [-1010, 1480],
+          [-960, 1220],
+          [-849, 1018.5],
+          [-730, 800],
+          [-690, 520],
+          [-760, 260],
+          [-815, 20],
+          [-770, -300],
+          [-675, -527.5],
+          [-700, -760],
+          [-870, -960],
+          [-1100, -1090],
+          [-1400, -1150],
+          [-1700, -1170],
+          [-2000, -1185],
+          [-2320, -1190],
+        ],
+      },
+    ],
     // On A's high street, in the lane heading north past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     // Street lamps light the three towns' streets and B's ring road, on alternate sides; the towns have their
