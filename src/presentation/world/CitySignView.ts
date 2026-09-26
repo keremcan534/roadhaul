@@ -42,8 +42,7 @@ export interface CitySignViewOptions {
  * the name in capitals, on two posts. All of them together are two draw
  * calls: the posts and backs, and the faces, which share one texture with a
  * row per name. `nameOf` gives a city's name (the entry point looks it up
- * in the string tables); the boards write it in Turkish capitals, as the
- * region's own signs would.
+ * in the string tables); the boards write it in capitals.
  */
 export class CitySignView {
   private readonly root = new Group();
@@ -62,7 +61,7 @@ export class CitySignView {
     if (signs.length === 0) {
       return;
     }
-    const names = [...new Set(signs.map((sign) => nameOf(sign.cityId).toLocaleUpperCase('tr')))];
+    const names = [...new Set(signs.map((sign) => nameOf(sign.cityId).toLocaleUpperCase('en')))];
     const texture = this.track(toTexture(citySignImage(names), { anisotropy: options.anisotropy ?? 1 }));
     this.faceMaterial = this.track(
       new MeshLambertMaterial({ map: texture, emissive: 0xffffff, emissiveMap: texture, emissiveIntensity: DAY_GLOW }),
@@ -76,7 +75,7 @@ export class CitySignView {
     for (const sign of signs) {
       placement.compose(new Vector3(sign.x, 0, sign.z), rotation.setFromAxisAngle(up, sign.heading), new Vector3(1, 1, 1));
       frames.push(frameGeometry().applyMatrix4(placement));
-      const row = names.indexOf(nameOf(sign.cityId).toLocaleUpperCase('tr'));
+      const row = names.indexOf(nameOf(sign.cityId).toLocaleUpperCase('en'));
       faces.push(faceGeometry(row, names.length).applyMatrix4(placement));
     }
     this.root.add(

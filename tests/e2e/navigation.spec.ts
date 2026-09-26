@@ -4,7 +4,7 @@ import { openCompanyHq, takeContract, watchForProblems } from './support';
 test('guides the delivery: the next turn, the distance by road and the arrival time', async ({ page }) => {
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?debug&lang=en');
-  // From Yeniliman's depot to Demirkent's: up the high street, then left towards the highway.
+  // From Havenport's depot to Ironford's: up the high street, then left towards the highway.
   await takeContract(page, 'first_package');
   await page.keyboard.press('KeyT');
   await expect(page.locator('html')).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });

@@ -134,12 +134,12 @@ test('names the companies in a legend, and tells who leads a city or whose truck
   await expect(map).toBeVisible();
   await expect(page.locator('.world-map__legend-row')).toHaveText([
     'Test Lojistik (you)',
-    'Yeniliman Express',
-    'Başakova Cargo',
-    'Demirkent Haulage',
+    'Havenport Express',
+    'Amberfield Cargo',
+    'Ironford Haulage',
   ]);
 
-  // North up round the truck, where a new game starts it in Yeniliman: (-1703, -600).
+  // North up round the truck, where a new game starts it in Havenport: (-1703, -600).
   await page.locator('[data-action="map-truck"]').click();
   await expect.poll(() => mapScale(page)).toBeGreaterThanOrEqual(0.6);
   const scale = await mapScale(page);
@@ -148,19 +148,19 @@ test('names the companies in a legend, and tells who leads a city or whose truck
     page.mouse.click(box.x + box.width / 2 + (x + 1703) * scale, box.y + box.height / 2 + (z + 600) * scale);
   const card = page.locator('.world-map__card');
 
-  // The middle of Yeniliman: its home rival leads it.
+  // The middle of Havenport: its home rival leads it.
   await tap(-1613, -302);
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute('data-kind', 'city');
   await expect(card).toHaveAttribute('data-id', 'city_a');
-  await expect(card.locator('.world-map__card-title')).toHaveText('Yeniliman');
-  await expect(card.locator('.world-map__card-line').first()).toHaveText('Led by Yeniliman Express');
+  await expect(card.locator('.world-map__card-title')).toHaveText('Havenport');
+  await expect(card.locator('.world-map__card-line').first()).toHaveText('Led by Havenport Express');
   await expect(card.locator('.share-bar__part')).toHaveCount(1);
 
   // A rival's truck loading at the depot's bay.
   await tap(-1716, -450);
   await expect(card).toHaveAttribute('data-kind', 'rival');
-  await expect(card.locator('.world-map__card-line')).toHaveText(/^To (Yeniliman|Başakova|Demirkent)$/);
+  await expect(card.locator('.world-map__card-line')).toHaveText(/^To (Havenport|Amberfield|Ironford)$/);
 
   // Out at sea: nothing there.
   await tap(-2200, -600);
