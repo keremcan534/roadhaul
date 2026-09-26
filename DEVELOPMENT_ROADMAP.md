@@ -260,6 +260,15 @@ The player asked for graphics that make you say "wow" (rainbows, rain reflection
 | Morning mist | ✅ | After a clear night, from before dawn until about an hour and a half after sunrise; thicker after rain, none in the rain. It lies on the ground and thins upward, hiding the far land and the feet of trees and masts while their tops and the hills rise out of it: a white band along the horizon, glowing toward the sun. Drawn in each material's fog, with no draw calls; the driver is told when it comes down thick. `?mist=0..1` |
 | The sun's shafts | ✅ | The light round the sun streaks out through the gaps in trees, buildings and cloud, with a trunk's shadow between; strongest in the mist. Three small passes (a quarter of the picture, and one pixel) while the sun is on the picture, on medium and high; none on low |
 
+### The company grows: a fleet, and rivals to race (between steps 28 and 29)
+
+The player asked for helper trucks that earn the company money, rival companies to race, and a kind of war between the companies ("şirkete yardımcı kamyon alabilelim para kasması için", "rakip şirketler ekle onlarla yarışalım", "şirketler arası savaş olsun bir nevi"). The first is spec §27's fleet (V2); the rivals build on it.
+
+| Item | Status | Notes |
+|---|---|---|
+| The fleet (spec §27) | ✅ | Hire drivers (eight, one to five stars: pace, accident risk, share of the pay, fee; the better ones for bigger companies) and give each a truck from the garage. The driver takes contracts between the cities, and the company keeps the pay less their share and the diesel: about 8,000 credits an hour for a beginner in an H1, 16,000 for a veteran in an H3. Now and then a truck comes back damaged, and a badly damaged one goes to the workshop at the company's cost. The fleet works on for up to two hours after the game was closed. The garage holds 2 to 8 trucks by company level, of any models. The Fleet page shows every truck, driver and contract. The fleet's trucks move along the roads on the maps. Save v9 |
+| Rival companies | In progress | Rival firms in the region, each city's share of the market, and races for tenders against a rival's truck |
+
 ## Next step: 29 Device testing
 
 Suggested request:
