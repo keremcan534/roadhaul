@@ -25,11 +25,13 @@ export class TrafficService {
   private drives = 0;
   private speedFactor = 1;
 
+  /** @param wrecks Whether the truck wrecks the cars and minibuses it drives into hard enough (CrashService). */
   constructor(
     private readonly driving: DrivingService,
     private readonly content: ContentCatalog,
     private readonly config: GameConfig['traffic'],
     private readonly logger: Logger,
+    private readonly wrecks = false,
   ) {
     const limits = {} as Record<RoadKind, number>;
     for (const kind of ROAD_KINDS) {
@@ -85,6 +87,7 @@ export class TrafficService {
         maxVehicles: this.config.maxVehicles,
         radiusMeters: this.config.radiusMeters,
         minSpawnDistanceMeters: this.config.minSpawnDistanceMeters,
+        wrecks: this.wrecks,
       },
       FIRST_SEED + this.drives++,
     );

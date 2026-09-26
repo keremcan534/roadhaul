@@ -208,6 +208,21 @@ describe('GameConfig', () => {
     ).toEqual([]);
   });
 
+  it('throws crash debris within reason, lets it lie a while, and keeps a few of it', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      crashes: { enabled: 1 as unknown as boolean, throwFactor: 5, restoreAfterSeconds: 0, maxDebris: 2.5 },
+    };
+
+    expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
+      'crashes.enabled',
+      'crashes.throwFactor',
+      'crashes.restoreAfterSeconds',
+      'crashes.maxDebris',
+    ]);
+    expect(validateGameConfig({ ...DEFAULT_GAME_CONFIG, crashes: { ...DEFAULT_GAME_CONFIG.crashes, enabled: false } }, catalog)).toEqual([]);
+  });
+
   it('keeps the arrival-time pace a share of the speed limit', () => {
     for (const etaPaceFactor of [0, 1.2, Number.NaN]) {
       const config: GameConfig = { ...DEFAULT_GAME_CONFIG, navigation: { etaPaceFactor } };

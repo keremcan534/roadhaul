@@ -431,6 +431,8 @@ export class DrivingWorld implements DebrisSolids {
   readonly knocked: Uint8Array;
   /** Counts every knock and every thing put back, for the views to catch up with. */
   knockVersion = 0;
+  /** How many times resolveCollisions() has run: a new count means a new `knocks`. */
+  collisionSteps = 0;
   /** Whether the collisions being resolved knock things over (resolveCollisions' knockOvers). */
   private knockingOver = false;
   /** What gave way to the truck in the last resolveCollisions() call. */
@@ -820,6 +822,7 @@ export class DrivingWorld implements DebrisSolids {
     this.worstCarriedSpeed = 0;
     this.knocks.count = 0;
     this.knockingOver = knockOvers;
+    this.collisionSteps++;
     for (let i = 0; i < footprint.offsets.length; i++) {
       this.collideCircle(state, footprint.offsets[i]!, footprint.radius);
       if (obstacles !== null) {

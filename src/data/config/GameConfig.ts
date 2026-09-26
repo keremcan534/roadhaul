@@ -93,6 +93,22 @@ export interface GameConfig {
     /** Speed limits by kind of road, km/h. Each vehicle cruises at its own share of the limit. */
     readonly speedLimitsKmh: Readonly<Record<RoadKind, number>>;
   };
+  /**
+   * Crashes (CrashService): lamps, bins, benches, bus shelters, speed signs
+   * and hay bales the truck drives into hard enough go flying instead of
+   * stopping it, and so do the cars and minibuses it wrecks; they tumble
+   * about, and what was knocked over stands again once out of sight.
+   */
+  readonly crashes: {
+    /** False: everything the truck hits stops it, as solid as a wall (tests). */
+    readonly enabled: boolean;
+    /** How hard what gives way is thrown: 1 as the knock's physics has it, more is funnier. */
+    readonly throwFactor: number;
+    /** What was knocked over and the wrecks lie about at least this long, seconds, and until out of sight. */
+    readonly restoreAfterSeconds: number;
+    /** How many knocked-over things and wrecks there are at once, at most: the oldest make way. */
+    readonly maxDebris: number;
+  };
   readonly navigation: {
     /**
      * The arrival time (ETA) assumes the truck drives at this share of each
@@ -335,6 +351,12 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     minSpawnDistanceMeters: 180,
     speedLimitsKmh: { street: 45, ringRoad: 60, highway: 90, rural: 70 },
   },
+  crashes: {
+    enabled: true,
+    throwFactor: 1.3,
+    restoreAfterSeconds: 45,
+    maxDebris: 24,
+  },
   navigation: {
     etaPaceFactor: 0.8,
   },
@@ -457,6 +479,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     economy,
     fuel,
     traffic,
+    crashes,
     navigation,
     weather,
     timeOfDay,
@@ -544,6 +567,18 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   for (const kind of ROAD_KINDS) {
     validator.positiveNumber(traffic.speedLimitsKmh?.[kind], `traffic.speedLimitsKmh.${kind}`);
   }
+  validator.boolean(crashes.enabled, 'crashes.enabled');
+  validator.check(
+    Number.isFinite(crashes.throwFactor) && crashes.throwFactor > 0 && crashes.throwFactor <= 3,
+    'crashes.throwFactor',
+    'must be greater than 0 and at most 3',
+  );
+  validator.positiveNumber(crashes.restoreAfterSeconds, 'crashes.restoreAfterSeconds');
+  validator.check(
+    Number.isInteger(crashes.maxDebris) && crashes.maxDebris >= 1 && crashes.maxDebris <= 64,
+    'crashes.maxDebris',
+    'must be a whole number from 1 to 64',
+  );
   validator.check(
     Number.isFinite(navigation.etaPaceFactor) && navigation.etaPaceFactor > 0 && navigation.etaPaceFactor <= 1,
     'navigation.etaPaceFactor',
