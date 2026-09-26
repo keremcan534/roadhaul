@@ -27,8 +27,8 @@ const WHEEL_ART = `
   <path d="M 178 94 Q 140 86 124 88 L 124 112 Q 140 114 178 106 Z" fill="#30353b"/>
   <path d="M 90 122 L 110 122 L 106 182 L 94 182 Z" fill="#30353b"/>
   <circle cx="100" cy="100" r="30" fill="url(#rh-wheel-hub)" stroke="#0d0f11" stroke-width="2"/>
-  <circle cx="100" cy="100" r="13" fill="none" stroke="#f2b233" stroke-width="3.5"/>
-  <rect x="93" y="5" width="14" height="20" rx="4" fill="#f2b233"/>
+  <circle cx="100" cy="100" r="13" fill="none" stroke="#f2a33a" stroke-width="3.5"/>
+  <rect x="93" y="5" width="14" height="20" rx="4" fill="#f2a33a"/>
 `;
 
 /** The tilt steering button: a phone turned like a wheel, between two turning arrows. */
@@ -52,7 +52,7 @@ const WRENCH_ICON =
 const DIAL_ART = `
   <defs>
     <linearGradient id="rh-dial" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#5fd38a"/><stop offset="0.6" stop-color="#f2b233"/><stop offset="1" stop-color="#f0643c"/>
+      <stop offset="0" stop-color="#5fd38a"/><stop offset="0.6" stop-color="#f2a33a"/><stop offset="1" stop-color="#f0643c"/>
     </linearGradient>
   </defs>
   <path class="dashboard__track" d="M 12 58 A 48 48 0 0 1 108 58"/>

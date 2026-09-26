@@ -1,4 +1,5 @@
 import { button, element } from '../dom';
+import { withIcon } from '../icons';
 import type { Strings } from '../i18n';
 
 export interface PauseMenuActions {
@@ -59,13 +60,16 @@ export class PauseMenu {
     this.fuelButton = button(document, 'button--secondary', '', 'roadside-fuel', closeThen(actions.onRoadsideFuel));
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('pause.title')),
-      button(document, 'button--primary', strings.t('pause.resume'), 'resume', closeThen(actions.onResume)),
+      withIcon(button(document, 'button--primary', strings.t('pause.resume'), 'resume', closeThen(actions.onResume)), 'play'),
       button(document, 'button--secondary', strings.t('pause.recover'), 'recover', closeThen(actions.onRecover)),
       this.fuelButton,
       this.abandonButton,
-      button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap),
-      button(document, 'button--ghost', strings.t('pause.settings'), 'pause-settings', actions.onSettings),
-      button(document, 'button--ghost', strings.t('pause.mainMenu'), 'pause-main-menu', closeThen(actions.onMainMenu)),
+      withIcon(button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap), 'map'),
+      withIcon(button(document, 'button--ghost', strings.t('pause.settings'), 'pause-settings', actions.onSettings), 'settings'),
+      withIcon(
+        button(document, 'button--ghost', strings.t('pause.mainMenu'), 'pause-main-menu', closeThen(actions.onMainMenu)),
+        'home',
+      ),
     );
     this.overlay.append(panel);
     parent.append(this.pauseButton, this.overlay);

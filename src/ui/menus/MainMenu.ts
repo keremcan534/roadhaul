@@ -1,4 +1,6 @@
+import { brandMark, brandWordmark } from '../brand';
 import { button, element, setText } from '../dom';
+import { withIcon } from '../icons';
 import type { Strings } from '../i18n';
 
 export interface MainMenuActions {
@@ -25,22 +27,18 @@ export class MainMenu {
     this.root.dataset.screen = 'mainMenu';
     this.root.hidden = true;
 
-    const logo = element(document, 'h1', 'main-menu__logo', 'ROAD');
-    logo.append(element(document, 'span', 'main-menu__logo-accent', 'HAUL'));
+    // The brand's lockup: the mark over the wordmark (drawings: the heading's name is the label).
+    const logo = element(document, 'h1', 'main-menu__logo');
+    logo.setAttribute('aria-label', 'RoadHaul');
+    logo.append(brandMark(document, 'main-menu__mark'), brandWordmark(document, 'main-menu__wordmark'));
     const tagline = element(document, 'p', 'main-menu__tagline', strings.t('menu.tagline'));
-    this.continueButton = button(
-      document,
-      'button--primary main-menu__play',
-      strings.t('menu.continue'),
-      'continue-game',
-      actions.onContinue,
+    this.continueButton = withIcon(
+      button(document, 'button--primary main-menu__play', strings.t('menu.continue'), 'continue-game', actions.onContinue),
+      'play',
     );
-    this.newCompanyButton = button(
-      document,
-      'button--primary main-menu__play',
-      strings.t('menu.newCompany'),
-      'new-company',
-      actions.onNewCompany,
+    this.newCompanyButton = withIcon(
+      button(document, 'button--primary main-menu__play', strings.t('menu.newCompany'), 'new-company', actions.onNewCompany),
+      'plus',
     );
     this.message = element(document, 'p', 'main-menu__message');
     const language = button(
@@ -50,12 +48,9 @@ export class MainMenu {
       'switch-language',
       actions.onSwitchLanguage,
     );
-    const settings = button(
-      document,
-      'button--ghost main-menu__language',
-      strings.t('menu.settings'),
+    const settings = withIcon(
+      button(document, 'button--ghost main-menu__language', strings.t('menu.settings'), 'settings', actions.onSettings),
       'settings',
-      actions.onSettings,
     );
     const small = element(document, 'div', 'main-menu__small');
     small.append(language, settings);
