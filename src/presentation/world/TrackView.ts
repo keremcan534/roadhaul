@@ -56,7 +56,9 @@ import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMat
 import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
-import { createChannelMask, type ChannelMask } from './riverChannel';
+import { createForestFloorMask } from './forestFloor';
+import type { GroundMask } from './groundMask';
+import { createChannelMask } from './riverChannel';
 import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 
 const MARKING_COLOR = 0xf4f3ec;
@@ -181,27 +183,47 @@ float groundSnow = 0.0;
 `;
 
 /**
- * The ground plane is left out where the rivers' channels cut it open
- * (createChannelMask): their banks and water lie below, at their own depth.
+ * The ground plane's masks (GroundMask), sampled where each fragment lies:
+ * it is left out where the rivers' channels cut it open (CHANNELS:
+ * createChannelMask), their banks and water lying below at their own
+ * depth; and it darkens to the forests' floor under the trees (FORESTS:
+ * createForestFloorMask).
  */
-const CHANNEL_CUT_PARS_VERTEX = /* glsl */ `
-uniform vec4 channelFrame;
-varying vec2 vChannelUv;
+const GROUND_MASKS_PARS_VERTEX = /* glsl */ `
+varying vec2 vGroundXZ;
 `;
-const CHANNEL_CUT_VERTEX = /* glsl */ `
-vChannelUv = ( ( modelMatrix * vec4( transformed, 1.0 ) ).xz - channelFrame.xy ) * channelFrame.zw;
+const GROUND_MASKS_VERTEX = /* glsl */ `
+vGroundXZ = ( modelMatrix * vec4( transformed, 1.0 ) ).xz;
 `;
-const CHANNEL_CUT_PARS_FRAGMENT = /* glsl */ `
-uniform sampler2D channelMask;
-varying vec2 vChannelUv;
+const GROUND_MASKS_PARS_FRAGMENT = /* glsl */ `
+varying vec2 vGroundXZ;
+#ifdef CHANNELS
+  uniform sampler2D channelMask;
+  uniform vec4 channelFrame;
+#endif
+#ifdef FORESTS
+  uniform sampler2D forestMask;
+  uniform vec4 forestFrame;
+#endif
 `;
 const CHANNEL_CUT_FRAGMENT = /* glsl */ `
-if ( texture2D( channelMask, vChannelUv ).r < 0.5 ) discard;
+#ifdef CHANNELS
+  if ( texture2D( channelMask, ( vGroundXZ - channelFrame.xy ) * channelFrame.zw ).r < 0.5 ) discard;
+#endif
 `;
+/** Under a forest's trees the grass gives way to needles and fallen leaves in the crowns' shade: the floor's colour, as a factor. */
+const FOREST_FLOOR = [0.5, 0.44, 0.3] as const;
 
-/** After the ground's vertex colours: the snow lying on it, white in the ground's light. */
+/** After the ground's vertex colours: the forests' floor, then the snow lying on it, white in the ground's light. */
 const GROUND_SNOW_FRAGMENT = /* glsl */ `
 #include <color_fragment>
+#ifdef FORESTS
+  diffuseColor.rgb *= mix(
+    vec3( 1.0 ),
+    vec3( ${FOREST_FLOOR.map((value) => value.toFixed(2)).join(', ')} ),
+    texture2D( forestMask, ( vGroundXZ - forestFrame.xy ) * forestFrame.zw ).r
+  );
+#endif
 #ifdef SEASONS
   diffuseColor.rgb = mix( diffuseColor.rgb, diffuse * SNOW, groundSnow );
 #endif
@@ -359,7 +381,7 @@ export class TrackView {
   private readonly groundLight = flatGroundLight();
   /** The ground plane's width (and depth), meters: its grass's uv runs 0..1 across it. */
   groundSizeMeters = 0;
-  /** What the ground's material is made of, shared with bankMaterial(). */
+  /** What the ground's material is made of, shared with createGroundMaterial(). */
   private ground: { readonly grass: Texture; readonly meadow: { value: Texture }; readonly detail: boolean } | null = null;
   /** Where the shadow decals reach without pre-lit materials to follow the sun: the reference sun's way. */
   private readonly fixedShadowReach = { value: new Vector2(SHADOW_OFFSET_PER_METER.x, SHADOW_OFFSET_PER_METER.z) };
@@ -450,17 +472,17 @@ export class TrackView {
   }
 
   /**
-   * The ground's material again, for what continues the ground below the
-   * fields where the ground plane is cut open (a river's banks): the same
-   * grass, patches, seasons and snow. Its mesh maps the grass like the
-   * ground's: uv (0.5 + x / groundSizeMeters, 0.5 - z / groundSizeMeters),
+   * A new material like the ground's, not cut by the channels, for what
+   * continues the ground: a river's banks below the fields, a park's lawn.
+   * The same grass, patches, seasons and snow. Its mesh maps the grass like
+   * the ground's: uv (0.5 + x / groundSizeMeters, 0.5 - z / groundSizeMeters),
    * with groundTint for its vertex colours.
    */
-  bankMaterial(): MeshBasicMaterial {
-    return this.groundMaterial(null);
+  createGroundMaterial(): MeshBasicMaterial {
+    return this.groundMaterial(null, null);
   }
 
-  /** The ground plane, cut open over the rivers' channels (createChannelMask). */
+  /** The ground plane, cut open over the rivers' channels (createChannelMask), darker under the forests (createForestFloorMask). */
   private createGround(world: DrivingWorld, anisotropy: number, detail: boolean): Mesh {
     const size = (world.halfSizeMeters + GROUND_MARGIN) * 2;
     this.groundSizeMeters = size;
@@ -483,18 +505,21 @@ export class TrackView {
       detail,
     };
     const channels = createChannelMask(world.rivers);
-    if (channels !== null) {
-      this.texture(channels.texture);
+    const forests = createForestFloorMask(world.forests);
+    for (const mask of [channels, forests]) {
+      if (mask !== null) {
+        this.texture(mask.texture);
+      }
     }
-    return new Mesh(geometry, this.groundMaterial(channels));
+    return new Mesh(geometry, this.groundMaterial(channels, forests));
   }
 
   /**
    * The ground's material: grass, meadows, the seasons and snow, pre-lit.
    * With `channels`, left out where they cut the ground open, the banks and
-   * water below showing through.
+   * water below showing through; with `forests`, darker under the trees.
    */
-  private groundMaterial(channels: ChannelMask | null): MeshBasicMaterial {
+  private groundMaterial(channels: GroundMask | null, forests: GroundMask | null): MeshBasicMaterial {
     const ground = this.ground;
     if (ground === null) {
       throw new Error('The ground has not been made yet.');
@@ -505,6 +530,7 @@ export class TrackView {
       ...(ground.detail ? { GROUND_DETAIL: '' } : {}),
       ...(seasons === null ? {} : { SEASONS: '' }),
       ...(channels === null ? {} : { CHANNELS: '' }),
+      ...(forests === null ? {} : { FORESTS: '' }),
     };
     material.onBeforeCompile = (shader) => {
       shader.uniforms['meadow'] = ground.meadow;
@@ -513,14 +539,20 @@ export class TrackView {
         .replace('#include <common>', `#include <common>\nuniform sampler2D meadow;\n${seasons === null ? '' : SEASON_GLSL}`)
         .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT)
         .replace('#include <color_fragment>', GROUND_SNOW_FRAGMENT);
-      if (channels !== null) {
-        shader.uniforms['channelMask'] = { value: channels.texture };
-        shader.uniforms['channelFrame'] = { value: channels.frame };
+      if (channels !== null || forests !== null) {
+        if (channels !== null) {
+          shader.uniforms['channelMask'] = { value: channels.texture };
+          shader.uniforms['channelFrame'] = { value: channels.frame };
+        }
+        if (forests !== null) {
+          shader.uniforms['forestMask'] = { value: forests.texture };
+          shader.uniforms['forestFrame'] = { value: forests.frame };
+        }
         shader.vertexShader = shader.vertexShader
-          .replace('#include <common>', `#include <common>\n${CHANNEL_CUT_PARS_VERTEX}`)
-          .replace('#include <project_vertex>', `#include <project_vertex>\n${CHANNEL_CUT_VERTEX}`);
+          .replace('#include <common>', `#include <common>\n${GROUND_MASKS_PARS_VERTEX}`)
+          .replace('#include <project_vertex>', `#include <project_vertex>\n${GROUND_MASKS_VERTEX}`);
         shader.fragmentShader = shader.fragmentShader
-          .replace('#include <common>', `#include <common>\n${CHANNEL_CUT_PARS_FRAGMENT}`)
+          .replace('#include <common>', `#include <common>\n${GROUND_MASKS_PARS_FRAGMENT}`)
           .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${CHANNEL_CUT_FRAGMENT}`);
       }
     };
@@ -672,6 +704,7 @@ export class TrackView {
   private createTrees(trees: readonly TreeObstacle[]): InstancedMesh[] {
     const parts: TreeParts = {
       trunk: this.track(new CylinderGeometry(0.2, 0.3, 1, 6).translate(0, 0.5, 0)),
+      innerTrunk: this.track(new CylinderGeometry(0.2, 0.28, 1, 4, 1, true).translate(0, 0.5, 0)),
       trunkMaterial: this.track(new MeshLambertMaterial({ color: TRUNK_COLOR })),
       crowns: {
         pine: this.track(pineCrownGeometry()),
@@ -679,6 +712,10 @@ export class TrackView {
         poplar: this.track(poplarCrownGeometry()),
         cypress: this.track(cypressCrownGeometry()),
         olive: this.track(oliveCrownGeometry()),
+      },
+      innerCrowns: {
+        pine: this.track(innerPineCrownGeometry()),
+        broadleaf: this.track(innerBroadleafCrownGeometry()),
       },
       crownMaterials: {
         evergreen: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }), false)),
@@ -702,62 +739,87 @@ export class TrackView {
 
   /**
    * One tile of the forest: `indices` into `trees`. A planted tree is its
-   * species (poplar, cypress, olive); a wild one a pine or a broadleaf by
-   * where it stands (pines gather in stands). The tree's index picks its
-   * spin and tint, so tiling changes nothing. One instanced mesh per kind
-   * of crown in the tile, one for the trunks and one for the shadows.
+   * species (poplar, cypress, olive), a forest's or a park's its pine or
+   * broadleaf; a wild one a pine or a broadleaf by where it stands (pines
+   * gather in stands). A forest's inner trees, seen over the trees along its
+   * edge, wear simpler crowns on simpler trunks, and cast no decal: the
+   * crowns close over. The tree's index picks its spin and tint, so tiling
+   * changes nothing. One instanced mesh per kind of crown in the tile, one
+   * for each kind of trunk and one for the shadows.
    */
   private createTreeTile(trees: readonly TreeObstacle[], indices: readonly number[], parts: TreeParts): InstancedMesh[] {
     const kindOf = (tree: TreeObstacle): TreeKind =>
       tree.species ?? (fractalNoise(tree.x / 700, tree.z / 700, 4, 2, 5) + (hash(tree.x, tree.z) - 0.5) * 0.5 > 0.5 ? 'pine' : 'broadleaf');
-    const counts = new Map<TreeKind, number>();
+    const isInner = (tree: TreeObstacle, kind: TreeKind): kind is 'pine' | 'broadleaf' =>
+      tree.inner === true && (kind === 'pine' || kind === 'broadleaf');
+    /** Which crown a tree wears: its kind's, or an inner pine's or broadleaf's simpler one. */
+    const crownOf = (tree: TreeObstacle, kind: TreeKind): string => (isInner(tree, kind) ? `${kind}:inner` : kind);
+    const counts = new Map<string, { kind: TreeKind; inner: boolean; count: number }>();
+    let inner = 0;
     for (const index of indices) {
-      const kind = kindOf(trees[index]!);
-      counts.set(kind, (counts.get(kind) ?? 0) + 1);
+      const tree = trees[index]!;
+      const kind = kindOf(tree);
+      const key = crownOf(tree, kind);
+      const entry = counts.get(key) ?? { kind, inner: isInner(tree, kind), count: 0 };
+      entry.count++;
+      counts.set(key, entry);
+      if (entry.inner) {
+        inner++;
+      }
     }
-    const trunks = this.track(new InstancedMesh(parts.trunk, parts.trunkMaterial, indices.length));
-    const crowns = new Map<TreeKind, InstancedMesh>();
-    for (const [kind, count] of counts) {
+    const trunks = this.track(new InstancedMesh(parts.trunk, parts.trunkMaterial, indices.length - inner));
+    const innerTrunks = this.track(new InstancedMesh(parts.innerTrunk, parts.trunkMaterial, inner));
+    const shadows = this.track(new InstancedMesh(parts.shadow, parts.shadowMaterial, indices.length - inner));
+    const crowns = new Map<string, InstancedMesh>();
+    for (const [key, { kind, inner: simple, count }] of counts) {
+      const geometry = simple ? parts.innerCrowns[kind as 'pine' | 'broadleaf'] : parts.crowns[kind];
       const crown = this.track(
-        new InstancedMesh(parts.crowns[kind], parts.crownMaterials[DECIDUOUS.has(kind) ? 'deciduous' : 'evergreen'], count),
+        new InstancedMesh(geometry, parts.crownMaterials[DECIDUOUS.has(kind) ? 'deciduous' : 'evergreen'], count),
       );
-      crown.name = `forest:crowns:${kind}`;
+      crown.name = `forest:crowns:${key}`;
       crown.count = 0;
-      crowns.set(kind, crown);
+      crowns.set(key, crown);
     }
-    const shadows = this.track(new InstancedMesh(parts.shadow, parts.shadowMaterial, indices.length));
+    for (const mesh of [trunks, innerTrunks, shadows]) {
+      mesh.count = 0;
+    }
 
     const matrix = new Matrix4();
     const position = new Vector3();
     const rotation = new Quaternion();
     const scale = new Vector3();
     const color = new Color();
-    indices.forEach((index, slot) => {
+    for (const index of indices) {
       const tree = trees[index]!;
       const kind = kindOf(tree);
+      const simple = isInner(tree, kind);
       const shape = TREE_SHAPES[kind];
       const s = tree.scale;
       const trunkHeight = shape.trunkHeight * s;
       rotation.setFromAxisAngle(UP, index * 2.399); // Golden-angle spin so neighbours differ.
-      trunks.setMatrixAt(
-        slot,
+      const trunk = simple ? innerTrunks : trunks;
+      trunk.setMatrixAt(
+        trunk.count++,
         matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s * shape.trunkGirth, trunkHeight, s * shape.trunkGirth)),
       );
       position.set(tree.x, trunkHeight, tree.z);
       scale.setScalar(s);
       const shade = 0.88 + 0.24 * hash(tree.z, tree.x);
-      const crown = crowns.get(kind)!;
+      const crown = crowns.get(crownOf(tree, kind))!;
       crown.setMatrixAt(crown.count, matrix.compose(position, rotation, scale));
       crown.setColorAt(crown.count, color.setHex(shape.colors[index % shape.colors.length]!).multiplyScalar(shade));
       crown.count++;
+      if (simple) {
+        continue;
+      }
       // The shadow falls away from the sun, centred under the crown's projection: the decal's shader moves it
       // there from the tree's foot (followTheSun), by the crown's height, kept in the flat decal's y scale.
       const crownHeight = trunkHeight + shape.crownMiddle * s;
       position.set(tree.x, SHOULDER_Y / 2, tree.z);
       const width = shape.shadowWidth * s;
-      shadows.setMatrixAt(slot, matrix.compose(position, rotation.identity(), scale.set(width, crownHeight, width)));
-    });
-    const meshes = [shadows, trunks, ...crowns.values()].filter((mesh) => mesh.count > 0);
+      shadows.setMatrixAt(shadows.count++, matrix.compose(position, rotation.identity(), scale.set(width, crownHeight, width)));
+    }
+    const meshes = [shadows, trunks, innerTrunks, ...crowns.values()].filter((mesh) => mesh.count > 0);
     for (const mesh of meshes) {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor !== null) {
@@ -1036,6 +1098,27 @@ function flatDisc(x: number, z: number, radius: number, y: number, tileMeters: n
 }
 
 /** Three stacked cones on top of the trunk (origin at the crown's base). */
+/** An inner pine's crown: two open cones (the tiers' outline, seen over the trees in front). */
+function innerPineCrownGeometry(): BufferGeometry {
+  const tiers = [
+    new ConeGeometry(2.1, 3.9, 6, 1, true).translate(0, 1.75, 0),
+    new ConeGeometry(1.4, 3.2, 6, 1, true).translate(0, 4.0, 0),
+  ];
+  const crown = mergeGeometries(tiers);
+  for (const tier of tiers) {
+    tier.dispose();
+  }
+  return crown;
+}
+
+/** An inner broadleaf's crown: two faceted blobs, the full crown's cluster in outline. */
+function innerBroadleafCrownGeometry(): BufferGeometry {
+  return blobCrown([
+    [0, 1.8, 0, 2.2],
+    [0.3, 3.0, -0.2, 1.6],
+  ]);
+}
+
 function pineCrownGeometry(): BufferGeometry {
   const tiers = [
     new ConeGeometry(2.1, 3.2, 7).translate(0, 1.4, 0),
@@ -1052,8 +1135,12 @@ function pineCrownGeometry(): BufferGeometry {
 /** The parts every tile of trees shares: the trunk, each kind's crown, their materials, and the shadow decal. */
 interface TreeParts {
   readonly trunk: BufferGeometry;
+  /** A forest's inner trees' trunks: four sides, open, hardly seen behind the trees along its edge. */
+  readonly innerTrunk: BufferGeometry;
   readonly trunkMaterial: Material;
   readonly crowns: Readonly<Record<TreeKind, BufferGeometry>>;
+  /** The inner trees' crowns: the same shape, in a few faces (their shape is seen over the edge's crowns). */
+  readonly innerCrowns: Readonly<Record<'pine' | 'broadleaf', BufferGeometry>>;
   /** The crowns of trees in leaf all year, and of those that lose their leaves (they follow the season). */
   readonly crownMaterials: { readonly evergreen: Material; readonly deciduous: Material };
   readonly shadow: BufferGeometry;

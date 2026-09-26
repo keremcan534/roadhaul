@@ -63,6 +63,7 @@ import { SeasonShading } from './presentation/world/SeasonShading';
 import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { RiverView } from './presentation/world/RiverView';
+import { ParkView } from './presentation/world/ParkView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
@@ -338,8 +339,19 @@ async function start(): Promise<void> {
       ? null
       : new RiverView(renderHost.scene, driving.world, {
           sky: environment.sky,
-          bankMaterial: track.bankMaterial(),
+          bankMaterial: track.createGroundMaterial(),
           groundSizeMeters: track.groundSizeMeters,
+        });
+  // The towns' parks: lawns, paths, hedges and fountains (their trees, benches, bins and lamps are drawn with the rest).
+  const parkView =
+    driving.world.parks.length === 0
+      ? null
+      : new ParkView(renderHost.scene, driving.world.parks, {
+          sky: environment.sky,
+          lawnMaterial: track.createGroundMaterial(),
+          groundSizeMeters: track.groundSizeMeters,
+          anisotropy: renderHost.anisotropy,
+          prelit,
         });
   const harbour =
     coast === null
@@ -1418,6 +1430,7 @@ async function start(): Promise<void> {
         harbour?.update(paused ? 0 : deltaSeconds);
         seaView?.update(paused ? 0 : deltaSeconds);
         riverView?.update(paused ? 0 : deltaSeconds);
+        parkView?.update(paused ? 0 : deltaSeconds);
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);

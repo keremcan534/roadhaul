@@ -1,5 +1,5 @@
-import { DataTexture, LinearFilter, RedFormat, UnsignedByteType, Vector4 } from 'three';
 import type { RiverPath } from '../../domain/world/RiverPath';
+import { createGroundMask, maskGrid, type GroundMask } from './groundMask';
 
 /** A river flows in from this far beyond the map's edge, meters, sampled this often, so its source is never seen. */
 const SOURCE_REACH_METERS = 900;
@@ -68,26 +68,18 @@ export function riverCourse(river: RiverPath): CoursePoint[] {
   return course;
 }
 
-/** Where the ground is cut open for the rivers' channels (see createChannelMask). */
-export interface ChannelMask {
-  /** One channel, 8 bits a texel, filtered: under 0.5 where the ground is cut. */
-  readonly texture: DataTexture;
-  /** Where it lies: at world (x, z) its uv is ((x - frame.x) * frame.z, (z - frame.y) * frame.w). */
-  readonly frame: Vector4;
-}
-
 /**
  * Where the ground plane is cut open over the rivers' channels (their
  * courses as drawn), so their banks and water, lying below the fields, show
  * through: a hair (CUT_INSET_METERS) inside each rim. A small texture over
  * the rivers' extent, holding how far each texel lies from the cut's edge,
- * so the edge follows the channel smoothly between texels. The ground's
- * shader leaves out what lies under 0.5 (TrackView). Where a river flows
+ * so the edge follows the channel smoothly between texels: under 0.5 where
+ * the ground is cut. The ground's shader leaves that out (TrackView). Where a river flows
  * into the sea the cut runs on under the sea; where its channel ends on
  * land it stops short, under the ground. Null for no rivers. The caller
  * disposes the texture.
  */
-export function createChannelMask(rivers: readonly RiverPath[]): ChannelMask | null {
+export function createChannelMask(rivers: readonly RiverPath[]): GroundMask | null {
   const cuts = rivers.map((river) => {
     const course = riverCourse(river);
     const intoSea = river.mouthIndex < river.pointCount;
@@ -116,9 +108,8 @@ export function createChannelMask(rivers: readonly RiverPath[]): ChannelMask | n
   if (!(minX < maxX)) {
     return null;
   }
-  // A width of whole 4-texel rows, so the rows upload unpadded either way.
-  const width = Math.ceil((maxX - minX) / MASK_TEXEL_METERS / 4) * 4;
-  const height = Math.ceil((maxZ - minZ) / MASK_TEXEL_METERS);
+  const grid = maskGrid(minX, minZ, maxX, maxZ, MASK_TEXEL_METERS);
+  const { width, height } = grid;
   const data = new Uint8Array(width * height).fill(255);
   for (const cut of cuts) {
     const reach = cut.halfWidth + MASK_REACH_METERS;
@@ -156,12 +147,5 @@ export function createChannelMask(rivers: readonly RiverPath[]): ChannelMask | n
       }
     }
   }
-  const texture = new DataTexture(data, width, height, RedFormat, UnsignedByteType);
-  texture.magFilter = LinearFilter;
-  texture.minFilter = LinearFilter;
-  texture.generateMipmaps = false;
-  texture.unpackAlignment = 1;
-  texture.needsUpdate = true;
-  const frame = new Vector4(minX, minZ, 1 / (width * MASK_TEXEL_METERS), 1 / (height * MASK_TEXEL_METERS));
-  return { texture, frame };
+  return createGroundMask(data, grid);
 }

@@ -42,7 +42,7 @@ const CONCRETE = 0xb9b5ad;
 export interface RiverViewOptions {
   /** The sky the water mirrors (EnvironmentView.sky). */
   readonly sky: SkyUniforms;
-  /** The ground's material, for the banks (TrackView.bankMaterial()): they are the fields' grass, sloping down. */
+  /** The ground's material, for the banks (TrackView.createGroundMaterial()): they are the fields' grass, sloping down. */
   readonly bankMaterial: MeshBasicMaterial;
   /** The ground plane's width (TrackView.groundSizeMeters), so the banks' grass lines up with the fields'. */
   readonly groundSizeMeters: number;

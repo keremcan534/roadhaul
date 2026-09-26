@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RiverDefinition } from '../../../../src/data/definitions/MapDefinition';
 import { RiverPath } from '../../../../src/domain/world/RiverPath';
-import { createChannelMask, riverCourse, type ChannelMask } from '../../../../src/presentation/world/riverChannel';
+import type { GroundMask } from '../../../../src/presentation/world/groundMask';
+import { createChannelMask, riverCourse } from '../../../../src/presentation/world/riverChannel';
 import { seaFixture } from '../../../support/contentFixtures';
 
 /** A river 20 m wide flowing south along x = 40, from z = 200 to z = -200, that never reaches the sea. */
@@ -29,7 +30,7 @@ const estuary: RiverDefinition = {
  * The mask at world (x, z) as the GPU filters it (bilinear, clamped to its
  * edges): 0..1, under 0.5 where the ground is cut open.
  */
-function sample(mask: ChannelMask, x: number, z: number): number {
+function sample(mask: GroundMask, x: number, z: number): number {
   const { data, width, height } = mask.texture.image as { data: Uint8Array; width: number; height: number };
   const u = (x - mask.frame.x) * mask.frame.z * width - 0.5;
   const v = (z - mask.frame.y) * mask.frame.w * height - 0.5;

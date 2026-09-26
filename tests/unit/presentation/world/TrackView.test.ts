@@ -41,9 +41,10 @@ describe('TrackView', () => {
     const tiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 600)},${Math.floor(tree.z / 600)}`));
 
     expect(drawCallCount(scene) - drawCallCount(forest)).toBeLessThanOrEqual(12);
-    // Trunks and shadows per tile, and a crown for each kind of tree in it: the wild pines and broadleaves
-    // everywhere, the planted poplars, olives and cypresses where people planted them.
-    expect(drawCallCount(forest)).toBeLessThanOrEqual(5 * tiles.size);
+    // Trunks and shadows per tile, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
+    // the planted poplars, olives and cypresses where people planted them, and in the forests their inner trees'
+    // simpler crowns and trunks.
+    expect(drawCallCount(forest)).toBeLessThanOrEqual(6 * tiles.size);
   });
 
   it('keeps what the chase camera sees at the spawn well inside the mobile budget', () => {
@@ -170,11 +171,11 @@ describe('TrackView', () => {
     expect(world.rivers.length).toBeGreaterThan(0);
     expect(ground.defines).toHaveProperty('CHANNELS');
     expect(cut.fragmentShader).toContain('discard');
-    expect(cut.vertexShader).toContain('vChannelUv');
+    expect(cut.vertexShader).toContain('vGroundXZ');
     const mask = cut.uniforms['channelMask']!.value as DataTexture;
     expect(mask.image.width).toBeGreaterThan(0);
     // The banks: the same grass and meadows, not cut, and a program of their own.
-    const banks = view.bankMaterial();
+    const banks = view.createGroundMaterial();
     expect(banks.defines ?? {}).not.toHaveProperty('CHANNELS');
     expect(compile(banks).fragmentShader).not.toContain('discard');
     expect(banks.map).toBe(ground.map);
@@ -214,30 +215,33 @@ describe('TrackView', () => {
     }
   });
 
-  it('instances every tree, with its trunk and its shadow', () => {
+  it('instances every tree with its trunk, and the shadow of each but a forest\'s inner trees', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     let crowns = 0;
     let trunks = 0;
     let shadows = 0;
-    scene.traverse((object) => {
+    scene.getObjectByName('forest')!.traverse((object) => {
       if (!(object instanceof InstancedMesh)) {
         return;
       }
       const material = object.material as { flatShading?: boolean; transparent?: boolean };
-      // Crowns are flat-shaded and low-poly; shadows are see-through decals; trunks are 6-sided cylinders.
+      // Crowns are flat-shaded and low-poly; shadows are see-through decals; the rest are trunks.
       if (material.flatShading === true) {
         crowns += object.count;
       } else if (material.transparent === true) {
         shadows += object.count;
-      } else if (object.geometry.getAttribute('position').count > 30) {
+      } else {
         trunks += object.count;
       }
     });
 
-    expect(crowns).toBe(world.trees.length); // Pines and broadleaves together.
+    const inner = world.trees.filter((tree) => tree.inner === true).length;
+    expect(inner).toBeGreaterThan(0);
+    expect(crowns).toBe(world.trees.length);
     expect(trunks).toBe(world.trees.length);
-    expect(shadows).toBe(world.trees.length);
+    // Deep in a forest the crowns close over: no decals under them.
+    expect(shadows).toBe(world.trees.length - inner);
   });
 
   it('grows each planted tree as its species, and the wild ones as pines and broadleaves', () => {
@@ -258,7 +262,10 @@ describe('TrackView', () => {
       expect(counts.get(species), species).toBe(world.trees.filter((tree) => tree.species === species).length);
       expect(counts.get(species)).toBeGreaterThan(0);
     }
-    expect((counts.get('pine') ?? 0) + (counts.get('broadleaf') ?? 0)).toBe(world.trees.filter((tree) => tree.species === undefined).length);
+    // The wild ones along the roads are pines or broadleaves by where they stand; the forests' and parks' as they are.
+    expect((counts.get('pine') ?? 0) + (counts.get('broadleaf') ?? 0)).toBe(
+      world.trees.filter((tree) => tree.species === undefined || tree.species === 'pine' || tree.species === 'broadleaf').length,
+    );
     // Slim columns and flames stand tall; an olive's crown is low and wide.
     expect(heights.get('poplar')).toBeGreaterThan(7);
     expect(heights.get('cypress')).toBeGreaterThan(7);
