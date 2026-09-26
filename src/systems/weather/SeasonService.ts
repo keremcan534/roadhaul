@@ -8,7 +8,7 @@ import type { GameEvents } from '../GameEvents';
 /** The calendar is looked at this often, seconds: a season turns over rarely. */
 const CHECK_SECONDS = 10;
 /** In winter this much of the ground stays white between snowfalls. */
-const WINTER_GROUND_SNOW = 0.55;
+const WINTER_GROUND_SNOW = 0.7;
 
 /** The season, for what follows it (the weather, how the land looks). */
 export interface SeasonSource {

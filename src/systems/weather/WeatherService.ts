@@ -26,9 +26,12 @@ const SLUSH_WETNESS = 0.5;
 /**
  * Snow covers the ground this many seconds after it starts to fall hard,
  * and melts this many seconds after it stops (down to the season's own).
+ * When the season turns (the calendar's, or the player's pick), the ground
+ * turns with the land, in this many seconds.
  */
 const SNOWING_SECONDS = 40;
 const MELTING_SECONDS = 600;
+const SEASON_TURN_SECONDS = 2.5;
 
 /** How the time of day changes traffic's speed (TimeOfDayService). */
 export interface DaylightTraffic {
@@ -59,6 +62,9 @@ export class WeatherService {
   private appliedTraffic = Number.NaN;
   private wetnessValue: number;
   private snowCoverValue: number;
+  /** The season's snow when last looked at; while the season turns, the cover follows it at the land's pace. */
+  private seasonSnow: number;
+  private seasonTurning = false;
   /** Whether the schedule runs: the config's to begin with, then the player's (hold). */
   private changing: boolean;
   /** Reused for every grip update. */
@@ -78,7 +84,8 @@ export class WeatherService {
     this.previousWeather = this.currentWeather;
     this.remainingSeconds = this.spellLength(this.currentWeather);
     this.wetnessValue = Math.max(this.currentWeather.look.rain, SLUSH_WETNESS * (this.currentWeather.snowfall ?? 0));
-    this.snowCoverValue = Math.max(this.currentWeather.snowfall ?? 0, season?.groundSnow ?? 0);
+    this.seasonSnow = season?.groundSnow ?? 0;
+    this.snowCoverValue = Math.max(this.currentWeather.snowfall ?? 0, this.seasonSnow);
     this.changing = config.changes;
     this.apply();
   }
@@ -121,7 +128,8 @@ export class WeatherService {
   /**
    * How much of the ground snow covers, 0..1: it settles soon after snow
    * starts to fall (as much as it falls hard) and melts slowly after it
-   * stops, down to what the season keeps (some in winter, none else).
+   * stops, down to what the season keeps (some in winter, none else). When
+   * the season turns, it turns with it in a few seconds.
    */
   get snowCover(): number {
     return this.snowCoverValue;
@@ -159,11 +167,19 @@ export class WeatherService {
       this.wetnessValue < wet
         ? Math.min(wet, this.wetnessValue + dt / WETTING_SECONDS)
         : Math.max(wet, this.wetnessValue - dt / DRYING_SECONDS);
-    const cover = Math.max(snow, this.season?.groundSnow ?? 0);
+    const seasonSnow = this.season?.groundSnow ?? 0;
+    if (seasonSnow !== this.seasonSnow) {
+      this.seasonSnow = seasonSnow;
+      this.seasonTurning = true;
+    }
+    const cover = Math.max(snow, seasonSnow);
     this.snowCoverValue =
       this.snowCoverValue < cover
-        ? Math.min(cover, this.snowCoverValue + dt / SNOWING_SECONDS)
-        : Math.max(cover, this.snowCoverValue - dt / MELTING_SECONDS);
+        ? Math.min(cover, this.snowCoverValue + dt / (this.seasonTurning ? SEASON_TURN_SECONDS : SNOWING_SECONDS))
+        : Math.max(cover, this.snowCoverValue - dt / (this.seasonTurning ? SEASON_TURN_SECONDS : MELTING_SECONDS));
+    if (this.snowCoverValue === cover) {
+      this.seasonTurning = false;
+    }
     if (!this.changing) {
       return;
     }

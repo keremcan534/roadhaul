@@ -338,11 +338,22 @@ describe('WeatherService', () => {
     run(weather, 1200);
     expect(weather.snowCover).toBe(0.5);
 
-    // Spring melts the rest.
+    // Spring melts the rest, with the land, in a few seconds; and winter whitens it again as fast.
     season.season = 'spring';
     season.groundSnow = 0;
-    run(weather, 1200);
+    run(weather, 1);
+    expect(weather.snowCover).toBeGreaterThan(0);
+    run(weather, 2);
     expect(weather.snowCover).toBe(0);
+    season.season = 'winter';
+    season.groundSnow = 0.5;
+    run(weather, 3);
+    expect(weather.snowCover).toBe(0.5);
+
+    // After the turn, snow settles and melts at the weather's pace again.
+    weather.set('snow');
+    run(weather, 10);
+    expect(weather.snowCover).toBeLessThan(1);
   });
 
   it('gives the truck its grip back when disposed', () => {
