@@ -280,6 +280,7 @@ The player asked how to give a hired driver a truck, reported lamps showing wher
 | A truck from the driver's card | ✅ | A hired driver waiting for a truck gets one from their own card on the Fleet page: the one waiting in the garage, or the cheapest on sale, bought and sent out with them at once |
 | Lamps only where they show | ✅ | A vehicle's lamp glows only toward the eyes in front of it (a car's red tail lights no longer glow round its body seen from the front, nor its headlights from behind), and the truck's body keeps the headlights of the cars behind it off the road ahead of it: a shadow, tested per pixel against the box the body fills |
 | The weather in Settings | ✅ | Changing (as it comes), clear, cloudy or rain: a choice holds that weather from the moment it is picked, kept on the device with the other settings; `?weather=` still wins for testing |
+| A global cast | ✅ | The towns are Havenport (was Yeniliman), Ironford (Demirkent) and Amberfield (Başakova); the rivals Havenport Express, Amberfield Cargo and Ironford Haulage; the drivers an international crew. The names read the same in both languages, and the ids stay, so saves carry on. The name boards write them in plain capitals, and a pair of dice hangs in the cab in place of the nazar bead |
 
 ## Next step: 29 Device testing
 
