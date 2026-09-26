@@ -70,7 +70,7 @@ export interface TreeObstacle {
   readonly inner?: boolean;
   /** Trunk radius used for collisions, meters. */
   readonly radius: number;
-  /** Visual size variation (about 0.8–1.3). */
+  /** Visual size variation (about 0.8–1.3; a forest's inner trees grow up to 1.8). */
   readonly scale: number;
 }
 
