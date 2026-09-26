@@ -197,6 +197,107 @@ describe('VehicleDynamics', () => {
     expect(peak).toBeGreaterThan(truck.handling.maxLateralAccelerationG * 9.81 * 0.95);
   });
 
+  it('spreads the steering over its whole travel at speed: a light touch turns gently, a full turn at the limit', () => {
+    const lateralG = (steer: number): number => {
+      const { dynamics, state } = setup();
+      for (let i = 0; i < 180; i++) {
+        state.speed = 80 / 3.6;
+        dynamics.step(state, input({ steer }), ASPHALT, STEP_SECONDS);
+      }
+      return Math.abs(state.lateralAcceleration) / 9.81;
+    };
+    const limit = truck.handling.maxLateralAccelerationG;
+
+    // No hair trigger on the open road: a tenth of the travel turns a little, half about half as hard.
+    expect(lateralG(0.1)).toBeGreaterThan(limit * 0.05);
+    expect(lateralG(0.1)).toBeLessThan(limit * 0.15);
+    expect(lateralG(0.5)).toBeGreaterThan(lateralG(0.25) * 1.8);
+    expect(lateralG(0.5)).toBeLessThan(limit * 0.7);
+    expect(lateralG(1)).toBeCloseTo(limit, 3);
+  });
+
+  it('sweeps the steering slower at speed, and back to straight faster than it turns', () => {
+    const secondsToSweep = (speed: number, from: number, to: number): number => {
+      const { dynamics, state } = setup();
+      state.steerPosition = from;
+      let seconds = 0;
+      while (state.steerPosition !== to && seconds < 5) {
+        state.speed = speed;
+        dynamics.step(state, input({ steer: to }), ASPHALT, STEP_SECONDS);
+        seconds += STEP_SECONDS;
+      }
+      return seconds;
+    };
+    const straightToLock = truck.handling.maxSteerAngleDegrees / truck.handling.steerSpeedDegreesPerSecond;
+
+    expect(secondsToSweep(0, 0, 1)).toBeCloseTo(straightToLock, 1);
+    expect(secondsToSweep(80 / 3.6, 0, 1)).toBeGreaterThan(straightToLock * 1.5);
+    expect(secondsToSweep(0, 1, 0)).toBeLessThan(straightToLock * 0.7);
+    expect(secondsToSweep(0, 1, -1)).toBeLessThan(secondsToSweep(0, 0, 1) * 2);
+  });
+
+  it('turns in over a moment: the path bends toward the front wheels, not at once', () => {
+    const { dynamics, state } = setup();
+    state.steerPosition = 0.5;
+    state.speed = 5;
+    dynamics.step(state, input({ steer: 0.5 }), ASPHALT, STEP_SECONDS);
+    const wheels = Math.tan(state.steerAngle) / truck.body.wheelbaseMeters;
+
+    expect(state.pathCurvature).toBeGreaterThan(0);
+    expect(state.pathCurvature).toBeLessThan(wheels * 0.2);
+    for (let i = 0; i < 30; i++) {
+      state.speed = 5;
+      dynamics.step(state, input({ steer: 0.5 }), ASPHALT, STEP_SECONDS);
+    }
+    expect(state.pathCurvature).toBeGreaterThan(wheels * 0.95);
+  });
+
+  it('presses the pedals in over a moment and lets them go quicker: no jolt pulling away or braking', () => {
+    const { dynamics, state } = setup();
+    dynamics.step(state, input({ throttle: 1 }), ASPHALT, STEP_SECONDS);
+    expect(state.throttlePedal).toBeGreaterThan(0);
+    expect(state.throttlePedal).toBeLessThan(0.1);
+    drive(dynamics, state, input({ throttle: 1 }), 8);
+    expect(state.throttlePedal).toBe(1);
+
+    const decelerations: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      dynamics.step(state, input({ brake: 1 }), ASPHALT, STEP_SECONDS);
+      decelerations.push(-state.longitudinalAcceleration);
+    }
+    expect(state.throttlePedal).toBe(0);
+    expect(state.brakePedal).toBe(1);
+    // The brakes bite harder over a few steps, never all at once.
+    expect(decelerations[0]!).toBeLessThan(decelerations[29]! * 0.3);
+    for (let i = 1; i < decelerations.length; i++) {
+      expect(decelerations[i]! - decelerations[i - 1]!).toBeLessThan(decelerations[29]! * 0.2);
+    }
+  });
+
+  it('lets the clutch go through a gear change and takes up the drive again after', () => {
+    const { dynamics, state } = setup();
+    let shifts = 0;
+    let leastEngagement = 1;
+    let largestJump = 0;
+    let previousAcceleration = 0;
+    for (let i = 0; i < 60 * 12; i++) {
+      const gear = state.gear;
+      dynamics.step(state, input({ throttle: 1 }), ASPHALT, STEP_SECONDS);
+      shifts += state.gear > gear ? 1 : 0;
+      leastEngagement = Math.min(leastEngagement, state.driveEngagement);
+      if (i > 0) {
+        largestJump = Math.max(largestJump, Math.abs(state.longitudinalAcceleration - previousAcceleration));
+      }
+      previousAcceleration = state.longitudinalAcceleration;
+    }
+
+    expect(shifts).toBeGreaterThan(1);
+    expect(leastEngagement).toBe(0);
+    expect(state.driveEngagement).toBe(1);
+    // The pull fades out and back in over several steps: no step changes the acceleration by a third of a g.
+    expect(largestJump).toBeLessThan(0.33 * 9.81 * 0.5);
+  });
+
   it('accelerates more slowly with cargo on board', () => {
     const empty = setup();
     const loaded = setup(truck.maxPayloadTons * 1000);
@@ -268,7 +369,8 @@ describe('VehicleDynamics', () => {
       const { dynamics, state } = setup();
       dynamics.setPerformance({ ...BASE_PERFORMANCE, stabilityFactor });
       state.speed = 60 / 3.6;
-      drive(dynamics, state, input({ steer: 1 }), 1);
+      // Long enough for the steering to sweep over at speed and the truck to turn in.
+      drive(dynamics, state, input({ steer: 1 }), 2);
       return Math.abs(state.lateralAcceleration) / 9.81;
     };
     // The fixture corners at 0.4 g at most: its tyres (0.85) hold more, so the body sets the limit.

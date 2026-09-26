@@ -71,8 +71,9 @@ export interface VehiclePowertrain {
 }
 
 export interface VehicleHandling {
+  /** The front wheels' full lock, at walking pace; faster, the steering's travel spans less (VehicleDynamics). */
   readonly maxSteerAngleDegrees: number;
-  /** How fast the front wheels turn toward the requested angle. */
+  /** How fast the front wheels turn toward the requested angle at walking pace; the steering is heavier at speed. */
   readonly steerSpeedDegreesPerSecond: number;
   /** Total brake force at full pedal (also limited by tyre grip). */
   readonly brakeForceNewtons: number;

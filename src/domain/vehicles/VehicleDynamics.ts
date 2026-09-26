@@ -1,4 +1,4 @@
-import { approach, clamp, clamp01, degreesToRadians, finiteOr, kmhToMetersPerSecond } from '../../core/math/scalar';
+import { approach, clamp, clamp01, degreesToRadians, finiteOr, kmhToMetersPerSecond, smoothstep } from '../../core/math/scalar';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Surface } from '../world/Surface';
 import type { PerformanceFactors } from './performance';
@@ -32,6 +32,40 @@ const DOWNSHIFT_TIME_SHARE = 0.5;
  */
 const MIN_SECONDS_IN_GEAR_BEFORE_DOWNSHIFT = 1;
 const RPM_PER_RADIAN_PER_SECOND = 60 / (2 * Math.PI);
+/**
+ * Speed-sensitive steering: at speed the steering's full travel asks for
+ * this much of the cornering limit (a little more than the tyres or the body
+ * hold, so a full turn is a turn at the limit), and every bit of the travel
+ * in between steers; slower, the full lock. Without it the first few percent
+ * of the travel would reach the limit on the open road, and the rest do
+ * nothing.
+ */
+const STEER_RANGE_MARGIN = 1.15;
+/**
+ * The steering sweeps toward the driver's input at the definition's pace at
+ * walking speed, this share of it at speed (a truck's wheel is heavy, and a
+ * tap of a key should not swerve it), easing in between these speeds (m/s).
+ */
+const HIGH_SPEED_STEER_PACE = 0.6;
+const STEER_PACE_EASES_FROM = 5;
+const STEER_PACE_EASES_TO = 22;
+/** Letting go, the steering comes back to straight this much faster than it turns: the tyres pull it back. */
+const STEER_RETURN_SPEEDUP = 1.6;
+/** The truck's path bends toward the front wheels' over about this long (its weight turning), seconds. */
+const TURN_IN_SECONDS = 0.15;
+/**
+ * The pedals as the truck feels them, travel per second: the engine takes a
+ * moment to pull, the air brakes to build pressure, and both let go quicker.
+ * Keys and buttons press all the way at once; this makes pulling away and
+ * stopping smooth, not a jolt.
+ */
+const THROTTLE_PRESS_RATE = 3;
+const THROTTLE_RELEASE_RATE = 6;
+const BRAKE_PRESS_RATE = 4;
+const BRAKE_RELEASE_RATE = 8;
+/** Through a gear change the clutch lets go this fast and takes up again this fast (per second): a nod, not a jolt. */
+const CLUTCH_RELEASE_RATE = 10;
+const CLUTCH_TAKE_UP_RATE = 3.5;
 
 /**
  * Deterministic arcade truck model (ADR 0002). It is a kinematic bicycle model
@@ -39,7 +73,9 @@ const RPM_PER_RADIAN_PER_SECOND = 60 / (2 * Math.PI);
  * drag, rolling resistance, engine braking, brakes, grip-limited traction and
  * cornering, and reverse: by brake at a standstill, or by the gear lever
  * (VehicleInput.lever). No tyre slip or body physics: trucks should feel
- * heavy and planted, not drift.
+ * heavy and planted, not drift. The steering is speed-sensitive (its whole
+ * travel steers at every speed), paced, self-centring, and the path follows
+ * the wheels over a moment; the pedals press in and let go smoothly.
  *
  * Every step mutates the given state in place and allocates nothing.
  */
@@ -53,7 +89,8 @@ export class VehicleDynamics {
   private readonly maxSpeed: number;
   private readonly maxReverseSpeed: number;
   private readonly maxSteerAngle: number;
-  private readonly steerSpeed: number;
+  /** The steering's pace at walking speed: its whole travel per second. */
+  private readonly steerPace: number;
   private massKg: number;
   private torqueFactor = 1;
   private brakeFactor = 1;
@@ -76,7 +113,7 @@ export class VehicleDynamics {
     this.maxSpeed = kmhToMetersPerSecond(definition.maxSpeedKmh);
     this.maxReverseSpeed = kmhToMetersPerSecond(handling.maxReverseSpeedKmh);
     this.maxSteerAngle = degreesToRadians(handling.maxSteerAngleDegrees);
-    this.steerSpeed = degreesToRadians(handling.steerSpeedDegreesPerSecond);
+    this.steerPace = handling.steerSpeedDegreesPerSecond / handling.maxSteerAngleDegrees;
     this.massKg = body.massKg + usableCargoMass(cargoMassKg);
   }
 
@@ -122,7 +159,13 @@ export class VehicleDynamics {
       z,
       heading,
       speed: 0,
+      steerPosition: 0,
       steerAngle: 0,
+      pathCurvature: 0,
+      throttlePedal: 0,
+      brakePedal: 0,
+      driveEngagement: 1,
+      clutchGear: 1,
       gear: 1,
       engineRpm: this.definition.powertrain.idleRpm,
       shiftTimer: 0,
@@ -144,11 +187,18 @@ export class VehicleDynamics {
     const brake = pedalTravel(input.brake);
 
     const lever = input.lever ?? 'auto';
+    // What the driver asks for decides the direction; the pedals as they have come down so far drive and brake.
     this.updateDirection(state, throttle, brake, lever, dt);
+    state.throttlePedal = approach(
+      state.throttlePedal,
+      throttle,
+      (throttle > state.throttlePedal ? THROTTLE_PRESS_RATE : THROTTLE_RELEASE_RATE) * dt,
+    );
+    state.brakePedal = approach(state.brakePedal, brake, (brake > state.brakePedal ? BRAKE_PRESS_RATE : BRAKE_RELEASE_RATE) * dt);
     // On auto, in reverse the pedals swap roles; with a lever the gas drives its way and brakes against it.
     const reversing = state.gear < 0;
-    const drivePedal = drivePedalOf(throttle, brake, lever, reversing);
-    const brakePedal = brakePedalOf(throttle, brake, lever, reversing);
+    const drivePedal = drivePedalOf(state.throttlePedal, state.brakePedal, lever, reversing);
+    const brakePedal = brakePedalOf(state.throttlePedal, state.brakePedal, lever, reversing);
 
     this.updateEngineSpeed(state);
     this.updateGear(state, drivePedal, dt);
@@ -217,6 +267,7 @@ export class VehicleDynamics {
     }
     const { shiftUpRpm, shiftDownRpm, shiftTimeSeconds } = this.definition.powertrain;
     if (state.engineRpm > shiftUpRpm && state.gear < this.gearRatios.length && drivePedal > 0) {
+      state.clutchGear = state.gear;
       state.gear++;
       state.shiftTimer = shiftTimeSeconds;
       state.timeInGear = 0;
@@ -225,6 +276,7 @@ export class VehicleDynamics {
       state.gear > 1 &&
       state.timeInGear >= MIN_SECONDS_IN_GEAR_BEFORE_DOWNSHIFT
     ) {
+      state.clutchGear = state.gear;
       state.gear--;
       state.shiftTimer = shiftTimeSeconds * DOWNSHIFT_TIME_SHARE;
       state.timeInGear = 0;
@@ -247,10 +299,18 @@ export class VehicleDynamics {
     const travelSpeed = reversing ? -state.speed : state.speed;
     const speedLimit = reversing ? this.maxReverseSpeed : this.maxSpeed;
     const limiterHit = state.engineRpm >= this.definition.powertrain.maxRpm;
-    if (this.engineRunning && drivePedal > 0 && state.shiftTimer <= 0 && !limiterHit && travelSpeed < speedLimit) {
+    // Through a gear change the clutch lets go of the gear being left, then takes up the new one.
+    const shifting = state.shiftTimer > 0;
+    if (!shifting) {
+      state.clutchGear = state.gear;
+    }
+    state.driveEngagement = approach(state.driveEngagement, shifting ? 0 : 1, (shifting ? CLUTCH_RELEASE_RATE : CLUTCH_TAKE_UP_RATE) * dt);
+    if (this.engineRunning && drivePedal > 0 && state.driveEngagement > 0 && !limiterHit && travelSpeed < speedLimit) {
       const engineAngularSpeed = state.engineRpm / RPM_PER_RADIAN_PER_SECOND;
       const torque = this.torqueFactor * Math.min(this.maxTorque, this.maxPowerWatts / engineAngularSpeed);
-      const wheelForce = (drivePedal * torque * this.totalRatio(state.gear) * DRIVETRAIN_EFFICIENCY) / this.radius;
+      const wheelForce =
+        (drivePedal * state.driveEngagement * torque * this.totalRatio(state.clutchGear) * DRIVETRAIN_EFFICIENCY) /
+        this.radius;
       driveForce = Math.min(wheelForce, grip * weight * DRIVEN_WEIGHT_SHARE);
     }
 
@@ -271,9 +331,14 @@ export class VehicleDynamics {
   }
 
   private updateSteeringAndPosition(state: VehicleRuntimeState, steerInput: number, surface: Surface, dt: number): void {
-    state.steerAngle = approach(state.steerAngle, steerInput * this.maxSteerAngle, this.steerSpeed * dt);
+    // The steering follows the driver: slower at speed, and back toward straight faster than it turns.
+    const pace =
+      this.steerPace *
+      (1 - (1 - HIGH_SPEED_STEER_PACE) * smoothstep(STEER_PACE_EASES_FROM, STEER_PACE_EASES_TO, Math.abs(state.speed)));
+    const returning = Math.abs(steerInput) < Math.abs(state.steerPosition) || steerInput * state.steerPosition < 0;
+    state.steerPosition = approach(state.steerPosition, steerInput, (returning ? pace * STEER_RETURN_SPEEDUP : pace) * dt);
 
-    // Understeer: never turn tighter than the tyres hold or the truck stays upright
+    // The sharpest the truck may turn: no tighter than the tyres hold or it stays upright
     // (lateral acceleration v² · tan(angle) / wheelbase ≤ limit).
     const { tireGrip, maxLateralAccelerationG } = this.definition.handling;
     const lateralLimit =
@@ -282,10 +347,21 @@ export class VehicleDynamics {
     const speedSquared = state.speed * state.speed;
     const limitedAngle =
       speedSquared > 1e-6 ? Math.atan((lateralLimit * this.wheelbase) / speedSquared) : this.maxSteerAngle;
+    // Speed-sensitive: the steering's whole travel spans the lock at walking pace, the limit (and a little) at speed.
+    state.steerAngle = state.steerPosition * Math.min(this.maxSteerAngle, limitedAngle * STEER_RANGE_MARGIN);
+    // Understeer: past the limit the wheels turn but the truck does not turn tighter.
     const effectiveAngle = clamp(state.steerAngle, -limitedAngle, limitedAngle);
 
-    // Kinematic bicycle model. Steering right (positive angle) turns clockwise seen from above.
-    const yawRate = (-state.speed * Math.tan(effectiveAngle)) / this.wheelbase;
+    // Kinematic bicycle model whose path bends toward the wheels' over a moment. Steering right (positive
+    // angle) turns clockwise seen from above.
+    const wheelCurvature = Math.tan(effectiveAngle) / this.wheelbase;
+    const limitCurvature = Math.tan(limitedAngle) / this.wheelbase;
+    state.pathCurvature = clamp(
+      state.pathCurvature + (wheelCurvature - state.pathCurvature) * (1 - Math.exp(-dt / TURN_IN_SECONDS)),
+      -limitCurvature,
+      limitCurvature,
+    );
+    const yawRate = -state.speed * state.pathCurvature;
     state.heading += yawRate * dt;
     state.x += state.speed * Math.sin(state.heading) * dt;
     state.z += state.speed * Math.cos(state.heading) * dt;

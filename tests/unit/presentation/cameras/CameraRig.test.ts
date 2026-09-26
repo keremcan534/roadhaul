@@ -7,7 +7,7 @@ import { cabGeometry } from '../../../../src/presentation/vehicles/cabGeometry';
 
 const body = VEHICLES[0]!.body;
 const cab = cabGeometry(body);
-const AT_REST: CameraMotion = { speed: 0, steerAngle: 0, longitudinalAcceleration: 0, lateralAcceleration: 0 };
+const AT_REST: CameraMotion = { speed: 0, steerAngle: 0, pathCurvature: 0, longitudinalAcceleration: 0, lateralAcceleration: 0 };
 
 /** Camera position relative to the truck's rear axle, in the truck's frame (x = left, z = forward). */
 function inTruckFrame(camera: PerspectiveCamera, pose: { x: number; z: number; heading: number }): Vector3 {
@@ -62,6 +62,24 @@ describe('CameraRig', () => {
     expect(moved).toBeLessThan(10);
   });
 
+  it('looks along the bend the truck is taking from behind it: into a right-hand bend, and ahead on a straight', () => {
+    const lookAside = (pathCurvature: number): number => {
+      const { camera, rig } = rigIn('chase');
+      const pose = { x: 0, z: 0, heading: 0.4 };
+      for (let frame = 0; frame < 120; frame++) {
+        rig.update(pose, { ...AT_REST, speed: 15, pathCurvature }, 1 / 60);
+      }
+      // x is the truck's left: a look to the right is negative.
+      return viewInTruckFrame(camera, pose.heading).x;
+    };
+
+    expect(Math.abs(lookAside(0))).toBeLessThan(1e-9);
+    expect(lookAside(0.02)).toBeLessThan(-0.02);
+    expect(lookAside(-0.02)).toBeCloseTo(-lookAside(0.02), 9);
+    // A hairpin looks a few meters aside at most.
+    expect(lookAside(1)).toBeGreaterThan(-0.4);
+  });
+
   it('steps through every camera with the button, round to the chase camera', () => {
     const camera = new PerspectiveCamera();
     const rig = new CameraRig(camera, body);
@@ -91,7 +109,13 @@ describe('CameraRig', () => {
     const { camera, rig } = rigIn('cabin');
     const pose = { x: 5, z: 8, heading: -0.4 };
     // A right turn under braking: the front wheels point right, the truck pulls right and slows.
-    const turning: CameraMotion = { speed: 12, steerAngle: 0.3, longitudinalAcceleration: -4, lateralAcceleration: -3 };
+    const turning: CameraMotion = {
+      speed: 12,
+      steerAngle: 0.3,
+      pathCurvature: 0.02,
+      longitudinalAcceleration: -4,
+      lateralAcceleration: -3,
+    };
     for (let frame = 0; frame < 120; frame++) {
       rig.update(pose, turning, 1 / 60);
     }

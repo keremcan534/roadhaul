@@ -231,6 +231,16 @@ The player asked for the most detail round the roads, a realistic cab with its s
 - The cloud shadows and the sun's glare are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.
 - `?spawn=x,z,heading` starts a new game's truck anywhere on the map, to look round a place.
 
+### Tester feedback: the truck's looks and the driving feel (between steps 28 and 29)
+
+The testers asked for a better-looking truck, and for driving that is playable, natural and not overdone ("araç güzelleştirmesi … sürüş mekaniklerinin daha oynanabilir, aşırıya kaçmayan, yapmacık olmayan … hassasiyet problemi").
+
+| Item | Status | Notes |
+|---|---|---|
+| Steering sensitivity | ✅ | The cause: at 80 km/h the first 8% of the steering's travel already turned the truck at its cornering limit, and the wheel angle ran on past it. Now the steering is speed-sensitive: its whole travel spans the full lock at walking pace and the cornering limit at speed. A 0.3 s tap of a key at 80 km/h moves the truck 1.9 m aside at 0.2 g (it was 9 m at the limit); the junction radii are unchanged |
+| A natural feel | ✅ | The steering is paced (heavier at speed) and comes back to straight faster than it turns. The truck turns in over about 0.15 s. The pedals press in over a moment and the clutch eases through gear changes (peak jerk down from 270–440 to about 70 m/s³). The body rocks on a damped spring and leans less (about 3° in the hardest turn). The chase camera looks along the bend |
+| The truck's looks | ✅ | The cab's shell is rounded, with skirts arched over the front wheels (black trim, lined inside). It has a sun visor with marker lamps, air horns, door seams, handles and steps, a chrome-framed grille and badge, headlamp clusters with a daytime strip in a black apron, fog lamps, and wide-angle mirrors. Air tanks sit on the chassis, the tyres have rounded shoulders round set-in rims, and a box body gets rails, marker lamps, hinges and a fairing over the cab. The exhaust stack stands behind the front wheel's arch. About one more draw call and 2.6k triangles |
+
 ## Next step: 29 Device testing
 
 Suggested request:

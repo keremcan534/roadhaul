@@ -17,8 +17,26 @@ export interface VehicleRuntimeState {
   heading: number;
   /** Meters per second along the heading; negative while reversing. */
   speed: number;
-  /** Front wheel angle in radians; positive steers right. */
+  /**
+   * Where the steering wheel is, -1 full left … +1 full right: it follows the
+   * driver's input at the steering's pace, and comes back to straight faster.
+   */
+  steerPosition: number;
+  /** Front wheel angle in radians; positive steers right. The wheel's position times the range the speed allows. */
   steerAngle: number;
+  /**
+   * How sharply the truck's path bends, 1/m (positive to the right). It
+   * follows the front wheels' over a moment: a heavy truck turns in, it does
+   * not snap round.
+   */
+  pathCurvature: number;
+  /** The gas and brake pedals' travel as the truck feels it, 0..1: pressed in and let go over a moment. */
+  throttlePedal: number;
+  brakePedal: number;
+  /** How much of the engine's pull reaches the wheels, 0..1: the clutch lets go through a gear change and takes up again. */
+  driveEngagement: number;
+  /** The gear the clutch still holds: the one being left while a change lets it go, the current one otherwise. */
+  clutchGear: number;
   /** -1 is reverse, 1…n are the forward gears. */
   gear: number;
   engineRpm: number;

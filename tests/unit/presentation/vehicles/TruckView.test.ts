@@ -8,13 +8,16 @@ import {
   PerspectiveCamera,
   Points,
   Quaternion,
+  Raycaster,
   Scene,
   Vector3,
+  type Object3D,
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { CameraRig } from '../../../../src/presentation/cameras/CameraRig';
+import { cabGeometry } from '../../../../src/presentation/vehicles/cabGeometry';
 import { TruckView, truckViewKey } from '../../../../src/presentation/vehicles/TruckView';
 import { EnvironmentView } from '../../../../src/presentation/world/EnvironmentView';
 import { gpuResources, watchDisposal } from '../../../support/threeResources';
@@ -148,6 +151,41 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(bounds.min.y).toBeGreaterThanOrEqual(-1e-6);
     expect(bounds.max.z).toBeLessThanOrEqual(wheelbaseMeters / 2 + lengthMeters / 2 + 0.15);
     expect(bounds.min.z).toBeGreaterThanOrEqual(wheelbaseMeters / 2 - lengthMeters / 2 - 0.1);
+  });
+
+  it('rounds the cab, arches its sides over the front wheels, and keeps the tyres in sight under them', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    view.update({ x: 0, z: 0, heading: 0 }, new VehicleDynamics(truck).createState(0, 0, 0), 0);
+    scene.updateMatrixWorld(true);
+    const { widthMeters, wheelbaseMeters, wheelRadiusMeters } = truck.body;
+    const { frontZ, beltY } = cabGeometry(truck.body);
+    const raycaster = new Raycaster();
+    /** The first solid surface a ray meets: the object and the point. */
+    const firstHit = (from: Vector3, toward: Vector3): { object: Object3D; point: Vector3 } => {
+      raycaster.set(from, toward.normalize());
+      const hit = raycaster.intersectObjects(scene.children, true).find((candidate) => candidate.object instanceof Mesh)!;
+      return { object: hit.object, point: hit.point };
+    };
+
+    // Over the front axle, from the side, the tyre shows through the arch, and so does its rim (no gap round it);
+    // a little further ahead, the skirt.
+    for (const side of [1, -1] as const) {
+      for (const height of [1.85, 1.7, 1.5, 1.2]) {
+        const overAxle = firstHit(new Vector3(side * widthMeters, wheelRadiusMeters * height, wheelbaseMeters), new Vector3(-side, 0, 0));
+        expect(overAxle.object === wheelsOf(scene), `${height} R up`).toBe(true);
+      }
+      const beside = firstHit(
+        new Vector3(side * widthMeters, wheelRadiusMeters * 1.85, wheelbaseMeters + wheelRadiusMeters * 1.9),
+        new Vector3(-side, 0, 0),
+      );
+      expect(beside.object === wheelsOf(scene)).toBe(false);
+      expect(Math.abs(beside.point.x)).toBeGreaterThan(widthMeters / 2 - 0.05);
+    }
+    // The cab's front corners are round: aimed at a box's corner, a ray meets the cab short of it.
+    const corner = firstHit(new Vector3(widthMeters / 2 + 1, beltY - 0.2, frontZ + 1), new Vector3(-1, 0, -1));
+    expect(Math.hypot(corner.point.x - widthMeters / 2, corner.point.z - frontZ)).toBeGreaterThan(0.03);
+    expect(Math.hypot(corner.point.x - widthMeters / 2, corner.point.z - frontZ)).toBeLessThan(0.2);
   });
 
   it('steers the front wheels only, to the right for a positive steering angle', () => {
@@ -303,7 +341,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     const camera = new PerspectiveCamera(72, 2, 0.1, 500);
     const rig = new CameraRig(camera, truck.body);
     rig.currentMode = 'cabin';
-    const atRest = { speed: 0, steerAngle: 0, longitudinalAcceleration: 0, lateralAcceleration: 0 };
+    const atRest = { speed: 0, steerAngle: 0, pathCurvature: 0, longitudinalAcceleration: 0, lateralAcceleration: 0 };
     return {
       camera,
       look: () => {
@@ -314,6 +352,41 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
       },
     };
   }
+
+  it('rocks the body on its springs: braking nods it forward, and letting go it swings back once and settles', () => {
+    const pitchWhileBraking = (framesPerSecond: number): { braking: number; overshoot: number; settled: number } => {
+      const scene = new Scene();
+      const view = new TruckView(scene, truck);
+      const body = scene.getObjectByName('truck-body')!;
+      const pose = { x: 0, z: 0, heading: 0 };
+      const state = new VehicleDynamics(truck).createState(0, 0, 0);
+      state.longitudinalAcceleration = -6;
+      for (let frame = 0; frame < 2 * framesPerSecond; frame++) {
+        view.update(pose, state, 1 / framesPerSecond);
+      }
+      const braking = body.rotation.x;
+      state.longitudinalAcceleration = 0;
+      let overshoot = 0;
+      for (let frame = 0; frame < 2 * framesPerSecond; frame++) {
+        view.update(pose, state, 1 / framesPerSecond);
+        overshoot = Math.min(overshoot, body.rotation.x);
+      }
+      return { braking, overshoot, settled: body.rotation.x };
+    };
+    const smooth = pitchWhileBraking(60);
+
+    // The nose dips a couple of degrees, not more.
+    expect(smooth.braking).toBeGreaterThan(0.02);
+    expect(smooth.braking).toBeLessThan(0.06);
+    // It rocks back past level a little, once, and comes to rest.
+    expect(smooth.overshoot).toBeLessThan(-smooth.braking * 0.03);
+    expect(smooth.overshoot).toBeGreaterThan(-smooth.braking * 0.5);
+    expect(Math.abs(smooth.settled)).toBeLessThan(smooth.braking * 0.05);
+    // The same at 30 frames a second.
+    const choppy = pitchWhileBraking(30);
+    expect(choppy.braking).toBeCloseTo(smooth.braking, 3);
+    expect(choppy.overshoot).toBeCloseTo(smooth.overshoot, 2);
+  });
 
   it('keeps the cabin dashboard steady in front of the driver while the body leans', () => {
     const scene = new Scene();
