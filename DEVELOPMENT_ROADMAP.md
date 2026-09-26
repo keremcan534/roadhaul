@@ -256,7 +256,8 @@ The player asked for graphics that make you say "wow" (rainbows, rain reflection
 | People on the pavements | ✅ | Walkers up and down the town pavements and people waiting at the bus stops, placed from a seed, their walk in the vertex shader. Fewer at night and in the rain, umbrellas up in the rain. One draw call; 40, 80 or 140 at most by preset |
 | Detailed buses | ✅ | Two-tone, with window panes, doors, a route sign and air-conditioning. Their windows and route signs light up at night. Only painted parts take a vehicle's paint now |
 | Parked cars | Later | Along the kerb they would narrow the lanes; in yards and lots they need collisions and must leave room to manoeuvre |
-| Light shafts, morning mist | Later | Light shafts on the high preset only |
+| Morning mist | ✅ | After a clear night, from before dawn until about an hour and a half after sunrise; thicker after rain, none in the rain. It lies on the ground and thins upward, hiding the far land and the feet of trees and masts while their tops and the hills rise out of it: a white band along the horizon, glowing toward the sun. Drawn in each material's fog, with no draw calls; the driver is told when it comes down thick. `?mist=0..1` |
+| The sun's shafts | ✅ | The light round the sun streaks out through the gaps in trees, buildings and cloud, with a trunk's shadow between; strongest in the mist. Three small passes (a quarter of the picture, and one pixel) while the sun is on the picture, on medium and high; none on low |
 
 ## Next step: 29 Device testing
 
