@@ -863,7 +863,11 @@ export class RivalService {
     return count;
   }
 
-  /** A rival as a new game finds it: its money, and its trucks waiting at home. Its decisions are spread out. */
+  /**
+   * A rival as a new game finds it: its money, and its trucks waiting at
+   * home, the second on at its rivals' homes, so they do not set off
+   * together along the same road. Its decisions are spread out.
+   */
   private freshRival(definition: RivalCompanyDefinition, index: number): RivalState {
     return {
       definition,
@@ -873,7 +877,7 @@ export class RivalService {
       acquired: false,
       trucks: Array.from({ length: definition.startingTrucks }, (_, number) => ({
         key: truckKey(definition.id, number),
-        cityId: definition.homeCityId,
+        cityId: this.content.rivals.all[(index + number) % this.content.rivals.size]!.homeCityId,
         job: null,
         elapsedSeconds: 0,
         route: null,

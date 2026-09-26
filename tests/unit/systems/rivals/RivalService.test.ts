@@ -85,6 +85,12 @@ describe('RivalService', () => {
     });
     expect(game.rivals.colorOf('rival_basakova')).toBe(0x2f9e44);
     expect(game.rivals.colorOf('player')).toBeNull();
+    // The first truck waits at home, the second at the next rival's: they do not set off together.
+    expect(game.rivals.snapshot().companies.map((company) => company.trucks.map((truck) => truck.cityId))).toEqual([
+      ['city_a', 'city_c'],
+      ['city_c', 'city_b'],
+      ['city_b', 'city_a'],
+    ]);
   });
 
   it('runs the rivals\' trucks on contracts: they earn, win standing in the cities they serve, and grow', async () => {
