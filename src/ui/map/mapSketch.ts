@@ -83,6 +83,10 @@ export interface MapSketch {
   readonly sea: MapPavedArea | null;
   /** Each river's water as a polygon, from its source to its mouth. */
   readonly rivers: readonly MapPavedArea[];
+  /** Each forest's outline. */
+  readonly forests: readonly MapPavedArea[];
+  /** Each park's rectangle. */
+  readonly parks: readonly MapPavedArea[];
   readonly fields: readonly MapField[];
   /** Where the wind turbines stand. */
   readonly windTurbines: readonly { readonly x: number; readonly z: number }[];
@@ -146,6 +150,8 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     pavedAreas,
     sea: world.sea === null ? null : seaArea(world.sea, world.halfSizeMeters),
     rivers: world.rivers.map(riverArea),
+    forests: world.forests.map((forest) => polygon(forest.outline)),
+    parks: world.parks.map((park) => rectangleCorners(park.area)),
     fields,
     windTurbines,
     turningCircles,

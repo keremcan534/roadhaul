@@ -148,6 +148,22 @@ describe('sketchWorld', () => {
     }
   });
 
+  it('draws the forests by their outlines and the parks by their rectangles', () => {
+    expect(sketch.forests).toHaveLength(world.forests.length);
+    sketch.forests.forEach((area, index) => {
+      const forest = world.forests[index]!;
+      expect(area.corners).toHaveLength(forest.outline.length * 2);
+      expect([area.minX, area.maxX, area.minZ, area.maxZ]).toEqual([forest.minX, forest.maxX, forest.minZ, forest.maxZ]);
+    });
+    expect(sketch.parks).toHaveLength(world.parks.length);
+    sketch.parks.forEach((area, index) => {
+      const park = world.parks[index]!.area;
+      expect(area.corners).toHaveLength(8);
+      expect((area.minX + area.maxX) / 2).toBeCloseTo(park.x, 6);
+      expect((area.minZ + area.maxZ) / 2).toBeCloseTo(park.z, 6);
+    });
+  });
+
   it('has the farm fields with their crops, and the wind turbines', () => {
     expect(sketch.fields.map((field) => field.crop)).toEqual(world.fields.map((field) => field.crop));
     sketch.fields.forEach((field, index) => {

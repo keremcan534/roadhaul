@@ -45,6 +45,8 @@ const FIELD_COLORS: Readonly<Record<FieldCrop, string>> = {
 const COLORS = {
   ground: '#1b2923',
   sea: '#1d4a66',
+  forest: '#1f3d24',
+  park: '#2f5a33',
   turbine: '#9fb0bd',
   building: '#33443b',
   paved: '#46525c',
@@ -97,6 +99,9 @@ export class MapPainter {
   private readonly sea: Path2D | null;
   /** The rivers' water, in one path. */
   private readonly rivers: Path2D;
+  /** The forests and the parks, each in one path. */
+  private readonly forests: Path2D;
+  private readonly parks: Path2D;
   private readonly transform = createCanvasTransform();
   /** A box round one point, for MapViewport.sees without allocating. */
   private readonly pointBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
@@ -132,6 +137,14 @@ export class MapPainter {
     this.rivers = new Path2D();
     for (const river of sketch.rivers) {
       this.rivers.addPath(polygonPath(river.corners));
+    }
+    this.forests = new Path2D();
+    for (const forest of sketch.forests) {
+      this.forests.addPath(polygonPath(forest.corners));
+    }
+    this.parks = new Path2D();
+    for (const park of sketch.parks) {
+      this.parks.addPath(polygonPath(park.corners));
     }
     for (const area of sketch.pavedAreas) {
       this.paved.moveTo(area.corners[0]!, area.corners[1]!);
@@ -204,6 +217,10 @@ export class MapPainter {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    context.fillStyle = COLORS.forest;
+    context.fill(this.forests);
+    context.fillStyle = COLORS.park;
+    context.fill(this.parks);
     context.fillStyle = COLORS.sea;
     if (this.sea !== null) {
       context.fill(this.sea);
