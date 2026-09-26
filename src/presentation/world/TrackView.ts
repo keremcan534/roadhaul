@@ -56,6 +56,7 @@ import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMat
 import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
+import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
 import { createChannelMask } from './riverChannel';
@@ -1349,7 +1350,9 @@ function crosswalkGeometries(world: DrivingWorld, setback: number, y: number): B
  * band's centre measured sideways from the centreline (positive to the right
  * of the direction of travel). Texture u runs across each band and v along
  * the road, one unit per `tileMeters`. Pieces between samples that `keep`
- * rejects are left out.
+ * rejects are left out. A ribbon keeps only the samples it needs to stay
+ * within a few centimetres of the road (ribbonRows): long pieces where the
+ * road runs straight, short ones round its bends.
  */
 function stripGeometry(
   road: RoadPath,
@@ -1360,7 +1363,8 @@ function stripGeometry(
 ): BufferGeometry {
   const count = road.pointCount;
   // A closed road repeats its first point at the end, so v keeps growing across the seam.
-  const rows = road.closed ? count + 1 : count;
+  const kept = ribbonRows(road, RIBBON_TOLERANCE_METERS, RIBBON_MAX_SPAN_METERS, keep);
+  const rows = kept.length;
   const positions = new Float32Array(bands.length * rows * 2 * 3);
   const normals = new Float32Array(positions.length);
   const uvs = new Float32Array(bands.length * rows * 2 * 2);
@@ -1368,7 +1372,7 @@ function stripGeometry(
   bands.forEach((band, bandIndex) => {
     const base = bandIndex * rows * 2;
     for (let row = 0; row < rows; row++) {
-      const i = row % count;
+      const i = kept[row]! % count;
       // Tangent from the neighbouring samples; "right" is the tangent turned 90° clockwise from above.
       const previous = road.closed ? (i - 1 + count) % count : Math.max(0, i - 1);
       const next = road.closed ? (i + 1) % count : Math.min(count - 1, i + 1);
@@ -1383,11 +1387,11 @@ function stripGeometry(
       positions.set([road.x(i) + rightX * inner, y, road.z(i) + rightZ * inner], vertex);
       positions.set([road.x(i) + rightX * outer, y, road.z(i) + rightZ * outer], vertex + 3);
       normals.set([0, 1, 0, 0, 1, 0], vertex);
-      const along = (row === count ? road.lengthMeters : (road.distances[i] ?? 0)) / tileMeters;
+      const along = (kept[row] === count ? road.lengthMeters : (road.distances[i] ?? 0)) / tileMeters;
       uvs.set([0, along, 1, along], (base + row * 2) * 2);
     }
     for (let row = 0; row + 1 < rows; row++) {
-      if (!keep(row % count) || !keep((row + 1) % count)) {
+      if (!keep(kept[row]! % count) || !keep(kept[row + 1]! % count)) {
         continue;
       }
       const leftI = base + row * 2;
