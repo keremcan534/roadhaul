@@ -22,8 +22,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   generated (a contract of the day).
  * - v9: adds the fleet (the hired drivers, the trucks they drive and their
  *   contracts under way).
+ * - v10: adds the rivals (the rival companies and their trucks, everyone's
+ *   standing in the cities, campaigns, and tenders).
  */
-export const CURRENT_SAVE_VERSION = 9;
+export const CURRENT_SAVE_VERSION = 10;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -46,6 +48,7 @@ export interface SaveGameData {
   readonly events: EventsSaveData;
   readonly tutorial: TutorialSaveData;
   readonly fleet: FleetSaveData;
+  readonly rivals: RivalsSaveData;
 }
 
 export interface ProfileSaveData {
@@ -182,6 +185,77 @@ export interface FleetJobSaveData {
   readonly incident: boolean;
   /** Seconds of it done. */
   readonly elapsedSeconds: number;
+}
+
+/** The rival companies, and how everyone stands in the cities (RivalService). */
+export interface RivalsSaveData {
+  /** The rival companies, in content order. One missing starts out afresh (a new game, or a new rival). */
+  readonly companies: readonly RivalCompanySaveData[];
+  /** Each company's standing in each city; what is not listed is none. */
+  readonly standing: readonly StandingSaveData[];
+  /** Seconds before the player's company can run its next campaign in a city; a city not listed, now. */
+  readonly campaignCooldowns: readonly CampaignCooldownSaveData[];
+  /** The tender on the job board, or null. */
+  readonly tender: TenderSaveData | null;
+  /** The tender the company took, raced by its rival (the contract under way is its contract), or null. */
+  readonly race: TenderSaveData | null;
+  /** Seconds until the next tender comes to the board; null before the first is due (a new game). */
+  readonly nextTenderSeconds: number | null;
+  /** Tenders so far: the next one's number. */
+  readonly tendersPosted: number;
+  /** Rival contracts planned so far: the next one's number seeds it. */
+  readonly jobsPlanned: number;
+}
+
+/** A rival company. */
+export interface RivalCompanySaveData {
+  /** RivalCompanyDefinition id. */
+  readonly rivalId: string;
+  readonly credits: Credits;
+  /** Bought out by the player's company: out of business for good. */
+  readonly acquired: boolean;
+  /** Its trucks on the road; none once it is bought out. */
+  readonly trucks: readonly RivalTruckSaveData[];
+  /** Seconds before it can run its next campaign. */
+  readonly campaignCooldownSeconds: number;
+  /** Seconds before it next thinks over buying a truck or running a campaign. */
+  readonly decisionSeconds: number;
+}
+
+/** One of a rival's trucks. */
+export interface RivalTruckSaveData {
+  /** CityDefinition id of the city it is in, or left last. */
+  readonly cityId: string;
+  /** The contract under way, or null between two. */
+  readonly job: FleetJobSaveData | null;
+}
+
+/** A company's standing in a city. */
+export interface StandingSaveData {
+  /** CityDefinition id. */
+  readonly cityId: string;
+  /** RivalCompanyDefinition id, or "player" for the player's company. */
+  readonly companyId: string;
+  /** More than 0. */
+  readonly points: number;
+}
+
+export interface CampaignCooldownSaveData {
+  /** CityDefinition id. */
+  readonly cityId: string;
+  /** More than 0. */
+  readonly seconds: number;
+}
+
+/** A tender (src/domain/rivals/tenders.ts Tender). */
+export interface TenderSaveData {
+  /** The generated contract; its id starts with "daily_tender_". */
+  readonly contract: MissionDefinition;
+  /** RivalCompanyDefinition id of the rival racing it. */
+  readonly rivalId: string;
+  readonly prize: Credits;
+  /** From loading until the rival has unloaded, seconds. */
+  readonly rivalSeconds: number;
 }
 
 export interface StatsSaveData {

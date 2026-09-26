@@ -1,7 +1,7 @@
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits } from '../../data/units';
 import { validateCompanyName } from '../company/companyName';
-import { CURRENT_SAVE_VERSION, type SaveGameData } from './SaveGameData';
+import { CURRENT_SAVE_VERSION, type RivalsSaveData, type SaveGameData } from './SaveGameData';
 
 export interface NewGameParams {
   /** Raw player input. It is normalised and validated here. */
@@ -58,6 +58,21 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     events: { runs: [] },
     tutorial: { step: 'takeContract' },
     fleet: { drivers: [], jobsPlanned: 0 },
+    rivals: newRivalsSaveData(),
+  };
+}
+
+/** The rivals before anything has happened: each starts out afresh when the game is loaded (RivalService.restore). */
+export function newRivalsSaveData(): RivalsSaveData {
+  return {
+    companies: [],
+    standing: [],
+    campaignCooldowns: [],
+    tender: null,
+    race: null,
+    nextTenderSeconds: null,
+    tendersPosted: 0,
+    jobsPlanned: 0,
   };
 }
 

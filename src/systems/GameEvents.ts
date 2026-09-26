@@ -179,4 +179,56 @@ export interface GameEvents {
     /** The contracts' profit, less any repairs. */
     readonly credits: Credits;
   };
+  /**
+   * Another company leads a city now (RivalService): `leaderId` is the
+   * player's company ("player") or a rival; null leaves the city contested.
+   */
+  CityLeaderChanged: {
+    readonly cityId: string;
+    readonly previousId: string | null;
+    readonly leaderId: string | null;
+    /** While the game was closed. */
+    readonly away: boolean;
+  };
+  /** A company ran a campaign in a city: the player's ("player"), or a rival. */
+  CampaignRun: {
+    readonly companyId: string;
+    readonly cityId: string;
+    readonly away: boolean;
+  };
+  /** A rival bought another truck. */
+  RivalTruckBought: {
+    readonly rivalId: string;
+    readonly trucks: number;
+    readonly away: boolean;
+  };
+  /** A contract from a city the company leads paid the leader's bonus on top. */
+  LeaderBonusPaid: {
+    readonly missionId: string;
+    readonly cityId: string;
+    readonly bonus: Credits;
+  };
+  /** A tender came to the job board: a contract the rival races the company for. */
+  TenderPosted: {
+    readonly missionId: string;
+    readonly rivalId: string;
+    readonly prize: Credits;
+  };
+  /** The rival racing the company's tender has unloaded first: the tender is lost. */
+  TenderRivalArrived: {
+    readonly missionId: string;
+    readonly rivalId: string;
+  };
+  /** A tender the company took is decided: won (the prize paid), or lost to its rival. */
+  TenderDecided: {
+    readonly missionId: string;
+    readonly rivalId: string;
+    readonly won: boolean;
+    readonly prize: Credits;
+  };
+  /** The company bought a rival out: it is gone, and its standing is the company's. */
+  RivalAcquired: {
+    readonly rivalId: string;
+    readonly price: Credits;
+  };
 }

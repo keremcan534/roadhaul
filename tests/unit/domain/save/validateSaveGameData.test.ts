@@ -73,6 +73,7 @@ describe('validateSaveGameData', () => {
       'events',
       'tutorial',
       'fleet',
+      'rivals',
     ]);
   });
 
@@ -169,6 +170,109 @@ describe('validateSaveGameData', () => {
     expect(paths(withFleet([{ ...driver, creditsEarned: 1.5 }], [second]))).toEqual(['fleet.drivers[0].creditsEarned']);
     expect(paths(withPart('fleet.jobsPlanned', -1))).toEqual(['fleet.jobsPlanned']);
     expect(paths(withPart('fleet.drivers', 'nobody'))).toEqual(['fleet.drivers']);
+  });
+
+  it('checks the rivals: known ones listed once, their trucks, money and timers, standing, campaigns and tenders', () => {
+    const job = {
+      originCityId: 'test_destination',
+      destinationCityId: 'test_origin',
+      cargoId: 'test_cargo',
+      cargoTons: 4,
+      distanceMeters: 3200,
+      durationSeconds: 300,
+      pay: 1500,
+      driverShare: 375,
+      fuelCost: 180,
+      incident: false,
+      elapsedSeconds: 120,
+    };
+    const rival = {
+      rivalId: 'test_rival',
+      credits: 2500,
+      acquired: false,
+      trucks: [
+        { cityId: 'test_destination', job },
+        { cityId: 'test_origin', job: null },
+      ],
+      campaignCooldownSeconds: 30,
+      decisionSeconds: 12,
+    };
+    const tender = {
+      contract: missionFixture({ id: 'daily_tender_3' }),
+      rivalId: 'test_rival',
+      prize: 600,
+      rivalSeconds: 240,
+    };
+    const rivals = {
+      companies: [rival],
+      standing: [
+        { cityId: 'test_origin', companyId: 'player', points: 30 },
+        { cityId: 'test_origin', companyId: 'test_rival', points: 12.5 },
+      ],
+      campaignCooldowns: [{ cityId: 'test_destination', seconds: 90 }],
+      tender,
+      race: { ...tender, contract: missionFixture({ id: 'daily_tender_2' }) },
+      nextTenderSeconds: 100,
+      tendersPosted: 3,
+      jobsPlanned: 20,
+    };
+    const withRivals = (changes: Record<string, unknown>): unknown => ({ ...save(), rivals: { ...rivals, ...changes } });
+
+    expect(paths(withRivals({}))).toEqual([]);
+    expect(paths(withPart('rivals.nextTenderSeconds', null))).toEqual([]);
+    // Unknown or listed twice; bought out yet still on the road; more trucks than it may have.
+    expect(paths(withRivals({ companies: [rival, rival] }))).toEqual(['rivals.companies[1].rivalId']);
+    expect(paths(withRivals({ companies: [{ ...rival, rivalId: 'pirates' }] }))).toEqual(['rivals.companies[0].rivalId']);
+    expect(paths(withRivals({ companies: [{ ...rival, acquired: true }] }))).toEqual(['rivals.companies[0].trucks']);
+    expect(paths(withRivals({ companies: [{ ...rival, trucks: [...rival.trucks, ...rival.trucks] }] }))).toEqual([
+      'rivals.companies[0].trucks',
+    ]);
+    expect(paths(withRivals({ companies: [{ ...rival, credits: -1, decisionSeconds: Number.NaN }] }))).toEqual([
+      'rivals.companies[0].credits',
+      'rivals.companies[0].decisionSeconds',
+    ]);
+    expect(paths(withRivals({ companies: [{ ...rival, trucks: [{ cityId: 'atlantis', job: { ...job, cargoId: 'gold' } }] }] }))).toEqual([
+      'rivals.companies[0].trucks[0].cityId',
+      'rivals.companies[0].trucks[0].job.cargoId',
+    ]);
+    // Standing of somebody unknown, somewhere unknown, twice, or of nothing.
+    expect(
+      paths(
+        withRivals({
+          standing: [
+            { cityId: 'atlantis', companyId: 'player', points: 1 },
+            { cityId: 'test_origin', companyId: 'pirates', points: 1 },
+            { cityId: 'test_origin', companyId: 'player', points: 0 },
+            { cityId: 'test_origin', companyId: 'player', points: 2 },
+          ],
+        }),
+      ),
+    ).toEqual([
+      'rivals.standing[0].cityId',
+      'rivals.standing[1].companyId',
+      'rivals.standing[2].points',
+      'rivals.standing[3]',
+    ]);
+    expect(paths(withRivals({ campaignCooldowns: [{ cityId: 'test_origin', seconds: 0 }, { cityId: 'test_origin', seconds: 5 }] }))).toEqual([
+      'rivals.campaignCooldowns[0].seconds',
+      'rivals.campaignCooldowns[1].cityId',
+    ]);
+    // A tender's contract is a generated one with a tender's id, raced by a known rival.
+    expect(paths(withRivals({ tender: { ...tender, contract: missionFixture({ id: 'daily_5_1' }) } }))).toEqual(['rivals.tender.contract.id']);
+    expect(paths(withRivals({ race: { ...tender, contract: missionFixture({ cargoId: 'gold' }) } }))).toEqual([
+      'rivals.race.contract.cargoId',
+      'rivals.race.contract.id',
+    ]);
+    expect(paths(withRivals({ tender: { ...tender, rivalId: 'pirates', prize: 1.5, rivalSeconds: 0 } }))).toEqual([
+      'rivals.tender.rivalId',
+      'rivals.tender.prize',
+      'rivals.tender.rivalSeconds',
+    ]);
+    expect(paths(withRivals({ nextTenderSeconds: -1, tendersPosted: 0.5, jobsPlanned: -3 }))).toEqual([
+      'rivals.nextTenderSeconds',
+      'rivals.tendersPosted',
+      'rivals.jobsPlanned',
+    ]);
   });
 
   it('checks each truck\'s paint: its factory colour, or a known one', () => {

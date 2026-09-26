@@ -11,12 +11,16 @@ import { CompanyService } from '../systems/company/CompanyService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
 import { EventService } from '../systems/events/EventService';
+import { DepotRoads } from '../systems/fleet/DepotRoads';
 import { FleetService } from '../systems/fleet/FleetService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
+import { CombinedContracts } from '../systems/missions/CombinedContracts';
 import { DailyContracts } from '../systems/missions/DailyContracts';
 import { MissionService } from '../systems/missions/MissionService';
 import { NavigationService } from '../systems/navigation/NavigationService';
+import { RivalService } from '../systems/rivals/RivalService';
+import { TenderBoard } from '../systems/rivals/TenderBoard';
 import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
 import { TrafficService } from '../systems/traffic/TrafficService';
@@ -130,6 +134,8 @@ export class GameBootstrapper {
         ServiceKeys.dailyContracts,
         new DailyContracts(catalog, driving, clock, config.missions.dailyContracts),
       );
+      // The tenders go up on the job board beside the contracts of the day (RivalService puts them there).
+      const tenders = new TenderBoard();
       const missions = container.register(
         ServiceKeys.missions,
         new MissionService(
@@ -139,7 +145,7 @@ export class GameBootstrapper {
           events,
           config.missions,
           logger.withCategory('Missions'),
-          dailyContracts,
+          new CombinedContracts([dailyContracts, tenders]),
         ),
       );
       container.register(
@@ -179,11 +185,12 @@ export class GameBootstrapper {
         ServiceKeys.upgrades,
         new UpgradeService(catalog, garage, economy, company, events, logger.withCategory('Upgrades')),
       );
+      const depotRoads = container.register(ServiceKeys.depotRoads, new DepotRoads(catalog, driving));
       const fleet = container.register(
         ServiceKeys.fleet,
         new FleetService(
           catalog,
-          driving,
+          depotRoads,
           garage,
           economy,
           company,
@@ -198,6 +205,27 @@ export class GameBootstrapper {
       const specialEvents = container.register(
         ServiceKeys.specialEvents,
         new EventService(catalog, company, economy, clock, events, logger.withCategory('Events')),
+      );
+      // After the events: the leader's bonus comes on top of a delivery's pay and its event bonus.
+      const rivals = container.register(
+        ServiceKeys.rivals,
+        new RivalService(
+          catalog,
+          depotRoads,
+          tenders,
+          missions,
+          garage,
+          economy,
+          company,
+          clock,
+          events,
+          config.rivals,
+          config.fleet,
+          config.economy,
+          config.fuel,
+          config.missions.loadingSeconds,
+          logger.withCategory('Rivals'),
+        ),
       );
       const tutorial = container.register(ServiceKeys.tutorial, new TutorialService(events, logger.withCategory('Tutorial')));
       const saves = container.register(
@@ -226,6 +254,7 @@ export class GameBootstrapper {
           company,
           garage,
           fleet,
+          rivals,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),
@@ -264,5 +293,6 @@ function describeContent(catalog: ContentCatalog): string {
     `times of day ${catalog.daylight.size}`,
     `events ${catalog.events.size}`,
     `drivers ${catalog.drivers.size}`,
+    `rivals ${catalog.rivals.size}`,
   ].join(', ');
 }

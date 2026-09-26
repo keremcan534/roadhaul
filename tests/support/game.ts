@@ -30,7 +30,9 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     damage: services.resolve(ServiceKeys.damage),
     garage: services.resolve(ServiceKeys.garage),
     upgrades: services.resolve(ServiceKeys.upgrades),
+    depotRoads: services.resolve(ServiceKeys.depotRoads),
     fleet: services.resolve(ServiceKeys.fleet),
+    rivals: services.resolve(ServiceKeys.rivals),
     specialEvents: services.resolve(ServiceKeys.specialEvents),
     tutorial: services.resolve(ServiceKeys.tutorial),
     events: services.resolve(ServiceKeys.events),
@@ -46,6 +48,7 @@ export function play(game: Game, seconds: number, throttle = 0): void {
     game.missions.update(STEP_SECONDS);
     game.fuel.update();
     game.fleet.update(STEP_SECONDS);
+    game.rivals.update(STEP_SECONDS);
     game.session.update(STEP_SECONDS);
   }
 }
