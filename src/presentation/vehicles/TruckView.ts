@@ -35,9 +35,41 @@ import { reflectSky, type SkyReflectionOptions } from '../world/skyReflection';
 import { CabInterior, type DashboardReadings } from './CabInterior';
 import { cabGeometry, type CabGeometry } from './cabGeometry';
 import { LampGlows } from './LampGlows';
+import {
+  archedSkirt,
+  archLiner,
+  archTrim,
+  extrudeAcross,
+  flatPolygon,
+  ledge,
+  loft,
+  roundedOutline,
+  tyreGeometry,
+  type Point2,
+} from './truckShapes';
 import { Wipers } from './Wipers';
 
 const TIRE_WIDTH = 0.36;
+/** The rims' face stands this far in from the tyre's sidewall, and reaches this share of the wheel's radius. */
+const RIM_INSET = 0.03;
+const RIM_SHARE = 0.72;
+/** Sides round a wheel. */
+const WHEEL_SEGMENTS = 24;
+/**
+ * The cab's shell: its front corners rounded this much (meters), its rear
+ * ones this much, the roof's edge this much; the apron in front of the front
+ * wheels this deep. The wheel arches stand this far off the tyres, their
+ * black trim this wide. The sun visor reaches this far over the windscreen,
+ * tipped down at the front this much (radians).
+ */
+const CAB_CORNER_RADIUS = 0.12;
+const CAB_REAR_CORNER_RADIUS = 0.05;
+const ROOF_BEVEL = 0.07;
+const APRON_DEPTH = 0.36;
+const ARCH_CLEARANCE = 0.025;
+const ARCH_TRIM_WIDTH = 0.08;
+const VISOR_DEPTH = 0.18;
+const VISOR_TILT = 0.12;
 /** A heavy truck's two rear axles stand this far either side of the rear axle the physics uses. */
 const TANDEM_HALF_SPACING = 0.68;
 /** The exhaust stack behind the cab on the right: its radius, and how far its top stands over the cab roof. */
@@ -118,16 +150,25 @@ export interface TruckViewOptions {
 
 /**
  * A cab-over truck built from a VehicleDefinition's body dimensions and body
- * type: original designs, no real-world models. The cab has windows, grille,
- * headlights and mirrors. A box body carries the RoadHaul livery on its sides
- * and doors; a refrigerated one adds a cooling unit over the cab; a flatbed
- * has a deck, headboard and stakes, and shows its load of bricks while loaded.
- * Heavy trucks stand on two rear axles. Upgrades show (options.looks): taller
+ * type: original designs, no real-world models. The cab's shell is rounded at
+ * the front corners and along the roof (truckShapes), with skirts arched over
+ * the front wheels (black trim, lined inside), a sun visor with marker lamps,
+ * air horns, the door's seams and handles, steps and a grab handle; at the
+ * front a chrome-framed grille under the maker's badge, headlamp clusters
+ * (two lenses, a daytime running strip, the indicator) in a black apron, fog
+ * lamps in the bumper, and mirrors with a wide-angle one under each. A box
+ * body carries the RoadHaul livery on its sides and doors, rails, marker
+ * lamps and hinges, behind a roof fairing and extenders; a refrigerated one
+ * adds a cooling unit over the cab; a flatbed has a deck, headboard and
+ * stakes, and shows its load of bricks while loaded. The chassis carries the
+ * fuel tank, the battery box and the air tanks; the tyres have rounded
+ * shoulders round rims set into them. Heavy trucks stand on two rear axles.
+ * Upgrades show (options.looks): taller
  * chrome stacks, twin at level 2, with a roof light bar at 3; a longer tank,
  * chrome, then a second one; polished, chrome or gold rims; yellow, orange
  * or red brake calipers; and a body sitting lower on mudflaps, with a
  * chrome bumper and grille bars. Parts that share a material are merged, so
- * a truck costs about 16 draw calls (two more at night, when its lamps glow
+ * a truck costs about 17 draw calls (two more at night, when its lamps glow
  * and the headlights light the road: setLamps(); one for the calipers). Its
  * origin is the rear axle, like VehicleRuntimeState. Front wheels steer, all
  * wheels roll, and the body pitches and rolls with acceleration. Its wipers
@@ -220,21 +261,104 @@ export class TruckView {
     const lamp = (color: number, size: readonly [number, number, number], at: readonly [number, number, number]): void =>
       add('lamps', colored(new BoxGeometry(...size).translate(...at), color));
 
-    // Cab: lower body, the apron in front of the front wheels and the glasshouse. On the roof, a
-    // deflector in front of the box, the cooling unit of a refrigerated body, or a flatbed's beacons.
-    // The lower body is open at the top (its lid would be the cab's floor, seen from the driver's seat): a
-    // ledge round the glasshouse's foot stands for it outside.
-    add('paint', withoutTop(new BoxGeometry(W, beltY - cabBottom, cabLength)).translate(0, (cabBottom + beltY) / 2, frontZ - cabLength / 2));
+    // The cab: its shell rounded at the front corners and along the roof's edge. The lower part is open at the
+    // top (its lid would be the cab's floor, seen from the driver's seat): a ledge round the glasshouse's foot
+    // stands for it outside. Below it the apron in front of the front wheels, and skirts down the sides with
+    // an arch over each front wheel.
+    const lowerOutline = roundedOutline(halfW, cabRear, frontZ, CAB_CORNER_RADIUS, CAB_REAR_CORNER_RADIUS);
+    add('paint', loft([{ outline: lowerOutline, y: cabBottom }, { outline: lowerOutline, y: beltY }]));
+    add('dark', flatPolygon(lowerOutline, cabBottom, -1));
+    const glassHalf = halfW - 0.03;
+    const glassFront = frontZ - 0.05;
+    const glasshouse = (inset: number): Point2[] =>
+      roundedOutline(
+        glassHalf - inset,
+        cabRear + 0.05 + inset,
+        glassFront - inset,
+        Math.max(0.02, CAB_CORNER_RADIUS - inset),
+        Math.max(0.01, CAB_REAR_CORNER_RADIUS - inset),
+      );
+    add('paint', ledge(lowerOutline, glasshouse(0), beltY));
+    add(
+      'paint',
+      loft(
+        [
+          { outline: glasshouse(0), y: beltY },
+          { outline: glasshouse(0), y: cabTop - ROOF_BEVEL - 0.04 },
+          { outline: glasshouse(ROOF_BEVEL * 0.45), y: cabTop - ROOF_BEVEL * 0.3 },
+          { outline: glasshouse(ROOF_BEVEL), y: cabTop },
+        ],
+        { top: true },
+      ),
+    );
+    // The apron round the headlamps is black, like the bumper under it.
+    const apronOutline = roundedOutline(halfW, frontZ - APRON_DEPTH, frontZ, CAB_CORNER_RADIUS, 0.01);
+    add('dark', loft([{ outline: apronOutline, y: bumperTop - 0.01 }, { outline: apronOutline, y: cabBottom + 0.01 }]));
+    const archRadius = R + ARCH_CLEARANCE;
     for (const side of [1, -1] as const) {
-      box('paint', [0.03, 0.004, cabLength], [side * (halfW - 0.015), beltY - 0.002, frontZ - cabLength / 2]);
+      add('paint', archedSkirt(side, halfW, cabRear + CAB_REAR_CORNER_RADIUS, frontZ - APRON_DEPTH, R, cabBottom, B, archRadius));
+      // A black trim round the arch, and its lining over the wheel.
+      add('dark', archTrim(side, halfW + 0.015, B, R, archRadius, archRadius + ARCH_TRIM_WIDTH));
+      add('dark', archLiner(side * (halfW - 0.45), side * (halfW + 0.015), B, R, archRadius));
     }
-    for (const z of [frontZ - 0.025, frontZ - cabLength + 0.025]) {
-      box('paint', [W, 0.004, 0.05], [0, beltY - 0.002, z]);
+    // The door, round the side window: its seams, a handle at the back and a grab handle behind it; two steps
+    // up to it ahead of the front wheel.
+    const doorFront = frontZ - 0.2;
+    const doorRear = doorFront - Math.min(1.25, cabLength * 0.62);
+    for (const side of [1, -1] as const) {
+      const seam = (x: number, y0: number, height: number, z0: number, length: number): void =>
+        add('dark', sideQuad(side, side * x, y0, height, z0, length));
+      for (const z of [doorFront, doorRear]) {
+        seam(halfW + 0.002, cabBottom + 0.03, beltY - cabBottom - 0.03, z - 0.009, 0.018);
+        seam(glassHalf + 0.002, beltY, cabTop - 0.1 - beltY, z - 0.009, 0.018);
+      }
+      seam(halfW + 0.002, cabBottom + 0.03, 0.018, doorRear, doorFront - doorRear);
+      seam(glassHalf + 0.002, cabTop - 0.118, 0.018, doorRear, doorFront - doorRear);
+      box('chrome', [0.025, 0.045, 0.2], [side * (halfW + 0.012), beltY - 0.13, doorRear + 0.16]);
+      add(
+        'chrome',
+        new CylinderGeometry(0.018, 0.018, 0.8, 8).translate(side * (halfW + 0.04), beltY + 0.05, doorRear - 0.07),
+      );
+      const stepsFront = frontZ - APRON_DEPTH - 0.04;
+      const stepsRear = B + archRadius + ARCH_TRIM_WIDTH + 0.04;
+      if (stepsFront - stepsRear > 0.3) {
+        for (const y of [R + 0.1, (R + 0.1 + cabBottom) / 2]) {
+          box('metal', [0.07, 0.035, stepsFront - stepsRear], [side * (halfW + 0.02), y, (stepsFront + stepsRear) / 2]);
+        }
+      }
     }
-    box('paint', [W, cabBottom - bumperTop + 0.02, 0.36], [0, (bumperTop + cabBottom) / 2, frontZ - 0.18]);
-    box('paint', [W - 0.06, cabTop - beltY, cabLength - 0.1], [0, (beltY + cabTop) / 2, frontZ - 0.05 - (cabLength - 0.1) / 2]);
+    // Over the windscreen a sun visor with the cab's marker lamps along it.
+    add(
+      'paint',
+      new BoxGeometry(W - 0.34, 0.035, VISOR_DEPTH)
+        .rotateX(VISOR_TILT)
+        .translate(0, cabTop - 0.03, glassFront + VISOR_DEPTH / 2 - 0.01),
+    );
+    for (let i = 0; i < 5; i++) {
+      lamp(0xffa21c, [0.09, 0.028, 0.02], [(i - 2) * (W - 0.6) * 0.2, cabTop - 0.06, glassFront + VISOR_DEPTH - 0.02]);
+    }
+    // A pair of chrome air horns on the roof behind it.
+    for (const side of [1, -1] as const) {
+      add(
+        'chrome',
+        new CylinderGeometry(0.045, 0.02, 0.3, 10).rotateX(Math.PI / 2).translate(side * 0.85, cabTop + 0.05, glassFront - 0.3),
+      );
+    }
+    // On the roof: a fairing up to the box and extenders across the gap to it, the cooling unit of a refrigerated
+    // body, or a flatbed's beacons.
     if (bodyType === 'box') {
-      add('paint', wedge(W - 0.12, H - 0.06 - cabTop, cabLength * 0.72).translate(0, (cabTop + H - 0.06) / 2, cabRear + (cabLength * 0.72) / 2));
+      const fairingFront = cabRear + cabLength * 0.72;
+      const rise = H - 0.06 - cabTop;
+      const profile: Point2[] = [[fairingFront, cabTop]];
+      for (let i = 1; i <= 6; i++) {
+        const t = i / 6;
+        profile.push([fairingFront - t * (fairingFront - cabRear), cabTop + rise * (1 - (1 - t) ** 2)]);
+      }
+      profile.push([cabRear, cabTop]);
+      add('paint', extrudeAcross(profile, halfW - 0.08));
+      for (const side of [1, -1] as const) {
+        box('paint', [0.02, H - 0.1 - beltY, 0.37], [side * (halfW - 0.01), (beltY + H - 0.1) / 2, cabRear + 0.075]);
+      }
     } else if (bodyType === 'refrigerated') {
       const unitHeight = H - 0.04 - (cabTop + 0.04);
       const unitDepth = 0.62;
@@ -262,25 +386,45 @@ export class TruckView {
         sideQuad(side, side * (halfW - 0.02), beltY + (cabTop - beltY) * 0.18, windowHeight, frontZ - 0.25 - windowLength, windowLength),
       );
     }
-    // Front: grille, bumper, headlights and indicators, and the mirrors.
-    add('grille', frontQuad(W * 0.6, beltY - 0.2 - (bumperTop + 0.2), frontZ + 0.012, bumperTop + 0.2));
-    box(stance >= 2 ? 'chrome' : 'dark', [W + 0.06, 0.32, 0.24], [0, bumperTop - 0.16, frontZ + 0.02]);
-    if (stance === 3) {
-      // Chrome bars across the grille.
-      const grilleBottom = bumperTop + 0.2;
-      const grilleHeight = beltY - 0.2 - grilleBottom;
-      for (let i = 1; i <= 3; i++) {
-        box('chrome', [W * 0.62, 0.035, 0.04], [0, grilleBottom + (grilleHeight * i) / 4, frontZ + 0.03]);
-      }
+    // Front: the grille in a chrome surround under the maker's badge, the bumper with its fog lamps, the headlamp
+    // clusters (two lenses over a daytime running strip, the indicator at the outer end, a repeater on the side),
+    // and the mirrors, a wide-angle one under each.
+    const grilleBottom = bumperTop + 0.35;
+    const grilleTop = beltY - 0.2;
+    const grilleWidth = W * 0.6;
+    add('grille', frontQuad(grilleWidth, grilleTop - grilleBottom, frontZ + 0.012, grilleBottom));
+    for (const y of [grilleBottom, grilleTop]) {
+      box('chrome', [grilleWidth + 0.06, 0.03, 0.025], [0, y, frontZ + 0.016]);
     }
     for (const side of [1, -1] as const) {
-      lamp(0xfff4d6, [0.42, 0.18, 0.05], [side * (halfW - 0.32), bumperTop + 0.2, frontZ + 0.015]);
-      lamp(0xffa21c, [0.14, 0.12, 0.05], [side * (halfW - 0.06), bumperTop + 0.2, frontZ + 0.015]);
-      // Mirror on an arm near the front pillar, its glass facing back (the driver sees it from the cab).
+      box('chrome', [0.03, grilleTop - grilleBottom + 0.03, 0.025], [side * (grilleWidth / 2 + 0.015), (grilleBottom + grilleTop) / 2, frontZ + 0.016]);
+    }
+    add('chrome', new BoxGeometry(0.12, 0.12, 0.02).rotateZ(Math.PI / 4).translate(0, grilleTop + 0.1, frontZ + 0.012));
+    box(stance >= 2 ? 'chrome' : 'dark', [W + 0.06, 0.32, 0.24], [0, bumperTop - 0.16, frontZ + 0.02]);
+    box('dark', [W - 0.1, 0.06, 0.2], [0, bumperTop - 0.34, frontZ + 0.01]);
+    if (stance === 3) {
+      // Chrome bars across the grille.
+      for (let i = 1; i <= 3; i++) {
+        box('chrome', [grilleWidth + 0.02, 0.035, 0.04], [0, grilleBottom + ((grilleTop - grilleBottom) * i) / 4, frontZ + 0.03]);
+      }
+    }
+    const lampY = bumperTop + 0.2;
+    for (const side of [1, -1] as const) {
+      box('dark', [0.52, 0.24, 0.04], [side * (halfW - 0.34), lampY, frontZ + 0.006]);
+      lamp(0xfff4d6, [0.2, 0.15, 0.02], [side * (halfW - 0.3), lampY + 0.02, frontZ + 0.032]);
+      lamp(0xfff8e8, [0.16, 0.13, 0.02], [side * (halfW - 0.5), lampY + 0.02, frontZ + 0.032]);
+      lamp(0xffffff, [0.38, 0.022, 0.02], [side * (halfW - 0.39), lampY - 0.085, frontZ + 0.034]);
+      lamp(0xffa21c, [0.09, 0.15, 0.02], [side * (halfW - 0.14), lampY + 0.02, frontZ + 0.03]);
+      lamp(0xffa21c, [0.02, 0.05, 0.12], [side * (halfW + 0.01), lampY + 0.04, frontZ - 0.24]);
+      lamp(0xfff8e0, [0.16, 0.07, 0.008], [side * (halfW - 0.36), bumperTop - 0.19, frontZ + 0.143]);
+      // Mirror on arms near the front pillar, its glass facing back (the driver sees it from the cab).
       const { mirror } = cab;
       box('dark', [0.36, 0.04, 0.04], [side * (halfW + 0.16), mirror.y + 0.2, mirror.z + 0.036]);
       box('dark', [0.2, 0.36, 0.07], [side * mirror.x, mirror.y, mirror.z + 0.036]);
       add('glass', new PlaneGeometry(mirror.width, mirror.height).rotateY(Math.PI).translate(side * mirror.x, mirror.y, mirror.z));
+      box('dark', [0.3, 0.03, 0.03], [side * (halfW + 0.15), mirror.y - 0.3, mirror.z + 0.03]);
+      box('dark', [0.16, 0.14, 0.06], [side * mirror.x, mirror.y - 0.3, mirror.z + 0.031]);
+      add('glass', new PlaneGeometry(0.12, 0.1).rotateY(Math.PI).translate(side * mirror.x, mirror.y - 0.3, mirror.z));
     }
 
     // Chassis, fuel tank, battery box, rear mudguards, underrun bar and light bar.
@@ -297,12 +441,25 @@ export class TruckView {
     } else {
       box('dark', [0.5, 0.45, 0.7], [-(halfW - 0.3), frameY - 0.08, B * 0.45]);
     }
-    // The exhaust stack stands at the cab's rear corner on the right, up past the roof: chrome and taller on an
-    // upgraded engine, and from level 2 a twin on the left.
+    // The brakes' air tanks between the rear wheels and the fuel tank, where there is room.
+    const airTanksFrom = (tandem ? TANDEM_HALF_SPACING : 0) + R + 0.12;
+    const airTanksTo = B * 0.45 - TANK_LENGTH[tank] / 2 - 0.08;
+    if (airTanksTo - airTanksFrom > 0.5) {
+      for (const side of [1, -1] as const) {
+        add(
+          'metal',
+          new CylinderGeometry(0.12, 0.12, airTanksTo - airTanksFrom, 12)
+            .rotateX(Math.PI / 2)
+            .translate(side * (halfW - 0.36), frameY - 0.04, (airTanksFrom + airTanksTo) / 2),
+        );
+      }
+    }
+    // The exhaust stack stands at the cab's rear corner on the right (behind the front wheel's arch), up past the
+    // roof: chrome and taller on an upgraded engine, and from level 2 a twin on the left.
     const stackTop = cabTop + STACK_OVER_ROOF + STACK_EXTRA_HEIGHT[exhaust];
     const stackRadius = STACK_RADIUS + (exhaust === 3 ? 0.02 : exhaust > 0 ? 0.01 : 0);
     const stackX = -(halfW + stackRadius + 0.02);
-    const stackZ = cabRear + 0.15;
+    const stackZ = Math.min(cabRear + 0.15, B - archRadius - ARCH_TRIM_WIDTH - stackRadius - 0.03);
     for (const side of exhaust >= 2 ? ([1, -1] as const) : ([-1] as const)) {
       add(
         exhaust > 0 ? 'chrome' : 'metal',
@@ -336,6 +493,15 @@ export class TruckView {
     }
 
     const bodyLength = boxFront - rearZ;
+    /** Amber marker lamps along the foot of the body on both sides, about every 1.8 m, at `x` either side and `y`. */
+    const sideMarkers = (x: number, y: number): void => {
+      const count = Math.max(2, Math.round(bodyLength / 1.8));
+      for (const side of [1, -1] as const) {
+        for (let i = 0; i < count; i++) {
+          lamp(0xffa21c, [0.02, 0.05, 0.1], [side * x, y, rearZ + 0.3 + (i * (bodyLength - 0.6)) / (count - 1)]);
+        }
+      }
+    };
     const loadParts: BufferGeometry[] = [];
     if (bodyType === 'flatbed') {
       // Deck with side rails, a headboard behind the cab and stakes along both sides.
@@ -348,6 +514,7 @@ export class TruckView {
       }
       box('metal', [W, 1.35, 0.08], [0, deckY + 0.675, boxFront - 0.04]);
       box('dark', [W, 0.08, 0.1], [0, deckY + 1.35, boxFront - 0.04]);
+      sideMarkers(halfW + 0.01, deckY - 0.1);
       // The load: pallets of bricks under ratchet straps, shown while loaded (setLoaded).
       const palletLength = Math.min(2.2, (bodyLength - 0.9) / 3);
       for (let i = 0; i < 3; i++) {
@@ -379,6 +546,17 @@ export class TruckView {
           box('metal', [0.07, boxHeight, 0.07], [x, deckY + boxHeight / 2, z]);
         }
       }
+      // Rails along the top and the foot of each side, marker lamps along the foot and up at the back, and the
+      // doors' hinges.
+      for (const side of [1, -1] as const) {
+        box('metal', [0.03, 0.07, bodyLength], [side * (halfW + 0.035), H - 0.035, rearZ + bodyLength / 2]);
+        box('dark', [0.04, 0.12, bodyLength], [side * (halfW + 0.03), deckY + 0.06, rearZ + bodyLength / 2]);
+        lamp(0xd4261c, [0.1, 0.05, 0.02], [side * (halfW - 0.12), H - 0.08, rearZ - 0.03]);
+        for (let i = 0; i < 4; i++) {
+          box('dark', [0.06, 0.1, 0.025], [side * (halfW - 0.04), deckY + 0.25 + (i * (boxHeight - 0.5)) / 3, rearZ - 0.025]);
+        }
+      }
+      sideMarkers(halfW + 0.055, deckY + 0.06);
     }
 
     const accentRgb: Rgb = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
@@ -392,7 +570,7 @@ export class TruckView {
       metal: this.track(
         shiny(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd }), { facing: 0.5, metal: true }),
       ),
-      glass: this.track(shiny(new MeshPhongMaterial({ color: 0x1b2733, shininess: 140, specular: 0x9aa7b3 }), { facing: 0.07 })),
+      glass: this.track(shiny(new MeshPhongMaterial({ color: 0x22323f, shininess: 140, specular: 0x9aa7b3 }), { facing: 0.14 })),
       lamps: this.lampMaterial,
       grille: this.track(new MeshLambertMaterial({ map: this.texture(toTexture(grilleImage())) })),
       panels: this.track(
@@ -649,11 +827,17 @@ export class TruckView {
     }
   }
 
-  /** Tyres with a rim on each face, the rims in the finish of the tyres upgrade's `level`: two draw calls for all the wheels. */
+  /**
+   * Tyres with rounded shoulders, a rim set into each face in the finish of
+   * the tyres upgrade's `level`: two draw calls for all the wheels.
+   */
   private createWheels(radius: number, count: number, level: 0 | 1 | 2 | 3): InstancedMesh {
-    const tire = new CylinderGeometry(radius, radius, TIRE_WIDTH, 22).rotateZ(Math.PI / 2);
-    const outer = new CircleGeometry(radius * 0.72, 22).rotateY(Math.PI / 2).translate(TIRE_WIDTH / 2 + 0.002, 0, 0);
-    const inner = new CircleGeometry(radius * 0.72, 22).rotateY(-Math.PI / 2).translate(-TIRE_WIDTH / 2 - 0.002, 0, 0);
+    const rimRadius = radius * RIM_SHARE;
+    const tire = tyreGeometry(radius, TIRE_WIDTH, rimRadius, RIM_INSET, WHEEL_SEGMENTS);
+    // The rims reach under the tyre's inner lip, so no gap shows between them.
+    const face = TIRE_WIDTH / 2 - RIM_INSET;
+    const outer = new CircleGeometry(rimRadius, WHEEL_SEGMENTS).rotateY(Math.PI / 2).translate(face, 0, 0);
+    const inner = new CircleGeometry(rimRadius, WHEEL_SEGMENTS).rotateY(-Math.PI / 2).translate(-face, 0, 0);
     const wheel = mergeGeometries([tire, outer, inner], true);
     for (const part of [tire, outer, inner]) {
       part.dispose();
@@ -735,29 +919,6 @@ function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
     colors.set([color.r, color.g, color.b], i * 3);
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
-  return geometry;
-}
-
-/** `box` (a BoxGeometry of one segment a side) without its top face (+y). */
-function withoutTop(box: BoxGeometry): BufferGeometry {
-  // BoxGeometry's faces come in the order +x, −x, +y, −y, +z, −z: six indices each.
-  const index = box.getIndex()!;
-  const kept = [...index.array.slice(0, 12), ...index.array.slice(18)];
-  box.setIndex(kept);
-  box.clearGroups();
-  return box;
-}
-
-/** A box whose top slopes down to the front: a roof deflector. */
-function wedge(width: number, height: number, depth: number): BufferGeometry {
-  const geometry = new BoxGeometry(width, height, depth);
-  const position = geometry.getAttribute('position');
-  for (let i = 0; i < position.count; i++) {
-    if (position.getY(i) > 0 && position.getZ(i) > 0) {
-      position.setY(i, -height / 2 + 0.02);
-    }
-  }
-  geometry.computeVertexNormals();
   return geometry;
 }
 
