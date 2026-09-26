@@ -27,12 +27,27 @@ import type { SkyUniforms } from '../world/EnvironmentView';
 import type { TrafficHeadlamps } from '../world/LampLighting';
 import { reflectSky } from '../world/skyReflection';
 
-/** Parts in white take the vehicle's paint (the instance colour); the rest are dark or light enough to stay themselves. */
+/** Parts in white take the vehicle's paint (the instance colour); the rest keep their own colour (`paint` 0). */
 const PAINT = 0xffffff;
 const GLASS = 0x1d2630;
 const TYRE = 0x161616;
 const TRIM = 0x3a3d42;
 const HUB = 0xb4b9bf;
+/**
+ * A bus's white upper body and roof (its livery's paint is below the
+ * windows), its windows and doors, lit from inside at night, and its route
+ * sign over the windscreen, an orange LED line at night: what glows, in
+ * linear light at full lamps (setLamps).
+ */
+const BUS_WHITE = 0xf1f1ec;
+const BUS_WINDOW = 0x223140;
+const BUS_DOOR = 0x2a3a48;
+const SIGN = 0x121212;
+const GLOW: Readonly<Record<number, readonly [number, number, number]>> = {
+  [BUS_WINDOW]: [0.95, 0.85, 0.6],
+  [BUS_DOOR]: [0.7, 0.62, 0.45],
+  [SIGN]: [1.6, 0.55, 0.08],
+};
 /** Painted bodies' edges are rounded off by this share of their smallest side. */
 const BODY_ROUNDING = 0.14;
 const WHEEL_SEGMENTS = 10;
@@ -67,7 +82,38 @@ export interface TrafficViewOptions {
 }
 
 /** How much each part mirrors the sky (skyReflection's per-vertex shine): glossy paint, glass, dull trim, no tyres. */
-const SHINE: Readonly<Record<number, number>> = { [PAINT]: 0.85, [GLASS]: 1, [TRIM]: 0.25, [TYRE]: 0, [HUB]: 0.6 };
+const SHINE: Readonly<Record<number, number>> = {
+  [PAINT]: 0.85,
+  [GLASS]: 1,
+  [TRIM]: 0.25,
+  [TYRE]: 0,
+  [HUB]: 0.6,
+  [BUS_WHITE]: 0.85,
+  [BUS_WINDOW]: 1,
+  [BUS_DOOR]: 1,
+  [SIGN]: 0.4,
+};
+/**
+ * The traffic's own light, over its lighting: only the painted parts take
+ * the vehicle's paint (the instance colour), and what glows at night (GLOW)
+ * glows as bright as the lamps shine (nightLights).
+ */
+const OWN_LIGHT_VERTEX_PARS = /* glsl */ `
+attribute float paint;
+attribute vec3 glow;
+varying vec3 vGlow;
+`;
+const OWN_LIGHT_COLOR = /* glsl */ `
+vColor = vec4( color, 1.0 );
+#ifdef USE_INSTANCING_COLOR
+  vColor.rgb *= mix( vec3( 1.0 ), instanceColor.rgb, paint );
+#endif
+vGlow = glow;
+`;
+const OWN_LIGHT_FRAGMENT_PARS = /* glsl */ `
+uniform float nightLights;
+varying vec3 vGlow;
+`;
 
 /**
  * Draws the NPC traffic (roadmap step 22): one instanced mesh per kind of
@@ -98,6 +144,8 @@ export class TrafficView implements TrafficHeadlamps {
   private readonly shadows: InstancedMesh;
   private readonly shadowTexture: DataTexture;
   private readonly shadowSizes: readonly (readonly [number, number])[];
+  /** How brightly what glows at night glows (GLOW, setLamps). */
+  private readonly nightLights = { value: 0 };
   private readonly matrix = new Matrix4();
   private readonly lampMatrix = new Matrix4();
   private readonly shadowMatrix = new Matrix4();
@@ -124,6 +172,7 @@ export class TrafficView implements TrafficHeadlamps {
     if (options.sky !== undefined) {
       reflectSky(this.material, options.sky, { facing: 0.05, perVertex: true });
     }
+    this.lightOwn(this.material);
     this.meshes = types.map((type, index) => {
       const mesh = new InstancedMesh(merged(shapes[index]!.parts), this.material, instances);
       mesh.name = `traffic:${type.id}`;
@@ -179,8 +228,9 @@ export class TrafficView implements TrafficHeadlamps {
     scene.add(this.root);
   }
 
-  /** How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night). Cheap to call every frame. */
+  /** How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night), and the buses' insides and signs. Cheap to call every frame. */
   setLamps(level: number): void {
+    this.nightLights.value = level;
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
   }
@@ -362,6 +412,24 @@ export class TrafficView implements TrafficHeadlamps {
     this.glows.dispose();
   }
 
+  /** Gives `material` the traffic's own light (OWN_LIGHT_*), after whatever it does to its shaders already. */
+  private lightOwn(material: MeshLambertMaterial): void {
+    const previous = material.onBeforeCompile.bind(material);
+    const key = material.customProgramCacheKey();
+    const nightLights = this.nightLights;
+    material.onBeforeCompile = (shader, renderer) => {
+      previous(shader, renderer);
+      shader.uniforms['nightLights'] = nightLights;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\n${OWN_LIGHT_VERTEX_PARS}`)
+        .replace('#include <color_vertex>', OWN_LIGHT_COLOR);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\n${OWN_LIGHT_FRAGMENT_PARS}`)
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vGlow * nightLights;');
+    };
+    material.customProgramCacheKey = () => `${key}|traffic-own-light`;
+  }
+
   /**
    * Places the lamps of a vehicle of kind `type` at (x, z), facing `heading`,
    * from lamp instance `first` on (and their glows, when `glowing`). Returns
@@ -481,17 +549,55 @@ function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
     }
     case 'bus': {
       const wheel = 0.48;
-      const floor = 0.4;
-      const body = height - floor;
+      const floor = 0.36;
+      // The livery's paint up to the windows, white above; the windows' band with pillars between the panes. The roof
+      // stands low enough for the air-conditioning to make up the bus's height.
+      const roof = height - 0.22;
+      const belt = floor + (roof - floor) * 0.4;
+      const windowTop = roof - 0.3;
+      const windowHeight = windowTop - belt - 0.06;
+      const windowY = belt + 0.03 + windowHeight / 2;
+      const front = length / 2;
+      // Two doors on the kerb side (-X: the right, facing +Z): at the front, and in the middle.
+      const doorWidth = 1.15;
+      const doors = [front - 0.95, 0.4];
+      const panes: BufferGeometry[] = [];
+      const pane = (side: number, fromZ: number, toZ: number): void => {
+        panes.push(box(0.03, windowHeight, toZ - fromZ, side * (width / 2 + 0.004), windowY, (fromZ + toZ) / 2, BUS_WINDOW));
+      };
+      // Panes from behind the front door to the back, each run split by pillars.
+      const runs: [number, number, number][] = [
+        [1, -front + 0.7, front - 1.9],
+        [-1, doors[1]! + doorWidth / 2 + 0.15, front - 1.9],
+        [-1, -front + 0.7, doors[1]! - doorWidth / 2 - 0.15],
+      ];
+      for (const [side, fromZ, toZ] of runs) {
+        const count = Math.max(1, Math.round((toZ - fromZ) / 1.9));
+        const step = (toZ - fromZ) / count;
+        for (let i = 0; i < count; i++) {
+          pane(side, fromZ + i * step + 0.06, fromZ + (i + 1) * step - 0.06);
+        }
+      }
       return {
         parts: [
-          rounded(width, body, length, 0, floor + body / 2, 0, PAINT),
-          box(width + 0.02, body * 0.36, length * 0.84, 0, floor + body * 0.66, -length * 0.03, GLASS),
-          box(width * 0.92, body * 0.5, 0.04, 0, floor + body * 0.6, length / 2 + 0.01, GLASS),
+          // The painted skirt is square below; the white body above is rounded along the roof.
+          box(width, belt - floor + 0.02, length, 0, (floor + belt) / 2, 0, PAINT),
+          rounded(width, roof - belt, length, 0, (belt + roof) / 2, 0, BUS_WHITE),
+          ...panes,
+          // The driver's side window, the tall windscreen and the route sign over it.
+          box(0.03, windowHeight, 1.3, width / 2 + 0.004, windowY, front - 1.05, BUS_WINDOW),
+          box(width * 0.9, windowTop - floor - 0.55, 0.04, 0, (windowTop + floor + 0.55) / 2, front + 0.005, GLASS),
+          box(width * 0.72, 0.24, 0.04, 0, windowTop + 0.15, front + 0.007, SIGN),
+          ...doors.map((z) => box(0.03, windowTop - floor - 0.12, doorWidth, -(width / 2 + 0.005), (windowTop + floor + 0.12) / 2, z, BUS_DOOR)),
+          // The rear window, the roof's air-conditioning, the bumpers and the skirt.
+          box(width * 0.8, 0.7, 0.04, 0, windowTop - 0.4, -front + 0.005, GLASS),
+          box(width * 0.62, height - roof, 2.6, 0, (roof + height) / 2, -length * 0.08, BUS_WHITE),
           box(width + 0.03, 0.14, length, 0, floor + 0.07, 0, TRIM),
-          ...wheels(width, wheel, [length / 2 - 2.4, -length / 2 + 2.8]),
+          box(width * 0.96, 0.32, 0.1, 0, floor + 0.2, front - 0.03, TRIM),
+          box(width * 0.96, 0.32, 0.1, 0, floor + 0.2, -front + 0.03, TRIM),
+          ...wheels(width, wheel, [front - 2.4, -front + 2.8]),
         ],
-        lamps: lamps(width, length, floor + 0.35, 0.4),
+        lamps: lamps(width, length, floor + 0.45, 0.4),
       };
     }
   }
@@ -548,17 +654,26 @@ function wheels(width: number, radius: number, axles: readonly number[]): Buffer
   return parts;
 }
 
-/** Gives every vertex of `geometry` one colour, and the shine of the part that colour stands for (SHINE). */
+/**
+ * Gives every vertex of `geometry` one colour, the shine of the part that
+ * colour stands for (SHINE), whether it takes the vehicle's paint (the
+ * white parts only) and what it glows at night (GLOW).
+ */
 function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
   const color = new Color(hex);
+  const glow = GLOW[hex] ?? [0, 0, 0];
   const count = geometry.getAttribute('position').count;
   const colors = new Float32Array(count * 3);
+  const glows = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     colors[i * 3] = color.r;
     colors[i * 3 + 1] = color.g;
     colors[i * 3 + 2] = color.b;
+    glows.set(glow, i * 3);
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
   geometry.setAttribute('shine', new BufferAttribute(new Float32Array(count).fill(SHINE[hex] ?? 0), 1));
+  geometry.setAttribute('paint', new BufferAttribute(new Float32Array(count).fill(hex === PAINT ? 1 : 0), 1));
+  geometry.setAttribute('glow', new BufferAttribute(glows, 3));
   return geometry;
 }
