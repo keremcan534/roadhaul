@@ -54,7 +54,7 @@ import {
 } from './buildingParts';
 import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
-import { glossyUnderLamps } from './LampLighting';
+import { wetUnderLamps } from './LampLighting';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
@@ -685,7 +685,7 @@ export class TrackView {
    * the lamps at night: LampLighting).
    */
   private wettable(material: MeshBasicMaterial): MeshBasicMaterial {
-    glossyUnderLamps(material);
+    wetUnderLamps(material);
     const wet = this.wet;
     material.onBeforeCompile = (shader) => {
       shader.uniforms['wetness'] = wet.wetness;

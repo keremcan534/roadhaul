@@ -46,6 +46,7 @@ import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { RainView } from './presentation/weather/RainView';
 import { LampLighting, type LampLightingOptions } from './presentation/world/LampLighting';
+import { WetReflections, type MirroredLamps } from './presentation/world/WetReflections';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { BirdsView } from './presentation/world/BirdsView';
@@ -120,15 +121,16 @@ const SOFTWARE_CLOUD_SHARE = 0.5;
 const SOFTWARE_MAX_STEPS_PER_FRAME = 12;
 /**
  * How many lamps light the night (LampLighting), per graphics preset: the
- * nearest street lamps and vehicles, and whether wet roads mirror them. Drawn
- * in software (with ?lamps=1), as few as on the low preset, but the shaders
- * stay whole.
+ * nearest street lamps and vehicles. Drawn in software (with ?lamps=1), as
+ * few as on the low preset, but the shaders stay whole.
  */
 const LAMP_LIGHTS: Readonly<Record<QualityLevel, LampLightingOptions>> = {
-  low: { streetLamps: 3, trafficVehicles: 0, wetGloss: false },
+  low: { streetLamps: 3, trafficVehicles: 0 },
   medium: { streetLamps: 6, trafficVehicles: 1 },
   high: {},
 };
+/** How many lamps a wet road mirrors at most (WetReflections), per graphics preset: none on the low one. */
+const MIRRORED_LAMPS: Readonly<Record<QualityLevel, number>> = { low: 0, medium: 48, high: 96 };
 const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
 /** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
 const CLOCK_KEEP_SECONDS = 30;
@@ -253,6 +255,11 @@ async function start(): Promise<void> {
   const lampGlows = config.rendering.lampGlows;
   const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows, castShadows });
   lampLighting.setStreetLamps(streetLamps.lampLights());
+  // Wet roads mirror the lamps: a streak of light under each, as far as the eye sees them. Not where they light
+  // nothing (?lamps=0, software), nor on the low preset.
+  const mirroredLamps = lampLight ? MIRRORED_LAMPS[config.rendering.quality] : 0;
+  const wetReflections = mirroredLamps > 0 ? new WetReflections(renderHost.scene, mirroredLamps) : null;
+  wetReflections?.setStreetLamps(streetLamps.lampLights());
   new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
     anisotropy: renderHost.anisotropy,
     prelit,
@@ -289,6 +296,8 @@ async function start(): Promise<void> {
     castShadows,
     sky: environment.sky,
   });
+  /** What carries lamps for a wet road to mirror: the truck (set every frame: it changes in the garage) and the traffic. */
+  const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
@@ -1167,6 +1176,8 @@ async function start(): Promise<void> {
         cameraRig.update(pose, vehicle, deltaSeconds);
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
+        mirroredSources[0] = truck;
+        wetReflections?.update(renderHost.camera, wetness, weather.rain, lamps, paused ? 0 : deltaSeconds, mirroredSources);
         environment.setWetness(wetness);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);

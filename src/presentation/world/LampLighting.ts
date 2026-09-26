@@ -13,7 +13,7 @@ import {
 import type { PrelitMaterials } from './lighting';
 
 /** Headlights: a neutral LED white, a touch warm. */
-const HEADLIGHT_COLOR = 0xfff2e2;
+export const HEADLIGHT_COLOR = 0xfff2e2;
 /**
  * A headlight's peak intensity at full level, in the scene's light units
  * (the light on a surface square to the beam one meter away). With the beam
@@ -21,11 +21,11 @@ const HEADLIGHT_COLOR = 0xfff2e2;
  * times as brightly as the moon does, half as brightly some 50 m out, and
  * fades into the dark by about 100 m (further on the right).
  */
-const HEADLIGHT_PEAK = 14000;
+export const HEADLIGHT_PEAK = 14000;
 /** Street lamps: a warm white. */
-const STREET_LAMP_COLOR = 0xffcf96;
+export const STREET_LAMP_COLOR = 0xffcf96;
 /** A street lamp's intensity straight down: the road under it about five times as bright as by the moon. */
-const STREET_LAMP_PEAK = 220;
+export const STREET_LAMP_PEAK = 220;
 /**
  * No surface takes more light than this from one lamp (a little over twice
  * a clear day's): a camera's exposure, which the night scene does not
@@ -74,20 +74,10 @@ const STREET_LAMP_RANGE_METERS = 44;
  * a matt surface does at a grazing angle (road lighting's luminance
  * coefficients): the ground takes the cosine of a headlight's angle to it to
  * this power, not to the first. A wet road loses most of it: it mirrors the
- * light away instead, to this power.
+ * light away instead (WetReflections draws what it mirrors), to this power.
  */
 const GROUND_BACKSCATTER = 0.35;
 const WET_BACKSCATTER = 0.75;
-/**
- * A wet road mirrors the lamps (glossyUnderLamps): a Beckmann lobe this
- * rough when damp, this rough when streaming with rain, stretched this much
- * along the view (the ripples of the rain), so each lamp ahead lays a streak
- * of light on the road toward the eye. What it mirrors of one lamp is kept
- * under this (a camera's highlights), so a streak glows rather than blinds.
- */
-const WET_ROUGHNESS = [0.12, 0.035] as const;
-const WET_STRETCH = 2.5;
-const MOST_MIRRORED = 1.5;
 /** Plants and smoke scatter the light they catch every way: this share of it, whatever way they face. */
 const SCATTERING = 0.7;
 
@@ -111,10 +101,10 @@ const STREET_LAMP_STRIDE = 5;
 /** Vehicles light the scene within this distance of the pick point. */
 const TRAFFIC_REACH_METERS = 160;
 
-/** The flags views set on what the lamps should leave alone, light every way, or mirror when wet. */
+/** The flags views set on what the lamps should leave alone, light every way, or light as a road that goes wet. */
 const UNLIT = 'lampsUnlit';
 const SCATTERS = 'lampsScatter';
-const GLOSSY = 'lampsGloss';
+const WETTABLE = 'lampsWet';
 
 /** Keeps the lamps' light off `object` and everything under it (the sky and its hills). */
 export function unlitByLamps(object: Object3D | Material): void {
@@ -131,9 +121,12 @@ export function scattersLamplight(material: Material): void {
   material.userData[SCATTERS] = true;
 }
 
-/** `material` (a pre-lit road surface) mirrors the lamps when the rain wets it (LampLighting.setWetness). */
-export function glossyUnderLamps(material: Material): void {
-  material.userData[GLOSSY] = true;
+/**
+ * `material` (a pre-lit road surface) goes wet in the rain (LampLighting.setWetness): it sends less of the
+ * headlights' light back, mirroring it away (what it mirrors is WetReflections').
+ */
+export function wetUnderLamps(material: Material): void {
+  material.userData[WETTABLE] = true;
 }
 
 /** A street lamp's light: where it shines from, and the way its head faces the road (level, unit). */
@@ -174,27 +167,13 @@ export interface TrafficHeadlamps {
 
 const f = (value: number): string => (Number.isInteger(value) ? `${value}.0` : `${value}`);
 
-const PARS = /* glsl */ `
-uniform float lampLevel;
-uniform vec3 lampUp;
-uniform vec3 headlightColor;
-uniform float headlightPeak;
-uniform vec3 truckLamps[ 2 ];
-uniform vec3 truckForward;
-uniform vec3 truckRight;
-uniform int trafficLampCount;
-uniform vec3 trafficLamps[ ${MAX_TRAFFIC_VEHICLES * 2} ];
-uniform vec3 trafficForward[ ${MAX_TRAFFIC_VEHICLES} ];
-uniform vec3 trafficRight[ ${MAX_TRAFFIC_VEHICLES} ];
-uniform float trafficStrength[ ${MAX_TRAFFIC_VEHICLES} ];
-uniform vec3 streetLampColor;
-uniform float streetLampPeak;
-uniform int streetLampCount;
-uniform vec3 streetLamps[ ${MAX_STREET_LAMPS} ];
-uniform vec3 streetLampFacing[ ${MAX_STREET_LAMPS} ];
-uniform float streetLampFade[ ${MAX_STREET_LAMPS} ];
-
-// How strongly a low beam facing \`forward\` shines toward \`ray\` (unit, from the lamp, view space), 0..1.
+/**
+ * The beams' shapes and a lamp's light on a surface, round the up direction
+ * `lampUp` (a uniform the caller declares): lowBeam(), streetLampBeam() and
+ * lampSqueeze(). Needs three's <common> chunk.
+ */
+const BEAMS = /* glsl */ `
+// How strongly a low beam facing \`forward\` shines toward \`ray\` (unit, from the lamp, in lampUp's space), 0..1.
 float lowBeam( vec3 ray, vec3 forward, vec3 right ) {
   float ahead = dot( ray, forward );
   if ( ahead < 0.05 ) return 0.0;
@@ -230,6 +209,34 @@ float streetLampBeam( vec3 ray, vec3 facing ) {
 float lampSqueeze( float light ) {
   return light * ${f(MOST_LIGHT)} / ( ${f(MOST_LIGHT)} + light );
 }
+`;
+
+/** BEAMS with its `lampUp` uniform: for other shaders that shape the lamps' light (WetReflections), in their own space. */
+export const LAMP_BEAMS_GLSL = /* glsl */ `
+uniform vec3 lampUp;
+${BEAMS}
+`;
+
+const PARS = /* glsl */ `
+uniform float lampLevel;
+uniform vec3 lampUp;
+uniform vec3 headlightColor;
+uniform float headlightPeak;
+uniform vec3 truckLamps[ 2 ];
+uniform vec3 truckForward;
+uniform vec3 truckRight;
+uniform int trafficLampCount;
+uniform vec3 trafficLamps[ ${MAX_TRAFFIC_VEHICLES * 2} ];
+uniform vec3 trafficForward[ ${MAX_TRAFFIC_VEHICLES} ];
+uniform vec3 trafficRight[ ${MAX_TRAFFIC_VEHICLES} ];
+uniform float trafficStrength[ ${MAX_TRAFFIC_VEHICLES} ];
+uniform vec3 streetLampColor;
+uniform float streetLampPeak;
+uniform int streetLampCount;
+uniform vec3 streetLamps[ ${MAX_STREET_LAMPS} ];
+uniform vec3 streetLampFacing[ ${MAX_STREET_LAMPS} ];
+uniform float streetLampFade[ ${MAX_STREET_LAMPS} ];
+${BEAMS}
 `;
 
 /**
@@ -281,7 +288,7 @@ const PRELIT_FRAGMENT_PARS = /* glsl */ `
 ${PARS}
 uniform vec3 prelitAlbedo;
 varying vec3 vLampView;
-#ifdef LAMPS_GLOSS
+#ifdef LAMPS_WET
   uniform float lampWetness;
 #endif
 
@@ -293,7 +300,7 @@ float lampFacing( vec3 toward, bool grazing ) {
     return ${f(SCATTERING)};
   #else
     float cosine = max( dot( lampUp, toward ), 0.0 );
-    #ifdef LAMPS_GLOSS
+    #ifdef LAMPS_WET
       float backscatter = mix( ${f(GROUND_BACKSCATTER)}, ${f(WET_BACKSCATTER)}, lampWetness );
     #else
       float backscatter = ${f(GROUND_BACKSCATTER)};
@@ -301,56 +308,23 @@ float lampFacing( vec3 toward, bool grazing ) {
     return grazing ? pow( cosine, backscatter ) : cosine;
   #endif
 }
-
-#ifdef LAMPS_GLOSS
-  // How much of a lamp's light (on a surface square to it) a wet road mirrors toward the eye: a Beckmann lobe
-  // \`roughness\` wide across the view (\`across\`, level) and stretched along it, with Schlick's Fresnel term.
-  float lampGloss( vec3 toward, vec3 toEye, vec3 across, float roughness ) {
-    vec3 halfway = normalize( toward + toEye );
-    float up = max( dot( lampUp, halfway ), 1e-3 );
-    float sideways = dot( halfway, across ) / ( up * roughness );
-    float lengthways = dot( halfway, cross( across, lampUp ) ) / ( up * roughness * ${f(WET_STRETCH)} );
-    float lobe = exp( - sideways * sideways - lengthways * lengthways )
-      / ( PI * roughness * roughness * ${f(WET_STRETCH)} * pow2( up * up ) );
-    float fresnel = 0.02 + 0.98 * pow( 1.0 - max( dot( halfway, toEye ), 0.0 ), 5.0 );
-    return fresnel * lobe / ( 4.0 * max( dot( lampUp, toEye ), 0.05 ) );
-  }
-
-  // What a wet road mirrors of one lamp, none of it over MOST_MIRRORED.
-  float mirroredSqueeze( float light ) {
-    return light * ${f(MOST_MIRRORED)} / ( ${f(MOST_MIRRORED)} + light );
-  }
-#endif
 `;
 
 /**
  * After the pre-lit colour: the lamps' light on the surface's own colour
  * (the pre-lit colour over the light it was lit with), as it faces up (the
- * ground) or scatters every way; on a wet road, also what it mirrors
- * (added after the rain's sheen, with PRELIT_GLOSS_FRAGMENT).
+ * ground) or scatters every way.
  */
 const PRELIT_FRAGMENT = /* glsl */ `
-vec3 lampMirrored = vec3( 0.0 );
 if ( lampLevel > 0.0 ) {
   float headlit = 0.0;
   float streetlit = 0.0;
-  #ifdef LAMPS_GLOSS
-    bool wet = lampWetness > 0.0;
-    vec3 toEye = normalize( - vLampView );
-    vec3 across = normalize( cross( lampUp, toEye ) );
-    float roughness = mix( ${f(WET_ROUGHNESS[0])}, ${f(WET_ROUGHNESS[1])}, lampWetness );
-    float headMirrored = 0.0;
-    float streetMirrored = 0.0;
-  #endif
   for ( int i = 0; i < 2; i ++ ) {
     vec3 toLamp = truckLamps[ i ] - vLampView;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     vec3 toward = toLamp * inversesqrt( distanceSq );
     float light = headlightPeak * lowBeam( - toward, truckForward, truckRight ) / ( distanceSq + 1.0 );
     headlit += lampSqueeze( light * lampFacing( toward, true ) );
-    #ifdef LAMPS_GLOSS
-      if ( wet ) headMirrored += mirroredSqueeze( light * lampGloss( toward, toEye, across, roughness ) );
-    #endif
   }
   for ( int i = 0; i < ${MAX_TRAFFIC_VEHICLES * 2}; i ++ ) {
     if ( i >= trafficLampCount ) break;
@@ -359,9 +333,6 @@ if ( lampLevel > 0.0 ) {
     vec3 toward = toLamp * inversesqrt( distanceSq );
     float light = headlightPeak * trafficStrength[ i / 2 ] * lowBeam( - toward, trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
     headlit += lampSqueeze( light * lampFacing( toward, true ) );
-    #ifdef LAMPS_GLOSS
-      if ( wet ) headMirrored += mirroredSqueeze( light * lampGloss( toward, toEye, across, roughness ) );
-    #endif
   }
   for ( int i = 0; i < ${MAX_STREET_LAMPS}; i ++ ) {
     if ( i >= streetLampCount ) break;
@@ -371,20 +342,9 @@ if ( lampLevel > 0.0 ) {
     vec3 toward = toLamp * inversesqrt( distanceSq );
     float light = streetLampPeak * streetLampFade[ i ] * streetLampBeam( - toward, streetLampFacing[ i ] ) / ( distanceSq + 1.0 );
     streetlit += lampSqueeze( light * lampFacing( toward, false ) );
-    #ifdef LAMPS_GLOSS
-      if ( wet ) streetMirrored += mirroredSqueeze( light * lampGloss( toward, toEye, across, roughness ) );
-    #endif
   }
   outgoingLight += diffuseColor.rgb * prelitAlbedo * ( headlightColor * headlit + streetLampColor * streetlit ) * ( lampLevel * RECIPROCAL_PI );
-  #ifdef LAMPS_GLOSS
-    lampMirrored = ( headlightColor * headMirrored + streetLampColor * streetMirrored ) * ( lampLevel * lampWetness );
-  #endif
 }
-`;
-
-/** Last, over the rain's sheen: what a wet road mirrors of the lamps. */
-const PRELIT_GLOSS_FRAGMENT = /* glsl */ `
-outgoingLight += lampMirrored;
 `;
 
 /**
@@ -436,8 +396,6 @@ export interface LampLightingOptions {
   readonly streetLamps?: number;
   /** How many of the nearest vehicles' headlights light it, up to MAX_TRAFFIC_VEHICLES. Default: all of them. */
   readonly trafficVehicles?: number;
-  /** Whether wet roads mirror the lamps (glossyUnderLamps). Default: true. */
-  readonly wetGloss?: boolean;
 }
 
 /**
@@ -447,8 +405,8 @@ export interface LampLightingOptions {
  * own colour (dark asphalt dimly, road paint and grass brightly), the faces
  * of trees, posts, rails, signs, buildings and vehicles that turn to them
  * (with a highlight on paint), and fall off with the square of the
- * distance. In the rain the road mirrors them: a streak of light toward the
- * eye under each lamp ahead, and oncoming headlights glaring off it.
+ * distance. A wet road sends less of the headlights' light back: it mirrors
+ * it away, and WetReflections draws what it mirrors toward the eye.
  *
  * The headlights are low beams (ECE, right-hand traffic): a sharp cut-off,
  * the step up to the right that lights the verge further, the hot zone under
@@ -488,7 +446,6 @@ export class LampLighting {
   private readonly lit = new WeakSet<Material>();
   private readonly streetLampsShown: number;
   private readonly trafficShown: number;
-  private readonly wetGloss: boolean;
   /** Every street lamp's light in the world: x, y, z and the way it faces (x, z) per lamp. */
   private streetLampAt = new Float32Array(0);
   /** Scratch: the nearest street lamps' indices and squared distances, nearest first. */
@@ -505,7 +462,6 @@ export class LampLighting {
   constructor(options: LampLightingOptions = {}) {
     this.streetLampsShown = Math.max(0, Math.min(MAX_STREET_LAMPS, options.streetLamps ?? MAX_STREET_LAMPS));
     this.trafficShown = Math.max(0, Math.min(MAX_TRAFFIC_VEHICLES, options.trafficVehicles ?? MAX_TRAFFIC_VEHICLES));
-    this.wetGloss = options.wetGloss !== false;
     this.nearest = new Array<number>(this.streetLampsShown).fill(-1);
     this.nearestSq = new Array<number>(this.streetLampsShown).fill(Infinity);
     this.trafficWorld = Array.from({ length: this.trafficShown * 2 }, () => new Vector3());
@@ -518,7 +474,7 @@ export class LampLighting {
     this.streetLampAt = Float32Array.from(lamps.flatMap(({ x, y, z, facingX, facingZ }) => [x, y, z, facingX, facingZ]));
   }
 
-  /** How wet the roads are, 0..1 (the weather's rain): wet roads mirror the lamps. Cheap to call every frame. */
+  /** How wet the roads are, 0..1 (WeatherService.wetness): wet roads mirror the headlights away. Cheap to call every frame. */
   setWetness(level: number): void {
     this.uniforms.lampWetness.value = Math.min(1, Math.max(0, level));
   }
@@ -697,9 +653,9 @@ export class LampLighting {
     this.lit.add(material);
     const uniforms = this.uniforms;
     const scatters = material.userData[SCATTERS] === true;
-    const glossy = this.wetGloss && !scatters && material.userData[GLOSSY] === true;
-    const defines = `${scatters ? '#define LAMPS_SCATTER\n' : ''}${glossy ? '#define LAMPS_GLOSS\n' : ''}`;
-    this.chain(material, scatters ? 'lamplit-scatter' : glossy ? 'lamplit-gloss' : 'lamplit-ground', (shader) => {
+    const wettable = !scatters && material.userData[WETTABLE] === true;
+    const defines = `${scatters ? '#define LAMPS_SCATTER\n' : ''}${wettable ? '#define LAMPS_WET\n' : ''}`;
+    this.chain(material, scatters ? 'lamplit-scatter' : wettable ? 'lamplit-wet' : 'lamplit-ground', (shader) => {
       Object.assign(shader.uniforms, uniforms);
       shader.uniforms['prelitAlbedo'] = prelit.albedo;
       shader.vertexShader = shader.vertexShader
@@ -707,10 +663,8 @@ export class LampLighting {
         .replace('#include <project_vertex>', `#include <project_vertex>\n${PRELIT_VERTEX}`);
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\n${defines}${PRELIT_FRAGMENT_PARS}`)
-        // Before any later touch of the colour (the rain's wet sheen darkens it too)...
-        .replace('#include <envmap_fragment>', `#include <envmap_fragment>\n${PRELIT_FRAGMENT}`)
-        // ...but what a wet road mirrors comes last, over the sheen.
-        .replace('#include <opaque_fragment>', `${PRELIT_GLOSS_FRAGMENT}\n#include <opaque_fragment>`);
+        // Before any later touch of the colour (the rain's wet sheen darkens it too).
+        .replace('#include <envmap_fragment>', `#include <envmap_fragment>\n${PRELIT_FRAGMENT}`);
     });
   }
 
