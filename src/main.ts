@@ -44,7 +44,9 @@ import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
+import { LightningView } from './presentation/weather/LightningView';
 import { RainView } from './presentation/weather/RainView';
+import { Thunderstorm } from './presentation/weather/Thunderstorm';
 import { LampLighting, type LampLightingOptions } from './presentation/world/LampLighting';
 import { WetReflections, type MirroredLamps } from './presentation/world/WetReflections';
 import { PrelitMaterials } from './presentation/world/lighting';
@@ -300,6 +302,9 @@ async function start(): Promise<void> {
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
+  // Lightning in a storm: the flash lights the sky and the world, a bolt shows toward near strikes, thunder follows.
+  const storm = new Thunderstorm();
+  const lightning = new LightningView(renderHost.scene);
   const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const effectsState = createTruckEffectsState();
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
@@ -1179,6 +1184,16 @@ async function start(): Promise<void> {
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
         mirroredSources[0] = truck;
         wetReflections?.update(renderHost.camera, wetness, weather.rain, lamps, paused ? 0 : deltaSeconds, mirroredSources);
+        // Paused, no new strike: a flash under way still dies away. Half the strikes land where the camera looks
+        // (its world matrix's -Z column).
+        const look = renderHost.camera.matrixWorld.elements;
+        const strike = storm.update(deltaSeconds, paused ? 0 : weather.rain, Math.atan2(-look[8]!, -look[10]!));
+        if (strike !== null) {
+          lightning.strike(strike, renderHost.camera.position);
+          audio.thunder(strike.distanceMeters);
+        }
+        lightning.update(storm.flash, renderHost.camera.position);
+        environment.setLightning(storm.flash);
         environment.setWetness(wetness);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);

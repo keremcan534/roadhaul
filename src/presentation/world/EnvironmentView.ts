@@ -230,6 +230,15 @@ const RAINBOW = /* glsl */ `
     return sky * ( 1.0 - ( 0.12 * between + 0.22 * primary ) * feet ) + ( bows * 0.4 + inside * 0.05 ) * light * feet;
   }
 `;
+/**
+ * Lightning's flash (setLightning, 0..1) lights up the sky and the haze in
+ * this bluish white, the clouds by this much of their full brightness, and
+ * the world by this much of a clear day's light from the sky.
+ */
+const LIGHTNING_SKY = 0xc2cbff;
+const LIGHTNING_SKY_LEVEL = 0.85;
+const LIGHTNING_CLOUDS = 1.2;
+const LIGHTNING_SKYLIGHT = 1.3;
 /** With the moon down, the night's faint key light (the stars', the towns') comes from high up. */
 const NIGHT_KEY = new Vector3(0.25, 0.9, 0.35).normalize();
 /** The moon's glow round it, as the sun's is round the sun (times the moonlight). */
@@ -367,6 +376,9 @@ export class EnvironmentView {
   private townLight = 0;
   /** How wet the ground is (setWetness): the rain's drops still in the air, for a rainbow. */
   private wetness = 0;
+  /** How bright lightning flashes now (setLightning), and its light in the sky as it adds to the sky's colours. */
+  private lightning = 0;
+  private readonly lightningSky = new Color();
   private readonly clouds: Mesh;
   private readonly cloudGeometry: InstancedBufferGeometry;
   private readonly cloudUniforms = { brightness: { value: 1 }, drift: { value: 0 } };
@@ -487,7 +499,9 @@ export class EnvironmentView {
     const adapted = clamp(Math.sqrt(REFERENCE_SUN_SINE / Math.max(sun.y, 0.05)), 1, MAX_DAY_EXPOSURE);
     const exposure = 1 + (adapted - 1) * smoothstep(LOW_SUN_ELEVATION, DAY_ELEVATION, elevation);
     const sunlight = look.sunlight * exposure;
-    const skylight = look.skylight * exposure;
+    // A lightning flash lights the world from the whole sky.
+    const flash = this.lightning;
+    const skylight = look.skylight * exposure + flash * LIGHTNING_SKYLIGHT;
     const moonlight = look.moonlight;
     this.tint.setHex(look.lightColor);
 
@@ -510,6 +524,11 @@ export class EnvironmentView {
     const uniforms = this.skyUniforms;
     uniforms.zenith.value.setHex(look.zenithColor).multiplyScalar(exposure);
     uniforms.horizon.value.setHex(look.horizonColor).multiplyScalar(exposure);
+    if (flash > 0) {
+      this.lightningSky.setHex(LIGHTNING_SKY).multiplyScalar(flash * LIGHTNING_SKY_LEVEL);
+      uniforms.zenith.value.add(this.lightningSky);
+      uniforms.horizon.value.add(this.lightningSky);
+    }
     uniforms.groundHaze.value.copy(uniforms.horizon.value).multiplyScalar(GROUND_HAZE_SHADE);
     // The glow in the sky: round the sun while it is up and while its twilight lasts (orange at dusk), then
     // round the moon, pale.
@@ -574,7 +593,7 @@ export class EnvironmentView {
 
     this.keepSceneLight();
 
-    this.cloudUniforms.brightness.value = look.cloudBrightness * exposure;
+    this.cloudUniforms.brightness.value = look.cloudBrightness * exposure + flash * LIGHTNING_CLOUDS;
     this.showClouds(look.cloudCover);
 
     prelit?.setLight(relativeGroundLight(groundSun, skylight, this.tint, this.groundLight), groundSun);
@@ -625,6 +644,15 @@ export class EnvironmentView {
    */
   setWetness(wetness: number): void {
     this.wetness = clamp(wetness, 0, 1);
+  }
+
+  /**
+   * How bright lightning flashes now, 0..1 (Thunderstorm.flash): it lights
+   * up the sky, the haze and the clouds, and the world from the sky. Takes
+   * effect at the next applySky().
+   */
+  setLightning(flash: number): void {
+    this.lightning = clamp(flash, 0, 1);
   }
 
   /** Toward the sun (unit; below the horizon at night), as applySky() last placed it. Updated in place. */

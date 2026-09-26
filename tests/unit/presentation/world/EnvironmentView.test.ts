@@ -437,6 +437,39 @@ describe('EnvironmentView', () => {
     expect(dome(scene).fragmentShader).toContain('rainbowOver(sky, direction, up, sunDirection, sunColor, rainbow)');
   });
 
+  it('lights up the sky, the clouds and the world with a lightning flash, and lets them go dark again after it', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const prelit = new PrelitMaterials();
+    const hemisphere = scene.children.find((child) => child instanceof HemisphereLight) as HemisphereLight;
+    const cloudBrightness = (clouds(scene).material as ShaderMaterial).uniforms['brightness']!;
+    const night = skyAt(-20, 'rain');
+    const shown = (): { zenith: number; horizon: number; clouds: number; sky: number; ground: number } => {
+      view.applySky(night, placed(toward(-20, 250)), prelit);
+      const uniforms = dome(scene).uniforms;
+      return {
+        zenith: (uniforms['zenith']!.value as Color).b,
+        horizon: (uniforms['horizon']!.value as Color).b,
+        clouds: cloudBrightness.value as number,
+        sky: hemisphere.intensity,
+        ground: prelit.albedo.value.b,
+      };
+    };
+
+    const dark = shown();
+    view.setLightning(1);
+    const lit = shown();
+    view.setLightning(0);
+    const after = shown();
+
+    expect(lit.zenith).toBeGreaterThan(dark.zenith + 0.5);
+    expect(lit.horizon).toBeGreaterThan(dark.horizon + 0.5);
+    expect(lit.clouds).toBeGreaterThan(dark.clouds + 1);
+    expect(lit.sky).toBeGreaterThan(dark.sky * 2);
+    expect(lit.ground).not.toBe(dark.ground);
+    expect(after).toEqual(dark);
+  });
+
   it('glows over the towns at night on the horizon toward each: all round in one, smaller and dimmer the farther', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);
