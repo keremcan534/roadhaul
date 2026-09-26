@@ -151,6 +151,12 @@ tilt (platform/input) ─────┘                              │
   - reverse, two ways (`VehicleInput.lever`): on `auto` (the keyboard) hold the brake at a standstill to reverse; with the touch controls' D/R button (`drive`/`reverse`) the gas pedal drives the way the lever points, the brake only brakes, and the gearbox follows the lever at a standstill;
   - understeer at the truck's cornering limit (`maxLateralAccelerationG`, 0.52–0.62 g: a junction at 30 km/h fits a 14 m radius).
 
+  The steering and the pedals are made to feel natural rather than twitchy:
+  - The steering is speed-sensitive. Its whole travel spans the full lock at walking pace and the cornering limit at speed (1.15× of it), so every bit of it steers, about in proportion, and a tap of a key at 80 km/h is a nudge (0.2 g), not a swerve. Without this the first 8% of the travel reached the limit on the open road.
+  - The steering follows the input at the definition's pace at walking speed and 0.6× of it at speed (a heavy wheel). It comes back to straight 1.6× faster.
+  - The truck's path bends toward the front wheels' over about 0.15 s (its weight turning in), capped at the limit.
+  - The pedals press in and let go over a moment (keys press all the way at once), and the clutch lets go of the gear being left and takes up the next. Pulling away and braking have no jolts.
+
   All of it is data in `VehicleDefinition`. `vehicleTuning.test.ts` keeps the shipped trucks feeling like trucks.
 - **`DrivingWorld`** (`src/domain/world`) is built from a `MapDefinition`:
   - road centrelines, sampled from a Catmull-Rom curve (`RoadPath`), each of a spec §20 kind (street, ring road, highway, country road);
@@ -177,7 +183,7 @@ tilt (platform/input) ─────┘                              │
 
 ### Cameras
 
-`CameraRig` (presentation) places the camera for the mode picked: chase, cabin, hood, rear or top (spec §31), from the truck's interpolated pose and motion, allocation-free. The cameras looking ahead widen their view by up to 6° between 30 and 90 km/h, eased, so the road seems to rush past. Where the cab's parts are comes from `cabGeometry`, shared with `TruckView`, so the driver's eye sits behind the steering wheel the truck model draws. The player's drag (`LookAround`, DOM-free) turns any camera within its limits. The rear camera's picture is mirrored by flipping the canvas (`RenderHost.mirrored`), not the projection, so face culling is untouched.
+`CameraRig` (presentation) places the camera for the mode picked: chase, cabin, hood, rear or top (spec §31), from the truck's interpolated pose and motion, allocation-free. The chase camera looks along the bend the truck is taking (its path's curvature, up to 3 m aside). The cameras looking ahead widen their view by up to 6° between 30 and 90 km/h, eased, so the road seems to rush past. Where the cab's parts are comes from `cabGeometry`, shared with `TruckView`, so the driver's eye sits behind the steering wheel the truck model draws. The player's drag (`LookAround`, DOM-free) turns any camera within its limits. The rear camera's picture is mirrored by flipping the canvas (`RenderHost.mirrored`), not the projection, so face culling is untouched.
 
 ### The 2D maps
 
