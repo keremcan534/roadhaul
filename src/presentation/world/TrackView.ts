@@ -1,5 +1,4 @@
 import {
-  BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   CircleGeometry,
@@ -673,7 +672,8 @@ export class TrackView {
     }
     const dashes = this.track(
       new InstancedMesh(
-        this.track(new BoxGeometry(0.18, 0.01, DASH_LENGTH)),
+        // A flat quad facing up: only a dash's top shows.
+        this.track(new PlaneGeometry(0.18, DASH_LENGTH).rotateX(-Math.PI / 2)),
         this.overlayMaterial({ color: MARKING_COLOR }, 3),
         matrices.length,
       ),
