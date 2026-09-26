@@ -7,6 +7,7 @@ import type { NavigationService } from '../../systems/navigation/NavigationServi
 import type { RivalService } from '../../systems/rivals/RivalService';
 import type { CompanyTraffic } from '../../systems/traffic/CompanyTraffic';
 import type { Strings } from '../i18n';
+import { pickOnMap, type MapPick } from './mapPicking';
 import type { MapRoadRun, MapSketch } from './mapSketch';
 import { createCanvasTransform, type MapViewport } from './MapViewport';
 
@@ -104,6 +105,9 @@ export class MapPainter {
   private readonly driverInitials: ReadonlyMap<string, string>;
   /** Each company's colour as CSS: its trucks' arrows, and its territory's tint and rim. */
   private readonly companyColors: ReadonlyMap<string, { readonly solid: string; readonly tint: string; readonly rim: string }>;
+  /** How many of the fleet's and the rivals' markers the last paint drew (for pick). */
+  private fleetPainted = 0;
+  private rivalsPainted = 0;
 
   constructor(
     private readonly sketch: MapSketch,
@@ -166,6 +170,25 @@ export class MapPainter {
   }
 
   /** Paints the whole picture onto `context`, whose canvas is the viewport's size times `pixelRatio`. */
+  /**
+   * What a tap at (x, y), CSS px on `view`, points at on the map as last
+   * painted: a company truck's arrow, else a city's territory; null for
+   * neither.
+   */
+  pick(view: MapViewport, x: number, y: number): MapPick | null {
+    return pickOnMap(
+      view,
+      x,
+      y,
+      this.sources.fleet.markers,
+      this.fleetPainted,
+      this.sources.rivals.markers,
+      this.rivalsPainted,
+      this.sketch.cities,
+      TERRITORY_METERS,
+    );
+  }
+
   paint(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, options: PaintOptions): void {
     const canvas = context.canvas;
     context.setTransform(1, 0, 0, 1, 0, 0);
@@ -362,6 +385,7 @@ export class MapPainter {
   private paintRivals(context: CanvasRenderingContext2D, view: MapViewport, options: PaintOptions): void {
     const rivals = this.sources.rivals;
     const count = rivals.updateMarkers();
+    this.rivalsPainted = count;
     const size = Math.max(8, options.truckPixels * 0.55);
     for (let i = 0; i < count; i++) {
       const marker = rivals.markers[i]!;
@@ -382,6 +406,7 @@ export class MapPainter {
   private paintFleet(context: CanvasRenderingContext2D, view: MapViewport, options: PaintOptions): void {
     const fleet = this.sources.fleet;
     const count = fleet.updateMarkers();
+    this.fleetPainted = count;
     const size = Math.max(10, options.truckPixels * 0.7);
     for (let i = 0; i < count; i++) {
       const marker = fleet.markers[i]!;

@@ -896,7 +896,7 @@ async function start(): Promise<void> {
       paused = false;
     }
   };
-  const worldMap = new WorldMap(ui, strings, mapPainter, mapSketch, driving, { onClose: closeMap });
+  const worldMap = new WorldMap(ui, strings, mapPainter, mapSketch, driving, { rivals, company }, { onClose: closeMap });
   // The performance display, with `?debug` or switched on in Settings; its last line names the preset and GPU for test reports.
   const perfOverlay = new PerfOverlay(ui, `${quality} · ${renderHost.pipeline} · ${renderHost.gpu}`);
   perfOverlay.visible = config.debug.showPerfOverlay || settings.stats;
