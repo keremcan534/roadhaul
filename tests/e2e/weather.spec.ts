@@ -168,8 +168,8 @@ test('holds the season picked in Settings: the land turns at once, snow lies in 
 }, testInfo) => {
   test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
-  // A July day: the calendar's summer.
-  await openGame(page, '?lang=en&date=2026-07-15&weather=clear');
+  // A July day: the calendar's summer (the tests' own date is December's: winter).
+  await openGame(page, '?lang=en&weather=clear', { date: '2025-07-15' });
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-season', 'summer');
   await waitForFrames(page, 10);
@@ -219,7 +219,8 @@ test('holds the weather picked in Settings from the moment it is picked, keeps i
 }, testInfo) => {
   test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
-  await openGame(page, '?lang=en');
+  // An October day: rain is in season (in winter, the tests' own season, it turns to snow).
+  await openGame(page, '?lang=en', { date: '2025-10-01' });
   const html = page.locator('html');
   // A new company's day starts clear, and the weather changes as it comes.
   await expect(html).toHaveAttribute('data-weather', 'clear');
