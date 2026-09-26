@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { Validator } from '../../../../src/core/validation/Validator';
 import { TRAFFIC_VEHICLES } from '../../../../src/data/content/trafficVehicles';
 import {
+  TRAFFIC_CAR_BODIES,
   TRAFFIC_VEHICLE_KINDS,
   validateTrafficVehicleDefinition,
+  type TrafficCarBody,
   type TrafficVehicleDefinition,
 } from '../../../../src/data/definitions/TrafficVehicleDefinition';
 import { trafficVehicleFixture } from '../../../support/contentFixtures';
@@ -59,5 +61,14 @@ describe('validateTrafficVehicleDefinition', () => {
       'vehicle.colors',
     ]);
     expect(issues(trafficVehicleFixture({ colors: [] }))).toEqual(['vehicle.colors']);
+  });
+
+  it('gives a car a hatchback or a saloon body, and nothing else one', () => {
+    expect(new Set(TRAFFIC_VEHICLES.filter((vehicle) => vehicle.kind === 'car').map((vehicle) => vehicle.carBody ?? 'hatchback'))).toEqual(
+      new Set(TRAFFIC_CAR_BODIES),
+    );
+    expect(issues(trafficVehicleFixture({ kind: 'car', carBody: 'saloon' }))).toEqual([]);
+    expect(issues(trafficVehicleFixture({ kind: 'car', carBody: 'estate' as TrafficCarBody }))).toEqual(['vehicle.carBody']);
+    expect(issues(trafficVehicleFixture({ kind: 'bus', carBody: 'saloon' }))).toEqual(['vehicle.carBody']);
   });
 });
