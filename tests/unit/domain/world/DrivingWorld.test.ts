@@ -288,7 +288,9 @@ describe('DrivingWorld', () => {
     it('light the towns of the shipped region, clear of its junctions, yards and other roads', () => {
       const region = new DrivingWorld(MAPS[0]!);
       expect(region.streetLamps.length).toBeGreaterThan(100);
-      for (const lamp of region.streetLamps) {
+      // The parks' own lamps light their paths (see the parks).
+      const inPark = (x: number, z: number): boolean => region.parks.some((park) => rectangleContains(park.area, x, z));
+      for (const lamp of region.streetLamps.filter((lamp) => !inPark(lamp.x, lamp.z))) {
         const distances = region.roads.map((road) => ({ road, edge: road.distanceTo(lamp.x, lamp.z) - road.widthMeters / 2 }));
         const nearest = distances.reduce((best, entry) => (entry.edge < best.edge ? entry : best));
         // Beside a street or the ring road, never the highway or a country road.

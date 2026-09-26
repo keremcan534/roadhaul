@@ -173,7 +173,7 @@ function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: n
 }
 
 /** Uniform Catmull-Rom spline through `points`, sampled roughly every `spacing` meters. */
-function sampleCatmullRom(points: readonly Point2[], closed: boolean, spacing: number): Float64Array {
+export function sampleCatmullRom(points: readonly Point2[], closed: boolean, spacing: number): Float64Array {
   const count = points.length;
   const pointAt = (index: number): Point2 => {
     const wrapped = closed ? ((index % count) + count) % count : Math.max(0, Math.min(count - 1, index));

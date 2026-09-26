@@ -1,7 +1,6 @@
 import {
   BufferAttribute,
   BufferGeometry,
-  Color,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -10,18 +9,17 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   Quaternion,
-  ShaderMaterial,
-  UniformsLib,
-  UniformsUtils,
   Vector3,
   type Scene,
 } from 'three';
 import { shorelineXAt, type Point2 } from '../../data/definitions/MapDefinition';
 import type { Sea, ShoreRock } from '../../domain/world/DrivingWorld';
+import type { RiverPath } from '../../domain/world/RiverPath';
 import { sandImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import type { SkyUniforms } from './EnvironmentView';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
+import { createWaterMaterial } from './waterMaterial';
 
 /** The water reaches this far past the map edge, like the ground (TrackView), so it fades into the haze. */
 const FAR_METERS = 1400;
@@ -34,22 +32,12 @@ const ROW_OFFSETS_METERS = [0, 1.5, 4, 12, 40, 150] as const;
 const WATER_Y = 0.015;
 /** The water's own colour, deep blue-green, before the sky's reflection. */
 const DEEP_WATER = 0x1a5566;
-/**
- * The sun (or the moon) glitters on the sea: the waves are covered in small
- * facets, this many to a meter each way, each tilted its own way by up to
- * this much (a slope) and turning over this many times a second, and the
- * few that catch the light just right flash, as bright as this (times the
- * sun's colour). Toward a low sun they lay a glittering path on the water.
- */
-const SPARKLE_CELLS_PER_METER = 2.5;
-const SPARKLE_TILT = 0.16;
-const SPARKLE_RATE = 0.7;
-const SPARKLE_SHARPNESS = 700;
-const SPARKLE_LEVEL = 9;
 /** The beach along the natural shore: its width, and how big one texture tile of sand is. */
 const BEACH_WIDTH_METERS = 9;
 const SAND_TILE_METERS = 6;
 const BEACH_Y = 0.008;
+/** The beach stops this far short of a river's mouth either side, meters. */
+const MOUTH_BEACH_GAP_METERS = 2;
 /** Boulders at the waterline are cut into tiles this long along the shore, so those out of view are not drawn. */
 const ROCK_TILE_METERS = 600;
 const ROCK_COLOR = 0x817a70;
@@ -59,6 +47,8 @@ export interface SeaViewOptions {
   readonly anisotropy?: number;
   /** Where the pre-lit beach registers, to follow the weather's light. */
   readonly prelit?: PrelitMaterials;
+  /** The rivers: where one flows into the sea the beach breaks for its mouth. */
+  readonly rivers?: readonly RiverPath[];
 }
 
 /**
@@ -143,99 +133,7 @@ export class SeaView {
     geometry.setAttribute('shore', new BufferAttribute(shore, 1));
     geometry.setIndex(indices);
     geometry.translate(0, WATER_Y, 0);
-    const material = this.track(
-      new ShaderMaterial({
-        fog: true,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -1,
-        uniforms: {
-          ...UniformsUtils.clone(UniformsLib.fog),
-          zenith: sky.zenith,
-          horizon: sky.horizon,
-          sunColor: sky.sunColor,
-          sunDirection: sky.sunDirection,
-          deepColor: { value: new Color(DEEP_WATER) },
-          time: this.time,
-        },
-        vertexShader: /* glsl */ `
-          #include <common>
-          #include <fog_pars_vertex>
-          attribute float shore;
-          varying vec3 vWorld;
-          varying float vShore;
-          void main() {
-            vec4 world = modelMatrix * vec4(position, 1.0);
-            vWorld = world.xyz;
-            vShore = shore;
-            vec4 mvPosition = viewMatrix * world;
-            gl_Position = projectionMatrix * mvPosition;
-            #include <fog_vertex>
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          #include <common>
-          #include <fog_pars_fragment>
-          uniform vec3 zenith;
-          uniform vec3 horizon;
-          uniform vec3 sunColor;
-          uniform vec3 sunDirection;
-          uniform vec3 deepColor;
-          uniform float time;
-          varying vec3 vWorld;
-          varying float vShore;
-          // One ripple: its slope along x and z where it passes p.
-          vec2 ripple(vec2 p, vec2 k, float speed, float height) {
-            return k * (height * cos(dot(p, k) + time * speed));
-          }
-          // A hash of a cell, 0..1, steady on large coordinates.
-          float cellHash(vec2 cell) {
-            vec3 q = fract(vec3(cell.xyx) * 0.1031);
-            q += dot(q, q.yzx + 33.33);
-            return fract((q.x + q.y) * q.z);
-          }
-          void main() {
-            vec2 p = vWorld.xz;
-            vec2 slope = ripple(p, vec2(0.21, 0.09), 1.1, 0.16)
-              + ripple(p, vec2(-0.11, 0.26), 1.5, 0.12)
-              + ripple(p, vec2(0.43, -0.31), 2.3, 0.05)
-              + ripple(p, vec2(-0.07, -0.67), 3.1, 0.03);
-            vec3 toEye = cameraPosition - vWorld;
-            // Far off, the ripples are finer than a pixel: they average out into calm water instead of stripes.
-            slope *= 0.3 + 0.7 * (1.0 - smoothstep(60.0, 450.0, length(toEye)));
-            toEye = normalize(toEye);
-            vec3 normal = normalize(vec3(-slope.x, 1.0, -slope.y));
-            // The sky shows in the water, the more the flatter it is seen.
-            float fresnel = 0.02 + 0.68 * pow(1.0 - max(dot(normal, toEye), 0.0), 5.0);
-            vec3 mirrored = reflect(-toEye, normal);
-            vec3 sky = mix(horizon * 0.85, zenith, pow(clamp(mirrored.y, 0.0, 1.0), 0.5));
-            float daylight = dot(horizon, vec3(0.2126, 0.7152, 0.0722));
-            vec3 color = mix(deepColor * (0.25 + daylight), sky, fresnel);
-            // The sun (or the moon) glitters on the ripples...
-            color += sunColor * pow(max(dot(mirrored, sunDirection), 0.0), 180.0) * 2.5;
-            // ...and sparkles on the facets that catch it: one a cell, tilted its own way as it turns over, a round
-            // point of light while it faces the sun just right. Not once the sun's disc has set.
-            vec2 cells = p * ${SPARKLE_CELLS_PER_METER.toFixed(2)};
-            vec2 cell = floor(cells);
-            float seed = cellHash(cell);
-            float turn = fract(time * ${SPARKLE_RATE.toFixed(2)} + seed) * 6.2832;
-            vec2 tilt = (vec2(cellHash(cell + 31.7), cellHash(cell + 71.3)) * 2.0 - 1.0) * ${SPARKLE_TILT.toFixed(2)};
-            vec3 facet = normalize(vec3(-slope.x - tilt.x * cos(turn), 1.0, -slope.y - tilt.y * sin(turn)));
-            float glint = pow(max(dot(reflect(-toEye, facet), sunDirection), 0.0), ${SPARKLE_SHARPNESS.toFixed(1)});
-            float point = 1.0 - smoothstep(0.1, 0.4, length(cells - cell - 0.5));
-            color += sunColor * (glint * point * ${SPARKLE_LEVEL.toFixed(1)} * smoothstep(-0.01, 0.03, sunDirection.y));
-            // Foam where the ripples break on the shore, coming and going.
-            float surf = 0.6 + 0.4 * sin(time * 1.7 - vShore * 1.8 + slope.x * 6.0);
-            float foam = (1.0 - smoothstep(0.0, 3.0, vShore)) * surf;
-            color = mix(color, vec3(0.86, 0.9, 0.92) * (0.25 + daylight), clamp(foam, 0.0, 1.0) * 0.75);
-            gl_FragColor = vec4(color, 1.0);
-            #include <tonemapping_fragment>
-            #include <colorspace_fragment>
-            #include <fog_fragment>
-          }
-        `,
-      }),
-    );
+    const material = this.track(createWaterMaterial({ sky, time: this.time, deepColor: DEEP_WATER }));
     const water = new Mesh(geometry, material);
     water.name = 'water';
     return water;
@@ -243,7 +141,7 @@ export class SeaView {
 
   /** A strip of sand along the natural shore, broken where the quays are. Pre-lit like the ground. */
   private createBeach(sea: Sea, halfSize: number, options: SeaViewOptions): Mesh | null {
-    const stretches = openShore(sea, halfSize);
+    const stretches = openShore(sea, halfSize, riverMouths(options.rivers ?? []));
     if (stretches.length === 0) {
       return null;
     }
@@ -329,8 +227,19 @@ export class SeaView {
 }
 
 /** The stretches of shore between the quays, [fromZ, toZ], from the map's north edge to its south edge. */
-function openShore(sea: Sea, halfSize: number): [number, number][] {
-  const quays = [...sea.quays].sort((a, b) => a.fromZ - b.fromZ);
+/** Where each river that reaches the sea crosses the shore: the stretch of it (z) its opening takes, and a little more. */
+function riverMouths(rivers: readonly RiverPath[]): { fromZ: number; toZ: number }[] {
+  return rivers
+    .filter((river) => river.mouthIndex < river.pointCount)
+    .map((river) => {
+      const mouth = river.mouthIndex;
+      const reach = (river.openingHalfWidthMeters + MOUTH_BEACH_GAP_METERS) / Math.max(0.3, Math.abs(river.directionX(mouth)));
+      return { fromZ: river.z(mouth) - reach, toZ: river.z(mouth) + reach };
+    });
+}
+
+function openShore(sea: Sea, halfSize: number, mouths: readonly { fromZ: number; toZ: number }[]): [number, number][] {
+  const quays = [...sea.quays, ...mouths].sort((a, b) => a.fromZ - b.fromZ);
   const stretches: [number, number][] = [];
   let from = -halfSize;
   for (const quay of quays) {

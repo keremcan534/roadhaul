@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import {
+  isInSea,
   rectangleContains,
   rectangleCorners,
   ROAD_KINDS,
   type RectangleDefinition,
 } from '../../../../src/data/definitions/MapDefinition';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
+import { forestContains } from '../../../../src/domain/world/forests';
 import { createRouteGuidance } from '../../../../src/domain/world/roadRoute';
 import { ASPHALT } from '../../../../src/domain/world/Surface';
 
@@ -164,9 +166,10 @@ describe.each(MAPS)('map $id', (map) => {
     if (world.sea === null) {
       return;
     }
+    const shoreline = world.sea.shoreline;
     for (const road of world.roads) {
       for (let i = 0; i < road.pointCount; i++) {
-        expect(world.isWater(road.x(i), road.z(i), road.widthMeters / 2 + 10), road.id).toBe(false);
+        expect(isInSea(shoreline, road.x(i), road.z(i), road.widthMeters / 2 + 10), road.id).toBe(false);
       }
     }
     for (const building of map.buildings) {
@@ -182,6 +185,95 @@ describe.each(MAPS)('map $id', (map) => {
     // The boats lie off the quay or the shore; the cranes over the water's edge.
     expect(world.sea.boats.length).toBeGreaterThan(0);
     expect(world.sea.cranes.every((crane) => world.isOnQuay(crane.x, crane.z))).toBe(true);
+  });
+
+  it('crosses its rivers only on bridges, near a right angle and clear of junctions', () => {
+    for (const [roadIndex, road] of world.roads.entries()) {
+      const bridges = world.bridges.filter((bridge) => bridge.roadIndex === roadIndex);
+      for (let i = 0; i < road.pointCount; i++) {
+        const along = road.distances[i]!;
+        if (bridges.some((bridge) => along >= bridge.fromMeters && along <= bridge.toMeters)) {
+          continue;
+        }
+        // Off the bridges, no paved width reaches over a channel.
+        expect(world.isRiver(road.x(i), road.z(i), road.widthMeters / 2), `${road.id} at ${Math.round(along)} m`).toBe(false);
+      }
+    }
+    for (const bridge of world.bridges) {
+      const river = world.rivers[bridge.riverIndex]!;
+      let nearest = 0;
+      for (let i = 1; i < river.pointCount; i++) {
+        if (Math.hypot(river.x(i) - bridge.x, river.z(i) - bridge.z) < Math.hypot(river.x(nearest) - bridge.x, river.z(nearest) - bridge.z)) {
+          nearest = i;
+        }
+      }
+      const cosine = Math.abs(Math.sin(bridge.heading) * river.directionX(nearest) + Math.cos(bridge.heading) * river.directionZ(nearest));
+      expect(Math.acos(cosine), `bridge on ${world.roads[bridge.roadIndex]!.id}`).toBeGreaterThan((45 * Math.PI) / 180);
+      expect(bridge.toMeters - bridge.fromMeters).toBeLessThan(80);
+      for (const junction of world.network.junctions) {
+        expect(Math.hypot(junction.x - bridge.x, junction.z - bridge.z)).toBeGreaterThan(80);
+      }
+    }
+  });
+
+  it('keeps its buildings, yards, lots, fields, turbines and the spawn off the rivers', () => {
+    const offRiver = (x: number, z: number, margin: number): boolean => !world.isRiver(x, z, margin);
+    for (const building of map.buildings) {
+      expect(offRiver(building.x, building.z, Math.max(building.widthMeters, building.depthMeters) / 2 + 5)).toBe(true);
+    }
+    for (const rectangle of [
+      ...map.depots.map((depot) => depot.yard),
+      ...map.restAreas.map((area) => area.lot),
+      ...world.fields.map((field) => field.area),
+    ]) {
+      for (const [x, z] of rectangleCorners(rectangle)) {
+        expect(offRiver(x, z, 5)).toBe(true);
+      }
+      expect(offRiver(rectangle.x, rectangle.z, 5)).toBe(true);
+    }
+    for (const turbine of map.windTurbines) {
+      expect(offRiver(turbine.x, turbine.z, 20)).toBe(true);
+    }
+    expect(offRiver(map.spawn.x, map.spawn.z, 20)).toBe(true);
+  });
+
+  it('grows its forests beside its roads, not across them, and fills them with trees', () => {
+    for (const forest of world.forests) {
+      for (const road of world.roads) {
+        for (let i = 0; i < road.pointCount; i++) {
+          expect(forestContains(forest, road.x(i), road.z(i)), `${forest.id}, ${road.id} sample ${i}`).toBe(false);
+        }
+      }
+      const trees = world.trees.filter((tree) => forestContains(forest, tree.x, tree.z));
+      expect(trees.length, forest.id).toBeGreaterThan(300);
+    }
+  });
+
+  it('lays its parks out in its towns, clear of the roads, pavements, buildings and yards', () => {
+    for (const park of world.parks) {
+      const { area } = park;
+      for (const road of world.roads) {
+        for (let i = 0; i < road.pointCount; i++) {
+          expect(rectangleContains(area, road.x(i), road.z(i), road.widthMeters / 2 + 4), `${park.id}, ${road.id}`).toBe(false);
+        }
+      }
+      for (const building of map.buildings) {
+        const corners = rectangleCorners({ x: building.x, z: building.z, headingDegrees: 0, lengthMeters: building.depthMeters, widthMeters: building.widthMeters });
+        expect(corners.some(([x, z]) => rectangleContains(area, x, z, 2)), park.id).toBe(false);
+        expect(rectangleContains(area, building.x, building.z, 2), park.id).toBe(false);
+      }
+      for (const yard of map.depots.map((depot) => depot.yard)) {
+        expect(rectangleCorners(yard).some(([x, z]) => rectangleContains(area, x, z, 2)), park.id).toBe(false);
+      }
+      for (const [x, z] of rectangleCorners(area)) {
+        expect(world.surfaceAt(x, z)).not.toBe(ASPHALT);
+      }
+      const inPark = (x: number, z: number): boolean => rectangleContains(area, x, z);
+      expect(world.trees.filter((tree) => inPark(tree.x, tree.z)).length, park.id).toBeGreaterThan(12);
+      expect(world.streetFurniture.filter((piece) => piece.kind === 'bench' && inPark(piece.x, piece.z)).length, park.id).toBeGreaterThan(6);
+      expect(world.streetLamps.filter((lamp) => inPark(lamp.x, lamp.z)).length, park.id).toBeGreaterThan(3);
+    }
+    expect(world.parks.length).toBeGreaterThanOrEqual(map.depots.length);
   });
 
   it('has every kind of road (spec §20)', () => {

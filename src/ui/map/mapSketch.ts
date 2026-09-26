@@ -1,5 +1,6 @@
 import { shorelineXAt, type FieldCrop, type RectangleDefinition, type RoadKind } from '../../data/definitions/MapDefinition';
 import type { DrivingWorld, Sea } from '../../domain/world/DrivingWorld';
+import type { RiverPath } from '../../domain/world/RiverPath';
 
 /** Road runs keep at most this many points, so each run's bounds stay tight for culling. */
 export const MAX_RUN_POINTS = 32;
@@ -9,6 +10,9 @@ export const SIMPLIFY_TOLERANCE_METERS = 1.5;
 const MARGIN_METERS = 150;
 /** The sea's polygon reaches this far west of the map, past anything a map zooms out to. */
 const SEA_REACH_METERS = 20_000;
+/** A river is drawn this much wider each side than its water, meters, and from every this many of its samples. */
+const RIVER_MAP_WIDENING_METERS = 3;
+const RIVER_MAP_SAMPLE_STEP = 3;
 
 /** An axis-aligned box on the ground, meters. */
 export interface MapBox {
@@ -77,6 +81,12 @@ export interface MapSketch {
   readonly pavedAreas: readonly MapPavedArea[];
   /** The sea west of the shore, reaching far past the drawn area; null when the world has none. */
   readonly sea: MapPavedArea | null;
+  /** Each river's water as a polygon, from its source to its mouth. */
+  readonly rivers: readonly MapPavedArea[];
+  /** Each forest's outline. */
+  readonly forests: readonly MapPavedArea[];
+  /** Each park's rectangle. */
+  readonly parks: readonly MapPavedArea[];
   readonly fields: readonly MapField[];
   /** Where the wind turbines stand. */
   readonly windTurbines: readonly { readonly x: number; readonly z: number }[];
@@ -139,6 +149,9 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     runs,
     pavedAreas,
     sea: world.sea === null ? null : seaArea(world.sea, world.halfSizeMeters),
+    rivers: world.rivers.map(riverArea),
+    forests: world.forests.map((forest) => polygon(forest.outline)),
+    parks: world.parks.map((park) => rectangleCorners(park.area)),
     fields,
     windTurbines,
     turningCircles,
@@ -225,6 +238,26 @@ export function splitRuns(kind: RoadKind, widthMeters: number, points: Float64Ar
     runs.push({ kind, widthMeters, points: run, minX, maxX, minZ, maxZ });
   }
   return runs;
+}
+
+/**
+ * A river's water as a polygon, a little wider than it is so it shows on the
+ * minimap: down one bank from the source to the mouth, and back up the other.
+ */
+function riverArea(river: RiverPath): MapPavedArea {
+  const half = river.halfWidthMeters + RIVER_MAP_WIDENING_METERS;
+  const last = Math.min(river.mouthIndex, river.pointCount - 1);
+  const samples: number[] = [];
+  for (let i = 0; i < last; i += RIVER_MAP_SAMPLE_STEP) {
+    samples.push(i);
+  }
+  samples.push(last);
+  const bank = (side: 1 | -1) =>
+    samples.map((i): readonly [number, number] => [
+      river.x(i) + river.directionZ(i) * half * side,
+      river.z(i) - river.directionX(i) * half * side,
+    ]);
+  return polygon([...bank(1), ...bank(-1).reverse()]);
 }
 
 /** The sea as a polygon: along the shore from north to south, then round by the far west. */

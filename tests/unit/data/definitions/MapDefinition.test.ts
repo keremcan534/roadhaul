@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { Validator } from '../../../../src/core/validation/Validator';
 import {
   isInSea,
+  polygonArea,
+  polygonContains,
   rectangleContains,
   rectangleCorners,
   shorelineXAt,
   validateMapDefinition,
   type DepotDefinition,
   type MapDefinition,
+  type RiverDefinition,
   type RoadKind,
 } from '../../../../src/data/definitions/MapDefinition';
 import { mapFixture, seaFixture } from '../../../support/contentFixtures';
@@ -238,6 +241,93 @@ describe('the sea', () => {
     expect(isInSea(shoreline, -101, 0)).toBe(true);
     expect(isInSea(shoreline, -99, 0)).toBe(false);
     expect(isInSea(shoreline, -99, 0, 2)).toBe(true);
+  });
+});
+
+describe('rivers', () => {
+  const river = (overrides: Partial<RiverDefinition> = {}): RiverDefinition => ({
+    id: 'test_river',
+    widthMeters: 20,
+    points: [
+      [40, 200],
+      [40, -200],
+    ],
+    ...overrides,
+  });
+
+  it('accepts a river flowing across the map from edge to edge', () => {
+    expect(issuePaths(mapFixture({ rivers: [river()] }))).toEqual([]);
+  });
+
+  it('asks for an id of its own, a width from 8 to 60 m and a course of two or more points on the map', () => {
+    const map = mapFixture({
+      rivers: [
+        river({ widthMeters: 7 }),
+        river({ id: 'Bad River', widthMeters: 61 }),
+        river({ id: 'test_river_2', points: [[40, 200]] }),
+        river({ id: 'test_river_3', points: [[40, 200], [40, -201]] }),
+        river(),
+      ],
+    });
+    expect(issuePaths(map)).toEqual([
+      'map.rivers[0].widthMeters',
+      'map.rivers[1].id',
+      'map.rivers[1].widthMeters',
+      'map.rivers[2].points',
+      'map.rivers[3].points[1]',
+      'map.rivers[4].id',
+    ]);
+  });
+});
+
+describe('forests and parks', () => {
+  const forest = {
+    id: 'test_wood',
+    kind: 'pine' as const,
+    outline: [
+      [20, 20],
+      [120, 20],
+      [120, 120],
+    ] as [number, number][],
+  };
+  const park = { id: 'test_park', area: { x: 0, z: -100, headingDegrees: 0, lengthMeters: 60, widthMeters: 50 } };
+
+  it('accepts a forest with an outline in the map, and a park big enough for its paths', () => {
+    expect(issuePaths(mapFixture({ forests: [forest], parks: [park] }))).toEqual([]);
+    expect(polygonArea(forest.outline)).toBeCloseTo(5000, 9);
+    expect(polygonContains(forest.outline, 100, 50)).toBe(true);
+    expect(polygonContains(forest.outline, 50, 100)).toBe(false);
+  });
+
+  it('asks each forest for an id of its own, a kind, three or more corners in the map and some ground', () => {
+    const map = mapFixture({
+      forests: [
+        { ...forest, kind: 'jungle' as never },
+        { ...forest, id: 'test_wood_2', outline: forest.outline.slice(0, 2) },
+        { ...forest, id: 'test_wood_3', outline: [...forest.outline.slice(0, 2), [120, 400]] },
+        { ...forest, id: 'test_wood_4', outline: [[0, 0], [30, 0], [30, 30]] },
+        forest,
+      ],
+    });
+    expect(issuePaths(map)).toEqual([
+      'map.forests[0].kind',
+      'map.forests[1].outline',
+      'map.forests[2].outline[2]',
+      'map.forests[3].outline',
+      'map.forests[4].id',
+    ]);
+  });
+
+  it('asks each park for an id of its own and room in the map for its paths', () => {
+    const map = mapFixture({
+      parks: [
+        { ...park, id: 'test_park_1', area: { ...park.area, widthMeters: 30 } },
+        { ...park, id: 'test_park_2', area: { ...park.area, z: -180 } },
+        park,
+        park,
+      ],
+    });
+    expect(issuePaths(map)).toEqual(['map.parks[0].area', 'map.parks[1].area', 'map.parks[3].id']);
   });
 });
 
