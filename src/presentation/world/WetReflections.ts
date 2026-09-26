@@ -2,6 +2,7 @@ import {
   AdditiveBlending,
   BufferAttribute,
   Color,
+  type DataTexture,
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
@@ -23,6 +24,7 @@ import {
   unlitByLamps,
   type StreetLampLight,
 } from './LampLighting';
+import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 
 /** The kinds of lamp a wet road mirrors, each with its own beam and colour. */
 export const MIRRORED_LAMPS = ['street', 'head', 'tail'] as const;
@@ -42,6 +44,8 @@ const TAIL_LIGHT_PEAK = 9;
 const WET_ROUGHNESS = [0.12, 0.05] as const;
 const WET_STRETCH = 4;
 const MOST_MIRRORED = 1.5;
+/** Still water in a puddle is this much smoother: it mirrors a lamp sharper and brighter. */
+const PUDDLE_SMOOTHING = 0.6;
 /** The lobe fades out this many roughnesses off its middle: the streak's quad reaches that far across, and a little more. */
 const LOBE_REACH = 2.6;
 const QUAD_MARGIN_METERS = 0.35;
@@ -114,6 +118,7 @@ const FRAGMENT = /* glsl */ `
 #include <common>
 #include <fog_pars_fragment>
 ${LAMP_BEAMS_GLSL}
+${PUDDLE_GLSL}
 uniform vec3 eye;
 uniform float roughness;
 uniform float ripple;
@@ -170,14 +175,15 @@ void main() {
   float crosswise = sin( dot( at, vec2( 3.7, -5.3 ) ) + time * 6.9 );
   vec2 slope = ripple * ( alongView * lengthwise + vec2( - alongView.y, alongView.x ) * ( crosswise * ${f(RIPPLE_SIDEWAYS)} ) );
   vec3 normal = normalize( vec3( slope.x, 1.0, slope.y ) );
-  // A Beckmann lobe round the normal, \`roughness\` wide across the view and stretched along it, with Schlick's
-  // Fresnel term.
+  // A Beckmann lobe round the normal, \`roughness\` wide across the view (less in a puddle's still water) and
+  // stretched along it, with Schlick's Fresnel term.
+  float rough = roughness * ( 1.0 - ${f(PUDDLE_SMOOTHING)} * puddleAt( at ) );
   vec3 halfway = normalize( toward + toEye );
   vec3 across = normalize( cross( normal, toEye ) );
   float up = max( dot( normal, halfway ), 1e-3 );
-  float sideways = dot( halfway, across ) / ( up * roughness );
-  float lengthways = dot( halfway, cross( across, normal ) ) / ( up * roughness * ${f(WET_STRETCH)} );
-  float lobe = exp( - sideways * sideways - lengthways * lengthways ) / ( PI * roughness * roughness * ${f(WET_STRETCH)} * pow2( up * up ) );
+  float sideways = dot( halfway, across ) / ( up * rough );
+  float lengthways = dot( halfway, cross( across, normal ) ) / ( up * rough * ${f(WET_STRETCH)} );
+  float lobe = exp( - sideways * sideways - lengthways * lengthways ) / ( PI * rough * rough * ${f(WET_STRETCH)} * pow2( up * up ) );
   float fresnel = 0.02 + 0.98 * pow( 1.0 - max( dot( halfway, toEye ), 0.0 ), 5.0 );
   float mirrored = light * fresnel * lobe / ( 4.0 * max( dot( normal, toEye ), 0.05 ) );
   vec3 color = vTint * ( mirrored * ${f(MOST_MIRRORED)} / ( ${f(MOST_MIRRORED)} + mirrored ) ) * strength;
@@ -245,6 +251,8 @@ export class WetReflections implements LampMirror {
     strength: { value: 0 },
     blocker: { value: new Vector4() },
     blockerSize: { value: new Vector3() },
+    puddleMap: { value: null as DataTexture | null },
+    puddleWetness: { value: 0 },
   };
   /** Each kind's colour (linear) and peak intensity. */
   private readonly colors: readonly Color[];
@@ -288,6 +296,7 @@ export class WetReflections implements LampMirror {
     });
     // The fog's uniforms are the material's own (three fills them in); the rest are shared with update().
     Object.assign(this.material.uniforms, this.uniforms);
+    this.uniforms.puddleMap.value = createPuddleMap();
     this.mesh = new Mesh(this.geometry, this.material);
     this.mesh.name = 'wet-reflections';
     this.mesh.frustumCulled = false;
@@ -344,6 +353,7 @@ export class WetReflections implements LampMirror {
     u.eye.value.copy(this.eye);
     const wet = Math.min(1, Math.max(0, wetness));
     u.roughness.value = WET_ROUGHNESS[0] + (WET_ROUGHNESS[1] - WET_ROUGHNESS[0]) * wet;
+    u.puddleWetness.value = wet;
     u.ripple.value = CALM_SLOPE + (RIPPLE_SLOPE - CALM_SLOPE) * Math.min(1, Math.max(0, rain));
     // The ripples tilt the water a little sideways: the lobe reaches that much farther across.
     u.reach.value = 2 * LOBE_REACH * (u.roughness.value + 2 * RIPPLE_SIDEWAYS * u.ripple.value);
@@ -413,6 +423,7 @@ export class WetReflections implements LampMirror {
     this.scene.remove(this.mesh);
     this.geometry.dispose();
     this.material.dispose();
+    this.uniforms.puddleMap.value?.dispose();
   }
 
   /**

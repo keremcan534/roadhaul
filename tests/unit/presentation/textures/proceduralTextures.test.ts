@@ -14,6 +14,7 @@ import {
   puffImage,
   officeFacadeImage,
   officeWindowLightsImage,
+  puddleImage,
   rearDoorsImage,
   softShadowImage,
   warehouseWindowLightsImage,
@@ -174,6 +175,30 @@ describe('procedural images', () => {
       expect(Math.abs(pixel(image, y, 0)[0]! - pixel(image, y, size - 1)[0]!)).toBeLessThan(24);
     }
     expect(cloudShadowImage(size).data).toEqual(image.data);
+  });
+
+  it('maps where the road holds water in grey that tiles, over the full range, a few dips the brightest', () => {
+    const size = 64;
+    const image = puddleImage(size);
+    const values: number[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const [r, g, b] = pixel(image, x, y);
+        expect(g).toBe(r);
+        expect(b).toBe(r);
+        values.push(r!);
+      }
+    }
+    expect(Math.max(...values)).toBeGreaterThan(230);
+    expect(Math.min(...values)).toBeLessThan(25);
+    // A water line high up picks out only the dips: some, not most, of the road.
+    const dips = values.filter((value) => value > 200).length / values.length;
+    expect(dips).toBeGreaterThan(0.03);
+    expect(dips).toBeLessThan(0.3);
+    for (let y = 0; y < size; y += 3) {
+      expect(Math.abs(pixel(image, 0, y)[0]! - pixel(image, size - 1, y)[0]!)).toBeLessThan(40);
+      expect(Math.abs(pixel(image, y, 0)[0]! - pixel(image, y, size - 1)[0]!)).toBeLessThan(40);
+    }
   });
 
   it('are deterministic', () => {

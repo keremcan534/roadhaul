@@ -1,4 +1,12 @@
-import { PerspectiveCamera, Scene, Vector3, type InstancedBufferAttribute, type InstancedBufferGeometry, type ShaderMaterial } from 'three';
+import {
+  PerspectiveCamera,
+  Scene,
+  Vector3,
+  type InstancedBufferAttribute,
+  type InstancedBufferGeometry,
+  type ShaderMaterial,
+  type Texture,
+} from 'three';
 import { describe, expect, it } from 'vitest';
 import { WetReflections, type LampMirror, type MirroredLamps } from '../../../../src/presentation/world/WetReflections';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
@@ -151,14 +159,15 @@ describe('WetReflections', () => {
     expect(material.depthWrite).toBe(false);
   });
 
-  it('releases its GPU resources on dispose', () => {
+  it('releases its GPU resources on dispose, the puddle map too', () => {
     const scene = new Scene();
     const reflections = new WetReflections(scene, 8);
-    const disposed = watchDisposal(gpuResources(scene));
+    const puddles = (reflections.mesh.material as ShaderMaterial).uniforms['puddleMap']!.value as Texture;
+    const disposed = watchDisposal([...gpuResources(scene), puddles]);
 
     reflections.dispose();
 
-    expect(disposed.size).toBe(2);
+    expect(disposed.size).toBe(3);
     expect(scene.children).toHaveLength(0);
   });
 });

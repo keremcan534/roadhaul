@@ -1140,6 +1140,7 @@ async function start(): Promise<void> {
         showDaylight();
         track.setLamps(lamps);
         track.setWetness(wetness);
+        track.setRain(weather.rain);
         track.update(paused ? 0 : deltaSeconds);
         roadFurniture.setLamps(lamps);
         streetLamps.setLamps(lamps);
