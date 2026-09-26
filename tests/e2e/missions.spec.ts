@@ -257,6 +257,7 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
 });
 
 test('continues the saved company after the page reloads', async ({ page }) => {
+  test.setTimeout(60_000); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?lang=en');
   await takeContract(page, 'first_package');
