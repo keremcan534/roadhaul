@@ -55,6 +55,7 @@ async function driveIn(page: Page, weather: string): Promise<void> {
 }
 
 test('starts the weather given with ?weather=, and draws the rain', async ({ page }, testInfo) => {
+  test.setTimeout(60_000); // A new game and thirty frames of rain, drawn in software beside other tests.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=rain');
