@@ -338,4 +338,18 @@ describe('RivalService', () => {
     game.rivals.catchUp(-5);
     expect(game.rivals.snapshot()).toEqual(after);
   });
+
+  it('works a long update through in steps: ten minutes at once (the debug fast-forward) come to the same as in short steps, and save', async () => {
+    const once = await newCompany(1, 5000);
+    once.rivals.update(600);
+    const stepped = await newCompany(1, 5000);
+    for (let step = 0; step < 60; step++) {
+      stepped.rivals.update(10);
+    }
+    const saved = once.rivals.snapshot();
+    expect(saved).toEqual(stepped.rivals.snapshot());
+    expect(saved.tendersPosted).toBe(1);
+    expect(saved.companies.every((company) => company.decisionSeconds > 0)).toBe(true);
+    expect(once.session.save().ok).toBe(true);
+  });
 });

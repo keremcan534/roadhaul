@@ -122,8 +122,8 @@ interface RivalState {
 const NEWS_KEPT = 8;
 /** A city changes hands only when the new leader is this much of the share ahead of the one before. */
 const LEAD_MARGIN = 0.03;
-/** While catching up with the time the game was closed, the market moves in steps this long, seconds. */
-const CATCH_UP_STEP_SECONDS = 10;
+/** The market moves at most this long at once, seconds: a longer update or catch-up is worked through in steps. */
+const MAX_STEP_SECONDS = 10;
 /** Buy-out prices are rounded to this many credits. */
 const PRICE_ROUNDING = 100;
 
@@ -417,7 +417,7 @@ export class RivalService {
     if (!(dt > 0) || !this.loaded) {
       return;
     }
-    this.advance(dt);
+    this.run(dt);
     const race = this.race;
     if (race !== null && !this.raceArrived) {
       const active = this.missions.active;
@@ -435,17 +435,13 @@ export class RivalService {
    * announced as `away`.
    */
   catchUp(seconds: number): void {
-    let left = Math.min(Math.max(0, seconds), this.fleetConfig.awayHours * 3600);
-    if (!(left > 0) || !this.loaded) {
+    const away = Math.min(Math.max(0, seconds), this.fleetConfig.awayHours * 3600);
+    if (!(away > 0) || !this.loaded) {
       return;
     }
     this.away = true;
     try {
-      while (left > 1e-9) {
-        const step = Math.min(CATCH_UP_STEP_SECONDS, left);
-        this.advance(step);
-        left -= step;
-      }
+      this.run(away);
     } finally {
       this.away = false;
     }
@@ -558,6 +554,20 @@ export class RivalService {
     }
   }
 
+  /**
+   * Works through `seconds` at most MAX_STEP_SECONDS at a time, so a long
+   * update (the debug fast-forward) or catch-up runs every timer as the
+   * fixed steps would. Allocation-free for a fixed step.
+   */
+  private run(seconds: number): void {
+    let left = seconds;
+    while (left > 1e-9) {
+      const step = Math.min(MAX_STEP_SECONDS, left);
+      this.advance(step);
+      left -= step;
+    }
+  }
+
   /** Everything that moves with time: standing wears, trucks drive, timers run, rivals think. */
   private advance(seconds: number): void {
     this.board.wear(seconds, this.config.pointsHalfLifeSeconds);
@@ -573,14 +583,16 @@ export class RivalService {
         this.advanceTruck(rival, rival.trucks[t]!, seconds);
       }
       rival.campaignCooldownSeconds = Math.max(0, rival.campaignCooldownSeconds - seconds);
+      // Never below zero when the step ends: the save takes no timer that ran out.
       rival.decisionSeconds -= seconds;
-      if (rival.decisionSeconds <= 0) {
+      while (rival.decisionSeconds <= 0) {
         rival.decisionSeconds += this.config.decisionSeconds;
         this.decide(rival, r);
       }
     }
-    this.nextTenderSeconds -= seconds;
-    if (this.nextTenderSeconds <= 0) {
+    // Held at zero until a tender can be put up (a map is being driven).
+    this.nextTenderSeconds = Math.max(0, this.nextTenderSeconds - seconds);
+    if (this.nextTenderSeconds === 0) {
       this.postTender();
     }
   }

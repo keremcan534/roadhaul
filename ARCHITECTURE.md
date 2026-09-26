@@ -334,7 +334,7 @@ Spec §65 (V3: tenders, an AI economy), for the player's request to race rival c
 - **What it listens to:** it counts the company's standing from `MissionCompleted` and `FleetJobCompleted`. It pays the leader's bonus (15%, `LeaderBonusPaid`) on a contract from a city the company leads, after the event bonus. It decides a race when the tender is delivered or failed (`TenderDecided`); the race starts at loading, and it compares the contract's delivery clock with the rival's time. When the rival has unloaded first, it announces `TenderRivalArrived`.
 - **What the company can do:** run a campaign (6,000 credits for 40 points, once every 10 minutes in a city). It can buy out a rival it is worth more than, for 1.25 times its value; the rival's trucks leave, and its standing becomes the company's (`RivalAcquired`).
 - **What it tells the UI:** a league by value (money and trucks at their price), the news of the market, and markers for the rivals' trucks and the one racing the company.
-- **Catching up:** the rivals catch up with the time the game was closed before the fleet does.
+- **Catching up:** the rivals catch up with the time the game was closed before the fleet does. Until a game is loaded (behind the main menu) the market stands still.
 - **`TenderBoard`** holds the tender on the job board. `CombinedContracts` puts it beside the contracts of the day, so `MissionService` offers, accepts and saves it like any generated contract.
 - **The Rivals page** (`RivalsPage`) shows:
   - the league;
