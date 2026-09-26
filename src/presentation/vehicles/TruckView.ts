@@ -205,7 +205,7 @@ export class TruckView {
   private readonly headlampAt: readonly [number, number, number];
   /** Where the left tail light shines from, on the body (the right one mirrors it): for a wet road to mirror. */
   private readonly taillampAt: readonly [number, number, number];
-  /** The box that stands in the way of the lamps' light to the road behind (mirrorLamps): its middle along the truck, half its length and width, its height. */
+  /** The box that stands in the way of other lamps' light (mirrorLamps, bodyBox): its middle along the truck, half its length and width, its height. */
   private readonly shadeBox: readonly [number, number, number, number];
   /** Scratch for mirrorLamps(). */
   private readonly lampAt = new Vector3();
@@ -667,15 +667,18 @@ export class TruckView {
       ),
     );
 
-    // At night: a glow on each headlight and tail light (they lean with the body), and light on the road ahead.
+    // At night: a glow on each headlight and tail light (they lean with the body, and show only from in front of
+    // them), and light on the road ahead.
     const headlightX = halfW - 0.32;
     this.glows = this.track(new LampGlows(4, GLOW_SIZE_METERS));
     for (const side of [1, -1] as const) {
       const index = side === 1 ? 0 : 1;
       this.glows.setPosition(index, side * headlightX, bumperTop + 0.2, frontZ + 0.12);
       this.glows.setColor(index, HEADLIGHT_GLOW);
+      this.glows.setFacing(index, 0, 0, 1);
       this.glows.setPosition(index + 2, side * (halfW - 0.3), R + 0.26, rearZ - 0.12);
       this.glows.setColor(index + 2, TAIL_LIGHT_GLOW);
+      this.glows.setFacing(index + 2, 0, 0, -1);
     }
     this.glows.setCount(4);
     this.body.add(this.glows.points);
@@ -812,6 +815,20 @@ export class TruckView {
     this.toWorld(-x, y, z, right);
     const heading = this.root.rotation.y;
     forward.set(Math.sin(heading), 0, Math.cos(heading));
+  }
+
+  /**
+   * The box the truck's body fills in the world as of the last update(): its
+   * middle, the way it faces (level) and half its size across, up and along
+   * it; what keeps other vehicles' headlights off the road ahead of it
+   * (LampLighting). Writes into the arguments; allocation-free.
+   */
+  bodyBox(middle: Vector3, forward: Vector3, halfSize: Vector3): void {
+    const [centre, halfLength, halfWidth, height] = this.shadeBox;
+    this.toWorld(0, height / 2, centre, middle);
+    const heading = this.root.rotation.y;
+    forward.set(Math.sin(heading), 0, Math.cos(heading));
+    halfSize.set(halfWidth, height / 2, halfLength);
   }
 
   /**

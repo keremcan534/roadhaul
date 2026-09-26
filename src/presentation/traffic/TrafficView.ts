@@ -468,8 +468,10 @@ export class TrafficView implements TrafficHeadlamps {
       for (let lamp = 0; lamp < LAMPS_PER_VEHICLE; lamp++) {
         const localX = spots[lamp * 3]!;
         const localZ = spots[lamp * 3 + 2]!;
-        // Turned by the heading, like makeRotationY.
+        // Turned by the heading, like makeRotationY: the headlights face ahead, the tail lights back.
         this.glows.setPosition(first + lamp, x + localX * cos + localZ * sin, spots[lamp * 3 + 1]!, z - localX * sin + localZ * cos);
+        const facing = lamp < 2 ? 1 : -1;
+        this.glows.setFacing(first + lamp, facing * sin, 0, facing * cos);
       }
     }
     return first + LAMPS_PER_VEHICLE;

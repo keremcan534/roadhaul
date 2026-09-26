@@ -100,6 +100,14 @@ const STREET_LAMP_SWAP_METERS = 10;
 const STREET_LAMP_STRIDE = 5;
 /** Vehicles light the scene within this distance of the pick point. */
 const TRAFFIC_REACH_METERS = 160;
+/**
+ * The truck keeps a vehicle's headlights off what lies beyond it when it
+ * stands within this far ahead of them (their beam has faded out further
+ * on), its shadow's edges soft over the first this many meters of body the
+ * light would pass through.
+ */
+const TRUCK_SHADE_REACH_METERS = 120;
+const TRUCK_SHADE_SOFT_METERS = 0.3;
 
 /** The flags views set on what the lamps should leave alone, light every way, or light as a road that goes wet. */
 const UNLIT = 'lampsUnlit';
@@ -142,6 +150,12 @@ export interface StreetLampLight {
 export interface Headlamps {
   /** Writes where the left and right lamps are in the world, and the way they face (level). */
   headlamps(left: Vector3, right: Vector3, forward: Vector3): void;
+  /**
+   * Writes the box its body fills in the world: its middle, the way it faces
+   * (level) and half its size across, up and along it (x, y, z). What keeps
+   * the other vehicles' headlights off what lies beyond it.
+   */
+  bodyBox(middle: Vector3, forward: Vector3, halfSize: Vector3): void;
 }
 
 /** The traffic's headlamps (TrafficView). */
@@ -236,7 +250,33 @@ uniform int streetLampCount;
 uniform vec3 streetLamps[ ${MAX_STREET_LAMPS} ];
 uniform vec3 streetLampFacing[ ${MAX_STREET_LAMPS} ];
 uniform float streetLampFade[ ${MAX_STREET_LAMPS} ];
+uniform vec3 truckBox;
+uniform vec3 truckBoxAlong;
+uniform vec3 truckBoxAcross;
+uniform vec3 truckBoxSize;
+uniform float trafficShaded[ ${MAX_TRAFFIC_VEHICLES} ];
 ${BEAMS}
+
+// How much of the light from \`lamp\` the truck's body keeps off \`at\` (both in view space), 0..1: all of it where
+// the light would pass through the box the body fills (truckBox its middle, truckBoxAlong and truckBoxAcross the
+// ways it faces and to its right, truckBoxSize half its size across, up and along), fading in over the first
+// few tens of centimetres of it, so the shadow's edges are soft.
+float truckBlocks( vec3 at, vec3 lamp ) {
+  vec3 a = at - truckBox;
+  vec3 b = lamp - truckBox;
+  a = vec3( dot( a, truckBoxAcross ), dot( a, lampUp ), dot( a, truckBoxAlong ) );
+  b = vec3( dot( b, truckBoxAcross ), dot( b, lampUp ), dot( b, truckBoxAlong ) );
+  vec3 d = b - a;
+  // Along a way the light barely moves, a tiny step: it stays in that slab, or out of it.
+  d = mix( vec3( 1e-5 ), d, step( 1e-5, abs( d ) ) );
+  vec3 t1 = ( - truckBoxSize - a ) / d;
+  vec3 t2 = ( truckBoxSize - a ) / d;
+  vec3 nearer = min( t1, t2 );
+  vec3 farther = max( t1, t2 );
+  float enter = max( max( nearer.x, nearer.y ), max( nearer.z, 0.0 ) );
+  float leave = min( min( farther.x, farther.y ), min( farther.z, 1.0 ) );
+  return smoothstep( 0.0, ${f(TRUCK_SHADE_SOFT_METERS)}, ( leave - enter ) * length( d ) );
+}
 `;
 
 /**
@@ -261,8 +301,10 @@ vec3 lampScatter( vec3 at ) {
     if ( i >= trafficLampCount ) break;
     vec3 toLamp = trafficLamps[ i ] - at;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
-    headlit += headlightPeak * trafficStrength[ i / 2 ]
+    float light = headlightPeak * trafficStrength[ i / 2 ]
       * lowBeam( - toLamp * inversesqrt( distanceSq ), trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
+    if ( light > 0.0 && trafficShaded[ i / 2 ] > 0.0 ) light *= 1.0 - truckBlocks( at, trafficLamps[ i ] );
+    headlit += light;
   }
   for ( int i = 0; i < ${MAX_STREET_LAMPS}; i ++ ) {
     if ( i >= streetLampCount ) break;
@@ -332,6 +374,7 @@ if ( lampLevel > 0.0 ) {
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     vec3 toward = toLamp * inversesqrt( distanceSq );
     float light = headlightPeak * trafficStrength[ i / 2 ] * lowBeam( - toward, trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
+    if ( light > 0.0 && trafficShaded[ i / 2 ] > 0.0 ) light *= 1.0 - truckBlocks( vLampView, trafficLamps[ i ] );
     headlit += lampSqueeze( light * lampFacing( toward, true ) );
   }
   for ( int i = 0; i < ${MAX_STREET_LAMPS}; i ++ ) {
@@ -371,6 +414,7 @@ if ( lampLevel > 0.0 ) {
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     lamp.direction = toLamp * inversesqrt( distanceSq );
     float light = lampLevel * headlightPeak * trafficStrength[ i / 2 ] * lowBeam( - lamp.direction, trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
+    if ( light > 0.0 && trafficShaded[ i / 2 ] > 0.0 ) light *= 1.0 - truckBlocks( geometryPosition, trafficLamps[ i ] );
     float facing = max( dot( geometryNormal, lamp.direction ), 1e-3 );
     lamp.color = headlightColor * ( lampSqueeze( light * facing ) / facing );
     RE_Direct( lamp, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
@@ -442,6 +486,11 @@ export class LampLighting {
     streetLamps: { value: Array.from({ length: MAX_STREET_LAMPS }, () => new Vector3()) },
     streetLampFacing: { value: Array.from({ length: MAX_STREET_LAMPS }, () => new Vector3(0, 0, -1)) },
     streetLampFade: { value: new Array<number>(MAX_STREET_LAMPS).fill(0) },
+    truckBox: { value: new Vector3() },
+    truckBoxAlong: { value: new Vector3(0, 0, -1) },
+    truckBoxAcross: { value: new Vector3(1, 0, 0) },
+    truckBoxSize: { value: new Vector3() },
+    trafficShaded: { value: new Array<number>(MAX_TRAFFIC_VEHICLES).fill(0) },
   };
   private readonly lit = new WeakSet<Material>();
   private readonly streetLampsShown: number;
@@ -454,6 +503,9 @@ export class LampLighting {
   private readonly left = new Vector3();
   private readonly right = new Vector3();
   private readonly forward = new Vector3();
+  /** Scratch: the truck's body's box in the world (Headlamps.bodyBox). */
+  private readonly boxMiddle = new Vector3();
+  private readonly boxForward = new Vector3();
   /** Scratch: the vehicles' lamps (pairs), headings in the world and strengths, one slot per vehicle shown. */
   private readonly trafficWorld: readonly Vector3[];
   private readonly trafficHeading: readonly Vector3[];
@@ -521,6 +573,9 @@ export class LampLighting {
     u.truckLamps.value[0]!.copy(this.left).applyMatrix4(view);
     u.truckLamps.value[1]!.copy(this.right).applyMatrix4(view);
     this.facing(this.forward, view, u.truckForward.value, u.truckRight.value);
+    truck.bodyBox(this.boxMiddle, this.boxForward, u.truckBoxSize.value);
+    u.truckBox.value.copy(this.boxMiddle).applyMatrix4(view);
+    this.facing(this.boxForward, view, u.truckBoxAlong.value, u.truckBoxAcross.value);
 
     // The point the lamps are picked round: ahead of the camera, level (the world matrix's −Z column).
     const world = camera.matrixWorld.elements;
@@ -543,10 +598,27 @@ export class LampLighting {
       u.trafficLamps.value[v * 2 + 1]!.copy(this.trafficWorld[v * 2 + 1]!).applyMatrix4(view);
       this.facing(this.trafficHeading[v]!, view, u.trafficForward.value[v]!, u.trafficRight.value[v]!);
       u.trafficStrength.value[v] = this.trafficStrength[v]!;
+      u.trafficShaded.value[v] = this.truckAhead(this.trafficWorld[v * 2]!, this.trafficHeading[v]!) ? 1 : 0;
     }
     u.trafficLampCount.value = vehicles * 2;
 
     u.streetLampCount.value = this.nearestStreetLamps(pickX, pickZ, view);
+  }
+
+  /**
+   * Whether the truck's body (as the last bodyBox() wrote it) stands where
+   * a vehicle's headlights at `lamp`, facing `forward` (both in the world),
+   * would light: ahead of them, within reach. Only then do the shaders
+   * look for its shadow.
+   */
+  private truckAhead(lamp: Vector3, forward: Vector3): boolean {
+    const size = this.uniforms.truckBoxSize.value;
+    const radius = Math.hypot(size.x, size.z);
+    const dx = this.boxMiddle.x - lamp.x;
+    const dz = this.boxMiddle.z - lamp.z;
+    const level = Math.hypot(forward.x, forward.z);
+    const ahead = level > 1e-6 ? (dx * forward.x + dz * forward.z) / level : 0;
+    return ahead > -radius && Math.hypot(dx, dz) < TRUCK_SHADE_REACH_METERS + radius;
   }
 
   /** The way `forward` (world) faces and its right, level, as `view` sees them. */

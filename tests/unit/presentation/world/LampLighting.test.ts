@@ -61,12 +61,17 @@ function meshOf(material: Material | Material[]): Mesh {
   return new Mesh(new BoxGeometry(), material);
 }
 
-/** A truck standing at the origin facing +Z, its lamps either side of its nose. */
+/** A truck standing at the origin facing +Z, its lamps either side of its nose, its body 2.5 m wide, 3.6 m tall, 6.2 m long. */
 const TRUCK: Headlamps = {
   headlamps(left, right, forward) {
     left.set(0.9, 0.8, 3.2);
     right.set(-0.9, 0.8, 3.2);
     forward.set(0, 0, 1);
+  },
+  bodyBox(middle, forward, halfSize) {
+    middle.set(0, 1.8, 0);
+    forward.set(0, 0, 1);
+    halfSize.set(1.25, 1.8, 3.1);
   },
 };
 
@@ -104,6 +109,8 @@ describe('LampLighting', () => {
     for (const material of [lambert, phong, standard]) {
       const shader = compiled(material);
       expect(occurrences(shader.fragmentShader, 'float lowBeam('), material.type).toBe(1);
+      // The truck keeps the other vehicles' headlights off what lies beyond it.
+      expect(shader.fragmentShader).toContain('truckBlocks( geometryPosition, trafficLamps[ i ] )');
       // Each lamp through the material's own lighting, after three's lights.
       expect(shader.fragmentShader.indexOf('RE_Direct( lamp')).toBeGreaterThan(shader.fragmentShader.indexOf('#include <lights_fragment_begin>'));
       expect(shader.uniforms['lampLevel']).toBe(lighting.uniforms.lampLevel);
@@ -112,6 +119,7 @@ describe('LampLighting', () => {
     const shader = compiled(ground);
     expect(occurrences(shader.fragmentShader, 'float lowBeam(')).toBe(1);
     expect(shader.vertexShader).toContain('vLampView = mvPosition.xyz;');
+    expect(shader.fragmentShader).toContain('truckBlocks( vLampView, trafficLamps[ i ] )');
     // On the pre-lit colour turned back into the surface's own, before the rain's wet sheen touches it.
     expect(shader.fragmentShader.indexOf('prelitAlbedo * (')).toBeGreaterThan(shader.fragmentShader.indexOf('#include <envmap_fragment>'));
     expect(shader.fragmentShader).not.toContain('#define LAMPS_SCATTER');
@@ -186,6 +194,7 @@ describe('LampLighting', () => {
         TRUCK.headlamps(left, right, forward);
         forward.set(0, -0.2, 0.98);
       },
+      bodyBox: TRUCK.bodyBox,
     };
     lighting.update(pitched, null, camera, 0.5);
     expect(u.lampLevel.value).toBe(0.5);
@@ -193,6 +202,53 @@ describe('LampLighting', () => {
 
     lighting.update(TRUCK, null, camera, 0);
     expect(u.lampLevel.value).toBe(0);
+  });
+
+  it("moves the truck's body into the camera's view as the box that keeps the vehicles' headlights off what lies beyond it", () => {
+    const lighting = new LampLighting();
+    const camera = cameraAt(-4, 6, -12, new Vector3(0, 1, 10));
+    const u = lighting.uniforms;
+
+    lighting.update(TRUCK, null, camera, 1);
+
+    const view = camera.matrixWorldInverse;
+    expectClose(u.truckBox.value, new Vector3(0, 1.8, 0).applyMatrix4(view));
+    expectClose(u.truckBoxAlong.value, new Vector3(0, 0, 1).transformDirection(view));
+    expectClose(u.truckBoxAcross.value, new Vector3(-1, 0, 0).transformDirection(view));
+    expectClose(u.truckBoxSize.value, new Vector3(1.25, 1.8, 3.1));
+  });
+
+  it('looks for the truck\'s shadow in the light of the vehicles it stands ahead of, within reach, and no other', () => {
+    // Each vehicle as the traffic says, one at a time: where its lamps are and the way it faces.
+    let at = new Vector3();
+    let facing = new Vector3();
+    const traffic: TrafficHeadlamps = {
+      headlampsNear(_x, _z, _reach, lamps, forwards, strengths) {
+        lamps[0]!.set(at.x + 0.8, 0.7, at.z);
+        lamps[1]!.set(at.x - 0.8, 0.7, at.z);
+        forwards[0]!.copy(facing);
+        strengths[0] = 1;
+        return 1;
+      },
+    };
+    const lighting = new LampLighting();
+    const camera = cameraAt(0, 6, -20, new Vector3(0, 1, 10));
+    const shaded = (x: number, z: number, facingX: number, facingZ: number): number => {
+      at = new Vector3(x, 0, z);
+      facing = new Vector3(facingX, 0, facingZ);
+      lighting.update(TRUCK, traffic, camera, 1);
+      return lighting.uniforms.trafficShaded.value[0]!;
+    };
+
+    // Following the truck, close or far behind it; coming the other way ahead of it; beside it, just behind its nose.
+    expect(shaded(0, -12, 0, 1)).toBe(1);
+    expect(shaded(3.5, -100, 0, 1)).toBe(1);
+    expect(shaded(-3.5, 40, 0, -1)).toBe(1);
+    expect(shaded(3.5, 2, 0, 1)).toBe(1);
+    // Ahead of it, going away; passed by it, going the other way; too far behind it for the beam to reach it.
+    expect(shaded(0, 20, 0, 1)).toBe(0);
+    expect(shaded(-3.5, -20, 0, -1)).toBe(0);
+    expect(shaded(0, -200, 0, 1)).toBe(0);
   });
 
   it('lights by the street lamps nearest a point ahead of the camera, fading those far off, and the farthest as the next one comes as near', () => {
