@@ -8,7 +8,10 @@ import { previewButton } from './upgradeCards';
 /** What the garage card of a model offers the player. */
 export interface TruckCardState {
   readonly offer: TruckOffer;
-  /** The company's truck of this model, if it owns one. */
+  /**
+   * The company's truck of this model the card is about, if it owns one:
+   * the one driven, else one in the garage, else one out with a driver.
+   */
   readonly owned: OwnedTruck | undefined;
   /** A contract is under way: trucks cannot be switched. */
   readonly busy: boolean;
@@ -16,6 +19,8 @@ export interface TruckCardState {
   readonly canAfford: (price: number) => boolean;
   /** This model is the one shown in the showroom. */
   readonly previewing: boolean;
+  /** How many trucks the company has, and how many its garage holds. */
+  readonly garage: { readonly count: number; readonly capacity: number };
 }
 
 export interface TruckCardActions {
@@ -27,9 +32,10 @@ export interface TruckCardActions {
 
 /**
  * A truck model in the garage (spec §15): a picture of it in its colours,
- * what it carries and costs, and whether the company drives it, owns it, can
- * buy it, or must level up first. Any model but the one being driven can be
- * shown in the showroom before it is bought or driven.
+ * what it carries and costs, and whether the company drives it, owns it (and
+ * how many, for the fleet), can buy it (another), or must level up first.
+ * Any model but the one being driven can be shown in the showroom before it
+ * is bought or driven.
  */
 export function truckCard(document: Document, strings: Strings, state: TruckCardState, actions: TruckCardActions): HTMLElement {
   const { offer, owned } = state;
@@ -60,9 +66,10 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
   if (!active) {
     bottom.append(previewButton(document, strings, 'preview-truck', state.previewing, () => actions.onPreview(definition.id)));
   }
+  const room = state.garage.count < state.garage.capacity;
   if (active) {
     bottom.append(element(document, 'span', 'truck-card__status', strings.t('hq.garage.inUse')));
-  } else if (owned !== undefined) {
+  } else if (owned !== undefined && owned.driverId === null) {
     const drive = button(document, 'button--primary truck-card__action', strings.t('hq.garage.drive'), 'switch-truck', () =>
       actions.onSwitch(owned.instanceId),
     );
@@ -71,6 +78,8 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
     if (state.busy) {
       bottom.append(element(document, 'span', 'truck-card__status', strings.t('hq.garage.busy')));
     }
+  } else if (owned !== undefined) {
+    bottom.append(element(document, 'span', 'truck-card__status', strings.t('hq.garage.allOut')));
   } else if (offer.locked) {
     bottom.append(element(document, 'span', 'truck-card__price', strings.money(offer.price)));
     bottom.append(element(document, 'span', 'truck-card__status', strings.t('hq.locked', { level: offer.requiredCompanyLevel })));
@@ -82,10 +91,36 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
       'buy-truck',
       () => actions.onBuy(definition.id),
     );
-    buy.disabled = !state.canAfford(offer.price);
+    buy.disabled = !room || !state.canAfford(offer.price);
     bottom.append(buy);
   }
   card.append(top, picture, body, facts, bottom);
+  // One more for the fleet, while the garage has room.
+  if (owned !== undefined) {
+    const more = element(document, 'div', 'truck-card__more');
+    more.append(element(document, 'span', 'truck-card__owned', strings.t('hq.garage.owned', { count: offer.ownedCount })));
+    if (room) {
+      const another = button(
+        document,
+        'button--secondary truck-card__action',
+        strings.t('hq.garage.buyAnother', { price: strings.money(offer.price) }),
+        'buy-another-truck',
+        () => actions.onBuy(definition.id),
+      );
+      another.disabled = !state.canAfford(offer.price);
+      more.append(another);
+    } else {
+      more.append(
+        element(
+          document,
+          'span',
+          'truck-card__full',
+          strings.t('hq.garage.full', { count: state.garage.count, capacity: state.garage.capacity }),
+        ),
+      );
+    }
+    card.append(more);
+  }
   return card;
 }
 

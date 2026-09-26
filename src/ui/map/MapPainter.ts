@@ -1,16 +1,18 @@
 import { FIELD_CROPS, type FieldCrop, type RoadKind } from '../../data/definitions/MapDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
+import type { FleetService } from '../../systems/fleet/FleetService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
 import type { Strings } from '../i18n';
 import type { MapRoadRun, MapSketch } from './mapSketch';
 import { createCanvasTransform, type MapViewport } from './MapViewport';
 
-/** What the maps show besides the world: the truck, its contract's next bay and the route there. */
+/** What the maps show besides the world: the truck, its contract's next bay and the route there, and the fleet's trucks. */
 export interface MapSources {
   readonly driving: DrivingService;
   readonly navigation: NavigationService;
   readonly missions: MissionService;
+  readonly fleet: FleetService;
 }
 
 /** How each kind of road is drawn, bottom to top: at least this wide on screen (px), its colour and its edge's. */
@@ -43,6 +45,7 @@ const COLORS = {
   restArea: '#4aa3ff',
   truck: '#ffffff',
   truckEdge: '#0d1116',
+  fleet: '#ffb020',
   label: '#f4f6f8',
   labelEdge: 'rgb(8 12 16 / 85%)',
   north: '#f0643c',
@@ -85,6 +88,8 @@ export class MapPainter {
   private readonly cityNames: readonly string[];
   private readonly pickupText: string;
   private readonly deliveryText: string;
+  /** Each driver's initials, for their truck's mark on the full map. */
+  private readonly driverInitials: ReadonlyMap<string, string>;
 
   constructor(
     private readonly sketch: MapSketch,
@@ -132,6 +137,12 @@ export class MapPainter {
     this.cityNames = sketch.cities.map((city) => strings.cityName(city.cityId));
     this.pickupText = strings.t('map.pickup');
     this.deliveryText = strings.t('map.delivery');
+    this.driverInitials = new Map(
+      sources.fleet.roster().map((offer) => {
+        const name = strings.t(`driver.${offer.definition.id}.name`);
+        return [offer.definition.id, name.split(/\s+/).map((part) => part.charAt(0)).join('').slice(0, 2)] as const;
+      }),
+    );
   }
 
   /** Paints the whole picture onto `context`, whose canvas is the viewport's size times `pixelRatio`. */
@@ -166,6 +177,7 @@ export class MapPainter {
     // Screen pixels from here on: marks keep their size whatever the zoom.
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     this.paintPlaces(context, view, options);
+    this.paintFleet(context, view, options);
     const vehicle = this.sources.driving.vehicle;
     this.paintTruck(context, view, vehicle.x, vehicle.z, vehicle.heading, options.truckPixels);
     if (options.northRimPixels > 0) {
@@ -303,8 +315,49 @@ export class MapPainter {
     }
   }
 
+  /** The fleet's trucks on their contracts: amber arrows, their drivers' initials beside them on the full map. */
+  private paintFleet(context: CanvasRenderingContext2D, view: MapViewport, options: PaintOptions): void {
+    const fleet = this.sources.fleet;
+    const count = fleet.updateMarkers();
+    const size = Math.max(10, options.truckPixels * 0.7);
+    for (let i = 0; i < count; i++) {
+      const marker = fleet.markers[i]!;
+      if (!view.sees(this.around(marker.x, marker.z), size)) {
+        continue;
+      }
+      this.paintArrow(context, view, marker.x, marker.z, marker.heading, size, COLORS.fleet, 2.5);
+      const initials = options.labels ? this.driverInitials.get(marker.driverId) : undefined;
+      if (initials !== undefined) {
+        const x = view.screenX(marker.x, marker.z);
+        const y = view.screenY(marker.x, marker.z) - size;
+        context.font = SMALL_FONT;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.lineWidth = 3;
+        context.strokeStyle = COLORS.labelEdge;
+        context.fillStyle = COLORS.fleet;
+        context.strokeText(initials, x, y);
+        context.fillText(initials, x, y);
+      }
+    }
+  }
+
   /** An arrowhead at the truck, pointing the way it faces. */
   private paintTruck(context: CanvasRenderingContext2D, view: MapViewport, x: number, z: number, heading: number, size: number): void {
+    this.paintArrow(context, view, x, z, heading, size, COLORS.truck, 3);
+  }
+
+  /** An arrowhead of `size` px in `color` at (x, z), pointing along `heading`, with a dark edge `edge` px wide. */
+  private paintArrow(
+    context: CanvasRenderingContext2D,
+    view: MapViewport,
+    x: number,
+    z: number,
+    heading: number,
+    size: number,
+    color: string,
+    edge: number,
+  ): void {
     const cx = view.screenX(x, z);
     const cy = view.screenY(x, z);
     // One meter ahead of the truck, on the screen: the arrow's direction, however the map is turned.
@@ -320,10 +373,10 @@ export class MapPainter {
     context.lineTo(cx - fx * half * 0.45, cy - fy * half * 0.45);
     context.lineTo(cx - fx * half + fy * half * 0.8, cy - fy * half - fx * half * 0.8);
     context.closePath();
-    context.lineWidth = 3;
+    context.lineWidth = edge;
     context.strokeStyle = COLORS.truckEdge;
     context.stroke();
-    context.fillStyle = COLORS.truck;
+    context.fillStyle = color;
     context.fill();
   }
 

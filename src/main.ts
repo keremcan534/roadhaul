@@ -75,6 +75,7 @@ import { PerfOverlay } from './ui/debug/PerfOverlay';
 import { installGlass } from './ui/glass';
 import { glassModeFor, isGlassMode, lensSupported } from './ui/glassMode';
 import { CompanyHq, type TruckPreview } from './ui/hq/CompanyHq';
+import { driverName, truckNumber } from './ui/hq/fleetPage';
 import type { HqTab } from './ui/hq/hqTabs';
 import { objectiveText } from './ui/hq/eventText';
 import { HudDock } from './ui/hud/HudDock';
@@ -143,6 +144,10 @@ const PEDESTRIANS: Readonly<Record<QualityLevel, number>> = { low: 40, medium: 8
 const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
 /** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
 const CLOCK_KEEP_SECONDS = 30;
+/** The company panel's fleet page moves its progress bars on this often, seconds. */
+const HQ_TICK_SECONDS = 0.5;
+/** Debug (`?debug`): F runs the fleet this many seconds on. */
+const FLEET_FAST_FORWARD_SECONDS = 600;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
 /** From this thick (0..1, morningMist) the mist hides the road ahead: the driver is told. */
@@ -218,6 +223,7 @@ async function start(): Promise<void> {
   const damage = services.resolve(ServiceKeys.damage);
   const garage = services.resolve(ServiceKeys.garage);
   const upgrades = services.resolve(ServiceKeys.upgrades);
+  const fleet = services.resolve(ServiceKeys.fleet);
   const session = services.resolve(ServiceKeys.session);
 
   // Older WebViews may only have navigator.language.
@@ -337,6 +343,7 @@ async function start(): Promise<void> {
   let shownMist = '';
   /** Seconds since the clock's time was last kept in the settings (keepClock). */
   let sinceClockKept = 0;
+  let sinceHqTick = 0;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky, light: environment.light });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
@@ -394,7 +401,7 @@ async function start(): Promise<void> {
   const hud = new MissionHud(ui, strings, missions, navigation, driving);
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
   const mapSketch = sketchWorld(driving.world);
-  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions }, strings);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet }, strings);
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
@@ -705,7 +712,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts },
+    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -723,6 +730,8 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.truckBought', { truck: strings.vehicleName(definitionId) }), 'success');
         } else if (bought.error === 'insufficientFunds') {
           toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (bought.error === 'garageFull') {
+          toasts.show(strings.t('toast.garageFull'), 'warning');
         } else {
           logger.warn(`Could not buy ${definitionId}: ${bought.error}.`);
         }
@@ -742,8 +751,47 @@ async function start(): Promise<void> {
         const switched = garage.switchTo(instanceId);
         if (switched.ok) {
           toasts.show(strings.t('toast.truckSwitched', { truck: strings.vehicleName(switched.value.definition.id) }), 'success');
+        } else if (switched.error === 'onTheRoad') {
+          toasts.show(strings.t('toast.truckOnTheRoad'), 'warning');
         } else {
           logger.warn(`Could not switch to ${instanceId}: ${switched.error}.`);
+        }
+      },
+      onHireDriver: (driverId) => {
+        const hired = fleet.hire(driverId);
+        if (hired.ok) {
+          toasts.show(strings.t('toast.driverHired', { driver: driverName(strings, hired.value.definition) }), 'success');
+        } else if (hired.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not hire ${driverId}: ${hired.error}.`);
+        }
+      },
+      onDismissDriver: (driverId) => {
+        const dismissed = fleet.dismiss(driverId);
+        if (dismissed.ok) {
+          toasts.show(strings.t('toast.driverDismissed', { driver: driverName(strings, { id: driverId }) }), 'info');
+        } else {
+          logger.warn(`Could not dismiss ${driverId}: ${dismissed.error}.`);
+        }
+      },
+      onAssignDriver: (driverId, instanceId) => {
+        const assigned = fleet.assign(driverId, instanceId);
+        if (assigned.ok) {
+          const truckName = `${strings.vehicleName(garage.trucks.find((owned) => owned.instanceId === instanceId)!.definition.id)} ${truckNumber(instanceId)}`;
+          toasts.show(strings.t('toast.fleetSentOut', { driver: driverName(strings, { id: driverId }), truck: truckName }), 'success');
+        } else {
+          logger.warn(`Could not send ${instanceId} out with ${driverId}: ${assigned.error}.`);
+        }
+      },
+      onRecallTruck: (driverId) => {
+        const instanceId = fleet.hired.find((driver) => driver.definition.id === driverId)?.truckInstanceId ?? null;
+        const recalled = fleet.recall(driverId);
+        if (recalled.ok && instanceId !== null) {
+          const truckName = `${strings.vehicleName(garage.trucks.find((owned) => owned.instanceId === instanceId)!.definition.id)} ${truckNumber(instanceId)}`;
+          toasts.show(strings.t('toast.fleetCalledBack', { truck: truckName }), 'info');
+        } else if (!recalled.ok) {
+          logger.warn(`Could not call ${driverId}'s truck back: ${recalled.error}.`);
         }
       },
       onBuyUpgrade: (upgradeId) => {
@@ -948,6 +996,24 @@ async function start(): Promise<void> {
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
+  for (const name of ['DriverHired', 'DriverDismissed', 'FleetTruckAssigned', 'FleetTruckRepaired'] as const) {
+    events.on(name, refreshHq);
+  }
+  events.on('FleetJobCompleted', ({ driverId, originCityId, destinationCityId, profit, away }) => {
+    refreshHq();
+    if (!away) {
+      const route = `${strings.cityName(originCityId)} → ${strings.cityName(destinationCityId)}`;
+      toasts.show(strings.t('toast.fleetDelivered', { driver: driverName(strings, { id: driverId }), route, profit: strings.signedMoney(profit) }), 'success');
+    }
+  });
+  events.on('FleetTruckRepaired', ({ driverId, cost }) =>
+    toasts.show(strings.t('toast.fleetRepaired', { driver: driverName(strings, { id: driverId }), cost: strings.money(cost) }), 'info'),
+  );
+  events.on('FleetCaughtUp', ({ jobs, credits }) => {
+    if (jobs > 0) {
+      toasts.show(strings.t('toast.fleetAway', { jobs: strings.number(jobs), credits: strings.signedMoney(credits) }), 'success');
+    }
+  });
   // A purchase ends any preview (refreshHq), then the truck shows what was bought.
   for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged'] as const) {
     events.on(name, () => {
@@ -1086,9 +1152,13 @@ async function start(): Promise<void> {
   }
 
   if (config.debug.showPerfOverlay) {
-    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area.
+    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area; F runs the fleet 10 minutes on.
     window.addEventListener('keydown', (event) => {
       if (event.repeat || !onRoad() || paused) {
+        return;
+      }
+      if (event.code === 'KeyF') {
+        fleet.update(FLEET_FAST_FORWARD_SECONDS);
         return;
       }
       const target = missions.target;
@@ -1141,6 +1211,8 @@ async function start(): Promise<void> {
         traffic.update(stepSeconds);
         timeOfDay.update(stepSeconds);
         weather.update(stepSeconds);
+        // The fleet's drivers work on while the player is in the panel or the menus.
+        fleet.update(stepSeconds);
         if (!onRoad()) {
           return;
         }
@@ -1273,6 +1345,11 @@ async function start(): Promise<void> {
         if (sinceClockKept > CLOCK_KEEP_SECONDS) {
           sinceClockKept = 0;
           keepClock();
+        }
+        sinceHqTick += deltaSeconds;
+        if (sinceHqTick > HQ_TICK_SECONDS) {
+          sinceHqTick = 0;
+          hq.tick();
         }
         worldMap.frame();
         restArea.visible = simulating;

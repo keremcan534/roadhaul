@@ -1180,14 +1180,18 @@ body {
   .hq__tabs {
     flex-direction: column;
     grid-area: tabs;
+    /* Five pages on a short phone: the rail scrolls rather than squeezing them. */
+    overflow-y: auto;
+    border-radius: 24px;
+    scrollbar-width: none;
   }
 
   .hq__tab {
     flex: none;
     flex-direction: column;
     gap: 3px;
-    min-height: 60px;
-    padding: 6px 2px;
+    min-height: 52px;
+    padding: 5px 2px;
     font-size: 12px;
   }
 
@@ -1897,6 +1901,212 @@ body {
   min-height: 40px;
   padding: 8px 14px;
   font-size: 15px;
+}
+
+/* Another truck of the model for the fleet, while the garage has room. */
+.truck-card__more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+}
+
+.truck-card__owned {
+  color: var(--rh-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.truck-card__full {
+  color: var(--rh-muted);
+  font-size: 12px;
+}
+
+/* The fleet page (FleetPage): the company's trucks, then its drivers and those looking for work. */
+.fleet__summary {
+  color: var(--rh-fg);
+  font-weight: 700;
+}
+
+.fleet-truck,
+.driver-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
+}
+
+.fleet-truck[data-state='you'] {
+  box-shadow:
+    var(--rh-glass-rim-inner),
+    inset 0 0 0 2px var(--rh-accent);
+}
+
+.fleet-truck[data-state='onContract'],
+.fleet-truck[data-state='settingOff'] {
+  box-shadow:
+    var(--rh-glass-rim-inner),
+    inset 0 0 0 2px #ffb020;
+}
+
+.fleet-truck__top,
+.driver-card__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-truck__title,
+.driver-card__name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.fleet-truck__damage {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fleet-truck .truck-silhouette {
+  align-self: center;
+  width: 100%;
+  max-width: 170px;
+}
+
+.fleet-truck__status,
+.driver-card__status {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.fleet-truck__hint,
+.driver-card__record {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.fleet-truck__progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fleet-truck__progress .meter {
+  flex: 1;
+}
+
+.meter--fleet .meter__fill {
+  background: #ffb020;
+  transition: transform 500ms linear;
+}
+
+.fleet-truck__time {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.fleet-truck__actions,
+.driver-card__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.fleet-truck__actions .button,
+.driver-card__bottom .button {
+  min-height: 38px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.driver-card.is-locked {
+  opacity: 0.55;
+}
+
+/* Initials in a circle, warmer the better the driver. */
+.driver-card__avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #3a4a5c;
+  color: #f4f6f8;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.driver-card__avatar[data-skill='3'] {
+  background: #2f7d4f;
+}
+
+.driver-card__avatar[data-skill='4'] {
+  background: #2b6cb0;
+}
+
+.driver-card__avatar[data-skill='5'] {
+  background: #b7791f;
+}
+
+.driver-card__stars {
+  color: #ffb020;
+  font-size: 14px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.driver-card__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.driver-card__fact {
+  display: flex;
+  gap: 5px;
+}
+
+.driver-card__fact dt {
+  color: var(--rh-muted);
+}
+
+.driver-card__fact dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.driver-card__price {
+  color: var(--rh-accent);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.driver-card__lock {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .upgrade-card__effect {

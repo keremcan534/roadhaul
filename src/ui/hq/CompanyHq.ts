@@ -3,17 +3,19 @@ import type { CompanyService } from '../../systems/company/CompanyService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
+import type { FleetService } from '../../systems/fleet/FleetService';
 import type { DailyContracts } from '../../systems/missions/DailyContracts';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
-import type { GarageService } from '../../systems/vehicles/GarageService';
+import type { GarageService, OwnedTruck } from '../../systems/vehicles/GarageService';
 import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
 import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
+import { FleetPage } from './fleetPage';
 import { truckCard } from './garageCards';
 import { HQ_TABS, type HqTab } from './hqTabs';
 import { jobCard, routeText } from './jobCards';
@@ -35,6 +37,7 @@ export interface CompanyHqServices {
   readonly upgrades: UpgradeService;
   readonly specialEvents: EventService;
   readonly dailyContracts: DailyContracts;
+  readonly fleet: FleetService;
 }
 
 /** Something shown on the truck in the showroom before it is bought: a paint, an upgrade's next level, another model. */
@@ -51,6 +54,12 @@ export interface CompanyHqActions {
   readonly onSwitchTruck: (instanceId: string) => void;
   readonly onPaintTruck: (instanceId: string, paintId: string | null) => void;
   readonly onBuyUpgrade: (upgradeId: string) => void;
+  readonly onHireDriver: (driverId: string) => void;
+  readonly onDismissDriver: (driverId: string) => void;
+  /** Sends a truck in the garage out on contracts with a hired driver. */
+  readonly onAssignDriver: (driverId: string, instanceId: string) => void;
+  /** Calls a driver's truck back to the garage. */
+  readonly onRecallTruck: (driverId: string) => void;
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
@@ -61,6 +70,7 @@ const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
   jobs: 'jobs',
   truck: 'truck',
   garage: 'garage',
+  fleet: 'fleet',
   events: 'events',
 };
 
@@ -92,6 +102,7 @@ export class CompanyHq {
   readonly hintSlot: HTMLDivElement;
   private tab: HqTab = 'jobs';
   private preview: TruckPreview | null = null;
+  private readonly fleetPage: FleetPage;
 
   constructor(
     parent: HTMLElement,
@@ -165,6 +176,13 @@ export class CompanyHq {
     this.sheet.append(header, tabBar, this.hintSlot, this.list);
     this.root.append(this.sheet);
     parent.append(this.root);
+    this.fleetPage = new FleetPage(document, strings, services, {
+      onHire: actions.onHireDriver,
+      onDismiss: actions.onDismissDriver,
+      onAssign: actions.onAssignDriver,
+      onRecall: actions.onRecallTruck,
+      onSwitch: actions.onSwitchTruck,
+    });
   }
 
   get isOpen(): boolean {
@@ -233,6 +251,17 @@ export class CompanyHq {
   }
 
   /**
+   * Moves the fleet page's progress bars on while it shows, and draws it
+   * again when a driver moves on to another contract: call a few times a
+   * second, not every frame.
+   */
+  tick(): void {
+    if (this.isOpen && this.tab === 'fleet' && this.fleetPage.tick()) {
+      this.refresh();
+    }
+  }
+
+  /**
    * The share of the screen the panel covers: its width at the right (a
    * phone on its side) or its height at the bottom (upright). The showroom
    * frames the truck in the rest. Reads the layout: call on opening and
@@ -287,6 +316,8 @@ export class CompanyHq {
         });
       case 'garage':
         return this.garagePage();
+      case 'fleet':
+        return this.fleetPage.render();
       case 'events':
         return [
           element(this.root.ownerDocument, 'p', 'hq__note', this.strings.t('hq.events.note')),
@@ -398,10 +429,11 @@ export class CompanyHq {
           strings,
           {
             offer,
-            owned: owned.find((candidate) => candidate.definition.id === offer.definition.id),
+            owned: ownedToShow(owned.filter((candidate) => candidate.definition.id === offer.definition.id)),
             busy,
             canAfford,
             previewing: false,
+            garage: { count: owned.length, capacity: garage.capacity },
           },
           {
             onBuy: actions.onBuyTruck,
@@ -414,6 +446,11 @@ export class CompanyHq {
     const trucksSection = section('trucks', strings.t('hq.garage.trucks'), truckCards);
     return [paint, upgradesSection, trucksSection];
   }
+}
+
+/** Of the company's trucks of one model, the one its garage card shows: the one driven, else one in the garage, else one out. */
+function ownedToShow(trucks: readonly OwnedTruck[]): OwnedTruck | undefined {
+  return trucks.find((truck) => truck.active) ?? trucks.find((truck) => truck.driverId === null) ?? trucks[0];
 }
 
 /** Which card a preview belongs to (`data-preview-key`); a paint has no card, its swatch shows it. */
