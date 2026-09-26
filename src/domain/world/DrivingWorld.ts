@@ -34,8 +34,10 @@ import {
   type TreeSpecies,
 } from './countryside';
 import { bankWalls, findBridges, parapetWalls, type Bridge, type WallPiece } from './bridges';
+import { createForest, FOREST_TRUNK_RADIUS_METERS, forestContains, plantForest, type Forest, type ForestTreeKind } from './forests';
 import { cellKey, cellOf } from './gridCells';
 import { placeGuardRails, type GuardRail } from './guardRails';
+import { hedgeWalls, layoutPark, onParkPath, type Park } from './parks';
 import { RiverPath } from './RiverPath';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork } from './RoadNetwork';
@@ -58,8 +60,14 @@ import {
 export interface TreeObstacle {
   readonly x: number;
   readonly z: number;
-  /** A planted tree's species (poplar, cypress, olive); the wild ones, without, are the views' pines and broadleaves. */
-  readonly species?: TreeSpecies;
+  /**
+   * What it is, when that is known: a planted tree's species (poplar,
+   * cypress, olive), or a forest's or a park's pine or broadleaf. The wild
+   * ones along the roads, without, are the views' pines and broadleaves.
+   */
+  readonly species?: TreeSpecies | ForestTreeKind;
+  /** Deep in a forest, behind the trees along its edge: its crown shows over theirs (the views may draw it simpler). */
+  readonly inner?: boolean;
   /** Trunk radius used for collisions, meters. */
   readonly radius: number;
   /** Visual size variation (about 0.8–1.3). */
@@ -271,6 +279,9 @@ const TREE_TURBINE_CLEARANCE = 12;
 /** Trees keep this far back from the shore (a beach runs along it) and from quays; lamps from the water. */
 const TREE_SHORE_CLEARANCE = 14;
 const LAMP_SHORE_CLEARANCE = 3;
+/** The wild trees keep this far out of a park, meters; its own trees, benches, bins and lamps this far off its paths. */
+const PARK_CLEARANCE = 2;
+const PARK_PATH_CLEARANCE = 0.3;
 /** Trees may stand this close to a river's rim: willows and alders line the banks. */
 const TREE_RIVERBANK_CLEARANCE = 2.5;
 /** Boulders keep this far off a river's mouth, where it meets the shore. */
@@ -343,6 +354,10 @@ export class DrivingWorld {
   readonly rivers: readonly RiverPath[];
   /** Where the roads cross the rivers: decks with parapets (walls) either side. */
   readonly bridges: readonly Bridge[];
+  /** The forests: their trees are among `trees`. */
+  readonly forests: readonly Forest[];
+  /** The towns' parks: their trees, benches, bins and lamps are among the others; their hedges are walls. */
+  readonly parks: readonly Park[];
   /** The countryside (countryside.ts): power lines along the country roads, the fields' fences and walls, boulders and grazing animals. */
   readonly powerLines: readonly PowerLine[];
   readonly fieldEdges: readonly FieldEdge[];
@@ -429,6 +444,9 @@ export class DrivingWorld {
     this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
     this.rivers = (map.rivers ?? []).map((river) => new RiverPath(river, map.sea?.shoreline ?? null));
     this.bridges = findBridges(this.roads, this.rivers);
+    this.forests = (map.forests ?? []).map(createForest);
+    const parkLayouts = (map.parks ?? []).map((park) => layoutPark(park, map.scenery.seed));
+    this.parks = parkLayouts.map((layout) => layout.park);
     this.sea =
       map.sea === undefined
         ? null
@@ -446,8 +464,12 @@ export class DrivingWorld {
         return { a, b, nx: ((b[1] - a[1]) / length) * toRoad, nz: (-(b[0] - a[0]) / length) * toRoad };
       }),
     );
-    // The rivers' banks and the bridges' parapets are walls like the rails.
-    pieces.push(...bankWalls(this.roads, this.rivers, this.bridges), ...parapetWalls(this.roads, this.bridges));
+    // The rivers' banks, the bridges' parapets and the parks' hedges are walls like the rails.
+    pieces.push(
+      ...bankWalls(this.roads, this.rivers, this.bridges),
+      ...parapetWalls(this.roads, this.bridges),
+      ...this.parks.flatMap(hedgeWalls),
+    );
     this.railAX = Float64Array.from(pieces, (piece) => piece.a[0]);
     this.railAZ = Float64Array.from(pieces, (piece) => piece.a[1]);
     this.railBX = Float64Array.from(pieces, (piece) => piece.b[0]);
@@ -468,12 +490,19 @@ export class DrivingWorld {
       }
     });
     const wildTrees = this.placeTrees(map.scenery.seed, map.scenery.treesPerKilometer);
-    this.streetLamps = this.placeStreetLamps(map.scenery.streetLampSpacingMeters);
+    this.streetLamps = [
+      ...this.placeStreetLamps(map.scenery.streetLampSpacingMeters),
+      ...parkLayouts
+        .flatMap((layout) => layout.lamps)
+        .filter((lamp) => this.isClearInPark(lamp.x, lamp.z))
+        .map((lamp) => ({ ...lamp, radius: LAMP_POST_RADIUS })),
+    ];
     // The rest of the scenery keeps clear of everything solid placed so far, and of itself.
     const occupancy = new Occupancy();
     for (const circle of [
       ...wildTrees,
       ...this.streetLamps,
+      ...this.parks.map((park) => park.fountain),
       ...this.citySigns.flatMap(signPosts),
       ...this.hayBales,
       ...this.windTurbines,
@@ -494,7 +523,23 @@ export class DrivingWorld {
     // The towns first (their pavements run where the streets do), then the country.
     this.sidewalks = streetscape ? placeSidewalks(ground) : [];
     this.pavements = new PavementGrid(this.roads, this.sidewalks);
-    this.streetFurniture = streetscape ? placeStreetFurniture(ground, this.sidewalks, occupancy) : [];
+    const townFurniture = streetscape ? placeStreetFurniture(ground, this.sidewalks, occupancy) : [];
+    // The parks' trees, benches and bins, wherever they have room.
+    const parkTrees: TreeObstacle[] = [];
+    for (const tree of parkLayouts.flatMap((layout) => layout.trees)) {
+      if (this.isClearInPark(tree.x, tree.z) && occupancy.isFree(tree.x, tree.z, TREE_TRUNK_RADIUS, 1)) {
+        occupancy.add(tree.x, tree.z, TREE_TRUNK_RADIUS);
+        parkTrees.push({ ...tree, radius: TREE_TRUNK_RADIUS, species: 'broadleaf' });
+      }
+    }
+    const parkFurniture: StreetFurniture[] = [];
+    for (const piece of parkLayouts.flatMap((layout) => layout.furniture)) {
+      if (this.isClearInPark(piece.x, piece.z) && occupancy.isFree(piece.x, piece.z, piece.radius, 0.3)) {
+        occupancy.add(piece.x, piece.z, piece.radius);
+        parkFurniture.push(piece);
+      }
+    }
+    this.streetFurniture = [...townFurniture, ...parkFurniture];
     this.speedSigns = streetscape
       ? placeSpeedSigns(
           ground,
@@ -509,13 +554,25 @@ export class DrivingWorld {
     this.billboards = streetscape ? placeBillboards(ground, occupancy) : [];
     this.powerLines = countryside ? placePowerLines(ground, occupancy) : [];
     this.fieldEdges = countryside ? placeFieldEdges(ground) : [];
+    // The forests, round whatever stands already, before the country's own trees, rocks and herds (kept out of them).
+    const forestTrees: TreeObstacle[] = this.forests.flatMap((forest) =>
+      plantForest(forest, seed, (x, z) => this.isClearForForestTree(x, z), occupancy).map((tree) => ({
+        x: tree.x,
+        z: tree.z,
+        scale: tree.scale,
+        species: tree.kind,
+        inner: tree.inner,
+        radius: FOREST_TRUNK_RADIUS_METERS,
+      })),
+    );
     const plantedTrees = countryside ? plantTrees(ground, occupancy, seed) : [];
     this.rocks = countryside ? placeRocks(ground, occupancy, map.halfSizeMeters, seed) : [];
     this.grazers = countryside ? placeGrazers(ground, occupancy, seed) : [];
-    this.trees = [...wildTrees, ...plantedTrees];
+    this.trees = [...wildTrees, ...forestTrees, ...parkTrees, ...plantedTrees];
     const circles = [
       ...this.trees,
       ...this.streetLamps,
+      ...this.parks.map((park) => park.fountain),
       ...this.citySigns.flatMap(signPosts),
       ...this.hayBales,
       ...this.windTurbines,
@@ -1125,7 +1182,40 @@ export class DrivingWorld {
     );
   }
 
+  /**
+   * Where a tree may stand along the roads or out in the country (a wild or
+   * planted one), or the country's rocks and herds: clear of everything
+   * else (isClearOnLand), out of the parks, and not in a forest, which
+   * plants its own.
+   */
   private isClearForTree(x: number, z: number): boolean {
+    return !this.forests.some((forest) => forestContains(forest, x, z)) && this.isClearForForestTree(x, z);
+  }
+
+  /**
+   * Where a forest's tree may stand: clear of everything else
+   * (isClearOnLand), as far back from every road as the wild trees stand
+   * from theirs, and out of the parks.
+   */
+  private isClearForForestTree(x: number, z: number): boolean {
+    return (
+      !this.roadGrid.nearRoad(x, z, TREE_ROAD_CLEARANCE) &&
+      !this.parks.some((park) => rectangleContains(park.area, x, z, PARK_CLEARANCE)) &&
+      this.isClearOnLand(x, z)
+    );
+  }
+
+  /** Where a park's tree, bench, bin or lamp may stand: clear of everything else (isClearOnLand) and of its paths. */
+  private isClearInPark(x: number, z: number): boolean {
+    return this.isClearOnLand(x, z) && !this.parks.some((park) => onParkPath(park, x, z, PARK_PATH_CLEARANCE));
+  }
+
+  /**
+   * Whether anything may stand at (x, z) on the land: inside the map, off
+   * the water and the quays, clear of the roads, yards, lots, fields,
+   * buildings, turbines and name boards, and of the truck's start.
+   */
+  private isClearOnLand(x: number, z: number): boolean {
     const limit = this.halfSizeMeters - TREE_BOUNDARY_MARGIN;
     if (Math.abs(x) > limit || Math.abs(z) > limit) {
       return false;
