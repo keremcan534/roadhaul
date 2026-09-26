@@ -108,11 +108,22 @@ const ACCENT = 0xf2b233;
 const CHROME = 0xc3c9d0;
 const VISOR = 0xa9adb3;
 const WHITE = 0xffffff;
-const BEAD_BLUE = 0x173c9e;
-const BEAD_WHITE = 0xf2f5f7;
-const BEAD_PALE = 0x5cb8ea;
-const BEAD_BLACK = 0x0b0c0f;
-const CHARM_STRING_COLOR = 0xa3261e;
+const DIE = 0xf1efe8;
+const PIP = 0x121316;
+const CHARM_STRING_COLOR = 0x2b2d31;
+/** The charm's two dice: each this big (m), their pips this far off a face's middle and this big across. */
+const DIE_SIZE = 0.028;
+const PIP_OFFSET = 0.0078;
+const PIP_RADIUS = 0.0028;
+/** Where a face's pips sit for each number, in steps of PIP_OFFSET across and up the face. */
+const PIPS: Readonly<Record<number, readonly (readonly [number, number])[]>> = {
+  1: [[0, 0]],
+  2: [[-1, -1], [1, 1]],
+  3: [[-1, -1], [0, 0], [1, 1]],
+  4: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
+  5: [[-1, -1], [-1, 1], [0, 0], [1, -1], [1, 1]],
+  6: [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]],
+};
 
 /**
  * The lit segments of each figure 0–9: a (top), b, c (right, top and
@@ -159,7 +170,7 @@ interface Needle {
  * driver; the steering wheel on its column with its stalks; the pillars, the
  * roof console with its radio and lids, sun visors, the doors with their
  * armrests, handles, speakers and pockets, both seats, the floor mat and
- * pedals, the sleeper's curtain; and a blue bead charm hanging from the roof
+ * pedals, the sleeper's curtain; and a pair of dice hanging from the roof
  * console, swinging as the truck brakes, turns and shakes.
  *
  * All of it is one material and an atlas (cabImages.ts), lit as under a roof
@@ -496,8 +507,8 @@ export class CabInterior {
       this.root.add(picture);
     }
 
-    // The charm: a blue glass bead (white, pale blue and black rings on both faces) on a red string, hanging from
-    // the roof console's edge between the driver and the middle of the glass.
+    // The charm: a pair of dice on a dark cord, hanging from the roof console's edge between the driver and the
+    // middle of the glass.
     this.charm.position.set(Math.min(0.12, eyeX * 0.3), consoleBottom, consoleFace - 0.02);
     const charm = new Mesh(this.track(charmGeometry()), this.material);
     charm.name = 'cab-charm';
@@ -868,28 +879,58 @@ function segmentMatrix(clusterFrame: Matrix4, px: number, py: number, heightPixe
   return clusterFrame.clone().multiply(local);
 }
 
-/** The charm: its string from the origin down, and the bead, a blue glass disc with the eye's rings on both faces. */
+/** The charm: its cord from the origin down, and two dice hanging from its end, a little apart and turned. */
 function charmGeometry(): BufferGeometry {
-  const bead = -(CHARM_STRING + 0.034);
   const parts: BufferGeometry[] = [
     dress(new BoxGeometry(0.003, CHARM_STRING, 0.003).translate(0, -CHARM_STRING / 2, 0), CHARM_STRING_COLOR, CAB_ATLAS.plain),
-    dress(new CylinderGeometry(0.034, 0.034, 0.012, 24).rotateX(Math.PI / 2).translate(0, bead, 0), BEAD_BLUE, CAB_ATLAS.plain),
   ];
-  for (const face of [-1, 1] as const) {
-    const turn = face === -1 ? Math.PI : 0;
-    for (const [radius, color, depth] of [
-      [0.024, BEAD_WHITE, 0.0062],
-      [0.016, BEAD_PALE, 0.0065],
-      [0.008, BEAD_BLACK, 0.0068],
-    ] as const) {
-      parts.push(dress(new CircleGeometry(radius, 20).rotateY(turn).translate(0, bead, face * depth), color, CAB_ATLAS.plain));
-    }
+  // Each die: where it hangs (x, the cord's length down to it), how it is turned (radians about y and z), and the
+  // number on each face: +x, -x, +y, -y, +z, -z (opposite faces make seven).
+  const dice = [
+    { x: -0.017, drop: 0.012, turn: [0.35, 0.12], faces: [2, 5, 1, 6, 3, 4] },
+    { x: 0.017, drop: 0.024, turn: [-0.5, -0.1], faces: [4, 3, 6, 1, 5, 2] },
+  ] as const;
+  for (const { x, drop, turn, faces } of dice) {
+    const middle = -(CHARM_STRING + drop + DIE_SIZE / 2);
+    const place = new Matrix4()
+      .makeRotationFromEuler(new Euler(0, turn[0], turn[1]))
+      .setPosition(x, middle, 0);
+    // The cord's end down to the die's top.
+    parts.push(
+      dress(new BoxGeometry(0.002, drop, 0.002).translate(x, -(CHARM_STRING + drop / 2), 0), CHARM_STRING_COLOR, CAB_ATLAS.plain),
+    );
+    parts.push(dress(new BoxGeometry(DIE_SIZE, DIE_SIZE, DIE_SIZE).applyMatrix4(place), DIE, CAB_ATLAS.plain));
+    faces.forEach((number, face) => {
+      for (const [across, up] of PIPS[number]!) {
+        parts.push(dress(pipOnFace(face, across * PIP_OFFSET, up * PIP_OFFSET).applyMatrix4(place), PIP, CAB_ATLAS.plain));
+      }
+    });
   }
   const geometry = mergeGeometries(parts);
   for (const part of parts) {
     part.dispose();
   }
   return geometry;
+}
+
+/** A die's pip on face `face` (+x, -x, +y, -y, +z, -z), `across` and `up` from the face's middle, just off it. */
+function pipOnFace(face: number, across: number, up: number): BufferGeometry {
+  const out = DIE_SIZE / 2 + 0.0004;
+  const pip = new CircleGeometry(PIP_RADIUS, 8);
+  switch (face) {
+    case 0:
+      return pip.rotateY(Math.PI / 2).translate(out, up, across);
+    case 1:
+      return pip.rotateY(-Math.PI / 2).translate(-out, up, across);
+    case 2:
+      return pip.rotateX(-Math.PI / 2).translate(across, out, up);
+    case 3:
+      return pip.rotateX(Math.PI / 2).translate(across, -out, up);
+    case 4:
+      return pip.translate(across, up, out);
+    default:
+      return pip.rotateY(Math.PI).translate(across, up, -out);
+  }
 }
 
 /**
