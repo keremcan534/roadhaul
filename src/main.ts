@@ -48,6 +48,7 @@ import { LightningView } from './presentation/weather/LightningView';
 import { RainView } from './presentation/weather/RainView';
 import { Thunderstorm } from './presentation/weather/Thunderstorm';
 import { LampLighting, type LampLightingOptions } from './presentation/world/LampLighting';
+import { PedestrianView } from './presentation/world/PedestrianView';
 import { WetReflections, type MirroredLamps } from './presentation/world/WetReflections';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
@@ -133,6 +134,8 @@ const LAMP_LIGHTS: Readonly<Record<QualityLevel, LampLightingOptions>> = {
 };
 /** How many lamps a wet road mirrors at most (WetReflections), per graphics preset: none on the low one. */
 const MIRRORED_LAMPS: Readonly<Record<QualityLevel, number>> = { low: 0, medium: 48, high: 96 };
+/** How many people walk the towns' pavements near the camera at most (PedestrianView), per graphics preset. */
+const PEDESTRIANS: Readonly<Record<QualityLevel, number>> = { low: 40, medium: 80, high: 140 };
 const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
 /** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
 const CLOCK_KEEP_SECONDS = 30;
@@ -267,6 +270,13 @@ async function start(): Promise<void> {
     prelit,
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  const pedestrians = new PedestrianView(
+    renderHost.scene,
+    driving.world.roads,
+    driving.world.sidewalks,
+    driving.world.streetFurniture,
+    { capacity: PEDESTRIANS[config.rendering.quality] },
+  );
   const roadside = new RoadsideView(renderHost.scene, driving.world, {
     density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
     prelit,
@@ -1152,6 +1162,14 @@ async function start(): Promise<void> {
         citySigns.setLamps(lamps);
         windTurbines.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
+        // The towns' people: fewer out at night and in the rain, their umbrellas up when it rains.
+        const night = timeOfDay.weights.night + 0.4 * timeOfDay.weights.twilight;
+        pedestrians.update(
+          paused ? 0 : deltaSeconds,
+          renderHost.camera.position,
+          (1 - 0.7 * night) * (1 - 0.45 * weather.rain),
+          Math.min(1, Math.max(0, (weather.rain - 0.1) / 0.3)),
+        );
         scenery.update(paused ? 0 : deltaSeconds);
         cloudShadows.drift(paused ? 0 : deltaSeconds);
         harbour?.setLamps(lamps);
