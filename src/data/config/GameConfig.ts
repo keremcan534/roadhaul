@@ -379,7 +379,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     campaignCooldownSeconds: 600,
     decisionSeconds: 60,
     reserveCredits: 3000,
-    firstTenderSeconds: 90,
+    firstTenderSeconds: 180,
     tenderEverySeconds: 480,
     tenderPrize: 0.6,
     tenderPoints: 30,

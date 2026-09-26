@@ -123,8 +123,31 @@ export class ResultDialog {
     this.panel.insertBefore(block, this.panel.lastElementChild);
   }
 
+  /** Adds the leader's bonus the delivery earned in `city` to the open result. */
+  showLeaderBonus(city: string, bonus: Credits): void {
+    this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.leaderBonus', { city }), this.strings.signedMoney(bonus));
+  }
+
+  /** Adds how the tender went against `rival` to the open result: the prize won, or lost. */
+  showTender(won: boolean, rival: string, prize: Credits): void {
+    const { strings } = this;
+    this.addLine(
+      `result-dialog__rivalry result-dialog__tender ${won ? 'is-bonus' : 'is-penalty'}`,
+      strings.t(won ? 'result.tenderWon' : 'result.tenderLost', { company: rival }),
+      won ? strings.signedMoney(prize) : '',
+    );
+  }
+
   hide(): void {
     this.overlay.hidden = true;
+  }
+
+  /** A line above the way on: what it was, and what it paid. */
+  private addLine(className: string, label: string, amount: string): void {
+    const document = this.overlay.ownerDocument;
+    const row = element(document, 'p', className);
+    row.append(element(document, 'span', '', label), element(document, 'span', 'result-dialog__rivalry-amount', amount));
+    this.panel.insertBefore(row, this.panel.lastElementChild);
   }
 
   /** The way on: the next job, or back on the road. The banners added later go above them. */

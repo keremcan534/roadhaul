@@ -1,6 +1,7 @@
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
+import type { RivalService } from '../../systems/rivals/RivalService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { arrowRotationDegrees } from './arrowRotation';
@@ -17,13 +18,17 @@ const TURN_NOW_METERS = 30;
 const TURN_ANNOUNCE_METERS = 2500;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/** Where the HUD learns of a tender's race (RivalService). */
+export type RaceSource = Pick<RivalService, 'racing' | 'raceSeconds' | 'colorOf'>;
+
 /**
  * The mission part of the HUD (spec §12, §30, §63): where to go (an arrow
  * towards the route ahead and the distance by road), the next turn, the
  * arrival time, the stop-in-the-bay hint and loading progress, the delivery
- * clock and the cargo's condition. The speed readout stays on the touch
- * controls. It reads MissionService, NavigationService and DrivingService
- * and never changes them.
+ * clock and the cargo's condition, and in a tender, how the race with the
+ * rival stands. The speed readout stays on the touch controls. It reads
+ * MissionService, NavigationService, DrivingService and RivalService and
+ * never changes them.
  */
 export class MissionHud {
   private readonly root: HTMLDivElement;
@@ -38,6 +43,9 @@ export class MissionHud {
   private readonly timer: HTMLSpanElement;
   private readonly cargo: HTMLSpanElement;
   private readonly eta: HTMLSpanElement;
+  private readonly race: HTMLParagraphElement;
+  private readonly raceText: HTMLSpanElement;
+  private readonly raceFill: HTMLSpanElement;
   private sinceRefresh = REFRESH_INTERVAL_SECONDS;
   private flashSeconds = 0;
   private shownArrowDegrees = Number.NaN;
@@ -52,6 +60,10 @@ export class MissionHud {
   private shownTurnStep = -1;
   private shownEta = Number.NaN;
   private shownEtaLate = false;
+  /** The race shown: its tender and stage ('' for none), the seconds left and the rival's progress. */
+  private shownRaceKey = '';
+  private shownRaceClock = Number.NaN;
+  private shownRaceProgress = -1;
   private enabled = false;
 
   constructor(
@@ -60,6 +72,7 @@ export class MissionHud {
     private readonly missions: MissionService,
     private readonly navigation: NavigationService,
     private readonly driving: DrivingService,
+    private readonly rivals: RaceSource | null = null,
   ) {
     const document = parent.ownerDocument;
     this.root = element(document, 'div', 'mission-hud');
@@ -93,7 +106,15 @@ export class MissionHud {
     this.progress = element(document, 'div', 'mission-hud__progress');
     this.progressFill = element(document, 'div', 'mission-hud__progress-fill');
     this.progress.append(this.progressFill);
-    text.append(this.objective, this.turn, this.hint, this.progress);
+    // A tender's race: the rival's colour, how long until it unloads, and how far it has got.
+    this.race = element(document, 'p', 'mission-hud__race');
+    this.race.hidden = true;
+    this.raceText = element(document, 'span', 'mission-hud__race-text');
+    const raceBar = element(document, 'span', 'mission-hud__race-bar');
+    this.raceFill = element(document, 'span', 'mission-hud__race-fill');
+    raceBar.append(this.raceFill);
+    this.race.append(element(document, 'span', 'company-swatch'), this.raceText, raceBar);
+    text.append(this.objective, this.turn, this.hint, this.progress, this.race);
 
     const stats = element(document, 'div', 'mission-hud__stats');
     this.timer = element(document, 'span', 'mission-hud__timer');
@@ -117,6 +138,9 @@ export class MissionHud {
     this.shownTurnKind = '';
     this.shownTurnStep = -1;
     this.shownEta = Number.NaN;
+    this.shownRaceKey = '';
+    this.shownRaceClock = Number.NaN;
+    this.shownRaceProgress = -1;
     if (!visible) {
       this.root.hidden = true;
     }
@@ -214,6 +238,8 @@ export class MissionHud {
       setText(this.eta, strings.t('hud.eta', { time: strings.duration(navigation.etaSeconds) }));
     }
 
+    this.updateRace(mission.state);
+
     if (!pickup) {
       const clock = Math.ceil(secondsLeft);
       if (clock !== this.shownClock) {
@@ -230,6 +256,49 @@ export class MissionHud {
         this.shownCargoPercent = cargoPercent;
         setText(this.cargo, `${strings.t('hud.cargo')} ${strings.percent(1 - mission.cargoDamage)}`);
       }
+    }
+  }
+
+  /** How the race for a tender stands: waiting for the load, the rival's time left, or lost. */
+  private updateRace(state: string): void {
+    const race = this.rivals?.racing ?? null;
+    const missionId = this.missions.active?.missionId;
+    if (race === null || race.contract.id !== missionId) {
+      if (this.shownRaceKey !== '') {
+        this.shownRaceKey = '';
+        this.race.hidden = true;
+      }
+      return;
+    }
+    const started = state === 'loaded' || state === 'delivering';
+    const elapsed = this.rivals!.raceSeconds();
+    const left = race.rivalSeconds - elapsed;
+    const stage = !started ? 'waiting' : left > 0 ? 'running' : 'lost';
+    const key = `${race.contract.id}:${stage}`;
+    const strings = this.strings;
+    const company = strings.rivalName(race.rivalId);
+    if (key !== this.shownRaceKey) {
+      this.shownRaceKey = key;
+      this.shownRaceClock = Number.NaN;
+      this.race.hidden = false;
+      this.race.dataset.stage = stage;
+      const color = this.rivals!.colorOf(race.rivalId);
+      this.race.style.setProperty('--company-color', color === null ? '' : `#${color.toString(16).padStart(6, '0')}`);
+      if (stage !== 'running') {
+        setText(this.raceText, strings.t(stage === 'waiting' ? 'hud.race.waiting' : 'hud.race.lost', { company }));
+      }
+    }
+    if (stage === 'running') {
+      const clock = Math.ceil(left);
+      if (clock !== this.shownRaceClock) {
+        this.shownRaceClock = clock;
+        setText(this.raceText, strings.t('hud.race.running', { company, time: strings.duration(left) }));
+      }
+    }
+    const progress = Math.round(Math.min(1, elapsed / race.rivalSeconds) * 100);
+    if (progress !== this.shownRaceProgress) {
+      this.shownRaceProgress = progress;
+      this.raceFill.style.transform = `scaleX(${progress / 100})`;
     }
   }
 

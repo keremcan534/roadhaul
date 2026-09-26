@@ -93,18 +93,18 @@ export async function continueSavedCompany(page: Page, save: string, query = '',
 }
 
 /** The company panel's pages. */
-export type PanelTab = 'jobs' | 'truck' | 'garage' | 'fleet' | 'events';
+export type PanelTab = 'jobs' | 'truck' | 'garage' | 'fleet' | 'rivals' | 'events';
 
 /**
  * Opens the company panel on `tab`: from its button on the road, or (with a
  * contract under way, when the job board's button is gone, or with the panel
- * open) through its tabs. The fleet has no button on the road: the garage's
- * opens the panel, then its tab.
+ * open) through its tabs. The fleet and the rivals have no button on the
+ * road: the garage's opens the panel, then their tab.
  */
 export async function openPanel(page: Page, tab: PanelTab = 'jobs'): Promise<void> {
   const html = page.locator('html');
   if ((await html.getAttribute('data-panel')) !== 'open') {
-    const button = page.locator(`[data-action="dock-${tab === 'fleet' ? 'garage' : tab}"]`);
+    const button = page.locator(`[data-action="dock-${tab === 'fleet' || tab === 'rivals' ? 'garage' : tab}"]`);
     await (tab === 'jobs' && !(await button.isVisible()) ? page.locator('[data-action="dock-truck"]') : button).click();
     await expect(html).toHaveAttribute('data-panel', 'open');
   }

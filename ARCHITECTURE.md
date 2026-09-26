@@ -315,27 +315,59 @@ Spec §27 (V2): the company's other trucks go out with hired drivers and earn it
 - **`FleetService`** (`src/systems/fleet`) hires and lets go, hands a driver a truck from the garage (never the player's, nor one another driver has) and calls it back. Every fixed step (`update`) it moves each contract on. A delivered contract pays the company its pay less the driver's share and the diesel, and announces `FleetJobCompleted`. An incident wears the truck; a badly worn one goes to the workshop for a while, at the company's cost (`FleetTruckRepaired`). When a company is continued, `catchUp` works the fleet through the time the game was closed (at most `GameConfig.fleet.awayHours`), announcing each contract as `away` and the whole as `FleetCaughtUp`. `updateMarkers` puts each truck on a contract on the map: at the bay while it loads and unloads, and along the road between the depots, traced once per contract. The markers are filled in place, so the maps' repaints allocate nothing.
 - **The garage** sells a model again, as many as it holds at the company's level (`GameConfig.fleet.garageSlots`, 2 to 8 trucks). It records which driver has each truck out (`assignDriver`), refuses to let the player drive one of those, and keeps a fleet truck's wear and repairs apart from the active truck's (`wearTruck`, `mendTruck`).
 - **The Fleet page** (`FleetPage`, a page of the company panel) lists every truck and every driver, and moves the contracts' progress bars on a few times a second. It is drawn again when a driver moves on to another contract. The fleet's trucks show on the full map and the minimap as amber arrows with their drivers' initials, and toasts announce the deliveries. The fleet works on behind the panel and the menus; with `?debug`, F runs it ten minutes on.
+- **`DepotRoads`** (`src/systems/fleet`) is the market the fleet and the rivals plan their contracts on: the cities with a depot on the map being driven, the road distance between their bays, and the way each road takes on the map. Each is worked out once and kept until another map is driven. `placeOnJob` puts a truck on its contract's way: at the bay while it loads and unloads, and along the road between.
+
+### The rivals
+
+Spec §65 (V3: tenders, an AI economy), for the player's request to race rival companies and for a kind of war between them.
+
+- **Rival companies** (`RivalCompanyDefinition`, content in `rivals.ts`): one at home in each city, each with a colour, a truck model, a fleet it starts with and may grow to, money, a pace and an aggression. `PLAYER_COMPANY_ID` (`"player"`) stands for the player's company wherever companies are listed by id.
+- **Standing** (`domain/rivals/StandingBoard.ts`): each company's points in each city. Every delivery wins its company points in the city it leaves and the one it reaches: 20 for a contract the player drives, 8 for one a fleet truck delivers, the company's or a rival's. Tenders and campaigns win more. Points halve every half-hour of play, which keeps the shares as they are while nothing happens. A city's leader has the most points there and at least 35% of them. `nextLeader` lets a leader keep the city until a challenger is 3 points of the share ahead, so a close race does not change hands at every delivery.
+- **The rivals' moves** (`domain/rivals/rivalMoves.ts`): `rivalDestination` sends a rival's truck mostly home, and, the more aggressive the rival, into a city the player leads. `campaignTarget` names where a rival campaigns: to keep a slipping lead, to take a city from the player, or to win ground where it is strongest.
+- **Tenders** (`domain/rivals/tenders.ts`): `planTender` picks the hardest contract the company can take now from a generated batch (ids `daily_tender_<n>`). It is raced by the rival at home at either end, at that rival's pace; the prize is 60% of its pay.
+- **`RivalService`** (`src/systems/rivals`) runs it all every fixed step:
+  - the rivals' trucks on `planFleetJob` contracts, which pay a rival its money and win it standing;
+  - their decisions every minute: another truck when they can afford it, else perhaps a campaign. They defend and attack whenever they can, and campaign elsewhere only with money they are not saving for a truck;
+  - wear;
+  - the player's campaign timers;
+  - a tender every 8 minutes, the first 3 minutes in.
+- **What it listens to:** it counts the company's standing from `MissionCompleted` and `FleetJobCompleted`. It pays the leader's bonus (15%, `LeaderBonusPaid`) on a contract from a city the company leads, after the event bonus. It decides a race when the tender is delivered or failed (`TenderDecided`); the race starts at loading, and it compares the contract's delivery clock with the rival's time. When the rival has unloaded first, it announces `TenderRivalArrived`.
+- **What the company can do:** run a campaign (6,000 credits for 40 points, once every 10 minutes in a city). It can buy out a rival it is worth more than, for 1.25 times its value; the rival's trucks leave, and its standing becomes the company's (`RivalAcquired`).
+- **What it tells the UI:** a league by value (money and trucks at their price), the news of the market, and markers for the rivals' trucks and the one racing the company.
+- **Catching up:** the rivals catch up with the time the game was closed before the fleet does.
+- **`TenderBoard`** holds the tender on the job board. `CombinedContracts` puts it beside the contracts of the day, so `MissionService` offers, accepts and saves it like any generated contract.
+- **The Rivals page** (`RivalsPage`) shows:
+  - the league;
+  - each city's shares side by side in the companies' colours, its leader, and the campaign button or its wait;
+  - each rival, with its buy-out price once the company outgrows it;
+  - the news.
+- **Rivals elsewhere in the UI:**
+  - The job board puts the tender first, with a pennant, its rival and the prize. Contracts from a city the company leads show the leader's bonus.
+  - During a tender the mission HUD shows the rival's time left and how far it has got.
+  - The result adds the tender and the leader's bonus.
+  - The maps tint each city in its leader's colour, and draw the rivals' trucks in theirs, the racing one larger.
+  - Toasts announce a city won or lost, a rival campaigning in the company's city, a new tender, and a rival arriving first.
 
 ### The company panel
 
 Tester feedback asked to go straight into the game and to have the menus in it, with pictures. There is no HQ screen: starting or continuing a company goes onto the road (`GameState`: booting, mainMenu, driving), and the company HQ (spec §26) opens as a panel over the game.
 
-- **`HudDock`** (`src/ui/hud`): buttons on the road for four of the panel's pages (the fleet is reached through the panel), each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to round buttons out of the mission HUD's way.
-- **`CompanyHq`** (`src/ui/hq`): the panel. At the right of a phone on its side, with its tabs in a rail; at the bottom of an upright one. At the top the company, its level, XP, reputation and credits, the map and the way back to the road; below the tabs everything scrolls as one list (`.hq__list`, `touch-action: pan-y`), which the e2e tests drag with real touch events. Five pages: the job board (each blocked contract says what unlocks it; a card per contract with its cargo's picture); the truck (`truckPage`: the truck, where it stands, fuel and damage with the pump and the workshop, its cargo, its fitted parts); the garage (paint, upgrades, trucks); the fleet (`FleetPage`); and the special events.
+- **`HudDock`** (`src/ui/hud`): buttons on the road for four of the panel's pages (the fleet and the rivals are reached through the panel), each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to round buttons out of the mission HUD's way.
+- **`CompanyHq`** (`src/ui/hq`): the panel. At the right of a phone on its side, with its tabs in a rail; at the bottom of an upright one. At the top the company, its level, XP, reputation and credits, the map and the way back to the road; below the tabs everything scrolls as one list (`.hq__list`, `touch-action: pan-y`), which the e2e tests drag with real touch events. Six pages: the job board (each blocked contract says what unlocks it; a card per contract with its cargo's picture); the truck (`truckPage`: the truck, where it stands, fuel and damage with the pump and the workshop, its cargo, its fitted parts); the garage (paint, upgrades, trucks); the fleet (`FleetPage`); the rivals (`RivalsPage`); and the special events.
 - **The showroom.** While the panel is open the truck waits (if it was moving, traffic and weather wait too; standing, the world goes on) and the camera circles it, framed in the part of the screen the panel leaves free (`CameraRig.frameBeside`: a view offset). Tapping a paint, an upgrade's Preview or a truck's Preview shows it on the truck before it is bought (`TruckPreview`; the entry point rebuilds the `TruckView` when its key changes), and the camera swings round to the part (`SHOWCASE_PART_ANGLES`). A purchase, a tab change or closing the panel ends the preview.
 
 ## 9. Data and content
 
 The spec's ScriptableObjects become **definition interfaces** (`src/data/definitions`) plus **content** (`src/data/content`):
 
-- Vehicle (with physics data, price and unlock level), map (with depots), cargo, city, mission, upgrade and driver definitions. Each definition file also exports its validation function.
+- Vehicle (with physics data, price and unlock level), map (with depots), cargo, city, mission, upgrade, driver and rival company definitions. Each definition file also exports its validation function.
 - `GAME_CONTENT` (`src/data/content/index.ts`) is the built-in content set. `ContentCatalog.create()` validates every field and every cross-reference, then serves frozen lookups (`catalog.vehicles.get(id)`).
 - References are checked at boot: missions must point to existing cities and cargo, origin and destination must differ, both cities need a depot, and some truck must have the body and payload for the load. Depots must name known cities. The config's starting truck and map must exist. Checks that need geometry, such as the spawn being on the road or every yard opening onto it, are content tests (`tests/unit/data/content`).
 - **Ids** are `snake_case` and never change once shipped, because saves store them. **Units** are part of field names (`timeLimitSeconds`, `fuelCapacityLiters`). Money is integer `Credits`. Ratios are `Fraction`s from 0 to 1.
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, the weather's start and changes, company levels, the fleet, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck, upgrade level or driver can require a company level that does not exist, and the garage has a size for every level).
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, the weather's start and changes, company levels, the fleet, the rivals, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck, upgrade level or driver can require a company level that does not exist, and the garage has a size for every level).
 
 ## 10. Save data
 
@@ -350,11 +382,12 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - since v6: the tutorial's step;
 - since v7: each truck's paint (null for its model's factory colour);
 - since v8: the contract under way keeps its own definition when it was generated (a contract of the day); null for the game's own contracts;
-- since v9: the fleet, with the hired drivers, the truck each has out, their contracts under way and their records.
+- since v9: the fleet, with the hired drivers, the truck each has out, their contracts under way and their records;
+- since v10: the rivals, with each one's money, trucks and contracts, everyone's standing in the cities, the campaign timers, the tender on the board and the one being raced. A rival missing from the save starts out afresh, which is how a new or migrated game gets them.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (9) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (10) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
 - Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model. The garage section lists every truck with its fuel, damage, fitted upgrades and paint, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §16), memory in tests or when the browser forbids storage.

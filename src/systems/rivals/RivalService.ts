@@ -154,6 +154,8 @@ export class RivalService {
   private race: Tender | null = null;
   /** The race's way on the map, looked up when the map first shows it. */
   private raceRoute: JobRoute | null = null;
+  /** The racing rival's run, as a contract for placeOnJob (reused). */
+  private readonly raceJob = { durationSeconds: 1 };
   private raceArrived = false;
   private nextTenderSeconds = 0;
   private tendersPosted = 0;
@@ -284,9 +286,9 @@ export class RivalService {
     return this.content.rivals.find(companyId)?.color ?? null;
   }
 
-  /** What a campaign costs, and wins. */
-  get campaignCost(): Credits {
-    return this.config.campaignCost;
+  /** The terms the HQ explains: the share a leader needs, the leader's bonus, what a campaign costs. */
+  get terms(): { readonly leadShare: Fraction; readonly leaderBonus: Fraction; readonly campaignCost: Credits } {
+    return this.config;
   }
 
   /** The newest first. */
@@ -308,6 +310,21 @@ export class RivalService {
     return posted?.contract.id === missionId ? posted : null;
   }
 
+  /** The tender the company took and is racing its rival for, or null. Allocation-free. */
+  get racing(): Tender | null {
+    return this.race;
+  }
+
+  /** How long the race has run: the contract's delivery clock from loading on, 0 before. Allocation-free. */
+  raceSeconds(): number {
+    const race = this.race;
+    const active = this.missions.active;
+    if (race === null || active === null || active.missionId !== race.contract.id) {
+      return 0;
+    }
+    return active.state === 'loaded' || active.state === 'delivering' ? active.deliverySeconds : 0;
+  }
+
   /** The race for the tender the company took, or null. */
   raceStatus(): TenderRaceStatus | null {
     const race = this.race;
@@ -316,7 +333,7 @@ export class RivalService {
       return null;
     }
     const started = active.state === 'loaded' || active.state === 'delivering';
-    const elapsed = started ? active.deliverySeconds : 0;
+    const elapsed = this.raceSeconds();
     return {
       tender: race,
       started,
@@ -451,14 +468,14 @@ export class RivalService {
       }
     }
     const race = this.race;
-    const status = race === null ? null : this.raceStatus();
-    if (race !== null && status !== null) {
+    if (race !== null && this.missions.active?.missionId === race.contract.id) {
       const route = this.raceRoute ?? (this.raceRoute = this.roads.route(race.contract.originCityId, race.contract.destinationCityId));
       const rival = this.content.rivals.find(race.rivalId);
       if (route !== null && rival !== undefined) {
         const marker = this.markerAt(count++, rival, true);
-        const elapsed = race.rivalSeconds - status.rivalSecondsLeft;
-        marker.moving = placeOnJob(route, { durationSeconds: race.rivalSeconds }, elapsed, 2 * this.tenderRules.unloadSeconds, marker);
+        this.raceJob.durationSeconds = race.rivalSeconds;
+        const elapsed = Math.min(race.rivalSeconds, this.raceSeconds());
+        marker.moving = placeOnJob(route, this.raceJob, elapsed, 2 * this.tenderRules.unloadSeconds, marker);
       }
     }
     return count;
