@@ -8,6 +8,7 @@ import {
   validateMapDefinition,
   type DepotDefinition,
   type MapDefinition,
+  type RiverDefinition,
   type RoadKind,
 } from '../../../../src/data/definitions/MapDefinition';
 import { mapFixture, seaFixture } from '../../../support/contentFixtures';
@@ -238,6 +239,42 @@ describe('the sea', () => {
     expect(isInSea(shoreline, -101, 0)).toBe(true);
     expect(isInSea(shoreline, -99, 0)).toBe(false);
     expect(isInSea(shoreline, -99, 0, 2)).toBe(true);
+  });
+});
+
+describe('rivers', () => {
+  const river = (overrides: Partial<RiverDefinition> = {}): RiverDefinition => ({
+    id: 'test_river',
+    widthMeters: 20,
+    points: [
+      [40, 200],
+      [40, -200],
+    ],
+    ...overrides,
+  });
+
+  it('accepts a river flowing across the map from edge to edge', () => {
+    expect(issuePaths(mapFixture({ rivers: [river()] }))).toEqual([]);
+  });
+
+  it('asks for an id of its own, a width from 8 to 60 m and a course of two or more points on the map', () => {
+    const map = mapFixture({
+      rivers: [
+        river({ widthMeters: 7 }),
+        river({ id: 'Bad River', widthMeters: 61 }),
+        river({ id: 'test_river_2', points: [[40, 200]] }),
+        river({ id: 'test_river_3', points: [[40, 200], [40, -201]] }),
+        river(),
+      ],
+    });
+    expect(issuePaths(map)).toEqual([
+      'map.rivers[0].widthMeters',
+      'map.rivers[1].id',
+      'map.rivers[1].widthMeters',
+      'map.rivers[2].points',
+      'map.rivers[3].points[1]',
+      'map.rivers[4].id',
+    ]);
   });
 });
 

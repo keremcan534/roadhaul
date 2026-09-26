@@ -33,8 +33,10 @@ import {
   type SceneryGround,
   type TreeSpecies,
 } from './countryside';
+import { bankWalls, findBridges, parapetWalls, type Bridge, type WallPiece } from './bridges';
 import { cellKey, cellOf } from './gridCells';
 import { placeGuardRails, type GuardRail } from './guardRails';
+import { RiverPath } from './RiverPath';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork } from './RoadNetwork';
 import { createRoadPoint, RoadPath } from './RoadPath';
@@ -269,6 +271,10 @@ const TREE_TURBINE_CLEARANCE = 12;
 /** Trees keep this far back from the shore (a beach runs along it) and from quays; lamps from the water. */
 const TREE_SHORE_CLEARANCE = 14;
 const LAMP_SHORE_CLEARANCE = 3;
+/** Trees may stand this close to a river's rim: willows and alders line the banks. */
+const TREE_RIVERBANK_CLEARANCE = 2.5;
+/** Boulders keep this far off a river's mouth, where it meets the shore. */
+const SHORE_ROCK_MOUTH_CLEARANCE = 4;
 /** The truck stops this far short of the water: the quay's kerb, the rocks. */
 const SHORE_WALL_MARGIN = 0.4;
 /** A crane's portal: its legs stand this far either side of its middle across the quay and along it. */
@@ -333,6 +339,10 @@ export class DrivingWorld {
   readonly turningCircles: readonly TurningCircle[];
   /** The sea along the west edge, with its quays, boats and cranes; null when the map is all land. */
   readonly sea: Sea | null;
+  /** The rivers, each in its channel below the fields; walls line their banks. */
+  readonly rivers: readonly RiverPath[];
+  /** Where the roads cross the rivers: decks with parapets (walls) either side. */
+  readonly bridges: readonly Bridge[];
   /** The countryside (countryside.ts): power lines along the country roads, the fields' fences and walls, boulders and grazing animals. */
   readonly powerLines: readonly PowerLine[];
   readonly fieldEdges: readonly FieldEdge[];
@@ -417,10 +427,17 @@ export class DrivingWorld {
     this.citySigns = map.citySigns.map((sign) => this.placeCitySign(sign));
     this.fields = map.fields.map((field) => this.placeField(field));
     this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
-    this.sea = map.sea === undefined ? null : createSea(map.sea, map.halfSizeMeters, map.scenery.seed);
+    this.rivers = (map.rivers ?? []).map((river) => new RiverPath(river, map.sea?.shoreline ?? null));
+    this.bridges = findBridges(this.roads, this.rivers);
+    this.sea =
+      map.sea === undefined
+        ? null
+        : createSea(map.sea, map.halfSizeMeters, map.scenery.seed, (x, z) =>
+            this.rivers.some((river) => river.contains(x, z, SHORE_ROCK_MOUTH_CLEARANCE)),
+          );
     this.hayBales = placeHayBales(this.fields, map.scenery.seed);
     this.guardRails = placeGuardRails(this.roads, (x, z) => this.isClearForRail(x, z));
-    const pieces = this.guardRails.flatMap((rail) =>
+    const pieces: WallPiece[] = this.guardRails.flatMap((rail) =>
       rail.points.slice(1).map((b, index) => {
         const a = rail.points[index]!;
         const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
@@ -429,6 +446,8 @@ export class DrivingWorld {
         return { a, b, nx: ((b[1] - a[1]) / length) * toRoad, nz: (-(b[0] - a[0]) / length) * toRoad };
       }),
     );
+    // The rivers' banks and the bridges' parapets are walls like the rails.
+    pieces.push(...bankWalls(this.roads, this.rivers, this.bridges), ...parapetWalls(this.roads, this.bridges));
     this.railAX = Float64Array.from(pieces, (piece) => piece.a[0]);
     this.railAZ = Float64Array.from(pieces, (piece) => piece.a[1]);
     this.railBX = Float64Array.from(pieces, (piece) => piece.b[0]);
@@ -566,9 +585,22 @@ export class DrivingWorld {
     return null;
   }
 
-  /** Whether (x, z) is in the sea, or within `margin` meters of it. Always false on a map without one. */
+  /**
+   * Whether (x, z) is in the sea or a river's channel (its water and
+   * banks), or within `margin` meters of either. Allocation-free.
+   */
   isWater(x: number, z: number, margin = 0): boolean {
-    return this.sea !== null && isInSea(this.sea.shoreline, x, z, margin);
+    return (this.sea !== null && isInSea(this.sea.shoreline, x, z, margin)) || this.isRiver(x, z, margin);
+  }
+
+  /** Whether (x, z) is in a river's channel (its water and banks), or within `margin` meters of one. Allocation-free. */
+  isRiver(x: number, z: number, margin = 0): boolean {
+    for (let i = 0; i < this.rivers.length; i++) {
+      if (this.rivers[i]!.contains(x, z, margin)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether (x, z) is on a quay (paved, like a yard), or within `margin` meters of one. */
@@ -1098,7 +1130,10 @@ export class DrivingWorld {
     if (Math.abs(x) > limit || Math.abs(z) > limit) {
       return false;
     }
-    if (this.isWater(x, z, TREE_SHORE_CLEARANCE) || this.isOnQuay(x, z, TREE_YARD_CLEARANCE)) {
+    if (this.sea !== null && isInSea(this.sea.shoreline, x, z, TREE_SHORE_CLEARANCE)) {
+      return false;
+    }
+    if (this.isRiver(x, z, TREE_RIVERBANK_CLEARANCE) || this.isOnQuay(x, z, TREE_YARD_CLEARANCE)) {
       return false;
     }
     if (this.hidesCitySign(x, z)) {
@@ -1143,7 +1178,12 @@ export class DrivingWorld {
  * edge, straddling the waterline, none along the quays. The same seed
  * always lays the same boulders.
  */
-function createSea(sea: SeaDefinition, halfSize: number, seed: number): Sea {
+function createSea(
+  sea: SeaDefinition,
+  halfSize: number,
+  seed: number,
+  inRiverMouth: (x: number, z: number) => boolean,
+): Sea {
   const random = new SeededRandom(seed ^ 0x27d4eb2f);
   const rocks: ShoreRock[] = [];
   for (let z = -halfSize; z <= halfSize; z += SHORE_ROCK_SPACING_METERS) {
@@ -1153,8 +1193,9 @@ function createSea(sea: SeaDefinition, halfSize: number, seed: number): Sea {
     const size = random.range(1, 2.6);
     const turn = random.range(0, Math.PI * 2);
     const onQuay = sea.quays.some((quay) => along > quay.fromZ - 3 && along < quay.toZ + 3);
-    if (!onQuay) {
-      rocks.push({ x: shorelineXAt(sea.shoreline, along) + across, z: along, size, turn });
+    const x = shorelineXAt(sea.shoreline, along) + across;
+    if (!onQuay && !inRiverMouth(x, along)) {
+      rocks.push({ x, z: along, size, turn });
     }
   }
   return {
