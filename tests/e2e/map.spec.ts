@@ -123,3 +123,47 @@ test('opens the map from the company panel and from the pause menu', async ({ pa
   await page.keyboard.up('ArrowUp');
   expect(problems).toEqual([]);
 });
+
+test('names the companies in a legend, and tells who leads a city or whose truck an arrow is, tapped', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openGame(page, '?lang=en&traffic=0');
+  // A few steps on the road first: the rivals' trucks take their first contracts, and load at their depots' bays.
+  await waitForFrames(page, 10);
+  await page.keyboard.press('KeyM');
+  const map = page.locator('.world-map');
+  await expect(map).toBeVisible();
+  await expect(page.locator('.world-map__legend-row')).toHaveText([
+    'Test Lojistik (you)',
+    'Yeniliman Express',
+    'Başakova Cargo',
+    'Demirkent Haulage',
+  ]);
+
+  // North up round the truck, where a new game starts it in Yeniliman: (-1703, -600).
+  await page.locator('[data-action="map-truck"]').click();
+  await expect.poll(() => mapScale(page)).toBeGreaterThanOrEqual(0.6);
+  const scale = await mapScale(page);
+  const box = (await page.locator('.world-map__canvas').boundingBox())!;
+  const tap = (x: number, z: number) =>
+    page.mouse.click(box.x + box.width / 2 + (x + 1703) * scale, box.y + box.height / 2 + (z + 600) * scale);
+  const card = page.locator('.world-map__card');
+
+  // The middle of Yeniliman: its home rival leads it.
+  await tap(-1613, -302);
+  await expect(card).toBeVisible();
+  await expect(card).toHaveAttribute('data-kind', 'city');
+  await expect(card).toHaveAttribute('data-id', 'city_a');
+  await expect(card.locator('.world-map__card-title')).toHaveText('Yeniliman');
+  await expect(card.locator('.world-map__card-line').first()).toHaveText('Led by Yeniliman Express');
+  await expect(card.locator('.share-bar__part')).toHaveCount(1);
+
+  // A rival's truck loading at the depot's bay.
+  await tap(-1716, -450);
+  await expect(card).toHaveAttribute('data-kind', 'rival');
+  await expect(card.locator('.world-map__card-line')).toHaveText(/^To (Yeniliman|Başakova|Demirkent)$/);
+
+  // Out at sea: nothing there.
+  await tap(-2200, -600);
+  await expect(card).toBeHidden();
+  expect(problems).toEqual([]);
+});
