@@ -127,8 +127,12 @@ export const POLE_RADIUS_METERS = 0.16;
 const MAX_SPAN_METERS = 60;
 /** A field's boundary has a gate this wide in the middle of its side along the road. */
 export const GATE_WIDTH_METERS = 6;
-/** Boulders lie in this many clusters of up to this many, this far round each cluster's middle, well off the roads. */
-const ROCK_CLUSTERS = 46;
+/**
+ * Boulders lie in clusters, this many to the square kilometre of the map (as
+ * thick on a bigger map), of up to this many, this far round each cluster's
+ * middle, well off the roads.
+ */
+const ROCK_CLUSTERS_PER_SQUARE_KILOMETER = 2.1;
 const ROCKS_PER_CLUSTER = 7;
 const ROCK_SCATTER_METERS = 11;
 const ROCK_ROAD_CLEARANCE_METERS = 10;
@@ -254,7 +258,8 @@ export function placeRocks(ground: SceneryGround, occupancy: Occupancy, halfSize
   const random = new SeededRandom(seed ^ 0x2f6b1d);
   const rocks: Rock[] = [];
   const reach = halfSizeMeters - 60;
-  for (let cluster = 0; cluster < ROCK_CLUSTERS; cluster++) {
+  const clusters = Math.round(ROCK_CLUSTERS_PER_SQUARE_KILOMETER * ((2 * reach) / 1000) ** 2);
+  for (let cluster = 0; cluster < clusters; cluster++) {
     const centreX = random.range(-reach, reach);
     const centreZ = random.range(-reach, reach);
     const count = random.int(2, ROCKS_PER_CLUSTER);

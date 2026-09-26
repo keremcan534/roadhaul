@@ -198,29 +198,36 @@ describe('placeRocks', () => {
 
   it('lies boulders in clusters, clear of the roads, the fields and one another, the same for the same seed', () => {
     const field = fieldBeside('wheat');
-    const rocks = placeRocks(ground(roads, [field]), new Occupancy(), 1000, 7);
+    const rocks = placeRocks(ground(roads, [field]), new Occupancy(), 1500, 7);
 
     expect(rocks.length).toBeGreaterThan(40);
     expect(apart(rocks)).toBe(true);
     for (const rock of rocks) {
       expect(edgeDistance(roads, rock.x, rock.z)).toBeGreaterThan(10);
       expect(rectangleContains(field.area, rock.x, rock.z)).toBe(false);
-      expect(Math.abs(rock.x)).toBeLessThan(1000);
+      expect(Math.abs(rock.x)).toBeLessThan(1500);
       expect(rock.radius).toBeCloseTo(rock.size * 0.45, 9);
       expect(rock.size).toBeGreaterThanOrEqual(0.5);
       expect(rock.size).toBeLessThanOrEqual(2.6);
     }
-    expect(placeRocks(ground(roads, [field]), new Occupancy(), 1000, 7)).toEqual(rocks);
-    expect(placeRocks(ground(roads, [field]), new Occupancy(), 1000, 8)).not.toEqual(rocks);
+    expect(placeRocks(ground(roads, [field]), new Occupancy(), 1500, 7)).toEqual(rocks);
+    expect(placeRocks(ground(roads, [field]), new Occupancy(), 1500, 8)).not.toEqual(rocks);
+  });
+
+  it('lies them as thick on a bigger map: twice as wide, about four times as many', () => {
+    const small = placeRocks(ground(roads), new Occupancy(), 1500, 7).length;
+    const big = placeRocks(ground(roads), new Occupancy(), 3000, 7).length;
+    expect(big / small).toBeGreaterThan(3);
+    expect(big / small).toBeLessThan(5.5);
   });
 
   it('moves no other boulder when one cannot lie', () => {
-    const all = placeRocks(ground(roads), new Occupancy(), 1000, 7);
+    const all = placeRocks(ground(roads), new Occupancy(), 1500, 7);
     const first = all[0]!;
     const occupancy = new Occupancy();
     occupancy.add(first.x, first.z, 0.01);
 
-    const without = placeRocks(ground(roads), occupancy, 1000, 7);
+    const without = placeRocks(ground(roads), occupancy, 1500, 7);
 
     // Only the first and anything touching it are gone; the rest lie where they lay.
     expect(without.length).toBeGreaterThanOrEqual(all.length - 3);
