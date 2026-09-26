@@ -241,6 +241,21 @@ The testers asked for a better-looking truck, and for driving that is playable, 
 | A natural feel | ✅ | The steering is paced (heavier at speed) and comes back to straight faster than it turns. The truck turns in over about 0.15 s. The pedals press in over a moment and the clutch eases through gear changes (peak jerk down from 270–440 to about 70 m/s³). The body rocks on a damped spring and leans less (about 3° in the hardest turn). The chase camera looks along the bend |
 | The truck's looks | ✅ | The cab's shell is rounded, with skirts arched over the front wheels (black trim, lined inside). It has a sun visor with marker lamps, air horns, door seams, handles and steps, a chrome-framed grille and badge, headlamp clusters with a daytime strip in a black apron, fog lamps, and wide-angle mirrors. Air tanks sit on the chassis, the tyres have rounded shoulders round set-in rims, and a box body gets rails, marker lamps, hinges and a fairing over the cab. The exhaust stack stands behind the front wheel's arch. About one more draw call and 2.6k triangles |
 
+### Weather and light: "vay be" without killing the phone (between steps 28 and 29)
+
+The player asked for graphics that make you say "wow" (rainbows, rain reflections) without overloading the phone ("telefonu patlatmadan maksimum vay be dedirtecek … gökkuşaklarıdır yağmur yansımalarıdır … optimizasyonu gözeterek").
+
+| Item | Status | Notes |
+|---|---|---|
+| Roads that dry slowly | ✅ | `WeatherService.wetness`: the roads wet through soon after the rain starts and dry off over three minutes after it stops. The road's shine, its puddles, the lamps' reflections and the truck's spray follow it; `?wet=0..1` keeps it fixed |
+| A rainbow | ✅ | Opposite a low sun in rain passing by or just gone: a primary bow and a fainter reversed secondary, brighter sky inside, Alexander's dark band between. Red at sunset. A few lines in the sky's shader, skipped unless a bow shows |
+| Every lamp streaks the wet road | ✅ | `WetReflections`: street lamps up to 300 m, the traffic's headlights and tail lights, the truck's own. A quad per lamp whose pixels work out its glossy reflection, broken by ripples, sharper in puddles, shaded by the truck; one draw call. It replaced a per-pixel loop over up to 14 lamps on every wet road pixel. Off on low; 48 lamps on medium, 96 on high |
+| Puddles | ✅ | They fill the road's dips as it gets wetter (none when damp, about a sixth of the road when soaked) and dry back with it. Darker, mirroring the sky like still water; rings where the drops fall. One 128 px noise map |
+| Lightning and thunder | ✅ | In heavy rain: seeded strikes near and far, a few strokes each. The flash lights the sky, the clouds and the world; a bolt shows toward strikes within 4.5 km (one draw call while it shows). The thunder follows by the distance over the speed of sound: a crack when near, then a rolling rumble |
+| The sun's glitter on the sea | ✅ | Small facets that turn over sparkle where they catch the light: a glittering path toward a low sun, or the moon at night. A few lines in the sea's shader |
+| City life: buses, people on the pavements, parked cars | Next | The second "wow" batch |
+| Light shafts, morning mist | Later | Light shafts on the high preset only |
+
 ## Next step: 29 Device testing
 
 Suggested request:
