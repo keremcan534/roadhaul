@@ -1,23 +1,27 @@
 import {
   BoxGeometry,
   BufferAttribute,
+  BufferGeometry,
   CircleGeometry,
   Color,
   CylinderGeometry,
+  ExtrudeGeometry,
   Group,
   InstancedMesh,
   Matrix4,
   MeshBasicMaterial,
   MeshLambertMaterial,
   PlaneGeometry,
-  type BufferGeometry,
+  Shape,
+  ShapeGeometry,
+  Vector2,
   type DataTexture,
   type Scene,
   type Vector3,
 } from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
+import type { TrafficCarBody, TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
 import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
 import { softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
@@ -43,14 +47,25 @@ const BUS_WHITE = 0xf1f1ec;
 const BUS_WINDOW = 0x223140;
 const BUS_DOOR = 0x2a3a48;
 const SIGN = 0x121212;
+/** Number plates: plain and light, without letters. */
+const PLATE = 0xe4e4dc;
+/** A lorry's white box, its light grey ribs and rails, and the amber markers along its sides, lit at night. */
+const BOX_WHITE = 0xecece6;
+const RIB = 0xc4c8cc;
+const MARKER = 0xf29a1c;
 const GLOW: Readonly<Record<number, readonly [number, number, number]>> = {
   [BUS_WINDOW]: [0.95, 0.85, 0.6],
   [BUS_DOOR]: [0.7, 0.62, 0.45],
   [SIGN]: [1.6, 0.55, 0.08],
+  [MARKER]: [1.3, 0.55, 0.05],
 };
 /** Painted bodies' edges are rounded off by this share of their smallest side. */
 const BODY_ROUNDING = 0.14;
-const WHEEL_SEGMENTS = 10;
+const WHEEL_SEGMENTS = 12;
+/** A wheel arch in a body's side is drawn in this many straight steps. */
+const ARCH_STEPS = 6;
+/** Windows and the like lie this far off the face under them, meters, so they never flicker into it. */
+const PANE_CLEARANCE = 0.012;
 /** Every vehicle has two headlights and two tail lights, in this order: front left, front right, rear left, rear right. */
 const LAMPS_PER_VEHICLE = 4;
 const HEADLIGHT = 0xfff4d6;
@@ -92,6 +107,10 @@ const SHINE: Readonly<Record<number, number>> = {
   [BUS_WINDOW]: 1,
   [BUS_DOOR]: 1,
   [SIGN]: 0.4,
+  [PLATE]: 0.4,
+  [BOX_WHITE]: 0.6,
+  [RIB]: 0.5,
+  [MARKER]: 0.6,
 };
 /**
  * The traffic's own light, over its lighting: only the painted parts take
@@ -119,9 +138,11 @@ varying vec3 vGlow;
  * Draws the NPC traffic (roadmap step 22): one instanced mesh per kind of
  * vehicle, so all traffic costs a draw call per kind, and one more for all
  * their lamps (self-lit, so they shine at night). Shapes are generic and
- * original: a hatchback-like car, a van, a box lorry and a bus, low-poly
- * with dark glass and tyres, painted per vehicle, each on a soft shadow
- * (one more draw call for all of them). Vehicles move between fixed steps
+ * original, low-poly but detailed: a hatchback, a saloon, a minibus and a
+ * box lorry drawn from their side profiles, with arches over the wheels, glass
+ * between the pillars, bumpers, grilles, plates and mirrors, and a city
+ * bus; painted per vehicle, each on a soft shadow (one more draw call for
+ * all of them). Vehicles move between fixed steps
  * like the truck (interpolated poses). At night (setLamps) the lamps glow,
  * one more draw call. Per frame it only writes instance matrices (and glow
  * positions at night), and colours when a new vehicle takes a slot.
@@ -489,118 +510,522 @@ function merged(parts: BufferGeometry[]): BufferGeometry {
 }
 
 function shapeOf(type: TrafficVehicleDefinition): VehicleShape {
-  const length = type.lengthMeters;
-  const width = type.widthMeters;
-  const height = type.heightMeters;
   switch (type.kind) {
-    case 'car': {
-      const wheel = 0.31;
-      const sill = 0.22;
-      const body = height * 0.42;
-      const glass = height - sill - body - 0.06;
-      return {
-        parts: [
-          rounded(width, body, length, 0, sill + body / 2, 0, PAINT),
-          // The glasshouse sits back from the bonnet, with the roof painted.
-          box(width * 0.86, glass, length * 0.5, 0, sill + body + glass / 2, -length * 0.06, GLASS),
-          box(width * 0.84, 0.06, length * 0.46, 0, height - 0.03, -length * 0.06, PAINT),
-          ...wheels(width, wheel, [length * 0.32, -length * 0.32]),
+    case 'car':
+      return carShape(type.lengthMeters, type.widthMeters, type.heightMeters, type.carBody ?? 'hatchback');
+    case 'minibus':
+      return minibusShape(type.lengthMeters, type.widthMeters, type.heightMeters);
+    case 'truck':
+      return lorryShape(type.lengthMeters, type.widthMeters, type.heightMeters);
+    case 'bus':
+      return busShape(type.lengthMeters, type.widthMeters, type.heightMeters);
+  }
+}
+
+/**
+ * How a car's back is shaped, by its body (meters in from the tail):
+ * where the rear window's foot is and how high over the waist, where the
+ * roof's rear edge ends and the roof itself, how far the rear side window
+ * keeps off the rear window's line (the pillar behind it), the rear door's
+ * back edge and handle, the rear axle, and its tail lamps' height.
+ */
+const CAR_BACKS: Readonly<
+  Record<TrafficCarBody, { glassFoot: number; glassRise: number; roofEdge: number; roof: number; pillar: number; door: number; axle: number; tailLamps: number }>
+> = {
+  hatchback: { glassFoot: 0.26, glassRise: 0.04, roofEdge: 0.92, roof: 1.2, pillar: 0.2, door: 0.7, axle: 0.82, tailLamps: 0.74 },
+  saloon: { glassFoot: 1.02, glassRise: 0.07, roofEdge: 1.5, roof: 1.78, pillar: 0.12, door: 1.25, axle: 0.95, tailLamps: 0.72 },
+};
+
+/**
+ * A car: a body drawn from its side (a short nose, the bonnet rising to the
+ * windscreen, the waist along the doors, then a squared-off tail, or a boot
+ * behind the rear window on a saloon) with arches over the wheels, and the
+ * narrower cabin on it (the roof, the pillars, the raked windscreen and the
+ * rear window). Windows in the doors either side of the pillar between
+ * them; the doors' lines and handles, the grille and the air intake in
+ * bumpers of the body's colour, plates and mirrors.
+ */
+function carShape(length: number, width: number, height: number, body: TrafficCarBody): VehicleShape {
+  const back = CAR_BACKS[body];
+  const front = length / 2;
+  const wheel = 0.31;
+  const axles = [-front + back.axle, front - 0.8 - (length - 4.3) / 4];
+  const sill = 0.3;
+  const waist = 0.9;
+  // The tail: a hatch's squared-off end, or a saloon's boot lid over its lamps.
+  const tail: [number, number][] =
+    body === 'saloon'
+      ? [
+          [-front + back.glassFoot, waist + back.glassRise - 0.02],
+          [-front + 0.3, waist + 0.1],
+          [-front + 0.05, waist + 0.08],
+          [-front, 0.66],
+        ]
+      : [
+          [-front + 0.45, waist + 0.06],
+          [-front + 0.15, waist + 0.07],
+          [-front + 0.02, 0.86],
+          [-front, 0.62],
+        ];
+  const outline: [number, number][] = [
+    [front - 0.07, sill],
+    [front, 0.42],
+    [front, 0.62],
+    [front - 0.07, 0.76],
+    [front - 0.55, 0.85],
+    [front - 1.2, waist],
+    ...tail,
+    [-front + 0.02, 0.42],
+    [-front + 0.1, sill],
+    ...archesAlong(sill, wheel, axles, wheel + 0.08),
+  ];
+  // The cabin: from the windscreen's foot (sunk into the body) up to the roof and down the rear window.
+  const cabinWidth = width * 0.84;
+  const cabin: [number, number][] = [
+    [front - 1.12, waist - 0.04],
+    [front - 2.15, height - 0.06],
+    [front - 2.35, height],
+    [-front + back.roof, height - 0.01],
+    [-front + back.roofEdge, height - 0.08],
+    [-front + back.glassFoot, waist + back.glassRise],
+    [-front + back.glassFoot, waist - 0.04],
+  ];
+  const windowFoot = waist + 0.04;
+  const windowTop = height - 0.1;
+  const pillar = -0.55;
+  const aPillar = along(cabin[0]!, cabin[1]!);
+  const cPillar = along(cabin[4]!, cabin[5]!);
+  const parts = [
+    profile(outline, width, 0.07, PAINT),
+    profile(cabin, cabinWidth, 0.05, PAINT),
+    slopedPanel(cabin[0]!, cabin[1]!, cabinWidth / 2 - 0.08, 0.06, 0.05, GLASS),
+    slopedPanel(cabin[4]!, cabin[5]!, cabinWidth / 2 - 0.1, 0.05, 0.06, GLASS),
+    // Arches' insides, dark, so nothing shows through under the car.
+    ...axles.map((z) => box(width - 0.44, 0.34, 0.86, 0, wheel + 0.2, z, TRIM)),
+    // Bumpers in the body's colour: the grille and the air intake under it at the front, a dark strip at the back.
+    box(0.66, 0.12, 0.03, 0, 0.6, front - 0.005, TRIM),
+    box(width - 0.36, 0.1, 0.03, 0, 0.36, front - 0.005, TRIM),
+    box(width - 0.2, 0.08, 0.03, 0, 0.35, -front + 0.005, TRIM),
+    box(0.5, 0.11, 0.02, 0, 0.47, front + 0.01, PLATE),
+    box(0.5, 0.11, 0.02, 0, 0.56, -front - 0.01, PLATE),
+    ...wheels(width, wheel, axles),
+  ];
+  for (const side of [1, -1]) {
+    const glass = side * (cabinWidth / 2 + 0.006);
+    const skin = side * (width / 2 + 0.004);
+    parts.push(
+      sidePanel(
+        [
+          [aPillar(windowFoot) - 0.09, windowFoot],
+          [aPillar(windowTop) - 0.09, windowTop],
+          [pillar + 0.04, windowTop],
+          [pillar + 0.04, windowFoot],
         ],
-        lamps: lamps(width, length, sill + body * 0.7, 0.3),
-      };
-    }
-    case 'minibus': {
-      const wheel = 0.35;
-      const floor = 0.3;
-      const body = height - floor;
-      return {
-        parts: [
-          rounded(width, body, length, 0, floor + body / 2, 0, PAINT),
-          // A band of side windows and the windscreen.
-          box(width + 0.02, body * 0.32, length * 0.78, 0, floor + body * 0.72, -length * 0.06, GLASS),
-          box(width * 0.9, body * 0.36, 0.04, 0, floor + body * 0.7, length / 2 + 0.01, GLASS),
-          box(width, 0.12, length * 0.98, 0, floor + 0.06, 0, TRIM),
-          ...wheels(width, wheel, [length * 0.34, -length * 0.34]),
+        glass,
+        GLASS,
+      ),
+      sidePanel(
+        [
+          [pillar - 0.04, windowFoot],
+          [pillar - 0.04, windowTop],
+          [cPillar(windowTop) + back.pillar, windowTop],
+          [cPillar(windowFoot) + back.pillar, windowFoot],
         ],
-        lamps: lamps(width, length, floor + body * 0.3, 0.32),
-      };
-    }
-    case 'truck': {
-      const wheel = 0.45;
-      const cabLength = 2.1;
-      const cabHeight = height * 0.78;
-      const floor = 0.55;
-      const cargoLength = length - cabLength - 0.25;
-      const cab = cabHeight - floor;
-      const cargo = height - floor - 0.1;
-      const windowY = floor + cab * 0.72;
-      return {
-        parts: [
-          // Cab at the front with its windscreen, the painted box behind, a dark chassis under both.
-          rounded(width, cab, cabLength, 0, floor + cab / 2, length / 2 - cabLength / 2, PAINT),
-          box(width * 0.9, cab * 0.36, 0.04, 0, windowY, length / 2 + 0.01, GLASS),
-          box(width + 0.02, cab * 0.3, cabLength * 0.4, 0, windowY, length / 2 - cabLength * 0.3, GLASS),
-          rounded(width, cargo, cargoLength, 0, floor + 0.1 + cargo / 2, -length / 2 + cargoLength / 2, PAINT),
-          box(width * 0.8, 0.3, length * 0.96, 0, floor - 0.1, 0, TRIM),
-          ...wheels(width, wheel, [length / 2 - 1.4, -length / 2 + 2.2, -length / 2 + 1.1]),
+        glass,
+        GLASS,
+      ),
+      // The doors' edges and handles.
+      line(skin, front - 1.25, 0.36, waist - 0.02),
+      line(skin, pillar, sill + 0.04, waist + 0.04),
+      line(skin, -front + back.door, wheel + 0.42, waist + 0.04),
+      sidePanel(rectangle(pillar + 0.28, 0.83, 0.16, 0.035), skin, TRIM),
+      sidePanel(rectangle(-front + back.door + 0.25, 0.85, 0.16, 0.035), skin, TRIM),
+      // The mirror on its arm, by the windscreen's foot.
+      box(0.08, 0.1, 0.16, side * (width / 2 + 0.09), waist + 0.08, front - 1.25, PAINT),
+      box(0.1, 0.03, 0.06, side * (width / 2 + 0.03), waist + 0.06, front - 1.22, TRIM),
+    );
+  }
+  return {
+    parts,
+    lamps: lamps(
+      length,
+      { x: width / 2 - 0.26, y: 0.66, width: 0.34, height: 0.13 },
+      { x: width / 2 - 0.17, y: back.tailLamps, width: 0.26, height: 0.14 },
+    ),
+  };
+}
+
+/**
+ * A minibus: a short bonnet under a tall windscreen, one long body with
+ * arches over the wheels, a band of windows along both sides with pillars
+ * between them (lit from inside at night), the front doors' windows, a
+ * sliding door on the kerb side and two rear doors with their windows;
+ * bumpers, the grille, plates and mirrors on arms.
+ */
+function minibusShape(length: number, width: number, height: number): VehicleShape {
+  const front = length / 2;
+  const wheel = 0.35;
+  const axles = [-front + 1.1, front - 1.0];
+  const floor = 0.34;
+  const outline: [number, number][] = [
+    [front - 0.05, floor],
+    [front, 0.46],
+    [front, 0.98],
+    [front - 0.12, 1.1],
+    [front - 0.66, 1.2],
+    [front - 1.55, height - 0.16],
+    [front - 1.75, height],
+    [-front + 0.12, height],
+    [-front, height - 0.12],
+    [-front, 0.46],
+    [-front + 0.05, floor],
+    ...archesAlong(floor, wheel, axles, wheel + 0.09),
+  ];
+  const aPillar = along(outline[4]!, outline[5]!);
+  const windowFoot = 1.44;
+  const windowTop = height - 0.3;
+  const back = -front - 0.006;
+  const parts = [
+    profile(outline, width, 0.08, PAINT),
+    slopedPanel(outline[4]!, outline[5]!, width / 2 - 0.12, 0.08, 0.06, GLASS),
+    // The rear doors' windows, and the line between the doors.
+    backPanel(-width / 2 + 0.16, -0.08, windowFoot, windowTop, back, GLASS),
+    backPanel(0.08, width / 2 - 0.16, windowFoot, windowTop, back, GLASS),
+    backPanel(-0.012, 0.012, floor + 0.12, height - 0.1, back, TRIM),
+    ...axles.map((z) => box(width - 0.5, 0.36, 0.95, 0, wheel + 0.22, z, TRIM)),
+    box(width - 0.08, 0.26, 0.16, 0, 0.47, front - 0.08, TRIM),
+    box(width - 0.08, 0.24, 0.14, 0, 0.45, -front + 0.07, TRIM),
+    box(1.1, 0.26, 0.03, 0, 0.82, front - 0.005, TRIM),
+    box(0.5, 0.11, 0.02, 0, 0.47, front + 0.01, PLATE),
+    box(0.5, 0.11, 0.02, 0, 0.75, -front - 0.01, PLATE),
+    ...wheels(width, wheel, axles),
+  ];
+  // The band of windows behind the front doors: three panes, the middle one the sliding door's on the kerb side.
+  const panes: [number, number][] = [
+    [0.86, -0.46],
+    [-0.58, -1.86],
+    [-1.98, -front + 0.2],
+  ];
+  for (const side of [1, -1]) {
+    const skin = side * (width / 2 + 0.006);
+    parts.push(
+      sidePanel(
+        [
+          [aPillar(windowFoot) - 0.1, windowFoot],
+          [aPillar(windowTop) - 0.1, windowTop],
+          [1.05, windowTop],
+          [1.05, windowFoot],
         ],
-        lamps: lamps(width, length, floor + 0.35, 0.34),
-      };
-    }
-    case 'bus': {
-      const wheel = 0.48;
-      const floor = 0.36;
-      // The livery's paint up to the windows, white above; the windows' band with pillars between the panes. The roof
-      // stands low enough for the air-conditioning to make up the bus's height.
-      const roof = height - 0.22;
-      const belt = floor + (roof - floor) * 0.4;
-      const windowTop = roof - 0.3;
-      const windowHeight = windowTop - belt - 0.06;
-      const windowY = belt + 0.03 + windowHeight / 2;
-      const front = length / 2;
-      // Two doors on the kerb side (-X: the right, facing +Z): at the front, and in the middle.
-      const doorWidth = 1.15;
-      const doors = [front - 0.95, 0.4];
-      const panes: BufferGeometry[] = [];
-      const pane = (side: number, fromZ: number, toZ: number): void => {
-        panes.push(box(0.03, windowHeight, toZ - fromZ, side * (width / 2 + 0.004), windowY, (fromZ + toZ) / 2, BUS_WINDOW));
-      };
-      // Panes from behind the front door to the back, each run split by pillars.
-      const runs: [number, number, number][] = [
-        [1, -front + 0.7, front - 1.9],
-        [-1, doors[1]! + doorWidth / 2 + 0.15, front - 1.9],
-        [-1, -front + 0.7, doors[1]! - doorWidth / 2 - 0.15],
-      ];
-      for (const [side, fromZ, toZ] of runs) {
-        const count = Math.max(1, Math.round((toZ - fromZ) / 1.9));
-        const step = (toZ - fromZ) / count;
-        for (let i = 0; i < count; i++) {
-          pane(side, fromZ + i * step + 0.06, fromZ + (i + 1) * step - 0.06);
-        }
-      }
-      return {
-        parts: [
-          // The painted skirt is square below; the white body above is rounded along the roof.
-          box(width, belt - floor + 0.02, length, 0, (floor + belt) / 2, 0, PAINT),
-          rounded(width, roof - belt, length, 0, (belt + roof) / 2, 0, BUS_WHITE),
-          ...panes,
-          // The driver's side window, the tall windscreen and the route sign over it.
-          box(0.03, windowHeight, 1.3, width / 2 + 0.004, windowY, front - 1.05, BUS_WINDOW),
-          box(width * 0.9, windowTop - floor - 0.55, 0.04, 0, (windowTop + floor + 0.55) / 2, front + 0.005, GLASS),
-          box(width * 0.72, 0.24, 0.04, 0, windowTop + 0.15, front + 0.007, SIGN),
-          ...doors.map((z) => box(0.03, windowTop - floor - 0.12, doorWidth, -(width / 2 + 0.005), (windowTop + floor + 0.12) / 2, z, BUS_DOOR)),
-          // The rear window, the roof's air-conditioning, the bumpers and the skirt.
-          box(width * 0.8, 0.7, 0.04, 0, windowTop - 0.4, -front + 0.005, GLASS),
-          box(width * 0.62, height - roof, 2.6, 0, (roof + height) / 2, -length * 0.08, BUS_WHITE),
-          box(width + 0.03, 0.14, length, 0, floor + 0.07, 0, TRIM),
-          box(width * 0.96, 0.32, 0.1, 0, floor + 0.2, front - 0.03, TRIM),
-          box(width * 0.96, 0.32, 0.1, 0, floor + 0.2, -front + 0.03, TRIM),
-          ...wheels(width, wheel, [front - 2.4, -front + 2.8]),
+        skin,
+        GLASS,
+      ),
+      // Lit from inside at night, as the bus's are.
+      ...panes.map(([from, to]) => sidePanel(rectangle((from + to) / 2, (windowFoot + windowTop) / 2, from - to, windowTop - windowFoot), skin, BUS_WINDOW)),
+      line(skin, front - 0.64, floor + 0.14, 1.14),
+      line(skin, 0.97, floor + 0.12, height - 0.2),
+      sidePanel(rectangle(1.16, 1.3, 0.16, 0.035), skin, TRIM),
+      // Mirrors on arms by the windscreen's foot, black.
+      box(0.16, 0.035, 0.05, side * (width / 2 + 0.07), 1.5, front - 0.72, TRIM),
+      box(0.07, 0.3, 0.16, side * (width / 2 + 0.16), 1.62, front - 0.72, TRIM),
+    );
+  }
+  // The sliding door on the kerb side (-X, the right facing +Z): its back edge and handle.
+  parts.push(line(-(width / 2 + 0.006), -0.52, floor + 0.12, height - 0.2), sidePanel(rectangle(-0.38, 1.3, 0.16, 0.035), -(width / 2 + 0.006), TRIM));
+  return {
+    parts,
+    lamps: lamps(length, { x: width / 2 - 0.3, y: 0.94, width: 0.36, height: 0.16 }, { x: width / 2 - 0.1, y: 1.0, width: 0.14, height: 0.36 }),
+  };
+}
+
+/**
+ * A box lorry: a cab over the front axle in the fleet's colour, its
+ * windscreen, door windows, grille, bumper and mirrors on arms; a white box
+ * on the chassis with ribs up its sides, rails along its top and foot, the
+ * fleet's stripe, amber markers along its sides (lit at night), and two
+ * rear doors with their hinges and locking bars; a fuel tank and side
+ * guards between the axles, a bar at the back with the tail lamps and the
+ * plate, a tandem rear axle.
+ */
+function lorryShape(length: number, width: number, height: number): VehicleShape {
+  const front = length / 2;
+  const wheel = 0.45;
+  const frontAxle = front - 1.4;
+  const rearAxles = [-front + 2.2, -front + 1.1];
+  const cabBack = front - 2.12;
+  const cabTop = height * 0.78;
+  const cabFloor = 0.55;
+  const cab: [number, number][] = [
+    [front - 0.03, 0.46],
+    [front, 0.6],
+    [front, 1.42],
+    [front - 0.07, cabTop - 0.2],
+    [front - 0.18, cabTop],
+    [cabBack + 0.06, cabTop],
+    [cabBack, cabTop - 0.08],
+    [cabBack, cabFloor],
+    ...archesAlong(cabFloor, wheel, [frontAxle], wheel + 0.07),
+  ];
+  const boxFront = cabBack - 0.12;
+  const boxRear = -front + 0.02;
+  const boxFoot = 0.98;
+  const boxLength = boxFront - boxRear;
+  const boxMiddle = (boxFront + boxRear) / 2;
+  const back = boxRear - 0.005;
+  const parts = [
+    profile(cab, width, 0.1, PAINT),
+    slopedPanel(cab[2]!, cab[3]!, width / 2 - 0.14, 0.1, 0.08, GLASS),
+    box(1.5, 0.6, 0.03, 0, 1.08, front - 0.005, TRIM),
+    box(width - 0.02, 0.32, 0.2, 0, 0.6, front - 0.1, TRIM),
+    box(0.52, 0.11, 0.02, 0, 0.6, front + 0.01, PLATE),
+    box(width - 0.6, 0.4, 1.0, 0, 0.75, frontAxle, TRIM),
+    // The box: white, the fleet's stripe along its foot, rails along its top and foot.
+    rounded(width, height - boxFoot, boxLength, 0, (height + boxFoot) / 2, boxMiddle, BOX_WHITE),
+    box(width + 0.012, 0.2, boxLength - 0.1, 0, boxFoot + 0.24, boxMiddle, PAINT),
+    box(width + 0.01, 0.07, boxLength, 0, height - 0.035, boxMiddle, RIB),
+    box(width + 0.02, 0.1, boxLength, 0, boxFoot + 0.05, boxMiddle, TRIM),
+    // Its rear doors: the line between them, the locking bars and the hinges.
+    backPanel(-0.012, 0.012, boxFoot + 0.12, height - 0.1, back, TRIM),
+    ...[-0.85, -0.35, 0.35, 0.85].map((x) => backPanel(x - 0.02, x + 0.02, boxFoot + 0.15, height - 0.15, back, RIB)),
+    ...[1.35, 2.15, 2.9].flatMap((y) =>
+      [1, -1].map((side) => backPanel(side * (width / 2 - 0.06) - 0.05, side * (width / 2 - 0.06) + 0.05, y - 0.06, y + 0.06, back, TRIM)),
+    ),
+    // The chassis, the bar at the back (the tail lamps and the plate on it), the tank and the guards.
+    box(width * 0.72, 0.26, length - 0.4, 0, 0.7, -0.1, TRIM),
+    box(width - 0.1, 0.3, 0.08, 0, 0.6, -front + 0.06, TRIM),
+    box(0.52, 0.11, 0.02, 0, 0.6, -front + 0.01, PLATE),
+    colored(new CylinderGeometry(0.27, 0.27, 1.0, 10).rotateX(Math.PI / 2).translate(width / 2 - 0.35, 0.72, 0.95), HUB),
+    ...wheels(width, wheel, [frontAxle, ...rearAxles]),
+  ];
+  const ribs = Math.round((boxLength - 1) / 0.95);
+  for (const side of [1, -1]) {
+    const skin = side * (width / 2 + 0.004);
+    parts.push(
+      sidePanel(
+        [
+          [front - 0.16, 1.52],
+          [front - 0.22, cabTop - 0.22],
+          [front - 1.15, cabTop - 0.22],
+          [front - 1.15, 1.52],
         ],
-        lamps: lamps(width, length, floor + 0.45, 0.4),
-      };
+        side * (width / 2 + 0.006),
+        GLASS,
+      ),
+      line(side * (width / 2 + 0.006), front - 1.28, cabFloor + 0.05, cabTop - 0.1),
+      sidePanel(rectangle(front - 1.12, 1.35, 0.16, 0.035), side * (width / 2 + 0.006), TRIM),
+      ...Array.from({ length: ribs + 1 }, (_, i) =>
+        sidePanel(rectangle(boxFront - 0.5 - (i * (boxLength - 1)) / ribs, (boxFoot + 0.45 + height - 0.1) / 2, 0.07, height - boxFoot - 0.55), skin, RIB),
+      ),
+      ...[boxFront - 0.4, boxMiddle, boxRear + 0.4].map((z) => box(0.02, 0.06, 0.14, side * (width / 2 + 0.012), boxFoot + 0.12, z, MARKER)),
+      box(0.04, 0.06, 3.2, side * (width / 2 - 0.03), 0.55, 0.35, TRIM),
+      box(0.04, 0.06, 3.2, side * (width / 2 - 0.03), 0.8, 0.35, TRIM),
+      // Mirrors on arms at the cab's front corners.
+      box(0.25, 0.04, 0.05, side * (width / 2 + 0.1), 2.1, front - 0.25, TRIM),
+      box(0.06, 0.42, 0.2, side * (width / 2 + 0.22), 1.95, front - 0.22, TRIM),
+    );
+  }
+  return {
+    parts,
+    lamps: lamps(length, { x: width / 2 - 0.32, y: 0.62, width: 0.34, height: 0.14 }, { x: width / 2 - 0.24, y: 0.62, width: 0.3, height: 0.14 }),
+  };
+}
+
+/**
+ * A city bus: a two-tone livery (its paint up to the windows, white above),
+ * the windows' band with pillars between the panes, a tall windscreen under
+ * the route sign, two doors on the kerb side, the air-conditioning on the
+ * roof, a rear window and bumpers.
+ */
+function busShape(length: number, width: number, height: number): VehicleShape {
+  const wheel = 0.48;
+  const floor = 0.36;
+  // The livery's paint up to the windows, white above; the windows' band with pillars between the panes. The roof
+  // stands low enough for the air-conditioning to make up the bus's height.
+  const roof = height - 0.22;
+  const belt = floor + (roof - floor) * 0.4;
+  const windowTop = roof - 0.3;
+  const windowHeight = windowTop - belt - 0.06;
+  const windowY = belt + 0.03 + windowHeight / 2;
+  const front = length / 2;
+  // Two doors on the kerb side (-X: the right, facing +Z): at the front, and in the middle.
+  const doorWidth = 1.15;
+  const doors = [front - 0.95, 0.4];
+  const panes: BufferGeometry[] = [];
+  const pane = (side: number, fromZ: number, toZ: number): void => {
+    panes.push(box(0.03, windowHeight, toZ - fromZ, side * (width / 2 + 0.004), windowY, (fromZ + toZ) / 2, BUS_WINDOW));
+  };
+  // Panes from behind the front door to the back, each run split by pillars.
+  const runs: [number, number, number][] = [
+    [1, -front + 0.7, front - 1.9],
+    [-1, doors[1]! + doorWidth / 2 + 0.15, front - 1.9],
+    [-1, -front + 0.7, doors[1]! - doorWidth / 2 - 0.15],
+  ];
+  for (const [side, fromZ, toZ] of runs) {
+    const count = Math.max(1, Math.round((toZ - fromZ) / 1.9));
+    const step = (toZ - fromZ) / count;
+    for (let i = 0; i < count; i++) {
+      pane(side, fromZ + i * step + 0.06, fromZ + (i + 1) * step - 0.06);
     }
   }
+  return {
+    parts: [
+      // The painted skirt is square below; the white body above is rounded along the roof.
+      box(width, belt - floor + 0.02, length, 0, (floor + belt) / 2, 0, PAINT),
+      rounded(width, roof - belt, length, 0, (belt + roof) / 2, 0, BUS_WHITE),
+      ...panes,
+      // The driver's side window, the tall windscreen and the route sign over it.
+      box(0.03, windowHeight, 1.3, width / 2 + 0.004, windowY, front - 1.05, BUS_WINDOW),
+      box(width * 0.9, windowTop - floor - 0.55, 0.04, 0, (windowTop + floor + 0.55) / 2, front + 0.005, GLASS),
+      box(width * 0.72, 0.24, 0.04, 0, windowTop + 0.15, front + 0.007, SIGN),
+      ...doors.map((z) => box(0.03, windowTop - floor - 0.12, doorWidth, -(width / 2 + 0.005), (windowTop + floor + 0.12) / 2, z, BUS_DOOR)),
+      // The rear window, the roof's air-conditioning, the bumpers and the skirt.
+      box(width * 0.8, 0.7, 0.04, 0, windowTop - 0.4, -front + 0.005, GLASS),
+      box(width * 0.62, height - roof, 2.6, 0, (roof + height) / 2, -length * 0.08, BUS_WHITE),
+      box(width + 0.03, 0.14, length, 0, floor + 0.07, 0, TRIM),
+      box(width * 0.96, 0.32, 0.1, 0, floor + 0.2, front - 0.03, TRIM),
+      box(width * 0.96, 0.32, 0.1, 0, floor + 0.2, -front + 0.03, TRIM),
+      ...wheels(width, wheel, [front - 2.4, -front + 2.8]),
+    ],
+    lamps: lamps(length, { x: width / 2 - 0.32, y: floor + 0.45, width: 0.4, height: 0.18 }, { x: width / 2 - 0.32, y: floor + 0.45, width: 0.32, height: 0.18 }),
+  };
+}
+
+/**
+ * A body drawn from its side: `outline` (z along the vehicle, forward, and
+ * y up; once round, either way) extruded `width` wide across X and centred,
+ * its edges rounded off by `bevel`, within the outline.
+ */
+function profile(outline: readonly (readonly [number, number])[], width: number, bevel: number, color: number): BufferGeometry {
+  const shape = new Shape(outline.map(([z, y]) => new Vector2(z, y)));
+  const depth = width - 2 * bevel;
+  const extruded = new ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelOffset: -bevel,
+    bevelSegments: 2,
+    curveSegments: 1,
+  });
+  // The outline's first axis along the vehicle (+Z), extruded across it (X), centred.
+  extruded.rotateY(-Math.PI / 2).translate(depth / 2, 0, 0);
+  // three.js builds it without an index; welded, it merges with the other (indexed) parts.
+  const welded = mergeVertices(extruded);
+  extruded.dispose();
+  return colored(welded, color);
+}
+
+/**
+ * The points of `sill`'s line (y) from the back to the front, arching up
+ * over each wheel (`axles`, z, from the back; the wheels `wheel` meters in
+ * radius) `radius` meters round its hub, for profile()'s outline.
+ */
+function archesAlong(sill: number, wheel: number, axles: readonly number[], radius: number): [number, number][] {
+  const points: [number, number][] = [];
+  for (const axle of axles) {
+    for (let step = 0; step <= ARCH_STEPS; step++) {
+      const angle = Math.PI * (1 - step / ARCH_STEPS);
+      points.push([axle + radius * Math.cos(angle), Math.max(sill, wheel + radius * Math.sin(angle))]);
+    }
+  }
+  return points;
+}
+
+/** Along an outline's edge from `from` to `to` (z, y): the z at a height. */
+function along(from: readonly [number, number], to: readonly [number, number]): (y: number) => number {
+  return (y) => from[0] + ((y - from[1]) / (to[1] - from[1])) * (to[0] - from[0]);
+}
+
+/**
+ * A pane (the windscreen, the rear window) on the sloped face of a
+ * profile() between its outline's points `from` and `to` (in the order the
+ * outline runs over the top, front to back), `halfWidth` either side of the
+ * middle, clear of the face's ends by `insetFrom` and `insetTo` meters,
+ * lying just off the face.
+ */
+function slopedPanel(
+  from: readonly [number, number],
+  to: readonly [number, number],
+  halfWidth: number,
+  insetFrom: number,
+  insetTo: number,
+  color: number,
+): BufferGeometry {
+  const dz = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const edge = Math.hypot(dz, dy);
+  // Out of the body: the outline runs over the top from the front to the back.
+  const outZ = (dy / edge) * PANE_CLEARANCE;
+  const outY = (-dz / edge) * PANE_CLEARANCE;
+  const at = (share: number): [number, number] => [from[0] + dz * share + outZ, from[1] + dy * share + outY];
+  const [z0, y0] = at(insetFrom / edge);
+  const [z1, y1] = at(1 - insetTo / edge);
+  return panel(
+    [
+      [-halfWidth, y0, z0],
+      [halfWidth, y0, z0],
+      [halfWidth, y1, z1],
+      [-halfWidth, y1, z1],
+    ],
+    color,
+  );
+}
+
+/** A flat four-cornered panel (`corners`, x y z, round it the way that faces out), in one colour. */
+function panel(corners: readonly (readonly [number, number, number])[], color: number): BufferGeometry {
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(corners.flat()), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  geometry.setIndex([0, 1, 2, 0, 2, 3]);
+  geometry.computeVertexNormals();
+  return colored(geometry, color);
+}
+
+/** A rectangle on a vehicle's back at `z`, facing back: from `left` to `right` across it (x) and `bottom` to `top`. */
+function backPanel(left: number, right: number, bottom: number, top: number, z: number, color: number): BufferGeometry {
+  return panel(
+    [
+      [left, bottom, z],
+      [left, top, z],
+      [right, top, z],
+      [right, bottom, z],
+    ],
+    color,
+  );
+}
+
+/**
+ * A flat panel (a window, a door's line) on a vehicle's side at `x` (its
+ * sign the side), facing out: `outline` in z along the vehicle and y up.
+ */
+function sidePanel(outline: readonly (readonly [number, number])[], x: number, color: number): BufferGeometry {
+  // A shape lies in its own plane facing +Z: turned to face out of the side, the first coordinate along the vehicle.
+  const side = Math.sign(x);
+  const shape = new Shape(outline.map(([z, y]) => new Vector2(side > 0 ? -z : z, y)));
+  const geometry = new ShapeGeometry(shape).rotateY((side * Math.PI) / 2).translate(x, 0, 0);
+  return colored(geometry, color);
+}
+
+/** A rectangle's corners (z, y) round its middle (`z`, `y`), `length` along the vehicle and `height` tall. */
+function rectangle(z: number, y: number, length: number, height: number): [number, number][] {
+  return [
+    [z - length / 2, y - height / 2],
+    [z - length / 2, y + height / 2],
+    [z + length / 2, y + height / 2],
+    [z + length / 2, y - height / 2],
+  ];
+}
+
+/** A door's edge: a dark line up the side at `x`, at `z`, from `bottom` to `top`. */
+function line(x: number, z: number, bottom: number, top: number): BufferGeometry {
+  return sidePanel(rectangle(z, (bottom + top) / 2, 0.014, top - bottom), x, TRIM);
+}
+
+/** Where a lamp is on a vehicle's front or back: out from the middle, up from the ground, its size, meters. */
+interface LampPlace {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** A box `w` wide, `h` tall and `d` long centred at (x, y, z), in one colour. */
@@ -619,25 +1044,28 @@ function rounded(w: number, h: number, d: number, x: number, y: number, z: numbe
 }
 
 /**
- * Headlights at the front and tail lights at the back, `y` above the ground,
- * in the order LAMPS_PER_VEHICLE describes (left is +X, the driver's left
- * facing +Z).
+ * Headlights at the front and tail lights at the back, each pair where
+ * `head` and `tail` put them, in the order LAMPS_PER_VEHICLE describes
+ * (left is +X, the driver's left facing +Z), on the ends of a vehicle
+ * `length` long.
  */
-function lamps(width: number, length: number, y: number, size: number): VehicleLamp[] {
-  const lamp = (x: number, z: number, lampWidth: number, out: number): VehicleLamp => ({
-    box: new Matrix4().makeScale(lampWidth, size * 0.45, 0.06).setPosition(x, y, z),
-    glow: [x, y, z + out * GLOW_OFFSET_METERS],
+function lamps(length: number, head: LampPlace, tail: LampPlace): VehicleLamp[] {
+  const lamp = (x: number, z: number, place: LampPlace, out: number): VehicleLamp => ({
+    box: new Matrix4().makeScale(place.width, place.height, 0.06).setPosition(x, place.y, z),
+    glow: [x, place.y, z + out * GLOW_OFFSET_METERS],
   });
-  const x = width / 2 - size * 0.8;
   return [
-    lamp(x, length / 2 + 0.02, size, 1),
-    lamp(-x, length / 2 + 0.02, size, 1),
-    lamp(x, -length / 2 - 0.02, size * 0.8, -1),
-    lamp(-x, -length / 2 - 0.02, size * 0.8, -1),
+    lamp(head.x, length / 2 + 0.02, head, 1),
+    lamp(-head.x, length / 2 + 0.02, head, 1),
+    lamp(tail.x, -length / 2 - 0.02, tail, -1),
+    lamp(-tail.x, -length / 2 - 0.02, tail, -1),
   ];
 }
 
-/** A pair of wheels on each axle, `axles` meters ahead of the middle, each with a light hub on its outer face. */
+/**
+ * A pair of wheels on each axle, `axles` meters ahead of the middle, each
+ * with a light rim on its outer face and a dark cap in the rim's middle.
+ */
 function wheels(width: number, radius: number, axles: readonly number[]): BufferGeometry[] {
   const parts: BufferGeometry[] = [];
   for (const z of axles) {
@@ -645,10 +1073,14 @@ function wheels(width: number, radius: number, axles: readonly number[]): Buffer
       const x = side * (width / 2 - 0.12);
       const tyre = new CylinderGeometry(radius, radius, 0.26, WHEEL_SEGMENTS).rotateZ(Math.PI / 2).translate(x, radius, z);
       parts.push(colored(tyre, TYRE));
-      const hub = new CircleGeometry(radius * 0.58, WHEEL_SEGMENTS)
+      const rim = new CircleGeometry(radius * 0.6, WHEEL_SEGMENTS)
         .rotateY((side * Math.PI) / 2)
         .translate(x + side * 0.132, radius, z);
-      parts.push(colored(hub, HUB));
+      parts.push(colored(rim, HUB));
+      const cap = new CircleGeometry(radius * 0.2, 6)
+        .rotateY((side * Math.PI) / 2)
+        .translate(x + side * 0.136, radius, z);
+      parts.push(colored(cap, TRIM));
     }
   }
   return parts;

@@ -59,17 +59,24 @@ describe('TrafficView', () => {
     }
   });
 
-  it('shapes every kind to its size, standing on the ground and facing +Z, rounded, in under 600 triangles', () => {
+  it('shapes every kind to its size, standing on the ground and facing +Z, rounded, in under 1100 triangles', () => {
     for (const type of TRAFFIC_VEHICLES) {
       const geometry = vehicleGeometry(type);
-      const box = new Box3().setFromBufferAttribute(geometry.getAttribute('position') as BufferAttribute);
+      const position = geometry.getAttribute('position') as BufferAttribute;
+      const box = new Box3().setFromBufferAttribute(position);
 
-      expect(box.min.y, type.id).toBeCloseTo(0, 1); // Tyres are 10-sided: their lowest corners sit a hair up.
+      expect(box.min.y, type.id).toBeCloseTo(0, 1); // Tyres are 12-sided: their lowest corners sit a hair up.
       expect(box.max.y, type.id).toBeCloseTo(type.heightMeters, 1);
-      expect(box.max.x - box.min.x, type.id).toBeLessThan(type.widthMeters + 0.1);
+      // As wide as it is, but for the mirrors standing out of its sides up by the windscreen.
+      expect(box.max.x - box.min.x, type.id).toBeLessThan(type.widthMeters + 0.55);
+      for (let i = 0; i < position.count; i++) {
+        if (position.getY(i) < 0.9) {
+          expect(Math.abs(position.getX(i)), type.id).toBeLessThan(type.widthMeters / 2 + 0.03);
+        }
+      }
       expect(box.max.z - box.min.z, type.id).toBeLessThan(type.lengthMeters + 0.05);
       expect(box.max.z - box.min.z, type.id).toBeGreaterThan(type.lengthMeters - 0.1);
-      expect(geometry.index!.count / 3, type.id).toBeLessThan(600);
+      expect(geometry.index!.count / 3, type.id).toBeLessThan(1100);
       // Every part mirrors the sky as much as it shines: glossy paint and glass, dull tyres.
       const shine = geometry.getAttribute('shine');
       expect(shine.count, type.id).toBe(geometry.getAttribute('position').count);
@@ -79,8 +86,32 @@ describe('TrafficView', () => {
     }
   });
 
-  it('paints only the painted parts, and lights the buses\' windows and route signs at night', () => {
-    const bus = TRAFFIC_VEHICLES.find((type) => type.kind === 'bus')!;
+  it('glazes every kind: a windscreen up ahead, windows down both sides', () => {
+    for (const type of TRAFFIC_VEHICLES) {
+      const geometry = vehicleGeometry(type);
+      const position = geometry.getAttribute('position');
+      const normal = geometry.getAttribute('normal');
+      const shine = geometry.getAttribute('shine');
+      let ahead = 0;
+      let left = 0;
+      let right = 0;
+      for (let i = 0; i < position.count; i++) {
+        // Glass mirrors the sky fully.
+        if (shine.getX(i) !== 1 || position.getY(i) < 0.8) {
+          continue;
+        }
+        ahead += position.getZ(i) > 0 && normal.getZ(i) > 0.3 ? 1 : 0;
+        left += position.getX(i) > type.widthMeters * 0.4 && normal.getX(i) > 0.9 ? 1 : 0;
+        right += position.getX(i) < -type.widthMeters * 0.4 && normal.getX(i) < -0.9 ? 1 : 0;
+      }
+      expect(ahead, type.id).toBeGreaterThan(0);
+      expect(left, type.id).toBeGreaterThan(0);
+      expect(right, type.id).toBeGreaterThan(0);
+      geometry.dispose();
+    }
+  });
+
+  it("paints only the painted parts, and lights the buses' and minibuses' windows, the route signs and the lorries' markers at night", () => {
     for (const type of TRAFFIC_VEHICLES) {
       const geometry = vehicleGeometry(type);
       const paint = geometry.getAttribute('paint');
@@ -96,9 +127,9 @@ describe('TrafficView', () => {
         glowing += glow.getX(i) + glow.getY(i) + glow.getZ(i) > 0 ? 1 : 0;
         orange += glow.getX(i) > glow.getZ(i) * 4 ? 1 : 0;
       }
-      // Only the bus glows: its lit windows, and its route sign in orange.
-      expect(glowing > 0, type.id).toBe(type === bus);
-      expect(orange > 0, type.id).toBe(type === bus);
+      // The bus's and the minibus's windows glow, lit from inside; the bus's route sign and the lorry's markers orange.
+      expect(glowing > 0, type.id).toBe(type.kind !== 'car');
+      expect(orange > 0, type.id).toBe(type.kind === 'bus' || type.kind === 'truck');
       geometry.dispose();
     }
 

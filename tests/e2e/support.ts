@@ -127,6 +127,14 @@ export async function openCompanyHq(page: Page, query = '', options: OpenOptions
   await openPanel(page, 'jobs');
 }
 
+/**
+ * The debug overlay, no traffic, and the truck started on the open highway
+ * east of the rest area, heading east: room to turn either way at speed.
+ * In town, a truck turning across the high street reaches the benches and
+ * lamp posts on its pavements, and cars.
+ */
+export const OPEN_ROAD = '?debug&traffic=0&spawn=300,-641,84';
+
 /** Opens the game with a new company: on the road, without a contract. */
 export async function openGame(page: Page, query = '', options: OpenOptions = {}): Promise<void> {
   await openMainMenu(page, query, options);

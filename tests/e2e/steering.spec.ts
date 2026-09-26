@@ -3,6 +3,7 @@ import {
   centreOf,
   closeSettingsAndResume,
   headingChange,
+  OPEN_ROAD,
   openGame,
   openSettingsWhileDriving,
   seedSettings,
@@ -15,7 +16,7 @@ import {
 test('steers by turning the phone once tilt is picked in Settings', async ({ page }) => {
   test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
-  await openGame(page, '?debug');
+  await openGame(page, OPEN_ROAD);
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-tilt', 'off');
 
@@ -57,7 +58,7 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
   test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await seedSettings(page, { steering: 'tilt', tiltSensitivity: 'high' });
-  await openGame(page, '?debug');
+  await openGame(page, OPEN_ROAD);
   await expect(page.locator('html')).toHaveAttribute('data-tilt', 'waiting');
   /** The heading once the overlay (refreshed twice a second) shows it anew: never a reading from before the call. */
   const freshHeading = async (): Promise<number> => {
@@ -98,7 +99,7 @@ test('steers with the left and right buttons', async ({ page }) => {
   test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await seedSettings(page, { steering: 'buttons' });
-  await openGame(page, '?debug');
+  await openGame(page, OPEN_ROAD);
   await expect(page.locator('.steering-wheel')).toBeHidden();
   await expect(page.locator('.tilt-button')).toBeHidden();
 
