@@ -33,6 +33,8 @@ import {
   type SceneryGround,
   type TreeSpecies,
 } from './countryside';
+import type { DebrisSolids, SolidContact } from '../crash/DebrisSimulation';
+import { KNOCKABLES, knockableCode, knockableKindOf, type KnockableKind } from '../crash/knockables';
 import { bankWalls, findBridges, parapetWalls, type Bridge, type WallPiece } from './bridges';
 import {
   createForest,
@@ -211,8 +213,40 @@ export interface MovingObstacles {
   /**
    * The truck touched circle `index` this step. `impactSpeed` is how hard
    * the truck drove into it (m/s), 0 when it was not driving into it.
+   * Returns true when the vehicle gives way (wrecked, it leaves the road):
+   * the truck goes on through it.
    */
-  hit(index: number, impactSpeed: number): void;
+  hit(index: number, impactSpeed: number): boolean;
+}
+
+/** Up to this many things give way to the truck in one step. */
+export const MAX_KNOCKS = 8;
+
+/**
+ * What gave way since the last resolveCollisions() began: solid circles
+ * knocked over (`circle` ≥ 0) and vehicles wrecked (`vehicle` ≥ 0, the
+ * moving obstacle's circle), each with how fast it was struck and the
+ * contact's normal (from the thing to what struck it). The truck strikes
+ * them in resolveCollisions(); debris flying into them after (`byDebris`,
+ * collideDebris()). Read up to `count`.
+ */
+export interface KnockRecord {
+  count: number;
+  readonly circle: Int32Array;
+  readonly vehicle: Int32Array;
+  readonly speed: Float64Array;
+  readonly normalX: Float64Array;
+  readonly normalZ: Float64Array;
+  /** 1 where debris knocked it over, 0 where the truck did. */
+  readonly byDebris: Uint8Array;
+}
+
+/** A solid circle's thing: where it stands, how wide its foot is, and which way it faces (radians) if it does. */
+export interface CircleThing {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly heading?: number;
 }
 
 export interface BuildingObstacle {
@@ -329,7 +363,7 @@ const AT_FAULT_SPEED = 0.5;
  * cranes, and the map boundary. Rendering reads the same data, so what
  * you see is what you collide with.
  */
-export class DrivingWorld {
+export class DrivingWorld implements DebrisSolids {
   readonly id: string;
   readonly halfSizeMeters: number;
   readonly roads: readonly RoadPath[];
@@ -387,6 +421,32 @@ export class DrivingWorld {
   private readonly circleRadius: Float64Array;
   /** The largest circle's radius: how far round a footprint circle to look for them. */
   private readonly maxCircleRadius: number;
+  /**
+   * What gives way among the solid circles (crash/knockables.ts): 0 stays
+   * put, i + 1 is KNOCKABLE_KINDS[i], knocked over when the truck drives
+   * into it hard enough.
+   */
+  readonly circleKind: Uint8Array;
+  /** Whether each circle's thing lies knocked over, in nobody's way. */
+  readonly knocked: Uint8Array;
+  /** Counts every knock and every thing put back, for the views to catch up with. */
+  knockVersion = 0;
+  /** Whether the collisions being resolved knock things over (resolveCollisions' knockOvers). */
+  private knockingOver = false;
+  /** What gave way to the truck in the last resolveCollisions() call. */
+  readonly knocks: KnockRecord = {
+    count: 0,
+    circle: new Int32Array(MAX_KNOCKS),
+    vehicle: new Int32Array(MAX_KNOCKS),
+    speed: new Float64Array(MAX_KNOCKS),
+    normalX: new Float64Array(MAX_KNOCKS),
+    normalZ: new Float64Array(MAX_KNOCKS),
+    byDebris: new Uint8Array(MAX_KNOCKS),
+  };
+  /** The thing each solid circle stands for. */
+  private readonly circleThings: readonly CircleThing[];
+  /** The circle of each thing that can be knocked over. */
+  private readonly circleOfThing = new Map<object, number>();
   /**
    * The guard rails' pieces, post to post (from a to b), with the way
    * toward their road, filed by grid cell as indices into the arrays below.
@@ -585,21 +645,35 @@ export class DrivingWorld {
     this.rocks = countryside ? placeRocks(ground, occupancy, map.halfSizeMeters, seed) : [];
     this.grazers = countryside ? placeGrazers(ground, occupancy, seed) : [];
     this.trees = [...wildTrees, ...forestTrees, ...parkTrees, ...plantedTrees];
-    const circles = [
-      ...this.trees,
-      ...this.streetLamps,
-      ...this.parks.map((park) => park.fountain),
-      ...this.citySigns.flatMap(signPosts),
-      ...this.hayBales,
-      ...this.windTurbines,
-      ...(this.sea?.cranes.flatMap(craneLegs) ?? []),
-      ...this.powerLines.flatMap((line) => line.poles),
-      ...this.rocks,
-      ...this.grazers,
-      ...this.streetFurniture,
-      ...this.billboards.flatMap(billboardLegs),
-      ...this.speedSigns,
-    ];
+    // The solid circles, each with what it is: the lamps, bales, street furniture and speed signs give way to a hard hit.
+    const circles: CircleThing[] = [];
+    const kinds: number[] = [];
+    const add = <T extends CircleThing>(things: readonly T[], kindOf: (thing: T) => KnockableKind | null = () => null): void => {
+      for (const thing of things) {
+        const kind = kindOf(thing);
+        if (kind !== null) {
+          this.circleOfThing.set(thing, circles.length);
+        }
+        circles.push(thing);
+        kinds.push(kind === null ? 0 : knockableCode(kind));
+      }
+    };
+    add(this.trees);
+    add(this.streetLamps, () => 'lamp');
+    add(this.parks.map((park) => park.fountain));
+    add(this.citySigns.flatMap(signPosts));
+    add(this.hayBales, () => 'hayBale');
+    add(this.windTurbines);
+    add(this.sea?.cranes.flatMap(craneLegs) ?? []);
+    add(this.powerLines.flatMap((line) => line.poles));
+    add(this.rocks);
+    add(this.grazers);
+    add(this.streetFurniture, (piece) => piece.kind);
+    add(this.billboards.flatMap(billboardLegs));
+    add(this.speedSigns, () => 'speedSign');
+    this.circleThings = circles;
+    this.circleKind = Uint8Array.from(kinds);
+    this.knocked = new Uint8Array(circles.length);
     this.circleX = Float64Array.from(circles, (circle) => circle.x);
     this.circleZ = Float64Array.from(circles, (circle) => circle.z);
     this.circleRadius = Float64Array.from(circles, (circle) => circle.radius);
@@ -666,6 +740,29 @@ export class DrivingWorld {
     return (this.sea !== null && isInSea(this.sea.shoreline, x, z, margin)) || this.isRiver(x, z, margin);
   }
 
+  /** Whether (x, z) is on a bridge's deck (between its parapets). Allocation-free. */
+  isOnBridge(x: number, z: number): boolean {
+    for (let i = 0; i < this.bridges.length; i++) {
+      const bridge = this.bridges[i]!;
+      const dx = x - bridge.x;
+      const dz = z - bridge.z;
+      const sin = Math.sin(bridge.heading);
+      const cos = Math.cos(bridge.heading);
+      if (
+        Math.abs(dx * sin + dz * cos) <= (bridge.toMeters - bridge.fromMeters) / 2 &&
+        Math.abs(dx * cos - dz * sin) <= bridge.halfWidthMeters
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether there is ground to land on at (x, z): anywhere but the sea and the rivers, unless on a bridge. */
+  hasGround(x: number, z: number): boolean {
+    return !this.isWater(x, z) || this.isOnBridge(x, z);
+  }
+
   /** Whether (x, z) is in a river's channel (its water and banks), or within `margin` meters of one. Allocation-free. */
   isRiver(x: number, z: number, margin = 0): boolean {
     for (let i = 0; i < this.rivers.length; i++) {
@@ -706,16 +803,23 @@ export class DrivingWorld {
    * hit stops the truck, a glancing one turns it along the obstacle and it
    * carries on with the speed it had along the surface. Driving into a
    * vehicle that is moving away, the truck keeps that vehicle's speed.
-   * Returns the hardest impact speed (m/s into the obstacle), or 0.
+   * Returns the hardest impact speed (m/s into the obstacle), or 0. With
+   * `knockOvers`, what gives way (crash/knockables.ts: lamps, bins, benches,
+   * bus stops, speed signs, hay bales) struck hard enough is knocked over
+   * instead, noted in `knocks`, and the truck drives on through it; so are
+   * vehicles the obstacles let give way (wrecked).
    * Allocation-free: it runs every fixed step.
    */
   resolveCollisions(
     state: VehicleRuntimeState,
     footprint: VehicleFootprint,
     obstacles: MovingObstacles | null = null,
+    knockOvers = false,
   ): number {
     this.worstImpact = 0;
     this.worstCarriedSpeed = 0;
+    this.knocks.count = 0;
+    this.knockingOver = knockOvers;
     for (let i = 0; i < footprint.offsets.length; i++) {
       this.collideCircle(state, footprint.offsets[i]!, footprint.radius);
       if (obstacles !== null) {
@@ -749,15 +853,19 @@ export class DrivingWorld {
       const distance = Math.sqrt(distanceSquared);
       const nx = dx / distance;
       const nz = dz / distance;
-      state.x += nx * (minDistance - distance);
-      state.z += nz * (minDistance - distance);
-      cx = state.x + Math.sin(state.heading) * offset;
-      cz = state.z + Math.cos(state.heading) * offset;
       // The normal points from the obstacle to the truck: negative truck speed along it is driving in.
       const truckInto = -state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
       const obstacleInto = obstacles.circleVelocityX[k]! * nx + obstacles.circleVelocityZ[k]! * nz;
       const impact = truckInto > AT_FAULT_SPEED ? Math.max(0, truckInto + obstacleInto) : 0;
-      obstacles.hit(k, impact);
+      if (obstacles.hit(k, impact)) {
+        // Wrecked, it gives way: the truck goes on through it.
+        this.recordKnock(-1, k, impact, nx, nz);
+        continue;
+      }
+      state.x += nx * (minDistance - distance);
+      state.z += nz * (minDistance - distance);
+      cx = state.x + Math.sin(state.heading) * offset;
+      cz = state.z + Math.cos(state.heading) * offset;
       if (impact > 0 && impact >= this.worstImpact) {
         this.worstImpact = impact;
         this.worstNormalX = nx;
@@ -769,6 +877,166 @@ export class DrivingWorld {
             ? obstacles.circleVelocityX[k]! * Math.sin(state.heading) + obstacles.circleVelocityZ[k]! * Math.cos(state.heading)
             : 0;
       }
+    }
+  }
+
+  /**
+   * Knocks circle `index`'s thing over when the truck drives into it (the
+   * normal points from it to the truck) at least as fast as its kind gives
+   * way; records it. False when it stands, like anything solid.
+   */
+  private knockOver(state: VehicleRuntimeState, index: number, nx: number, nz: number): boolean {
+    const into = -state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
+    return this.knockAt(index, into, nx, nz, 0);
+  }
+
+  /** Knocks circle `index`'s thing over if struck `into` m/s hard enough for its kind; records it. */
+  private knockAt(index: number, into: number, nx: number, nz: number, byDebris: number): boolean {
+    const kind = knockableKindOf(this.circleKind[index]!);
+    if (kind === null || into < KNOCKABLES[kind].knockSpeed || this.knocks.count >= MAX_KNOCKS) {
+      return false;
+    }
+    this.knocked[index] = 1;
+    this.knockVersion++;
+    this.recordKnock(index, -1, into, nx, nz, byDebris);
+    return true;
+  }
+
+  /** Notes what gave way (a circle knocked over, or a moving obstacle's circle wrecked), once per step each. */
+  private recordKnock(circle: number, vehicle: number, speed: number, nx: number, nz: number, byDebris = 0): void {
+    const knocks = this.knocks;
+    for (let i = 0; i < knocks.count; i++) {
+      if (knocks.circle[i] === circle && knocks.vehicle[i] === vehicle) {
+        return;
+      }
+    }
+    if (knocks.count >= MAX_KNOCKS) {
+      return;
+    }
+    knocks.circle[knocks.count] = circle;
+    knocks.vehicle[knocks.count] = vehicle;
+    knocks.speed[knocks.count] = speed;
+    knocks.normalX[knocks.count] = nx;
+    knocks.normalZ[knocks.count] = nz;
+    knocks.byDebris[knocks.count] = byDebris;
+    knocks.count++;
+  }
+
+  /**
+   * DebrisSolids: whether debris, a circle of `radius` round (x, z) moving
+   * at (vx, vz), strikes something solid standing about (a tree, a rock, a
+   * post, a turbine, a building) or the map's edge; if so, writes the way
+   * out of the deepest into `out`. What would give way to the truck gives
+   * way to debris struck into it as hard: knocked over and noted in
+   * `knocks` (byDebris), it lets the debris through. Allocation-free.
+   */
+  collideDebris(x: number, z: number, radius: number, vx: number, vz: number, out: SolidContact): boolean {
+    let deepest = 0;
+    const reach = radius + this.maxCircleRadius;
+    for (let gx = cellOf(x - reach); gx <= cellOf(x + reach); gx++) {
+      for (let gz = cellOf(z - reach); gz <= cellOf(z + reach); gz++) {
+        const bucket = this.circleGrid.get(cellKey(gx, gz));
+        if (bucket === undefined) {
+          continue;
+        }
+        for (let k = 0; k < bucket.length; k++) {
+          const index = bucket[k]!;
+          if (this.knocked[index] === 1) {
+            continue;
+          }
+          const dx = x - this.circleX[index]!;
+          const dz = z - this.circleZ[index]!;
+          const minDistance = radius + this.circleRadius[index]!;
+          const distanceSquared = dx * dx + dz * dz;
+          if (distanceSquared >= minDistance * minDistance || distanceSquared < 1e-12) {
+            continue;
+          }
+          const distance = Math.sqrt(distanceSquared);
+          const nx = dx / distance;
+          const nz = dz / distance;
+          if (this.circleKind[index]! > 0 && this.knockAt(index, -(vx * nx + vz * nz), nx, nz, 1)) {
+            continue;
+          }
+          if (minDistance - distance > deepest) {
+            deepest = minDistance - distance;
+            out.normalX = nx;
+            out.normalZ = nz;
+          }
+        }
+      }
+    }
+    for (let i = 0; i < this.buildings.length; i++) {
+      const box = this.buildings[i]!;
+      const dx = x - clamp(x, box.minX, box.maxX);
+      const dz = z - clamp(z, box.minZ, box.maxZ);
+      const distanceSquared = dx * dx + dz * dz;
+      if (distanceSquared >= radius * radius) {
+        continue;
+      }
+      if (distanceSquared > 1e-12) {
+        const distance = Math.sqrt(distanceSquared);
+        if (radius - distance > deepest) {
+          deepest = radius - distance;
+          out.normalX = dx / distance;
+          out.normalZ = dz / distance;
+        }
+      } else {
+        // The middle is inside the box: out through the closest side.
+        const toLeft = x - box.minX;
+        const toRight = box.maxX - x;
+        const toBottom = z - box.minZ;
+        const toTop = box.maxZ - z;
+        const closest = Math.min(toLeft, toRight, toBottom, toTop);
+        if (closest + radius > deepest) {
+          deepest = closest + radius;
+          out.normalX = closest === toLeft ? -1 : closest === toRight ? 1 : 0;
+          out.normalZ = out.normalX !== 0 ? 0 : closest === toBottom ? -1 : 1;
+        }
+      }
+    }
+    const edge = this.halfSizeMeters - radius;
+    for (let side = 0; side < 4; side++) {
+      const nx = side === 0 ? 1 : side === 1 ? -1 : 0;
+      const nz = side === 2 ? 1 : side === 3 ? -1 : 0;
+      // How far beyond the edge on that side (the normal points back in).
+      const beyond = -edge - (x * nx + z * nz);
+      if (beyond > deepest) {
+        deepest = beyond;
+        out.normalX = nx;
+        out.normalZ = nz;
+      }
+    }
+    out.depth = deepest;
+    return deepest > 0;
+  }
+
+  /** The circle of `thing` (a lamp, hay bale, piece of street furniture or speed sign that can be knocked over), or -1. */
+  circleIndexOf(thing: object): number {
+    return this.circleOfThing.get(thing) ?? -1;
+  }
+
+  /** The thing solid circle `circle` stands for. */
+  circleThing(circle: number): CircleThing {
+    const thing = this.circleThings[circle];
+    if (thing === undefined) {
+      throw new Error(`No solid circle ${circle}.`);
+    }
+    return thing;
+  }
+
+  /** Stands circle `circle`'s thing back up where it stood. */
+  restore(circle: number): void {
+    if (this.knocked[circle] === 1) {
+      this.knocked[circle] = 0;
+      this.knockVersion++;
+    }
+  }
+
+  /** Stands everything knocked over back up. */
+  restoreAll(): void {
+    if (this.knocked.includes(1)) {
+      this.knocked.fill(0);
+      this.knockVersion++;
     }
   }
 
@@ -788,6 +1056,9 @@ export class DrivingWorld {
         }
         for (let k = 0; k < bucket.length; k++) {
           const index = bucket[k]!;
+          if (this.knocked[index] === 1) {
+            continue;
+          }
           const dx = cx - this.circleX[index]!;
           const dz = cz - this.circleZ[index]!;
           const minDistance = radius + this.circleRadius[index]!;
@@ -796,6 +1067,9 @@ export class DrivingWorld {
             continue;
           }
           const distance = Math.sqrt(distanceSquared);
+          if (this.knockingOver && this.circleKind[index]! > 0 && this.knockOver(state, index, dx / distance, dz / distance)) {
+            continue;
+          }
           this.pushOut(state, offset, dx / distance, dz / distance, minDistance - distance);
           cx = state.x + Math.sin(state.heading) * offset;
           cz = state.z + Math.cos(state.heading) * offset;

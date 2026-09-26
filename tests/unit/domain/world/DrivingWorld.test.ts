@@ -46,7 +46,10 @@ function movingObstacles(circles: readonly MovingCircle[]): MovingObstacles & { 
     circleRadius: Float64Array.from(circles, (circle) => circle.radius),
     circleVelocityX: Float64Array.from(circles, (circle) => circle.vx),
     circleVelocityZ: Float64Array.from(circles, (circle) => circle.vz),
-    hit: (index, impact) => hits.push([index, impact]),
+    hit: (index, impact) => {
+      hits.push([index, impact]);
+      return false;
+    },
     hits,
   };
 }
