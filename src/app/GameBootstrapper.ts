@@ -11,6 +11,7 @@ import { CompanyService } from '../systems/company/CompanyService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
 import { EventService } from '../systems/events/EventService';
+import { FleetService } from '../systems/fleet/FleetService';
 import type { GameEvents } from '../systems/GameEvents';
 import { GameStateService } from '../systems/gameState/GameStateService';
 import { DailyContracts } from '../systems/missions/DailyContracts';
@@ -171,11 +172,27 @@ export class GameBootstrapper {
           company,
           events,
           logger.withCategory('Garage'),
+          config.fleet.garageSlots,
         ),
       );
       container.register(
         ServiceKeys.upgrades,
         new UpgradeService(catalog, garage, economy, company, events, logger.withCategory('Upgrades')),
+      );
+      const fleet = container.register(
+        ServiceKeys.fleet,
+        new FleetService(
+          catalog,
+          driving,
+          garage,
+          economy,
+          company,
+          events,
+          config.fleet,
+          config.economy,
+          config.fuel,
+          logger.withCategory('Fleet'),
+        ),
       );
       // After the economy and the company: a delivery is paid and scored before its event bonus.
       const specialEvents = container.register(
@@ -208,6 +225,7 @@ export class GameBootstrapper {
           economy,
           company,
           garage,
+          fleet,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),
@@ -245,5 +263,6 @@ function describeContent(catalog: ContentCatalog): string {
     `weather ${catalog.weather.size}`,
     `times of day ${catalog.daylight.size}`,
     `events ${catalog.events.size}`,
+    `drivers ${catalog.drivers.size}`,
   ].join(', ');
 }

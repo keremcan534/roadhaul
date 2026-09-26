@@ -150,7 +150,109 @@ export function validateSaveGameData(
   });
   section('events', (events) => validateEventRuns(events['runs'], content, validator));
   section('tutorial', (tutorial) => validator.oneOf(tutorial['step'], TUTORIAL_STEPS, 'tutorial.step'));
+  section('fleet', (fleet) => validateFleet(fleet, data['garage'], content, validator));
   return validator.issues;
+}
+
+/**
+ * Each hired driver is a known one, once; drives one of the company's
+ * trucks other than the player's (each truck one driver), or none; stands
+ * in a known city; and any contract under way is a sound one of theirs.
+ */
+function validateFleet(fleet: Json, garage: unknown, content: ContentCatalog, validator: Validator): void {
+  validator.nonNegativeInteger(fleet['jobsPlanned'], 'fleet.jobsPlanned');
+  const drivers = fleet['drivers'];
+  if (!validator.check(Array.isArray(drivers), 'fleet.drivers', 'must be a list')) {
+    return;
+  }
+  const garageTrucks = new Set<unknown>();
+  let activeTruck: unknown;
+  if (isJson(garage) && Array.isArray(garage['vehicles'])) {
+    for (const vehicle of garage['vehicles'] as unknown[]) {
+      if (isJson(vehicle)) {
+        garageTrucks.add(vehicle['instanceId']);
+      }
+    }
+    activeTruck = garage['activeVehicleInstanceId'];
+  }
+  const seenDrivers = new Set<unknown>();
+  const seenTrucks = new Set<unknown>();
+  (drivers as unknown[]).forEach((driver, index) => {
+    const path = `fleet.drivers[${index}]`;
+    if (!isJson(driver)) {
+      validator.report(path, 'must be an object');
+      return;
+    }
+    const driverId = driver['driverId'];
+    validator.check(
+      typeof driverId === 'string' && content.drivers.has(driverId) && !seenDrivers.has(driverId),
+      `${path}.driverId`,
+      `must be a known driver, hired once, not ${JSON.stringify(driverId)}`,
+    );
+    seenDrivers.add(driverId);
+    const truck = driver['truckInstanceId'];
+    validator.check(
+      truck === null || (garageTrucks.has(truck) && truck !== activeTruck && !seenTrucks.has(truck)),
+      `${path}.truckInstanceId`,
+      "must be null or one of the company's other trucks, driven by nobody else",
+    );
+    seenTrucks.add(truck);
+    const cityId = driver['cityId'];
+    validator.check(
+      typeof cityId === 'string' && content.cities.has(cityId),
+      `${path}.cityId`,
+      `unknown city ${JSON.stringify(cityId)}`,
+    );
+    const job = driver['job'];
+    if (job !== null) {
+      if (validator.check(truck !== null, `${path}.job`, 'must be null without a truck')) {
+        validateFleetJob(job, `${path}.job`, content, validator);
+      }
+    }
+    validator.check(
+      isFiniteNumber(driver['repairSecondsLeft']) && (driver['repairSecondsLeft'] as number) >= 0,
+      `${path}.repairSecondsLeft`,
+      'must be 0 or more',
+    );
+    validator.nonNegativeInteger(driver['jobsCompleted'], `${path}.jobsCompleted`);
+    validator.check(Number.isSafeInteger(driver['creditsEarned']), `${path}.creditsEarned`, 'must be a whole number of credits');
+  });
+}
+
+function validateFleetJob(job: unknown, path: string, content: ContentCatalog, validator: Validator): void {
+  if (!isJson(job)) {
+    validator.report(path, 'must be null or a contract');
+    return;
+  }
+  for (const key of ['originCityId', 'destinationCityId']) {
+    validator.check(
+      typeof job[key] === 'string' && content.cities.has(job[key]),
+      `${path}.${key}`,
+      `unknown city ${JSON.stringify(job[key])}`,
+    );
+  }
+  validator.check(
+    typeof job['cargoId'] === 'string' && content.cargo.has(job['cargoId']),
+    `${path}.cargoId`,
+    `unknown cargo ${JSON.stringify(job['cargoId'])}`,
+  );
+  validator.positiveNumber(job['cargoTons'], `${path}.cargoTons`);
+  validator.check(
+    isFiniteNumber(job['distanceMeters']) && (job['distanceMeters'] as number) >= 0,
+    `${path}.distanceMeters`,
+    'must be 0 or more',
+  );
+  validator.positiveNumber(job['durationSeconds'], `${path}.durationSeconds`);
+  for (const key of ['pay', 'driverShare', 'fuelCost']) {
+    validator.nonNegativeInteger(job[key], `${path}.${key}`);
+  }
+  validator.boolean(job['incident'], `${path}.incident`);
+  const elapsed = job['elapsedSeconds'];
+  validator.check(
+    isFiniteNumber(elapsed) && elapsed >= 0 && (!isFiniteNumber(job['durationSeconds']) || elapsed <= job['durationSeconds']),
+    `${path}.elapsedSeconds`,
+    'must be from 0 to the contract\'s duration',
+  );
 }
 
 /** Each run names a known event, once, with a whole edition and progress of 0 or more. */

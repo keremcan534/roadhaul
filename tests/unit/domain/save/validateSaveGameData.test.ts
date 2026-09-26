@@ -72,6 +72,7 @@ describe('validateSaveGameData', () => {
       'stats',
       'events',
       'tutorial',
+      'fleet',
     ]);
   });
 
@@ -109,6 +110,65 @@ describe('validateSaveGameData', () => {
       'garage.activeVehicleInstanceId',
     ]);
     expect(paths(withPart('garage.activeVehicleInstanceId', 'truck_002'))).toEqual(['garage.activeVehicleInstanceId']);
+  });
+
+  it('checks the fleet: known drivers hired once, driving the company\'s other trucks, in known cities, on sound contracts', () => {
+    const job = {
+      originCityId: 'test_origin',
+      destinationCityId: 'test_destination',
+      cargoId: 'test_cargo',
+      cargoTons: 4,
+      distanceMeters: 3200,
+      durationSeconds: 300,
+      pay: 1500,
+      driverShare: 375,
+      fuelCost: 180,
+      incident: false,
+      elapsedSeconds: 120,
+    };
+    const withFleet = (drivers: unknown[], vehicles: unknown[] = []): unknown => {
+      const copy = JSON.parse(JSON.stringify(save())) as SaveGameData & Record<string, unknown>;
+      return {
+        ...copy,
+        garage: { ...copy.garage, vehicles: [...copy.garage.vehicles, ...vehicles] },
+        fleet: { drivers, jobsPlanned: 7 },
+      };
+    };
+    const second = { instanceId: 'truck_002', definitionId: 'test_truck', fuelLiters: 300, damage: 0.2, upgrades: {}, paintId: null };
+    const driver = {
+      driverId: 'test_driver',
+      truckInstanceId: 'truck_002',
+      cityId: 'test_origin',
+      job,
+      repairSecondsLeft: 0,
+      jobsCompleted: 3,
+      creditsEarned: -40,
+    };
+    const waiting = { ...driver, driverId: 'test_veteran', truckInstanceId: null, job: null, repairSecondsLeft: 0 };
+
+    expect(paths(withFleet([driver, waiting], [second]))).toEqual([]);
+    // Hired twice, or unknown.
+    expect(paths(withFleet([driver, { ...waiting, driverId: 'test_driver' }], [second]))).toEqual(['fleet.drivers[1].driverId']);
+    expect(paths(withFleet([{ ...driver, driverId: 'stranger' }], [second]))).toEqual(['fleet.drivers[0].driverId']);
+    // The player's own truck, one the company does not have, or one somebody else drives.
+    expect(paths(withFleet([{ ...driver, truckInstanceId: 'truck_001' }]))).toEqual(['fleet.drivers[0].truckInstanceId']);
+    expect(paths(withFleet([{ ...driver, truckInstanceId: 'truck_009' }], [second]))).toEqual(['fleet.drivers[0].truckInstanceId']);
+    expect(paths(withFleet([driver, { ...waiting, truckInstanceId: 'truck_002' }], [second]))).toEqual([
+      'fleet.drivers[1].truckInstanceId',
+    ]);
+    // A contract without a truck, or an unsound one.
+    expect(paths(withFleet([{ ...waiting, job }]))).toEqual(['fleet.drivers[0].job']);
+    expect(paths(withFleet([{ ...driver, job: { ...job, cargoId: 'gold' } }], [second]))).toEqual(['fleet.drivers[0].job.cargoId']);
+    expect(paths(withFleet([{ ...driver, job: { ...job, elapsedSeconds: 301 } }], [second]))).toEqual([
+      'fleet.drivers[0].job.elapsedSeconds',
+    ]);
+    expect(paths(withFleet([{ ...driver, job: { ...job, pay: -5 } }], [second]))).toEqual(['fleet.drivers[0].job.pay']);
+    // Where they are and how they have done.
+    expect(paths(withFleet([{ ...driver, cityId: 'atlantis' }], [second]))).toEqual(['fleet.drivers[0].cityId']);
+    expect(paths(withFleet([{ ...driver, repairSecondsLeft: -1 }], [second]))).toEqual(['fleet.drivers[0].repairSecondsLeft']);
+    expect(paths(withFleet([{ ...driver, creditsEarned: 1.5 }], [second]))).toEqual(['fleet.drivers[0].creditsEarned']);
+    expect(paths(withPart('fleet.jobsPlanned', -1))).toEqual(['fleet.jobsPlanned']);
+    expect(paths(withPart('fleet.drivers', 'nobody'))).toEqual(['fleet.drivers']);
   });
 
   it('checks each truck\'s paint: its factory colour, or a known one', () => {

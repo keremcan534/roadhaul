@@ -20,8 +20,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v7: adds each truck's paint.
  * - v8: the contract under way keeps its own definition when it was
  *   generated (a contract of the day).
+ * - v9: adds the fleet (the hired drivers, the trucks they drive and their
+ *   contracts under way).
  */
-export const CURRENT_SAVE_VERSION = 8;
+export const CURRENT_SAVE_VERSION = 9;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -43,6 +45,7 @@ export interface SaveGameData {
   readonly stats: StatsSaveData;
   readonly events: EventsSaveData;
   readonly tutorial: TutorialSaveData;
+  readonly fleet: FleetSaveData;
 }
 
 export interface ProfileSaveData {
@@ -138,6 +141,47 @@ export interface EventRunSaveData {
   readonly progress: number;
   /** The objective was met and the reward paid. */
   readonly rewarded: boolean;
+}
+
+/** The company's fleet (spec §27): its hired drivers and what they are doing. */
+export interface FleetSaveData {
+  /** In the order they were hired. */
+  readonly drivers: readonly HiredDriverSaveData[];
+  /** Fleet contracts planned so far: the next one's number seeds it (fleetJobSeed). */
+  readonly jobsPlanned: number;
+}
+
+/** A driver the company employs. */
+export interface HiredDriverSaveData {
+  /** DriverDefinition id. */
+  readonly driverId: string;
+  /** The garage truck (instanceId) they drive, or null while they wait at the HQ for one. */
+  readonly truckInstanceId: string | null;
+  /** CityDefinition id of the city they are in, or left last. */
+  readonly cityId: string;
+  /** The contract under way, or null. */
+  readonly job: FleetJobSaveData | null;
+  /** Seconds their truck has left in the workshop; 0 when it is not there. */
+  readonly repairSecondsLeft: number;
+  readonly jobsCompleted: number;
+  /** What their contracts brought the company after their share and the fuel (below 0 if they lost money). */
+  readonly creditsEarned: Credits;
+}
+
+/** A fleet contract under way (src/domain/fleet/fleetJobs.ts FleetJob) and how far along it is. */
+export interface FleetJobSaveData {
+  readonly originCityId: string;
+  readonly destinationCityId: string;
+  readonly cargoId: string;
+  readonly cargoTons: number;
+  readonly distanceMeters: number;
+  readonly durationSeconds: number;
+  readonly pay: Credits;
+  readonly driverShare: Credits;
+  readonly fuelCost: Credits;
+  readonly incident: boolean;
+  /** Seconds of it done. */
+  readonly elapsedSeconds: number;
 }
 
 export interface StatsSaveData {

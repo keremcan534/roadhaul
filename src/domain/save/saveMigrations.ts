@@ -97,6 +97,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       return { ...save, version: 8, missions: { ...missions, active: { ...missions['active'], contract: null } } };
     },
   },
+  {
+    // v9 adds the fleet: companies from older builds have hired nobody yet.
+    from: 8,
+    migrate: (save) => ({ ...save, version: 9, fleet: { drivers: [], jobsPlanned: 0 } }),
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {
