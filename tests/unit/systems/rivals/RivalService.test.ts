@@ -49,7 +49,7 @@ describe('RivalService', () => {
     expect(posted).toEqual([]);
     expect(game.rivals.snapshot().jobsPlanned).toBe(0);
     expect(game.rivals.updateMarkers()).toBe(0);
-    expect(game.rivals.definitions.map((rival) => rival.id)).toEqual(['rival_yeniliman', 'rival_basakova', 'rival_demirkent']);
+    expect(game.rivals.definitions.map((rival) => rival.id)).toEqual(['rival_yeniliman', 'rival_basakova', 'rival_demirkent', 'rival_bakirdere']);
   });
 
   it('starts each rival at home with its trucks and money, leading its city, and the company last in the league', async () => {
@@ -59,14 +59,17 @@ describe('RivalService', () => {
       ['rival_yeniliman', 2, 3000, 1, false],
       ['rival_basakova', 2, 4000, 1, false],
       ['rival_demirkent', 2, 6000, 1, false],
+      ['rival_bakirdere', 2, 5000, 1, false],
     ]);
-    expect(['city_a', 'city_b', 'city_c'].map((cityId) => game.rivals.leaderOf(cityId))).toEqual([
+    expect(['city_a', 'city_b', 'city_c', 'city_d'].map((cityId) => game.rivals.leaderOf(cityId))).toEqual([
       'rival_yeniliman',
       'rival_demirkent',
       'rival_basakova',
+      'rival_bakirdere',
     ]);
     expect(game.rivals.league().map((entry) => [entry.companyId, entry.value, entry.trucks, entry.cities])).toEqual([
       ['rival_demirkent', 6000 + 2 * 38_000, 2, 1],
+      ['rival_bakirdere', 5000 + 2 * 38_000, 2, 1],
       ['rival_basakova', 4000 + 2 * 22_000, 2, 1],
       ['rival_yeniliman', 3000 + 2 * 12_000, 2, 1],
       ['player', 5000 + 12_000, 1, 0],
@@ -79,6 +82,7 @@ describe('RivalService', () => {
         { companyId: 'rival_yeniliman', share: 1 },
         { companyId: 'rival_basakova', share: 0 },
         { companyId: 'rival_demirkent', share: 0 },
+        { companyId: 'rival_bakirdere', share: 0 },
       ],
       leaderId: 'rival_yeniliman',
       campaignSecondsLeft: 0,
@@ -89,7 +93,8 @@ describe('RivalService', () => {
     expect(game.rivals.snapshot().companies.map((company) => company.trucks.map((truck) => truck.cityId))).toEqual([
       ['city_a', 'city_c'],
       ['city_c', 'city_b'],
-      ['city_b', 'city_a'],
+      ['city_b', 'city_d'],
+      ['city_d', 'city_a'],
     ]);
   });
 
@@ -273,7 +278,7 @@ describe('RivalService', () => {
       withinReach: false,
     });
     expect(game.rivals.league().map((entry) => entry.companyId)).not.toContain('rival_yeniliman');
-    expect(game.rivals.cities()[0]!.shares.map((share) => share.companyId)).toEqual(['player', 'rival_basakova', 'rival_demirkent']);
+    expect(game.rivals.cities()[0]!.shares.map((share) => share.companyId)).toEqual(['player', 'rival_basakova', 'rival_demirkent', 'rival_bakirdere']);
     expect(game.rivals.acquire('rival_yeniliman')).toEqual({ ok: false, error: 'acquired' });
     expect(game.rivals.acquire('rival_nobody')).toEqual({ ok: false, error: 'unknownRival' });
 
@@ -287,7 +292,7 @@ describe('RivalService', () => {
     const game = await newCompany(1, 5000);
     runRivals(game, 30);
     const count = game.rivals.updateMarkers();
-    expect(count).toBe(6);
+    expect(count).toBe(8);
     const half = game.driving.world.halfSizeMeters;
     for (const marker of game.rivals.markers.slice(0, count)) {
       expect(Math.abs(marker.x)).toBeLessThan(half);
@@ -302,10 +307,10 @@ describe('RivalService', () => {
     runRivals(game, RIVALS.firstTenderSeconds);
     const tender = game.rivals.tender!;
     game.missions.accept(tender.contract.id);
-    expect(game.rivals.updateMarkers()).toBe(7);
+    expect(game.rivals.updateMarkers()).toBe(9);
     expect(game.rivals.markers).toBe(markers);
     // The rival racing the company for the tender: only the maps show it.
-    expect(game.rivals.markers[6]).toMatchObject({
+    expect(game.rivals.markers[8]).toMatchObject({
       racing: true,
       moving: false,
       key: '',

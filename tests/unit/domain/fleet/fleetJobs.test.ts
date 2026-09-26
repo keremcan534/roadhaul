@@ -46,7 +46,7 @@ describe('planFleetJob', () => {
       expect(plan({ seed, fromCityId: 'city_b' })).toEqual(job);
     }
     const destinations = new Set(Array.from({ length: 40 }, (_, seed) => plan({ seed })!.destinationCityId));
-    expect(destinations).toEqual(new Set(['city_b', 'city_c']));
+    expect(destinations).toEqual(new Set(['city_b', 'city_c', 'city_d']));
   });
 
   it('pays a contract of the day\'s pay for the road and load, times the cargo\'s, less the driver\'s share and the diesel', () => {

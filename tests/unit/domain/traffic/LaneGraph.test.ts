@@ -288,11 +288,9 @@ describe('LaneGraph', () => {
       expect(reachableFrom(0, false).size).toBe(graph.linkCount);
     });
 
-    it('has a turning circle at both dead ends of the starting town', () => {
-      expect(world.turningCircles.map((circle) => world.roads[circle.roadIndex]!.id).sort()).toEqual([
-        'a_harbour_road',
-        'a_high_street',
-      ]);
+    it('has a turning circle at the only dead end, the harbour road\'s at the quay', () => {
+      // The high street goes on south as the country road to Copperdale.
+      expect(world.turningCircles.map((circle) => world.roads[circle.roadIndex]!.id)).toEqual(['a_harbour_road']);
     });
 
     it('keeps lanes and turns joined without gaps', () => {

@@ -28,7 +28,7 @@ describe('ContentCatalog', () => {
 
     expect(catalog.vehicles.size).toBeGreaterThan(0);
     expect(catalog.cargo.size).toBeGreaterThan(0);
-    expect(catalog.cities.size).toBe(3);
+    expect(catalog.cities.size).toBe(4);
     expect(catalog.missions.size).toBeGreaterThan(0);
   });
 

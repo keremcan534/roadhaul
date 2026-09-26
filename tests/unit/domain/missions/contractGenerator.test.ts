@@ -9,11 +9,14 @@ import {
 import { generateContracts, type ContractMarket } from '../../../../src/domain/missions/contractGenerator';
 
 const { cities, cargo, vehicles } = GAME_CONTENT;
-/** Road distances between the three towns' bays, as on the shipped map. */
+/** Road distances between the towns' bays, as on the shipped map. */
 const DISTANCES: Readonly<Record<string, number>> = {
   'city_a:city_b': 4390,
   'city_a:city_c': 3250,
+  'city_a:city_d': 3330,
   'city_b:city_c': 3040,
+  'city_b:city_d': 3200,
+  'city_c:city_d': 6190,
 };
 const market: ContractMarket = {
   cities,

@@ -324,6 +324,7 @@ export const EN: StringTable = {
   'city.city_a.name': 'Havenport',
   'city.city_b.name': 'Ironford',
   'city.city_c.name': 'Amberfield',
+  'city.city_d.name': 'Copperdale',
 
   'cargo.packaged_food.name': 'Packaged food',
   'cargo.consumer_electronics.name': 'Electronics',
@@ -483,4 +484,5 @@ export const EN: StringTable = {
   'rival.rival_yeniliman.name': 'Havenport Express',
   'rival.rival_basakova.name': 'Amberfield Cargo',
   'rival.rival_demirkent.name': 'Ironford Haulage',
+  'rival.rival_bakirdere.name': 'Copperdale Freight',
 };

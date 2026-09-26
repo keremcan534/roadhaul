@@ -1,25 +1,28 @@
 import type { MapDefinition } from '../definitions/MapDefinition';
 
 /**
- * The MVP's region (spec §20, roadmap step 21): three original cities joined
- * by the four kinds of road.
+ * The region (spec §20, roadmap step 21): four original towns joined by the
+ * four kinds of road, on a map 7.2 km across.
  *
  * - City A, Havenport (west): the starting town, where the high street
  *   crosses the harbour road. The company's home depot is on the high street.
  *   The harbour road ends at the quay, on the sea along the map's west edge.
  * - City B, Ironford (east): an industrial estate inside a ring road.
  * - City C, Amberfield (north): a farm village on one street.
+ * - City D, Copperdale (south): a mining town on one street, the mine's plant,
+ *   ore bins and shaft tower behind its depot. It came with the bigger map.
  * - The highway joins A's harbour road to B's ring road, with a rest area
- *   half way (spec §25). Country roads join A to C and C to B.
+ *   half way (spec §25). Country roads join A to C and C to B, and run south
+ *   from A's high street and B's ring road to D.
  *
  * Roads meet where they share a control point. The map is a miniature of
- * spec §76's 35 km prototype: routes between depots are 3 to 4 km, a few
+ * spec §76's 35 km prototype: routes between depots are 3 to 6 km, a few
  * minutes' driving on a phone.
  */
 export const MAPS: readonly MapDefinition[] = [
   {
     id: 'north_valley',
-    halfSizeMeters: 2400,
+    halfSizeMeters: 3600,
     roads: [
       {
         id: 'a_high_street',
@@ -131,6 +134,52 @@ export const MAPS: readonly MapDefinition[] = [
           [1800, -280],
         ],
       },
+      {
+        id: 'rural_a_d',
+        kind: 'rural',
+        widthMeters: 8,
+        closed: false,
+        controlPoints: [
+          [-1700, -760],
+          [-1698, -960],
+          [-1692, -1170],
+          [-1670, -1420],
+          [-1560, -1760],
+          [-1330, -2060],
+          [-1000, -2300],
+          [-620, -2450],
+          [-250, -2500],
+        ],
+      },
+      {
+        id: 'd_main_street',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-250, -2500],
+          [0, -2500],
+          [150, -2500],
+          [300, -2500],
+          [450, -2500],
+        ],
+      },
+      {
+        id: 'rural_b_d',
+        kind: 'rural',
+        widthMeters: 8,
+        closed: false,
+        controlPoints: [
+          [1800, -730],
+          [1790, -980],
+          [1720, -1350],
+          [1560, -1720],
+          [1300, -2060],
+          [980, -2330],
+          [700, -2470],
+          [450, -2500],
+        ],
+      },
     ],
     buildings: [
       // City A: shops and offices along the high street and the harbour road…
@@ -167,6 +216,24 @@ export const MAPS: readonly MapDefinition[] = [
       { x: 40, z: 1455, widthMeters: 20, depthMeters: 16, heightMeters: 6 },
       // The rest area's shop, behind its lot.
       { x: 100, z: -603, widthMeters: 26, depthMeters: 14, heightMeters: 6 },
+      // City D: houses, shops and the miners' hall along the main street…
+      { x: -180, z: -2470, widthMeters: 20, depthMeters: 24, heightMeters: 8 },
+      { x: -120, z: -2472, widthMeters: 26, depthMeters: 20, heightMeters: 11 },
+      { x: -50, z: -2468, widthMeters: 24, depthMeters: 28, heightMeters: 14 },
+      { x: 20, z: -2472, widthMeters: 22, depthMeters: 20, heightMeters: 9 },
+      { x: 185, z: -2470, widthMeters: 30, depthMeters: 24, heightMeters: 12 },
+      { x: 255, z: -2472, widthMeters: 26, depthMeters: 20, heightMeters: 9 },
+      { x: 330, z: -2468, widthMeters: 34, depthMeters: 26, heightMeters: 10 },
+      { x: -150, z: -2530, widthMeters: 24, depthMeters: 20, heightMeters: 8 },
+      { x: -60, z: -2532, widthMeters: 30, depthMeters: 22, heightMeters: 10 },
+      { x: 40, z: -2530, widthMeters: 26, depthMeters: 20, heightMeters: 9 },
+      // …the depot's office and warehouse…
+      { x: 150, z: -2550, widthMeters: 20, depthMeters: 12, heightMeters: 6 },
+      { x: 195, z: -2565, widthMeters: 36, depthMeters: 30, heightMeters: 11 },
+      // …and the mine: its processing plant, ore bins and the tower over the shaft.
+      { x: 360, z: -2560, widthMeters: 60, depthMeters: 40, heightMeters: 14 },
+      { x: 300, z: -2600, widthMeters: 16, depthMeters: 16, heightMeters: 18 },
+      { x: 420, z: -2610, widthMeters: 10, depthMeters: 10, heightMeters: 32 },
     ],
     // Each yard's near long side overlaps its road by 2 m, so the truck can drive straight in.
     depots: [
@@ -188,6 +255,12 @@ export const MAPS: readonly MapDefinition[] = [
         yard: { x: 300, z: 1484.5, headingDegrees: 90, lengthMeters: 44, widthMeters: 26 },
         bay: { x: 300, z: 1484.5, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
       },
+      {
+        id: 'city_d_depot',
+        cityId: 'city_d',
+        yard: { x: 150, z: -2516, headingDegrees: 90, lengthMeters: 44, widthMeters: 26 },
+        bay: { x: 150, z: -2516, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
+      },
     ],
     restAreas: [
       {
@@ -195,7 +268,7 @@ export const MAPS: readonly MapDefinition[] = [
         lot: { x: 100, z: -638, headingDegrees: 90, lengthMeters: 90, widthMeters: 34 },
       },
     ],
-    // Each town's name greets the traffic coming in on each of its two roads from the country.
+    // Each town's name greets the traffic coming in on each of its roads from the country.
     citySigns: [
       { cityId: 'city_a', roadId: 'highway_a_b', distanceMeters: 70, direction: 'backward' },
       { cityId: 'city_a', roadId: 'rural_a_c', distanceMeters: 70, direction: 'backward' },
@@ -203,6 +276,10 @@ export const MAPS: readonly MapDefinition[] = [
       { cityId: 'city_b', roadId: 'rural_c_b', distanceMeters: 2100, direction: 'forward' },
       { cityId: 'city_c', roadId: 'rural_a_c', distanceMeters: 2080, direction: 'forward' },
       { cityId: 'city_c', roadId: 'rural_c_b', distanceMeters: 70, direction: 'backward' },
+      { cityId: 'city_a', roadId: 'rural_a_d', distanceMeters: 70, direction: 'backward' },
+      { cityId: 'city_d', roadId: 'rural_a_d', distanceMeters: 2520, direction: 'forward' },
+      { cityId: 'city_b', roadId: 'rural_b_d', distanceMeters: 70, direction: 'backward' },
+      { cityId: 'city_d', roadId: 'rural_b_d', distanceMeters: 2376, direction: 'forward' },
     ],
     // Farmland: fields line the country roads, with Amberfield's own behind the village houses, and a few along the
     // highway (clear of the river). Each lies beside a stretch of road, a few meters back from its edge.
@@ -228,8 +305,28 @@ export const MAPS: readonly MapDefinition[] = [
       { roadId: 'rural_c_b', fromMeters: 1150, lengthMeters: 170, side: 'right', setbackMeters: 12, depthMeters: 100, crop: 'wheat' },
       { roadId: 'highway_a_b', fromMeters: 500, lengthMeters: 220, side: 'left', setbackMeters: 15, depthMeters: 130, crop: 'wheat' },
       { roadId: 'highway_a_b', fromMeters: 1900, lengthMeters: 220, side: 'left', setbackMeters: 15, depthMeters: 130, crop: 'green' },
+      { roadId: 'rural_a_d', fromMeters: 110, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 110, crop: 'wheat' },
+      { roadId: 'rural_a_d', fromMeters: 120, lengthMeters: 160, side: 'left', setbackMeters: 12, depthMeters: 100, crop: 'green' },
+      { roadId: 'rural_a_d', fromMeters: 520, lengthMeters: 180, side: 'right', setbackMeters: 10, depthMeters: 120, crop: 'stubble' },
+      { roadId: 'rural_a_d', fromMeters: 540, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'ploughed' },
+      { roadId: 'rural_a_d', fromMeters: 770, lengthMeters: 170, side: 'right', setbackMeters: 14, depthMeters: 110, crop: 'wheat' },
+      { roadId: 'rural_a_d', fromMeters: 1010, lengthMeters: 170, side: 'right', setbackMeters: 14, depthMeters: 120, crop: 'green' },
+      { roadId: 'rural_a_d', fromMeters: 1260, lengthMeters: 170, side: 'right', setbackMeters: 14, depthMeters: 110, crop: 'stubble' },
+      { roadId: 'rural_a_d', fromMeters: 1630, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'wheat' },
+      { roadId: 'rural_a_d', fromMeters: 1660, lengthMeters: 170, side: 'right', setbackMeters: 14, depthMeters: 110, crop: 'ploughed' },
+      { roadId: 'rural_a_d', fromMeters: 1900, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 120, crop: 'green' },
+      { roadId: 'rural_a_d', fromMeters: 2150, lengthMeters: 170, side: 'right', setbackMeters: 14, depthMeters: 110, crop: 'wheat' },
+      { roadId: 'rural_b_d', fromMeters: 150, lengthMeters: 170, side: 'left', setbackMeters: 10, depthMeters: 110, crop: 'green' },
+      { roadId: 'rural_b_d', fromMeters: 180, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 120, crop: 'wheat' },
+      { roadId: 'rural_b_d', fromMeters: 420, lengthMeters: 170, side: 'left', setbackMeters: 12, depthMeters: 110, crop: 'ploughed' },
+      { roadId: 'rural_b_d', fromMeters: 440, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 110, crop: 'stubble' },
+      { roadId: 'rural_b_d', fromMeters: 1650, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 120, crop: 'green' },
+      { roadId: 'rural_b_d', fromMeters: 1680, lengthMeters: 170, side: 'left', setbackMeters: 14, depthMeters: 110, crop: 'wheat' },
+      { roadId: 'rural_b_d', fromMeters: 1930, lengthMeters: 170, side: 'right', setbackMeters: 10, depthMeters: 110, crop: 'stubble' },
+      { roadId: 'rural_b_d', fromMeters: 1950, lengthMeters: 170, side: 'left', setbackMeters: 14, depthMeters: 110, crop: 'ploughed' },
     ],
-    // A wind farm in the valley beside the highway, and three turbines beside the country road into Ironford.
+    // A wind farm in the valley beside the highway, three turbines beside the country road into Ironford, and four
+    // on the open ground between the two roads to Copperdale.
     windTurbines: [
       { x: -560, z: -380 },
       { x: -340, z: -360 },
@@ -240,11 +337,18 @@ export const MAPS: readonly MapDefinition[] = [
       { x: 1400, z: 200 },
       { x: 1330, z: 430 },
       { x: 1250, z: 650 },
+      { x: -150, z: -1500 },
+      { x: 150, z: -1650 },
+      { x: 450, z: -1800 },
+      { x: 750, z: -1950 },
     ],
     // The sea along the west edge. The harbour road ends at Havenport's quay, where a coaster lies under two cranes
     // and a tug waits; fishing boats lie off the shore south of it and out in the bay.
     sea: {
       shoreline: [
+        [-2250, -3600],
+        [-2285, -3200],
+        [-2240, -2800],
         [-2260, -2400],
         [-2240, -2000],
         [-2275, -1600],
@@ -264,6 +368,9 @@ export const MAPS: readonly MapDefinition[] = [
         [-2235, 1700],
         [-2270, 2100],
         [-2250, 2400],
+        [-2230, 2800],
+        [-2270, 3200],
+        [-2245, 3600],
       ],
       quays: [{ fromZ: -340, toZ: -160, widthMeters: 55 }],
       boats: [
@@ -278,13 +385,17 @@ export const MAPS: readonly MapDefinition[] = [
       ],
     },
     // A river from the hills beyond the north edge: under the country road to Amberfield and the highway to
-    // Ironford, then west past Havenport's south side into the sea. The roads cross it on bridges, near a right
-    // angle and clear of junctions and fields.
+    // Ironford, then west past Havenport's south side, under the country road to Copperdale, into the sea. The
+    // roads cross it on bridges, near a right angle and clear of junctions and fields.
     rivers: [
       {
         id: 'kestrel_river',
         widthMeters: 22,
         points: [
+          [-780, 3600],
+          [-860, 3250],
+          [-930, 2900],
+          [-880, 2650],
           [-900, 2400],
           [-880, 2100],
           [-950, 1780],
@@ -307,8 +418,10 @@ export const MAPS: readonly MapDefinition[] = [
         ],
       },
     ],
-    // Woods: pines on both sides of the country road out of Amberfield toward Ironford, pines and broadleaves
-    // round the river's upper course, and an oak wood south of the highway. Each lies back from its roads.
+    // Woods: pines on both sides of the country road out of Amberfield toward Ironford and of the one south from
+    // Ironford, pines and broadleaves round the river's upper course, an oak wood south of the highway, pines
+    // between the road south of Havenport and the sea, and a wood behind Copperdale's mine. Each lies back from
+    // its roads.
     forests: [
       {
         id: 'ironwood',
@@ -374,16 +487,97 @@ export const MAPS: readonly MapDefinition[] = [
           [-320, -890],
         ],
       },
+      {
+        id: 'copper_ridge',
+        kind: 'pine',
+        outline: [
+          [1665, -1535],
+          [1621, -1631],
+          [1570, -1724],
+          [1513, -1814],
+          [1452, -1899],
+          [1385, -1981],
+          [1315, -2060],
+          [1240, -2135],
+          [1367, -2278],
+          [1428, -2167],
+          [1517, -2093],
+          [1602, -2014],
+          [1634, -1895],
+          [1701, -1802],
+          [1805, -1723],
+          [1782, -1585],
+        ],
+      },
+      {
+        id: 'copper_ridge_west',
+        kind: 'pine',
+        outline: [
+          [1644, -1527],
+          [1601, -1622],
+          [1551, -1713],
+          [1495, -1801],
+          [1434, -1886],
+          [1369, -1967],
+          [1299, -2045],
+          [1225, -2119],
+          [1153, -2049],
+          [1221, -1972],
+          [1262, -1876],
+          [1326, -1803],
+          [1394, -1733],
+          [1452, -1655],
+          [1491, -1567],
+          [1554, -1489],
+        ],
+      },
+      {
+        id: 'westshore_pines',
+        kind: 'pine',
+        outline: [
+          [-1588, -1729],
+          [-1541, -1815],
+          [-1487, -1897],
+          [-1426, -1974],
+          [-1360, -2046],
+          [-1289, -2113],
+          [-1215, -2173],
+          [-1337, -2333],
+          [-1414, -2257],
+          [-1528, -2212],
+          [-1544, -2074],
+          [-1633, -2003],
+          [-1708, -1916],
+          [-1724, -1791],
+        ],
+      },
+      {
+        id: 'hollow_wood',
+        kind: 'mixed',
+        outline: [
+          [-320, -2640],
+          [0, -2660],
+          [250, -2650],
+          [480, -2680],
+          [540, -2760],
+          [380, -2820],
+          [100, -2830],
+          [-200, -2810],
+          [-340, -2740],
+        ],
+      },
     ],
-    // A park in each town: off Havenport's high street, inside Ironford's ring road, and Amberfield's green.
+    // A park in each town: off Havenport's high street, inside Ironford's ring road, Amberfield's green and
+    // Copperdale's square.
     parks: [
       { id: 'havenport_park', area: { x: -1755, z: -20, headingDegrees: 0, lengthMeters: 120, widthMeters: 70 } },
       { id: 'ironford_park', area: { x: 1795, z: -510, headingDegrees: 0, lengthMeters: 100, widthMeters: 110 } },
       { id: 'amberfield_green', area: { x: 270, z: 1560, headingDegrees: 90, lengthMeters: 90, widthMeters: 60 } },
+      { id: 'copperdale_square', area: { x: 100, z: -2450, headingDegrees: 0, lengthMeters: 56, widthMeters: 84 } },
     ],
     // On A's high street, in the lane heading north past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
-    // Street lamps light the three towns' streets and B's ring road, on alternate sides; the towns have their
+    // Street lamps light the four towns' streets and B's ring road, on alternate sides; the towns have their
     // pavements and street furniture, the country its power lines, walls, rocks, herds and planted trees.
     scenery: { seed: 20260923, treesPerKilometer: 70, streetLampSpacingMeters: 26, streetscape: true, countryside: true },
   },
