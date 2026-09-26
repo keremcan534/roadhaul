@@ -419,9 +419,8 @@ export const MAPS: readonly MapDefinition[] = [
       },
     ],
     // Woods: pines on both sides of the country road out of Amberfield toward Ironford and of the one south from
-    // Ironford, pines and broadleaves round the river's upper course, an oak wood south of the highway, pines
-    // between the road south of Havenport and the sea, and a wood behind Copperdale's mine. Each lies back from
-    // its roads.
+    // Ironford, pines and broadleaves round the river's upper course, an oak wood south of the highway, and pines
+    // between the road south of Havenport and the sea. Each lies back from its roads.
     forests: [
       {
         id: 'ironwood',
@@ -549,21 +548,6 @@ export const MAPS: readonly MapDefinition[] = [
           [-1633, -2003],
           [-1708, -1916],
           [-1724, -1791],
-        ],
-      },
-      {
-        id: 'hollow_wood',
-        kind: 'mixed',
-        outline: [
-          [-320, -2640],
-          [0, -2660],
-          [250, -2650],
-          [480, -2680],
-          [540, -2760],
-          [380, -2820],
-          [100, -2830],
-          [-200, -2810],
-          [-340, -2740],
         ],
       },
     ],
