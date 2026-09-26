@@ -306,26 +306,36 @@ Roadmap steps 19–20 close the first-success loop (spec §80): deliver, earn, u
 - **`UpgradeService`** is the shop: the next level of each upgrade for the active truck, paid through the economy.
 - **Upgrades show on the truck.** Each upgrade names the part that shows it (`UpgradeDefinition.look`: exhaust, brakes, wheels, stance or fuel tank), and `truckLooks` turns a truck's fitted levels into each part's level. `TruckView` builds them: chrome and taller stacks (twin at level 2, a roof light bar at 3), a longer, chrome tank (a second at 3), polished, chrome or gold rims, yellow, orange or red calipers, and a lower body with mudflaps, a chrome bumper and grille bars.
 
+### The fleet
+
+Spec §27 (V2): the company's other trucks go out with hired drivers and earn it money.
+
+- **Drivers** (`DriverDefinition`, content in `drivers.ts`) have one to five stars. Each has a pace, a chance that a contract damages the truck, the share of the pay they keep (their wage) and a hiring fee. The better ones join bigger companies.
+- **Fleet contracts** (`domain/fleet/fleetJobs.ts`): `planFleetJob` takes the driver from the city they are in to another. It picks a cargo their truck carries, loaded to 40–90%, and prices it by the contracts' own formula (`contractReward`) at `GameConfig.fleet.payFactor`. It works out the time on the road at the fleet's pace times the driver's, the diesel it burns (`fuelUsedLiters`) and whether the truck comes back damaged. Everything is settled when it is planned, the same for the same seed. The company numbers its contracts, and each number seeds one, so a save that is loaded again plans the same ones.
+- **`FleetService`** (`src/systems/fleet`) hires and lets go, hands a driver a truck from the garage (never the player's, nor one another driver has) and calls it back. Every fixed step (`update`) it moves each contract on. A delivered contract pays the company its pay less the driver's share and the diesel, and announces `FleetJobCompleted`. An incident wears the truck; a badly worn one goes to the workshop for a while, at the company's cost (`FleetTruckRepaired`). When a company is continued, `catchUp` works the fleet through the time the game was closed (at most `GameConfig.fleet.awayHours`), announcing each contract as `away` and the whole as `FleetCaughtUp`. `updateMarkers` puts each truck on a contract on the map: at the bay while it loads and unloads, and along the road between the depots, traced once per contract. The markers are filled in place, so the maps' repaints allocate nothing.
+- **The garage** sells a model again, as many as it holds at the company's level (`GameConfig.fleet.garageSlots`, 2 to 8 trucks). It records which driver has each truck out (`assignDriver`), refuses to let the player drive one of those, and keeps a fleet truck's wear and repairs apart from the active truck's (`wearTruck`, `mendTruck`).
+- **The Fleet page** (`FleetPage`, a page of the company panel) lists every truck and every driver, and moves the contracts' progress bars on a few times a second. It is drawn again when a driver moves on to another contract. The fleet's trucks show on the full map and the minimap as amber arrows with their drivers' initials, and toasts announce the deliveries. The fleet works on behind the panel and the menus; with `?debug`, F runs it ten minutes on.
+
 ### The company panel
 
 Tester feedback asked to go straight into the game and to have the menus in it, with pictures. There is no HQ screen: starting or continuing a company goes onto the road (`GameState`: booting, mainMenu, driving), and the company HQ (spec §26) opens as a panel over the game.
 
-- **`HudDock`** (`src/ui/hud`): buttons on the road for the panel's four pages, each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to round buttons out of the mission HUD's way.
-- **`CompanyHq`** (`src/ui/hq`): the panel. At the right of a phone on its side, with its tabs in a rail; at the bottom of an upright one. At the top the company, its level, XP, reputation and credits, the map and the way back to the road; below the tabs everything scrolls as one list (`.hq__list`, `touch-action: pan-y`), which the e2e tests drag with real touch events. Four pages: the job board (each blocked contract says what unlocks it; a card per contract with its cargo's picture); the truck (`truckPage`: the truck, where it stands, fuel and damage with the pump and the workshop, its cargo, its fitted parts); the garage (paint, upgrades, trucks); and the special events.
+- **`HudDock`** (`src/ui/hud`): buttons on the road for four of the panel's pages (the fleet is reached through the panel), each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to round buttons out of the mission HUD's way.
+- **`CompanyHq`** (`src/ui/hq`): the panel. At the right of a phone on its side, with its tabs in a rail; at the bottom of an upright one. At the top the company, its level, XP, reputation and credits, the map and the way back to the road; below the tabs everything scrolls as one list (`.hq__list`, `touch-action: pan-y`), which the e2e tests drag with real touch events. Five pages: the job board (each blocked contract says what unlocks it; a card per contract with its cargo's picture); the truck (`truckPage`: the truck, where it stands, fuel and damage with the pump and the workshop, its cargo, its fitted parts); the garage (paint, upgrades, trucks); the fleet (`FleetPage`); and the special events.
 - **The showroom.** While the panel is open the truck waits (if it was moving, traffic and weather wait too; standing, the world goes on) and the camera circles it, framed in the part of the screen the panel leaves free (`CameraRig.frameBeside`: a view offset). Tapping a paint, an upgrade's Preview or a truck's Preview shows it on the truck before it is bought (`TruckPreview`; the entry point rebuilds the `TruckView` when its key changes), and the camera swings round to the part (`SHOWCASE_PART_ANGLES`). A purchase, a tab change or closing the panel ends the preview.
 
 ## 9. Data and content
 
 The spec's ScriptableObjects become **definition interfaces** (`src/data/definitions`) plus **content** (`src/data/content`):
 
-- Vehicle (with physics data, price and unlock level), map (with depots), cargo, city, mission and upgrade definitions. Each definition file also exports its validation function.
+- Vehicle (with physics data, price and unlock level), map (with depots), cargo, city, mission, upgrade and driver definitions. Each definition file also exports its validation function.
 - `GAME_CONTENT` (`src/data/content/index.ts`) is the built-in content set. `ContentCatalog.create()` validates every field and every cross-reference, then serves frozen lookups (`catalog.vehicles.get(id)`).
 - References are checked at boot: missions must point to existing cities and cargo, origin and destination must differ, both cities need a depot, and some truck must have the body and payload for the load. Depots must name known cities. The config's starting truck and map must exist. Checks that need geometry, such as the spawn being on the road or every yard opening onto it, are content tests (`tests/unit/data/content`).
 - **Ids** are `snake_case` and never change once shipped, because saves store them. **Units** are part of field names (`timeLimitSeconds`, `fuelCapacityLiters`). Money is integer `Credits`. Ratios are `Fraction`s from 0 to 1.
 - Player-facing text is not stored in definitions. The string tables derive keys from ids, e.g. `cargo.packaged_food.name`.
 - Content packs (spec §79) will be JSON with the same shape, loaded through the same validation.
 
-Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, the weather's start and changes, company levels, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck or upgrade level can require a company level that does not exist).
+Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel scale, traffic, the arrival-time pace, the weather's start and changes, company levels, the fleet, starting credits) live in `GameConfig` (`src/data/config`). The config is validated at boot, including against the content (no contract, truck, upgrade level or driver can require a company level that does not exist, and the garage has a size for every level).
 
 ## 10. Save data
 
@@ -339,20 +349,21 @@ Central tuning values (fixed step, pixel-ratio cap, loading time, prices, fuel s
 - since v5: the progress in each special event's latest run;
 - since v6: the tutorial's step;
 - since v7: each truck's paint (null for its model's factory colour);
-- since v8: the contract under way keeps its own definition when it was generated (a contract of the day); null for the game's own contracts.
+- since v8: the contract under way keeps its own definition when it was generated (a contract of the day); null for the game's own contracts;
+- since v9: the fleet, with the hired drivers, the truck each has out, their contracts under way and their records.
 
 `createNewSaveGameData()` builds the state for a new company.
 
-- `CURRENT_SAVE_VERSION` (8) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
+- `CURRENT_SAVE_VERSION` (9) is stamped into every save. **Any schema change bumps it and adds a migration to `SAVE_MIGRATIONS` with a test.** `migrateSave` runs the chain from any older version and refuses saves from a newer build.
 - `validateSaveGameData` checks every field, range and reference to content before a loaded save is trusted. An invalid save counts as corrupted and is never half-loaded.
-- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model later. The garage section lists every truck with its fuel, damage, fitted upgrades and paint, and names the active one.
+- Trucks have instance ids (`truck_001`) separate from their model id (`rh_h1`), so the fleet can own two trucks of the same model. The garage section lists every truck with its fuel, damage, fitted upgrades and paint, and names the active one.
 - **`SaveService`** (`src/systems/save`) writes JSON to a `KeyValueStorage`: localStorage in the browser and in the Android app (`platform/browser/browserStorage.ts`, §16), memory in tests or when the browser forbids storage.
   - **Atomic write:** the new save goes to a pending slot and is read back; only then does the previous save move to the backup slot and the new one into the main slot.
   - **Backup:** loading falls back to it when the latest save is unreadable.
   - **Corruption:** unreadable data is set aside and reported.
   - **Storage errors** (a full quota, private mode) come back as Results: the game never crashes because of a save.
 - **`GameSessionService`** (`src/systems/session`) is the company being played.
-  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, missions, events, the tutorial, the truck's position).
+  - It starts a new game or continues the saved one, and hands each part of the save to the service that owns it (economy, company, the garage with the active truck's fuel and damage, the fleet, missions, events, the tutorial, the truck's position). A continued company's fleet then catches up with the time the game was closed.
   - It saves after every delivery and failure; after each purchase and truck change, once what was bought is in place (`Refuelled`, `VehicleRepaired`, `VehiclePurchased`, `UpgradePurchased`, `ActiveVehicleChanged`, never on `MoneyChanged`); when the player leaves the road for a menu; and every 20 s of driving. The browser entry also saves when the tab hides or closes.
 
 ## 11. Rendering and the mobile performance budget

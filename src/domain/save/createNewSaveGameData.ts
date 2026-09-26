@@ -57,6 +57,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
     events: { runs: [] },
     tutorial: { step: 'takeContract' },
+    fleet: { drivers: [], jobsPlanned: 0 },
   };
 }
 

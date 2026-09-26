@@ -1,9 +1,9 @@
 import { element } from '../dom';
-import { HQ_TABS, type HqTab } from '../hq/hqTabs';
+import { DOCK_TABS, type DockTab, type HqTab } from '../hq/hqTabs';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
 
-const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
+const TAB_ICONS: Readonly<Record<DockTab, IconName>> = {
   jobs: 'jobs',
   truck: 'truck',
   garage: 'garage',
@@ -27,7 +27,7 @@ export class HudDock {
     this.root = element(document, 'nav', 'hud-dock');
     this.root.setAttribute('aria-label', strings.t('dock.label'));
     this.root.hidden = true;
-    const buttons = HQ_TABS.map((tab) => {
+    const buttons = DOCK_TABS.map((tab) => {
       const node = element(document, 'button', `hud-dock__button hud-dock__button--${tab}`);
       node.type = 'button';
       node.dataset.action = `dock-${tab}`;
@@ -37,7 +37,7 @@ export class HudDock {
       node.addEventListener('click', () => onOpen(tab));
       return node;
     });
-    this.jobsButton = buttons[HQ_TABS.indexOf('jobs')]!;
+    this.jobsButton = buttons[DOCK_TABS.indexOf('jobs')]!;
     this.root.append(...buttons);
     parent.append(this.root);
   }

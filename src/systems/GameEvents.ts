@@ -136,4 +136,47 @@ export interface GameEvents {
     readonly weatherId: string;
     readonly previousId: string;
   };
+  /** The company hired a driver for its fleet (spec §27), and paid their fee. */
+  DriverHired: {
+    readonly driverId: string;
+    readonly fee: Credits;
+  };
+  /** A driver left the company; the truck they had is back in the garage. */
+  DriverDismissed: {
+    readonly driverId: string;
+  };
+  /** A hired driver took one of the company's trucks out on contracts, or brought it back to the garage (instanceId null). */
+  FleetTruckAssigned: {
+    readonly driverId: string;
+    readonly instanceId: string | null;
+  };
+  /** A hired driver delivered a fleet contract; `profit` (its pay less their share and the fuel) went to the company. */
+  FleetJobCompleted: {
+    readonly driverId: string;
+    readonly instanceId: string;
+    readonly originCityId: string;
+    readonly destinationCityId: string;
+    readonly cargoId: string;
+    readonly pay: Credits;
+    readonly driverShare: Credits;
+    readonly fuelCost: Credits;
+    readonly profit: Credits;
+    /** The truck came back damaged. */
+    readonly incident: boolean;
+    /** Delivered while the game was closed (FleetCaughtUp sums these up). */
+    readonly away: boolean;
+  };
+  /** A fleet truck went to the workshop, and the company paid for the repair. */
+  FleetTruckRepaired: {
+    readonly driverId: string;
+    readonly instanceId: string;
+    readonly cost: Credits;
+  };
+  /** The fleet caught up with the time the game was closed: what it did meanwhile. */
+  FleetCaughtUp: {
+    readonly seconds: number;
+    readonly jobs: number;
+    /** The contracts' profit, less any repairs. */
+    readonly credits: Credits;
+  };
 }

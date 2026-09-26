@@ -108,8 +108,7 @@ export function generateContracts(market: ContractMarket, batch: number, count: 
     const truckLevel = Math.min(...haulers.map((vehicle) => vehicle.requiredCompanyLevel ?? 1));
     const level = Math.max(DIFFICULTY_LEVEL[difficulty], truckLevel);
     const meters = market.distanceMeters(origin.id, destination.id);
-    const pay =
-      (PAY_PER_KM * (meters / 1000) + PAY_PER_TON * tons) * DIFFICULTY_PAY[difficulty] * GENERATED_PAY_FACTOR;
+    const pay = contractReward(meters, tons, difficulty) * GENERATED_PAY_FACTOR;
     const heavy = tons > HEAVY_LOAD_TONS ? HEAVY_LOAD_TIME_FACTOR : 1;
     const driveSeconds = (meters / (AVERAGE_KMH[difficulty] / 3.6)) * heavy;
     contracts.push({
@@ -126,6 +125,15 @@ export function generateContracts(market: ContractMarket, batch: number, count: 
     });
   }
   return contracts;
+}
+
+/**
+ * What a contract of `difficulty` over `distanceMeters` of road with `tons`
+ * aboard is worth (spec §64: base distance value × difficulty; the cargo
+ * multiplier comes on top when paying), in fractional credits.
+ */
+export function contractReward(distanceMeters: number, tons: number, difficulty: MissionDifficulty): number {
+  return (PAY_PER_KM * (distanceMeters / 1000) + PAY_PER_TON * tons) * DIFFICULTY_PAY[difficulty];
 }
 
 /** The item `roll` (0..1) lands on, all equally likely. */

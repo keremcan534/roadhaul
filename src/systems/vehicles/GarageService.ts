@@ -22,8 +22,8 @@ import type { CompanyLevelSource, MissionService } from '../missions/MissionServ
 import type { DamageService } from './DamageService';
 import type { FuelService } from './FuelService';
 
-export type BuyTruckError = 'unknownVehicle' | 'alreadyOwned' | 'locked' | SpendError;
-export type SwitchTruckError = 'unknownTruck' | 'alreadyActive' | 'missionInProgress';
+export type BuyTruckError = 'unknownVehicle' | 'garageFull' | 'locked' | SpendError;
+export type SwitchTruckError = 'unknownTruck' | 'alreadyActive' | 'missionInProgress' | 'onTheRoad';
 export type PaintTruckError = 'unknownTruck' | 'unknownPaint' | 'alreadyPainted' | 'locked' | SpendError;
 
 /** A truck the company owns. The active truck's fuel and damage are live. */
@@ -37,6 +37,8 @@ export interface OwnedTruck {
   readonly paint: PaintDefinition | null;
   /** The truck the player drives. */
   readonly active: boolean;
+  /** The hired driver (DriverDefinition id) who has it out on contracts (FleetService); null in the garage or driven by the player. */
+  readonly driverId: string | null;
 }
 
 /** A colour at the garage's paint shop. */
@@ -55,8 +57,8 @@ export interface TruckOffer {
   readonly requiredCompanyLevel: number;
   /** Below that level: shown, but not for sale yet. */
   readonly locked: boolean;
-  /** The company has one already. */
-  readonly owned: boolean;
+  /** How many of this model the company has. */
+  readonly ownedCount: number;
 }
 
 /** One owned truck. The active one's fuel and damage live in FuelService and DamageService while it is driven. */
@@ -67,6 +69,8 @@ interface TruckRecord {
   damage: Fraction;
   upgrades: Record<string, number>;
   paintId: string | null;
+  /** The hired driver who has it out, or null. */
+  driverId: string | null;
 }
 
 /** Where the upgrades' effects go: the systems that drive the active truck. */
@@ -74,9 +78,12 @@ const UPGRADE_MODIFIER_SOURCE = 'upgrades';
 
 /**
  * The company's trucks and the one the player drives (spec §15, §32
- * GarageState; roadmap step 19). The dealer sells each model once, from its
- * company level. Switching puts the other truck where the active one stands,
- * with its own fuel, damage and upgrades; never in the middle of a contract.
+ * GarageState; roadmap step 19). The dealer sells each model from its
+ * company level, as many as the garage holds (GameConfig.fleet.garageSlots:
+ * more with each level, spec §27's fleet). Switching puts another truck in
+ * the garage where the active one stands, with its own fuel, damage and
+ * upgrades; never in the middle of a contract, nor to a truck a hired
+ * driver has out (FleetService assigns them).
  *
  * It also fits the active truck's upgrades (spec §16): their bonuses go to
  * DrivingService (engine, brakes, grip, stability), FuelService (tank,
@@ -96,7 +103,20 @@ export class GarageService {
     private readonly company: CompanyLevelSource,
     private readonly events: EventBus<GameEvents>,
     private readonly logger: Logger,
+    /** GameConfig.fleet.garageSlots: how many trucks the company may own at each level, level 1 first. */
+    private readonly garageSlots: readonly number[],
   ) {}
+
+  /** How many trucks the garage holds at the company's level. */
+  get capacity(): number {
+    const slots = this.garageSlots;
+    return slots[Math.min(slots.length, Math.max(1, this.company.level)) - 1] ?? 1;
+  }
+
+  /** The garage has room for another truck. */
+  get hasRoom(): boolean {
+    return this.records.length < this.capacity;
+  }
 
   /** Every owned truck, in the order they were acquired. */
   get trucks(): readonly OwnedTruck[] {
@@ -122,22 +142,22 @@ export class GarageService {
         price: definition.purchasePrice,
         requiredCompanyLevel,
         locked: this.company.level < requiredCompanyLevel,
-        owned: this.records.some((record) => record.definition.id === definition.id),
+        ownedCount: this.records.filter((record) => record.definition.id === definition.id).length,
       };
     });
   }
 
-  /** Buys a model at the dealer. It waits in the garage, full and without upgrades. */
+  /** Buys a model at the dealer, if the garage has room. It waits in the garage, full and without upgrades. */
   buy(definitionId: string): Result<OwnedTruck, BuyTruckError> {
     const offer = this.dealer().find((candidate) => candidate.definition.id === definitionId);
     if (offer === undefined) {
       return err('unknownVehicle');
     }
-    if (offer.owned) {
-      return err('alreadyOwned');
-    }
     if (offer.locked) {
       return err('locked');
+    }
+    if (!this.hasRoom) {
+      return err('garageFull');
     }
     const paid = this.economy.spend(offer.price, 'vehicle');
     if (!paid.ok) {
@@ -150,6 +170,7 @@ export class GarageService {
       damage: 0,
       upgrades: {},
       paintId: null,
+      driverId: null,
     };
     this.records.push(record);
     this.logger.info(`Bought ${definitionId} as ${record.instanceId} for ${offer.price}.`);
@@ -172,6 +193,9 @@ export class GarageService {
     }
     if (this.missions.active !== null) {
       return err('missionInProgress');
+    }
+    if (next.driverId !== null) {
+      return err('onTheRoad');
     }
     const previous = this.requireActive();
     previous.fuelLiters = this.fuel.fuelLiters;
@@ -241,6 +265,30 @@ export class GarageService {
   }
 
   /**
+   * Hands one of the company's trucks in the garage to a hired driver
+   * (`driverId`), or takes it back (null) (FleetService, which checks the
+   * rules: this only records it). Throws for the player's truck.
+   */
+  assignDriver(instanceId: string, driverId: string | null): void {
+    const record = this.requireTruck(instanceId);
+    if (record.instanceId === this.activeId && driverId !== null) {
+      throw new Error(`${instanceId} is the truck the player drives.`);
+    }
+    record.driverId = driverId;
+  }
+
+  /** A fleet truck (not the player's) comes back from a contract `damage` more damaged, at most wrecked. */
+  wearTruck(instanceId: string, damage: Fraction): void {
+    const record = this.requireFleetTruck(instanceId);
+    record.damage = Math.min(1, record.damage + Math.max(0, damage));
+  }
+
+  /** A fleet truck (not the player's) leaves the workshop as good as new (FleetService pays). */
+  mendTruck(instanceId: string): void {
+    this.requireFleetTruck(instanceId).damage = 0;
+  }
+
+  /**
    * Takes over the garage of a loaded or new game. The active truck must
    * already be on the map (DrivingService.start); it gets its upgrades, fuel
    * and damage.
@@ -253,6 +301,7 @@ export class GarageService {
       damage: vehicle.damage,
       upgrades: { ...vehicle.upgrades },
       paintId: vehicle.paintId,
+      driverId: null,
     }));
     this.activeId = garage.activeVehicleInstanceId;
     const active = this.requireActive();
@@ -304,6 +353,7 @@ export class GarageService {
       upgrades: { ...record.upgrades },
       paint: record.paintId === null ? null : this.content.paints.get(record.paintId),
       active,
+      driverId: record.driverId,
     };
   }
 
@@ -314,6 +364,22 @@ export class GarageService {
       highest = Math.max(highest, Number(/\d+$/.exec(record.instanceId)?.[0] ?? 0));
     }
     return formatVehicleInstanceId(highest + 1);
+  }
+
+  private requireTruck(instanceId: string): TruckRecord {
+    const record = this.records.find((candidate) => candidate.instanceId === instanceId);
+    if (record === undefined) {
+      throw new Error(`The company has no truck ${instanceId}.`);
+    }
+    return record;
+  }
+
+  private requireFleetTruck(instanceId: string): TruckRecord {
+    const record = this.requireTruck(instanceId);
+    if (record.instanceId === this.activeId) {
+      throw new Error(`${instanceId} is the truck the player drives: its damage is DamageService's.`);
+    }
+    return record;
   }
 
   private requireActive(): TruckRecord {

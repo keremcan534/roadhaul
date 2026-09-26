@@ -131,6 +131,25 @@ export interface GameConfig {
     /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
     readonly levelXp: readonly number[];
   };
+  /** The fleet (spec §27): the company's other trucks, on contracts of their own with hired drivers. */
+  readonly fleet: {
+    /** How many trucks the company may own at each company level, level 1 first: the garage's size. */
+    readonly garageSlots: readonly number[];
+    /** A fleet truck's average pace on the region's roads, km/h, before its driver's speed factor. */
+    readonly averageSpeedKmh: number;
+    /** Loading at one depot and unloading at the next, seconds of each fleet contract. */
+    readonly handlingSeconds: number;
+    /** A fleet contract pays this share of what the same contract of the day would pay. */
+    readonly payFactor: number;
+    /** An incident on a contract (a scrape, a kerb) adds this much damage to the truck. */
+    readonly incidentDamage: Fraction;
+    /** A truck this damaged goes to the workshop before its next contract, and the company pays the repair. */
+    readonly repairAtDamage: Fraction;
+    /** The workshop keeps it this long, seconds. */
+    readonly repairSeconds: number;
+    /** While the game was closed, the fleet goes on working for at most this many hours. */
+    readonly awayHours: number;
+  };
   readonly newGame: {
     readonly startingCredits: Credits;
     /** VehicleDefinition id of the truck every new company starts with. */
@@ -292,6 +311,16 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   company: {
     levelXp: [0, 1000, 3000, 6500, 12000],
   },
+  fleet: {
+    garageSlots: [2, 3, 4, 6, 8],
+    averageSpeedKmh: 45,
+    handlingSeconds: 60,
+    payFactor: 0.75,
+    incidentDamage: 0.2,
+    repairAtDamage: 0.5,
+    repairSeconds: 120,
+    awayHours: 2,
+  },
   newGame: {
     startingCredits: 5000, // Placeholder until the economy step (roadmap step 14).
     startingVehicleId: 'rh_h1',
@@ -306,7 +335,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
 /** Checks value ranges and that the config only references existing content. */
 export function validateGameConfig(config: GameConfig, content: ContentCatalog): readonly ValidationIssue[] {
   const validator = new Validator();
-  const { simulation, rendering, missions, economy, fuel, traffic, navigation, weather, timeOfDay, company, newGame, debug } =
+  const { simulation, rendering, missions, economy, fuel, traffic, navigation, weather, timeOfDay, company, fleet, newGame, debug } =
     config;
 
   validator.check(
@@ -459,6 +488,41 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   content.events.all.forEach((event, index) => {
     checkReachable(event.id, event.requiredCompanyLevel, `content.events[${index}].requiredCompanyLevel`);
   });
+  content.drivers.all.forEach((driver, index) => {
+    checkReachable(driver.id, driver.requiredCompanyLevel, `content.drivers[${index}].requiredCompanyLevel`);
+  });
+  const slots = fleet.garageSlots;
+  validator.check(
+    Array.isArray(slots) &&
+      Array.isArray(levels) &&
+      slots.length === levels.length &&
+      slots.every((count, index) => Number.isInteger(count) && count >= 1 && (index === 0 || count >= slots[index - 1]!)),
+    'fleet.garageSlots',
+    'must give each company level a whole number of trucks, 1 or more, never fewer than the level before',
+  );
+  validator.positiveNumber(fleet.averageSpeedKmh, 'fleet.averageSpeedKmh');
+  validator.check(
+    Number.isFinite(fleet.handlingSeconds) && fleet.handlingSeconds >= 0,
+    'fleet.handlingSeconds',
+    'must be 0 or more',
+  );
+  validator.check(
+    Number.isFinite(fleet.payFactor) && fleet.payFactor > 0 && fleet.payFactor <= 2,
+    'fleet.payFactor',
+    'must be greater than 0 and at most 2',
+  );
+  validator.fraction(fleet.incidentDamage, 'fleet.incidentDamage');
+  validator.check(
+    Number.isFinite(fleet.repairAtDamage) && fleet.repairAtDamage > 0 && fleet.repairAtDamage <= 1,
+    'fleet.repairAtDamage',
+    'must be greater than 0 and at most 1',
+  );
+  validator.positiveNumber(fleet.repairSeconds, 'fleet.repairSeconds');
+  validator.check(
+    Number.isFinite(fleet.awayHours) && fleet.awayHours >= 0 && fleet.awayHours <= 24,
+    'fleet.awayHours',
+    'must be from 0 to 24',
+  );
   validator.nonNegativeInteger(newGame.startingCredits, 'newGame.startingCredits');
   validator.check(
     content.vehicles.has(newGame.startingVehicleId),

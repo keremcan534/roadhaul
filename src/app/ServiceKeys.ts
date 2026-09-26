@@ -8,6 +8,7 @@ import type { CompanyService } from '../systems/company/CompanyService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
 import type { EventService } from '../systems/events/EventService';
+import type { FleetService } from '../systems/fleet/FleetService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
 import type { DailyContracts } from '../systems/missions/DailyContracts';
@@ -50,6 +51,8 @@ export const ServiceKeys = Object.freeze({
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),
   upgrades: serviceKey<UpgradeService>('UpgradeService'),
+  /** The hired drivers and the trucks they take out on contracts (spec §27). */
+  fleet: serviceKey<FleetService>('FleetService'),
   saves: serviceKey<SaveService>('SaveService'),
   session: serviceKey<GameSessionService>('GameSessionService'),
 });

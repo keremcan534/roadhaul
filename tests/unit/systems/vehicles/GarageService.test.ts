@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
-import { bootGame, deliver, newCompany, play } from '../../../support/game';
+import { bootGame, deliver, newCompany, play, reachLevel } from '../../../support/game';
 
 describe('GarageService', () => {
   it('starts a company with the H1, and shows the dealer\'s bigger trucks locked until their level', async () => {
@@ -9,10 +9,10 @@ describe('GarageService', () => {
     expect(game.garage.trucks).toEqual([
       expect.objectContaining({ instanceId: 'truck_001', definition: expect.objectContaining({ id: 'rh_h1' }), active: true }),
     ]);
-    expect(game.garage.dealer().map((offer) => [offer.definition.id, offer.price, offer.locked, offer.owned])).toEqual([
-      ['rh_h1', 12000, false, true],
-      ['rh_h2', 22000, true, false],
-      ['rh_h3', 38000, true, false],
+    expect(game.garage.dealer().map((offer) => [offer.definition.id, offer.price, offer.locked, offer.ownedCount])).toEqual([
+      ['rh_h1', 12000, false, 1],
+      ['rh_h2', 22000, true, 0],
+      ['rh_h3', 38000, true, 0],
     ]);
     expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'locked' });
     expect(game.economy.credits).toBe(50_000);
@@ -34,10 +34,49 @@ describe('GarageService', () => {
     });
     expect(game.economy.credits).toBe(8000);
     expect(bought).toEqual([{ instanceId: 'truck_002', definitionId: 'rh_h2', price: 22000 }]);
-    expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'alreadyOwned' });
-    expect(game.garage.buy('rh_h1')).toEqual({ ok: false, error: 'alreadyOwned' });
+    expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'insufficientFunds' });
     expect(game.garage.buy('rh_h9')).toEqual({ ok: false, error: 'unknownVehicle' });
     expect(game.garage.trucks.map((truck) => truck.instanceId)).toEqual(['truck_001', 'truck_002']);
+  });
+
+  it('sells a model again for the fleet, as many as the garage holds at the company\'s level', async () => {
+    const game = await newCompany(1, 100_000);
+    expect(game.garage.capacity).toBe(2);
+
+    expect(game.garage.buy('rh_h1').ok).toBe(true);
+    expect(game.garage.dealer()[0]!.ownedCount).toBe(2);
+    expect(game.garage.hasRoom).toBe(false);
+    expect(game.garage.buy('rh_h1')).toEqual({ ok: false, error: 'garageFull' });
+    expect(game.economy.credits).toBe(88_000);
+
+    // A bigger company has a bigger garage (GameConfig.fleet.garageSlots).
+    reachLevel(game, 4);
+    expect(game.garage.capacity).toBe(6);
+    expect(game.garage.buy('rh_h1').ok).toBe(true);
+    expect(game.garage.trucks.map((truck) => [truck.instanceId, truck.definition.id])).toEqual([
+      ['truck_001', 'rh_h1'],
+      ['truck_002', 'rh_h1'],
+      ['truck_003', 'rh_h1'],
+    ]);
+  });
+
+  it('never lets the player drive a truck a hired driver has out, and keeps its wear and repairs apart', async () => {
+    const game = await newCompany(1, 100_000);
+    game.garage.buy('rh_h1');
+    game.garage.assignDriver('truck_002', 'driver_kemal');
+    expect(game.garage.trucks[1]).toMatchObject({ instanceId: 'truck_002', driverId: 'driver_kemal', active: false });
+
+    expect(game.garage.switchTo('truck_002')).toEqual({ ok: false, error: 'onTheRoad' });
+    expect(() => game.garage.assignDriver('truck_001', 'driver_kemal')).toThrow();
+    game.garage.wearTruck('truck_002', 0.3);
+    game.garage.wearTruck('truck_002', 0.9);
+    expect(game.garage.trucks[1]!.damage).toBe(1);
+    expect(() => game.garage.wearTruck('truck_001', 0.1)).toThrow();
+    game.garage.mendTruck('truck_002');
+    expect(game.garage.trucks[1]!.damage).toBe(0);
+
+    game.garage.assignDriver('truck_002', null);
+    expect(game.garage.switchTo('truck_002').ok).toBe(true);
   });
 
   it('refuses a truck the company cannot pay for', async () => {
