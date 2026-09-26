@@ -23,6 +23,25 @@ export interface MapPlacement {
 }
 
 /**
+ * A company truck out on a contract, where the maps put it: one of the
+ * fleet's (FleetService) or a rival's (RivalService).
+ */
+export interface CompanyTruckMarker extends MapPlacement {
+  /**
+   * Which truck, for as long as it exists (CompanyTraffic follows it by
+   * this); '' for one that only the maps show (the rival racing the company
+   * for a tender).
+   */
+  key: string;
+  /** Its colour, 0xRRGGBB: its paint (the fleet's), or its company's (a rival's). */
+  color: number;
+  /** On the road, not standing at a depot. */
+  moving: boolean;
+  /** The city its contract ends in. */
+  destinationCityId: string;
+}
+
+/**
  * The cities with a depot on the map being driven, the road between their
  * bays, and the way that road takes: what the fleet's and the rivals'
  * contracts are planned on (FleetMarket) and followed along on the map.

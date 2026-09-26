@@ -5,6 +5,7 @@ import type { FleetService } from '../../systems/fleet/FleetService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
 import type { RivalService } from '../../systems/rivals/RivalService';
+import type { CompanyTraffic } from '../../systems/traffic/CompanyTraffic';
 import type { Strings } from '../i18n';
 import type { MapRoadRun, MapSketch } from './mapSketch';
 import { createCanvasTransform, type MapViewport } from './MapViewport';
@@ -20,6 +21,8 @@ export interface MapSources {
   readonly missions: MissionService;
   readonly fleet: FleetService;
   readonly rivals: RivalService;
+  /** Where the fleet's and the rivals' trucks drive in the traffic, which the maps show instead. */
+  readonly companyTraffic: CompanyTraffic;
 }
 
 /** How each kind of road is drawn, bottom to top: at least this wide on screen (px), its colour and its edge's. */
@@ -362,6 +365,7 @@ export class MapPainter {
     const size = Math.max(8, options.truckPixels * 0.55);
     for (let i = 0; i < count; i++) {
       const marker = rivals.markers[i]!;
+      this.sources.companyTraffic.placeInTraffic(marker.key, marker);
       const markerSize = marker.racing ? size * 1.5 : size;
       if (!view.sees(this.around(marker.x, marker.z), markerSize)) {
         continue;
@@ -381,6 +385,7 @@ export class MapPainter {
     const size = Math.max(10, options.truckPixels * 0.7);
     for (let i = 0; i < count; i++) {
       const marker = fleet.markers[i]!;
+      this.sources.companyTraffic.placeInTraffic(marker.key, marker);
       if (!view.sees(this.around(marker.x, marker.z), size)) {
         continue;
       }

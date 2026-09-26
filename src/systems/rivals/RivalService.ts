@@ -16,7 +16,7 @@ import { StandingBoard } from '../../domain/rivals/StandingBoard';
 import { planTender, type Tender, type TenderRules } from '../../domain/rivals/tenders';
 import type { RivalCompanySaveData, RivalsSaveData } from '../../domain/save/SaveGameData';
 import type { EconomyService } from '../economy/EconomyService';
-import { placeOnJob, type DepotRoads, type JobRoute, type MapPlacement } from '../fleet/DepotRoads';
+import { placeOnJob, type CompanyTruckMarker, type DepotRoads, type JobRoute } from '../fleet/DepotRoads';
 import type { GameEvents } from '../GameEvents';
 import type { CompanyLevelSource, MissionService } from '../missions/MissionService';
 import type { GarageService } from '../vehicles/GarageService';
@@ -77,12 +77,9 @@ export type MarketNews =
   | { readonly kind: 'acquired'; readonly companyId: string; readonly atMs: number };
 
 /** A rival's truck on the map (for the map and the minimap). */
-export interface RivalMarker extends MapPlacement {
+export interface RivalMarker extends CompanyTruckMarker {
   rivalId: string;
-  color: number;
-  /** On the road, not standing at a depot. */
-  moving: boolean;
-  /** The truck racing the company for its tender. */
+  /** The truck racing the company for its tender (only the maps show it: its `key` is ''). */
   racing: boolean;
 }
 
@@ -99,6 +96,8 @@ export interface TenderRaceStatus {
 
 /** A rival's truck. */
 interface RivalTruck {
+  /** The rival's id and the truck's number: see CompanyTruckMarker.key. */
+  readonly key: string;
   cityId: string;
   job: FleetJob | null;
   elapsedSeconds: number;
@@ -466,7 +465,7 @@ export class RivalService {
         if (route === null) {
           continue;
         }
-        const marker = this.markerAt(count++, rival.definition, false);
+        const marker = this.markerAt(count++, rival.definition, truck.key, job.destinationCityId, false);
         marker.moving = placeOnJob(route, job, truck.elapsedSeconds, this.jobRules.handlingSeconds, marker);
       }
     }
@@ -475,7 +474,7 @@ export class RivalService {
       const route = this.raceRoute ?? (this.raceRoute = this.roads.route(race.contract.originCityId, race.contract.destinationCityId));
       const rival = this.content.rivals.find(race.rivalId);
       if (route !== null && rival !== undefined) {
-        const marker = this.markerAt(count++, rival, true);
+        const marker = this.markerAt(count++, rival, '', race.contract.destinationCityId, true);
         this.raceJob.durationSeconds = race.rivalSeconds;
         const elapsed = Math.min(race.rivalSeconds, this.raceSeconds());
         marker.moving = placeOnJob(route, this.raceJob, elapsed, 2 * this.tenderRules.unloadSeconds, marker);
@@ -676,7 +675,7 @@ export class RivalService {
     const growing = rival.trucks.length < definition.maxTrucks;
     if (growing && rival.credits >= rival.vehicle.purchasePrice + reserve) {
       rival.credits -= rival.vehicle.purchasePrice;
-      rival.trucks.push({ cityId: definition.homeCityId, job: null, elapsedSeconds: 0, route: null });
+      rival.trucks.push({ key: truckKey(definition.id, rival.trucks.length), cityId: definition.homeCityId, job: null, elapsedSeconds: 0, route: null });
       this.logger.info(`${definition.id} bought a truck (${rival.trucks.length}).`);
       this.addNews({ kind: 'truck', companyId: definition.id, trucks: rival.trucks.length, atMs: this.clock.now() });
       this.events.emit('RivalTruckBought', { rivalId: definition.id, trucks: rival.trucks.length, away: this.away });
@@ -823,14 +822,16 @@ export class RivalService {
     }
   }
 
-  private markerAt(index: number, rival: RivalCompanyDefinition, racing: boolean): RivalMarker {
+  private markerAt(index: number, rival: RivalCompanyDefinition, key: string, destinationCityId: string, racing: boolean): RivalMarker {
     let marker = this.markers[index];
     if (marker === undefined) {
-      marker = { rivalId: '', color: 0, x: 0, z: 0, heading: 0, moving: false, racing: false };
+      marker = { key: '', rivalId: '', color: 0, x: 0, z: 0, heading: 0, moving: false, destinationCityId: '', racing: false };
       this.markers.push(marker);
     }
+    marker.key = key;
     marker.rivalId = rival.id;
     marker.color = rival.color;
+    marker.destinationCityId = destinationCityId;
     marker.racing = racing;
     return marker;
   }
@@ -870,7 +871,8 @@ export class RivalService {
       driver: this.driverOf(definition),
       credits: definition.startingCredits,
       acquired: false,
-      trucks: Array.from({ length: definition.startingTrucks }, () => ({
+      trucks: Array.from({ length: definition.startingTrucks }, (_, number) => ({
+        key: truckKey(definition.id, number),
         cityId: definition.homeCityId,
         job: null,
         elapsedSeconds: 0,
@@ -888,9 +890,15 @@ export class RivalService {
       driver: this.driverOf(definition),
       credits: saved.credits,
       acquired: saved.acquired,
-      trucks: saved.trucks.map((truck) => {
+      trucks: saved.trucks.map((truck, number) => {
         const { elapsedSeconds, ...job } = truck.job ?? { elapsedSeconds: 0 };
-        return { cityId: truck.cityId, job: truck.job === null ? null : (job as FleetJob), elapsedSeconds, route: null };
+        return {
+          key: truckKey(definition.id, number),
+          cityId: truck.cityId,
+          job: truck.job === null ? null : (job as FleetJob),
+          elapsedSeconds,
+          route: null,
+        };
       }),
       campaignCooldownSeconds: saved.campaignCooldownSeconds,
       decisionSeconds: saved.decisionSeconds,
@@ -901,4 +909,9 @@ export class RivalService {
   private driverOf(definition: RivalCompanyDefinition): FleetDriver {
     return { speedFactor: definition.speedFactor, incidentChance: 0, payShare: this.config.driverPayShare };
   }
+}
+
+/** Rival `rivalId`'s truck number `number` (from 0, in the order it got them): its CompanyTruckMarker key. */
+function truckKey(rivalId: string, number: number): string {
+  return `${rivalId}:${number}`;
 }

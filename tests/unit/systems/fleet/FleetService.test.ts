@@ -172,7 +172,14 @@ describe('FleetService', () => {
 
     expect(game.fleet.updateMarkers()).toBe(1);
     const marker = game.fleet.markers[0]!;
-    expect(marker).toMatchObject({ driverId: 'driver_kemal', moving: false });
+    // Known by its driver, bound for its contract's end, in its paint (the model's factory colour until painted).
+    expect(marker).toMatchObject({
+      key: 'driver_kemal',
+      driverId: 'driver_kemal',
+      moving: false,
+      destinationCityId: job.destinationCityId,
+      color: game.garage.trucks[1]!.definition.factoryColor,
+    });
     expect(Math.hypot(marker.x - bay.x, marker.z - bay.z)).toBeLessThan(1);
 
     run(game, job.durationSeconds / 2);
