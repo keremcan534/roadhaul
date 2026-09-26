@@ -3,7 +3,7 @@ import { rectangleContains } from '../../../../src/data/definitions/MapDefinitio
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
-import { forestContains } from '../../../../src/domain/world/forests';
+import { FOREST_ROADSIDE_METERS, forestContains } from '../../../../src/domain/world/forests';
 import { onParkPath, PARK_FOUNTAIN_RADIUS_METERS, PARK_HEDGE_INSET_METERS } from '../../../../src/domain/world/parks';
 import { mapFixture, vehicleFixture } from '../../../support/contentFixtures';
 
@@ -52,6 +52,9 @@ describe('a forest in the world', () => {
     expect(trees.every((tree) => tree.species === 'pine' || tree.species === 'broadleaf')).toBe(true);
     expect(trees.filter((tree) => tree.species === 'broadleaf').length / trees.length).toBeGreaterThan(0.8);
     expect(trees.some((tree) => tree.inner === true)).toBe(true);
+    // Only its side toward the street, seen from near by, grows close: 100 m from the street's edge, none.
+    expect(trees.some((tree) => tree.inner !== true)).toBe(true);
+    expect(trees.filter((tree) => tree.inner !== true).every((tree) => tree.z < 5 + FOREST_ROADSIDE_METERS)).toBe(true);
     for (const tree of trees) {
       // The street's edge is 5 m out: as far back as the wild trees stand.
       expect(Math.abs(tree.z)).toBeGreaterThan(9);

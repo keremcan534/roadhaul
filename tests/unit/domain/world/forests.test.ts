@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import type { ForestDefinition, ForestKind } from '../../../../src/data/definitions/MapDefinition';
+import type { ForestDefinition, ForestKind, RoadDefinition } from '../../../../src/data/definitions/MapDefinition';
 import { Occupancy } from '../../../../src/domain/world/countryside';
 import {
   createForest,
   distanceToForestEdge,
   FOREST_EDGE_BAND_METERS,
-  FOREST_TRUNK_RADIUS_METERS,
   forestContains,
+  forestRoadside,
+  FOREST_TRUNK_RADIUS_METERS,
   plantForest,
 } from '../../../../src/domain/world/forests';
+import { RoadPath } from '../../../../src/domain/world/RoadPath';
 
 /** A square forest 200 m across round the origin. */
 function square(kind: ForestKind, id = 'test_forest'): ForestDefinition {
@@ -55,6 +57,54 @@ describe('a forest', () => {
     expect(edge.length / bandArea).toBeGreaterThan((inner.length / middleArea) * 2);
     const mean = (list: typeof trees): number => list.reduce((sum, tree) => sum + tree.scale, 0) / list.length;
     expect(mean(inner)).toBeGreaterThan(mean(edge) + 0.3);
+  });
+
+  it('grows close along only the edge that shows, and as deep in along the rest', () => {
+    const all = plantForest(forest, 7, everywhere, new Occupancy());
+    // Only the west side (x < 0) is seen from near by.
+    const trees = plantForest(forest, 7, everywhere, new Occupancy(), (x) => x < 0);
+    for (const tree of trees) {
+      const band = distanceToForestEdge(forest, tree.x, tree.z) <= FOREST_EDGE_BAND_METERS;
+      expect(tree.inner, `${tree.x}, ${tree.z}`).toBe(!band || tree.x >= 0);
+    }
+    // The west side's edge as before; the east side's band grows fewer, taller trees, as the middle does.
+    const westEdge = (list: typeof trees) => list.filter((tree) => !tree.inner && tree.x < 0);
+    expect(westEdge(trees)).toEqual(westEdge(all));
+    const eastBand = trees.filter((tree) => tree.x > 0 && distanceToForestEdge(forest, tree.x, tree.z) <= FOREST_EDGE_BAND_METERS);
+    const eastBandBefore = all.filter((tree) => tree.x > 0 && distanceToForestEdge(forest, tree.x, tree.z) <= FOREST_EDGE_BAND_METERS);
+    expect(eastBand.length).toBeGreaterThan(0);
+    expect(eastBand.length).toBeLessThan(eastBandBefore.length / 2);
+    expect(eastBand.every((tree) => tree.scale >= 1.3)).toBe(true);
+  });
+
+  it('shows its edge where a road passes within reach of it', () => {
+    // A road along the forest's south side, 20 m out.
+    const south: RoadDefinition = {
+      id: 'south_road',
+      kind: 'rural',
+      widthMeters: 8,
+      closed: false,
+      controlPoints: [
+        [-300, -120],
+        [0, -120],
+        [300, -120],
+      ],
+    };
+    const shows = forestRoadside(forest, [new RoadPath(south)], 100);
+    expect(shows(0, -95)).toBe(true);
+    expect(shows(-90, -30)).toBe(true); // 90 m from the road, 86 from its edge.
+    expect(shows(0, 95)).toBe(false);
+    expect(shows(95, 0)).toBe(false);
+    // No road near the forest: no edge shows.
+    const far = new RoadPath({
+      ...south,
+      id: 'far_road',
+      controlPoints: [
+        [-300, 500],
+        [300, 500],
+      ],
+    });
+    expect(forestRoadside(forest, [far], 100)(0, 95)).toBe(false);
   });
 
   it('keeps its trunks apart from each other and from whatever stands there already', () => {

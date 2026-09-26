@@ -1,7 +1,7 @@
 import type { Validator } from '../../core/validation/Validator';
 
-/** City roles from spec §20: A = starting city, B = industrial, C = agricultural. */
-export const CITY_SPECIALIZATIONS = ['starter', 'industrial', 'agricultural'] as const;
+/** City roles from spec §20 (A = starting city, B = industrial, C = agricultural), and a mining town's (D). */
+export const CITY_SPECIALIZATIONS = ['starter', 'industrial', 'agricultural', 'mining'] as const;
 export type CitySpecialization = (typeof CITY_SPECIALIZATIONS)[number];
 
 /**

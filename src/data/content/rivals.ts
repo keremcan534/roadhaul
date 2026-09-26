@@ -3,8 +3,9 @@ import type { RivalCompanyDefinition } from '../definitions/RivalCompanyDefiniti
 /**
  * The region's other haulage companies (spec §65 V3), one from each city,
  * named after it: a small, quick parcel firm in the harbour town where the
- * player starts, a farm co-operative's reefers in the village, and the
- * industrial estate's big flatbed firm. The names are original (spec §85).
+ * player starts, a farm co-operative's reefers in the village, the
+ * industrial estate's big flatbed firm, and the mining town's slower quarry
+ * haulier. The names are original (spec §85).
  */
 export const RIVALS: readonly RivalCompanyDefinition[] = [
   {
@@ -39,5 +40,16 @@ export const RIVALS: readonly RivalCompanyDefinition[] = [
     startingCredits: 6000,
     speedFactor: 0.95,
     aggression: 0.5,
+  },
+  {
+    id: 'rival_bakirdere',
+    color: 0x8e5bd0,
+    homeCityId: 'city_d',
+    vehicleId: 'rh_h3',
+    startingTrucks: 2,
+    maxTrucks: 4,
+    startingCredits: 5000,
+    speedFactor: 0.9,
+    aggression: 0.55,
   },
 ];

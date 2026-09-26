@@ -137,6 +137,7 @@ test('names the companies in a legend, and tells who leads a city or whose truck
     'Havenport Express',
     'Amberfield Cargo',
     'Ironford Haulage',
+    'Copperdale Freight',
   ]);
 
   // North up round the truck, where a new game starts it in Havenport: (-1703, -600).
@@ -160,7 +161,7 @@ test('names the companies in a legend, and tells who leads a city or whose truck
   // A rival's truck loading at the depot's bay.
   await tap(-1716, -450);
   await expect(card).toHaveAttribute('data-kind', 'rival');
-  await expect(card.locator('.world-map__card-line')).toHaveText(/^To (Havenport|Amberfield|Ironford)$/);
+  await expect(card.locator('.world-map__card-line')).toHaveText(/^To (Havenport|Amberfield|Ironford|Copperdale)$/);
 
   // Out at sea: nothing there.
   await tap(-2200, -600);

@@ -59,13 +59,13 @@ describe.each(MAPS)('map $id', (map) => {
     expect(world.network.componentCount).toBe(1);
   });
 
-  it('keeps its cities a few minutes\' drive apart: 2.5 to 5 km from depot to depot by road', () => {
+  it('keeps its cities a few minutes\' drive apart: 2.5 to 7 km from depot to depot by road', () => {
     const route = createRouteGuidance();
     for (const from of map.depots) {
       for (const to of map.depots.filter((depot) => depot !== from)) {
         world.network.guide(from.bay.x, from.bay.z, to.bay.x, to.bay.z, route);
         expect(route.distanceMeters, `${from.id} to ${to.id}`).toBeGreaterThan(2500);
-        expect(route.distanceMeters, `${from.id} to ${to.id}`).toBeLessThan(5000);
+        expect(route.distanceMeters, `${from.id} to ${to.id}`).toBeLessThan(7000);
       }
     }
   });

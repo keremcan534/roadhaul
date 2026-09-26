@@ -1,6 +1,7 @@
 import { SeededRandom } from '../../core/random/SeededRandom';
 import { polygonContains, type ForestDefinition, type ForestKind, type Point2 } from '../../data/definitions/MapDefinition';
 import type { Occupancy } from './countryside';
+import type { RoadPath } from './RoadPath';
 
 /** The kinds of tree the forests grow: the views' pines and broadleaves. */
 export const FOREST_TREE_KINDS = ['pine', 'broadleaf'] as const;
@@ -10,6 +11,12 @@ export type ForestTreeKind = (typeof FOREST_TREE_KINDS)[number];
 const EDGE_SPACING_METERS = 6;
 /** …within this far of its edge, meters. Deeper in they stand about this far apart, fewer and taller. */
 export const FOREST_EDGE_BAND_METERS = 11;
+/**
+ * Only an edge seen from near by, within this far of a road, meters, grows
+ * its close-set trees: from further off, an edge of trees like those deep in
+ * looks the same, and is far cheaper to draw.
+ */
+export const FOREST_ROADSIDE_METERS = 100;
 const INNER_SPACING_METERS = 11;
 /** How big the trees grow (a scale on the views' tree): at the edge, and deeper in, where their crowns close over. */
 const EDGE_SCALE = [0.85, 1.25] as const;
@@ -41,7 +48,10 @@ export interface ForestTree {
   readonly z: number;
   readonly scale: number;
   readonly kind: ForestTreeKind;
-  /** Behind the trees along the edge (more than FOREST_EDGE_BAND_METERS in): its crown shows over theirs. */
+  /**
+   * Grown as deep in the forest: more than FOREST_EDGE_BAND_METERS in, where
+   * its crown shows over the edge's trees, or on an edge no road passes near.
+   */
   readonly inner: boolean;
 }
 
@@ -83,7 +93,9 @@ export function distanceToForestEdge(forest: Forest, x: number, z: number): numb
 /**
  * Plants a forest: trees on a jittered grid inside its outline, close
  * together within FOREST_EDGE_BAND_METERS of its edge and fewer but taller deeper
- * in, where their crowns close over. A pine forest grows pines with a few
+ * in, where their crowns close over. Only where `showsEdge` (the edge is
+ * seen from near by: forestRoadside) does the edge grow close; elsewhere its
+ * trees grow as those deep in. A pine forest grows pines with a few
  * broadleaves among them, a broadleaf forest the other way round, and a
  * mixed one stands of each. A tree stands only where `isClear` allows (not
  * on a road, a field or a river) and `occupancy` has room, where it is
@@ -95,6 +107,7 @@ export function plantForest(
   seed: number,
   isClear: (x: number, z: number) => boolean,
   occupancy: Occupancy,
+  showsEdge: (x: number, z: number) => boolean = () => true,
 ): ForestTree[] {
   const random = new SeededRandom(seed ^ hashText(forest.id));
   const trees: ForestTree[] = [];
@@ -109,7 +122,7 @@ export function plantForest(
         if (!forestContains(forest, px, pz)) {
           continue;
         }
-        const deep = distanceToForestEdge(forest, px, pz) > FOREST_EDGE_BAND_METERS;
+        const deep = distanceToForestEdge(forest, px, pz) > FOREST_EDGE_BAND_METERS || !showsEdge(px, pz);
         if (deep !== inner || !isClear(px, pz) || !occupancy.isFree(px, pz, FOREST_TRUNK_RADIUS_METERS, TRUNK_GAP_METERS)) {
           continue;
         }
@@ -121,6 +134,33 @@ export function plantForest(
   pass(EDGE_SPACING_METERS, EDGE_SCALE, false);
   pass(INNER_SPACING_METERS, INNER_SCALE, true);
   return trees;
+}
+
+/**
+ * Whether a point in or near `forest` lies within `reachMeters` of the edge
+ * of one of `roads` (for plantForest's `showsEdge`), judged from the roads'
+ * samples near the forest, a few meters apart.
+ */
+export function forestRoadside(forest: Forest, roads: readonly RoadPath[], reachMeters: number): (x: number, z: number) => boolean {
+  const near: number[] = [];
+  for (const road of roads) {
+    const reach = road.widthMeters / 2 + reachMeters;
+    for (let i = 0; i < road.pointCount; i++) {
+      const x = road.x(i);
+      const z = road.z(i);
+      if (x > forest.minX - reach && x < forest.maxX + reach && z > forest.minZ - reach && z < forest.maxZ + reach) {
+        near.push(x, z, reach);
+      }
+    }
+  }
+  return (x, z) => {
+    for (let k = 0; k < near.length; k += 3) {
+      if (Math.hypot(x - near[k]!, z - near[k + 1]!) < near[k + 2]!) {
+        return true;
+      }
+    }
+    return false;
+  };
 }
 
 /** What grows at (x, z) in a forest of `kind`: `stray` picks the odd one out. */

@@ -324,6 +324,7 @@ export const EN: StringTable = {
   'city.city_a.name': 'Havenport',
   'city.city_b.name': 'Ironford',
   'city.city_c.name': 'Amberfield',
+  'city.city_d.name': 'Copperdale',
 
   'cargo.packaged_food.name': 'Packaged food',
   'cargo.consumer_electronics.name': 'Electronics',
@@ -355,6 +356,10 @@ export const EN: StringTable = {
   'mission.hospital_restock.title': 'Hospital Restock',
   'mission.quarry_run.title': 'Quarry Run',
   'mission.grand_opening.title': 'Grand Opening',
+  'mission.mine_supplies.title': 'Mine Supplies',
+  'mission.drill_parts.title': 'Drill Parts',
+  'mission.quarry_stone.title': 'Quarry Stone',
+  'mission.miners_canteen.title': "Miners' Canteen",
 
   'dock.label': 'Company',
   'dock.jobs': 'Jobs',
@@ -483,4 +488,5 @@ export const EN: StringTable = {
   'rival.rival_yeniliman.name': 'Havenport Express',
   'rival.rival_basakova.name': 'Amberfield Cargo',
   'rival.rival_demirkent.name': 'Ironford Haulage',
+  'rival.rival_bakirdere.name': 'Copperdale Freight',
 };
