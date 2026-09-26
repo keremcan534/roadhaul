@@ -129,7 +129,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Saves stay in the app's WebView storage under the `https://localhost` origin. The app's scheme and hostname must never change, or saves are lost.
 - Debug builds share a signing key kept in the repository, so each installs over the last one and keeps the save; CI numbers the builds. A store release (step 30) needs its own, secret key.
 - Android's back button closes the dialog that is open, pauses and resumes the drive, takes the HQ back to the main menu, and at the main menu puts the app away. Going to the background pauses the drive and saves; a hidden browser tab now does the same.
-- Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
+- Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber; since the brand round, the brand's mark) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
 - Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
 - For step 29, Settings has a performance display switch: FPS, draw calls, the pixel ratio, the graphics preset and the GPU, in the browser and the app, without `?debug`.
 
@@ -282,6 +282,7 @@ The player asked how to give a hired driver a truck, reported lamps showing wher
 | The weather in Settings | ✅ | Changing (as it comes), clear, cloudy or rain: a choice holds that weather from the moment it is picked, kept on the device with the other settings; `?weather=` still wins for testing |
 | A global cast | ✅ | The towns are Havenport (was Yeniliman), Ironford (Demirkent) and Amberfield (Başakova); the rivals Havenport Express, Amberfield Cargo and Ironford Haulage; the drivers an international crew. The names read the same in both languages, and the ids stay, so saves carry on. The name boards write them in plain capitals, and a pair of dice hangs in the cab in place of the nazar bead |
 | Seasons | ✅ | The calendar's season, or one picked in Settings (kept on the device; `?season=`). Spring puts the broadleaf trees in white and pink blossom and the verges in flower; summer is green; autumn turns the trees gold, orange and rust, dries the grass and harvests the fields; winter leaves the trees bare and the land under snow. Snow falls in winter as a weather of its own (flakes round the camera, slippery roads, slush, the wipers going): it settles on the ground, the hills, the roofs and the treetops, and melts slowly after, but some lies all winter. Picking a season turns the land in a few seconds |
+| A brand of its own | ✅ | After the icon sheet the player made with ChatGPT from our brief (the UI's icons looked "AI-made"): every icon redrawn as a solid glyph with an amber accent (the pages, cargo, truck parts, events' terms, menu buttons), on chamfered steel tiles on the cards; the palette's tokens (asphalt, steel, amber, signal white, road green, brake red, night blue); the title screen's lockup, an R whose leg is a road over ROADHAUL in white and amber, and the motto; the same mark on the favicon and the launcher icon |
 
 ## Next step: 29 Device testing
 
