@@ -21,7 +21,7 @@ import {
   type Texture,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { clamp, dampFactor } from '../../core/math/scalar';
+import { clamp } from '../../core/math/scalar';
 import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
@@ -48,11 +48,19 @@ const PALLET_COLOR = 0x9c7a4f;
 const BRICK_COLOR = 0xa94f35;
 const STRAP_COLOR = 0xffa21c;
 
-/** Body lean per m/s² of acceleration (radians), capped, and how fast the lean follows. */
-const PITCH_PER_ACCELERATION = 0.008;
-const ROLL_PER_ACCELERATION = 0.012;
-const MAX_LEAN = 0.07;
-const LEAN_RESPONSE_RATE = 5;
+/**
+ * Body lean per m/s² of acceleration (radians), capped: about 3° in the
+ * hardest turn, 2½° braking hard. The body rocks on its springs toward it,
+ * this stiff (rad/s) and damped (a share of critical), so a stop nods it
+ * once and it settles; stepped this often, whatever the frame rate.
+ */
+const PITCH_PER_ACCELERATION = 0.006;
+const ROLL_PER_ACCELERATION = 0.009;
+const MAX_LEAN = 0.06;
+const BODY_SPRING_RATE = 7;
+const BODY_DAMPING = 0.55;
+const BODY_STEP_SECONDS = 1 / 60;
+const MAX_BODY_CATCH_UP_SECONDS = 0.25;
 
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
@@ -162,6 +170,8 @@ export class TruckView {
   private wheelSpin = 0;
   private pitch = 0;
   private roll = 0;
+  private pitchRate = 0;
+  private rollRate = 0;
   // Scratch objects reused every frame.
   private readonly matrix = new Matrix4();
   private readonly position = new Vector3();
@@ -490,6 +500,7 @@ export class TruckView {
     // An upgraded suspension sets the body lower over its wheels.
     this.body.position.y = -drop;
     this.cabin.position.y = -drop;
+    this.body.name = 'truck-body';
     this.root.add(shadow, this.body, this.cabin, this.wheels);
     if (this.calipers !== null) {
       this.root.add(this.calipers);
@@ -517,18 +528,34 @@ export class TruckView {
     this.updateWheels(state.steerAngle);
     this.wipers.update(deltaSeconds, this.rain);
 
-    // Nose dips when braking and lifts when accelerating; the body leans out of turns. From the driver's seat
-    // it keeps still round the cab's inside and the eye, which do not lean (the head sways instead: CameraRig).
-    const response = dampFactor(LEAN_RESPONSE_RATE, deltaSeconds);
-    const targetPitch = clamp(-state.longitudinalAcceleration * PITCH_PER_ACCELERATION, -MAX_LEAN, MAX_LEAN);
-    const targetRoll = clamp(state.lateralAcceleration * ROLL_PER_ACCELERATION, -MAX_LEAN, MAX_LEAN);
-    this.pitch += (targetPitch - this.pitch) * response;
-    this.roll += (targetRoll - this.roll) * response;
+    // Nose dips when braking and lifts when accelerating; the body leans out of turns, rocking on its springs.
+    // From the driver's seat it keeps still round the cab's inside and the eye, which do not lean (the head
+    // sways instead: CameraRig).
+    this.rockBody(
+      clamp(-state.longitudinalAcceleration * PITCH_PER_ACCELERATION, -MAX_LEAN, MAX_LEAN),
+      clamp(state.lateralAcceleration * ROLL_PER_ACCELERATION, -MAX_LEAN, MAX_LEAN),
+      deltaSeconds,
+    );
     if (this.interior !== null && this.cabin.visible) {
       this.body.rotation.set(0, 0, 0);
       this.interior.update(state, deltaSeconds, pose.heading, this.options.light);
     } else {
       this.body.rotation.set(this.pitch, 0, this.roll);
+    }
+  }
+
+  /** Moves the body's pitch and roll toward the lean the truck's motion asks for, as a damped spring. Allocation-free. */
+  private rockBody(targetPitch: number, targetRoll: number, deltaSeconds: number): void {
+    const stiffness = BODY_SPRING_RATE * BODY_SPRING_RATE;
+    const damping = 2 * BODY_DAMPING * BODY_SPRING_RATE;
+    let remaining = Math.min(Math.max(deltaSeconds, 0), MAX_BODY_CATCH_UP_SECONDS);
+    while (remaining > 1e-6) {
+      const step = Math.min(remaining, BODY_STEP_SECONDS);
+      this.pitchRate += (stiffness * (targetPitch - this.pitch) - damping * this.pitchRate) * step;
+      this.rollRate += (stiffness * (targetRoll - this.roll) - damping * this.rollRate) * step;
+      this.pitch = clamp(this.pitch + this.pitchRate * step, -MAX_LEAN, MAX_LEAN);
+      this.roll = clamp(this.roll + this.rollRate * step, -MAX_LEAN, MAX_LEAN);
+      remaining -= step;
     }
   }
 

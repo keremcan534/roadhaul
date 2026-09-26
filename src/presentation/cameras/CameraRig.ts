@@ -10,7 +10,10 @@ import { cabGeometry, type CabGeometry } from '../vehicles/cabGeometry';
 export type { CameraMode } from '../../data/config/controls';
 
 /** What the cameras read of the truck's motion besides its pose. */
-export type CameraMotion = Pick<VehicleRuntimeState, 'speed' | 'steerAngle' | 'longitudinalAcceleration' | 'lateralAcceleration'>;
+export type CameraMotion = Pick<
+  VehicleRuntimeState,
+  'speed' | 'steerAngle' | 'pathCurvature' | 'longitudinalAcceleration' | 'lateralAcceleration'
+>;
 
 /** Behind the truck's middle: half its length plus this much (10.5 m for the H1). */
 const CHASE_GAP_METERS = 6.8;
@@ -19,6 +22,8 @@ const CHASE_DISTANCE_PER_SPEED = 0.1;
 /** Above the truck's roof: high enough to see the road over the cargo box (4.8 m for the H1). */
 const CHASE_HEIGHT_ABOVE_ROOF_METERS = 1.5;
 const CHASE_LOOK_AHEAD_METERS = 10;
+/** In a bend the chase camera looks where the truck's path goes, this far aside at most (meters). */
+const CHASE_MAX_LOOK_INTO_TURN_METERS = 3;
 const CHASE_LOOK_HEIGHT_METERS = 2.6;
 /** Looking up or down (dragging) lowers or raises the chase camera this much per radian. */
 const CHASE_HEIGHT_PER_PITCH = 6;
@@ -267,8 +272,13 @@ export class CameraRig {
       }
       const desiredX = centreX - viewSin * back;
       const desiredZ = centreZ - viewCos * back;
-      const lookX = centreX + viewSin * ahead;
-      const lookZ = centreZ + viewCos * ahead;
+      // Along the bend the truck is taking: its path runs this far aside `ahead` meters on (to the right is +).
+      const intoTurn =
+        this.mode === 'chase'
+          ? clamp((motion.pathCurvature * ahead * ahead) / 2, -CHASE_MAX_LOOK_INTO_TURN_METERS, CHASE_MAX_LOOK_INTO_TURN_METERS)
+          : 0;
+      const lookX = centreX + viewSin * ahead - viewCos * intoTurn;
+      const lookZ = centreZ + viewCos * ahead + viewSin * intoTurn;
       if (this.snapNextFrame) {
         this.position.set(desiredX, height, desiredZ);
         this.target.set(lookX, lookHeight, lookZ);
