@@ -2,17 +2,18 @@ import type { MapDefinition } from '../definitions/MapDefinition';
 
 /**
  * The region (spec §20, roadmap step 21): four original towns joined by the
- * four kinds of road, on a map 7.2 km across.
+ * four kinds of road, on a map 7.2 km across. North is −z, as the maps show
+ * it (x to the east).
  *
  * - City A, Havenport (west): the starting town, where the high street
  *   crosses the harbour road. The company's home depot is on the high street.
  *   The harbour road ends at the quay, on the sea along the map's west edge.
  * - City B, Ironford (east): an industrial estate inside a ring road.
- * - City C, Amberfield (north): a farm village on one street.
- * - City D, Copperdale (south): a mining town on one street, the mine's plant,
+ * - City C, Amberfield (south): a farm village on one street.
+ * - City D, Copperdale (north): a mining town on one street, the mine's plant,
  *   ore bins and shaft tower behind its depot. It came with the bigger map.
  * - The highway joins A's harbour road to B's ring road, with a rest area
- *   half way (spec §25). Country roads join A to C and C to B, and run south
+ *   half way (spec §25). Country roads join A to C and C to B, and run north
  *   from A's high street and B's ring road to D.
  *
  * Roads meet where they share a control point. The map is a miniature of
@@ -397,8 +398,8 @@ export const MAPS: readonly MapDefinition[] = [
         { x: -2140, z: -245, headingDegrees: -90 },
       ],
     },
-    // A river from the hills beyond the north edge: under the country road to Amberfield and the highway to
-    // Ironford, then west past Havenport's south side, under the country road to Copperdale, into the sea. The
+    // A river from the hills beyond the south edge: under the country road to Amberfield and the highway to
+    // Ironford, then west past Havenport's north side, under the country road to Copperdale, into the sea. The
     // roads cross it on bridges, near a right angle and clear of junctions and fields.
     rivers: [
       {
@@ -431,9 +432,9 @@ export const MAPS: readonly MapDefinition[] = [
         ],
       },
     ],
-    // Woods: pines on both sides of the country road out of Amberfield toward Ironford and of the one south from
-    // Ironford, pines and broadleaves round the river's upper course, an oak wood south of the highway, and pines
-    // between the road south of Havenport and the sea. Each lies back from its roads.
+    // Woods: pines on both sides of the country road out of Amberfield toward Ironford and of the one north from
+    // Ironford, pines and broadleaves round the river's upper course, an oak wood north of the highway, and pines
+    // between the road north of Havenport and the sea. Each lies back from its roads.
     forests: [
       {
         id: 'ironwood',
@@ -572,7 +573,7 @@ export const MAPS: readonly MapDefinition[] = [
       { id: 'amberfield_green', area: { x: 270, z: 1560, headingDegrees: 90, lengthMeters: 90, widthMeters: 60 } },
       { id: 'copperdale_square', area: { x: 100, z: -2450, headingDegrees: 0, lengthMeters: 56, widthMeters: 84 } },
     ],
-    // On A's high street, in the lane heading north past the home depot (traffic keeps right).
+    // On A's high street, in the lane heading south past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     // Street lamps light the four towns' streets and B's ring road, on alternate sides; the towns have their
     // pavements and street furniture, the country its power lines, walls, rocks, herds and planted trees.
