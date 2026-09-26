@@ -23,6 +23,7 @@ import { RivalService } from '../systems/rivals/RivalService';
 import { TenderBoard } from '../systems/rivals/TenderBoard';
 import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
+import { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
 import { TrafficService } from '../systems/traffic/TrafficService';
 import { TutorialService } from '../systems/tutorial/TutorialService';
 import { TimeOfDayService } from '../systems/weather/TimeOfDayService';
@@ -226,6 +227,10 @@ export class GameBootstrapper {
           config.missions.loadingSeconds,
           logger.withCategory('Rivals'),
         ),
+      );
+      container.register(
+        ServiceKeys.companyTraffic,
+        new CompanyTraffic(traffic, [fleet, rivals], driving, config.traffic.radiusMeters),
       );
       const tutorial = container.register(ServiceKeys.tutorial, new TutorialService(events, logger.withCategory('Tutorial')));
       const saves = container.register(

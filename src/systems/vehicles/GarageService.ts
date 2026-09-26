@@ -123,6 +123,20 @@ export class GarageService {
     return this.records.map((record) => this.view(record));
   }
 
+  /**
+   * The colour truck `instanceId` wears: its paint, or its model's factory
+   * colour. Throws for a truck the company does not own. Allocation-free.
+   */
+  colorOf(instanceId: string): number {
+    for (let i = 0; i < this.records.length; i++) {
+      const record = this.records[i]!;
+      if (record.instanceId === instanceId) {
+        return record.paintId === null ? record.definition.factoryColor : this.content.paints.get(record.paintId).color;
+      }
+    }
+    throw new Error(`The garage has no truck ${instanceId}.`);
+  }
+
   /** The truck the player drives. Throws before a game is loaded. */
   get activeTruck(): OwnedTruck {
     return this.view(this.requireActive());

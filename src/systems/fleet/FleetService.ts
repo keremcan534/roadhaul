@@ -12,7 +12,7 @@ import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
 import type { CompanyLevelSource } from '../missions/MissionService';
 import type { GarageService } from '../vehicles/GarageService';
-import { placeOnJob, type DepotRoads, type JobRoute, type MapPlacement } from './DepotRoads';
+import { placeOnJob, type CompanyTruckMarker, type DepotRoads, type JobRoute } from './DepotRoads';
 
 export type HireDriverError = 'unknownDriver' | 'alreadyHired' | 'locked' | SpendError;
 export type DismissDriverError = 'unknownDriver' | 'notHired';
@@ -53,11 +53,9 @@ export interface FleetDriverStatus {
   readonly creditsEarned: Credits;
 }
 
-/** A fleet truck on the map (for the map and the minimap). */
-export interface FleetMarker extends MapPlacement {
+/** A fleet truck on the map (for the map and the minimap), known by its driver (`key` too). */
+export interface FleetMarker extends CompanyTruckMarker {
   driverId: string;
-  /** On the road, not standing at a depot. */
-  moving: boolean;
 }
 
 /** A hired driver. */
@@ -298,10 +296,13 @@ export class FleetService {
       }
       let marker = this.markers[count];
       if (marker === undefined) {
-        marker = { driverId: '', x: 0, z: 0, heading: 0, moving: false };
+        marker = { key: '', driverId: '', color: 0, x: 0, z: 0, heading: 0, moving: false, destinationCityId: '' };
         this.markers.push(marker);
       }
+      marker.key = driver.definition.id;
       marker.driverId = driver.definition.id;
+      marker.color = this.garage.colorOf(driver.truckInstanceId);
+      marker.destinationCityId = job.destinationCityId;
       marker.moving = placeOnJob(route, job, driver.elapsedSeconds, this.rules.handlingSeconds, marker);
       count++;
     }

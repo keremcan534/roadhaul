@@ -109,6 +109,7 @@ import './ui/styles.css';
  *
  * `<html data-boot-state>` (booting | ready | error), `data-game-state`,
  * `data-panel`, `data-mission-state`, `data-vehicle`, `data-traffic`,
+ * `data-company-trucks` (the fleet's and the rivals' trucks in the traffic),
  * `data-weather` and `data-daylight` let the end-to-end tests follow
  * progress.
  */
@@ -227,6 +228,7 @@ async function start(): Promise<void> {
   const upgrades = services.resolve(ServiceKeys.upgrades);
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
+  const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const session = services.resolve(ServiceKeys.session);
 
   // Older WebViews may only have navigator.language.
@@ -337,6 +339,8 @@ async function start(): Promise<void> {
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
+  /** Company trucks in the traffic, as last written to the page (e2e tests read it). */
+  let shownCompanyTrucks = -1;
   /** Whether sound plays, as last written to the page (e2e tests read it). */
   let shownSound = '';
   /** The time of day's look (day, dawn, dusk, night) and the clock's minute, as last shown. */
@@ -404,7 +408,7 @@ async function start(): Promise<void> {
   const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals);
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
   const mapSketch = sketchWorld(driving.world);
-  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals }, strings);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic }, strings);
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
@@ -1285,9 +1289,11 @@ async function start(): Promise<void> {
         traffic.update(stepSeconds);
         timeOfDay.update(stepSeconds);
         weather.update(stepSeconds);
-        // The fleet's drivers and the rivals work on while the player is in the panel or the menus.
+        // The fleet's drivers and the rivals work on while the player is in the panel or the menus, and those near
+        // the truck join the traffic.
         fleet.update(stepSeconds);
         rivals.update(stepSeconds);
+        companyTraffic.update(stepSeconds);
         if (!onRoad()) {
           return;
         }
@@ -1365,6 +1371,11 @@ async function start(): Promise<void> {
         if (vehicles !== shownTraffic) {
           shownTraffic = vehicles;
           root.dataset.traffic = String(vehicles);
+        }
+        const companyTrucks = companyTraffic.inTraffic;
+        if (companyTrucks !== shownCompanyTrucks) {
+          shownCompanyTrucks = companyTrucks;
+          root.dataset.companyTrucks = String(companyTrucks);
         }
         lookAround.update(deltaSeconds);
         cameraRig.look(lookAround.yaw, lookAround.pitch);

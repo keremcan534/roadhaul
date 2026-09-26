@@ -85,6 +85,12 @@ describe('RivalService', () => {
     });
     expect(game.rivals.colorOf('rival_basakova')).toBe(0x2f9e44);
     expect(game.rivals.colorOf('player')).toBeNull();
+    // The first truck waits at home, the second at the next rival's: they do not set off together.
+    expect(game.rivals.snapshot().companies.map((company) => company.trucks.map((truck) => truck.cityId))).toEqual([
+      ['city_a', 'city_c'],
+      ['city_c', 'city_b'],
+      ['city_b', 'city_a'],
+    ]);
   });
 
   it('runs the rivals\' trucks on contracts: they earn, win standing in the cities they serve, and grow', async () => {
@@ -288,13 +294,23 @@ describe('RivalService', () => {
       expect(Math.abs(marker.z)).toBeLessThan(half);
       expect(marker.racing).toBe(false);
       expect(marker.color).toBe(game.rivals.colorOf(marker.rivalId));
+      expect(marker.key).toMatch(new RegExp(`^${marker.rivalId}:[01]$`));
+      expect(game.driving.world.depotOf(marker.destinationCityId)).toBeDefined();
     }
+    expect(new Set(game.rivals.markers.slice(0, count).map((marker) => marker.key)).size).toBe(count);
     const markers = game.rivals.markers;
     runRivals(game, RIVALS.firstTenderSeconds);
-    game.missions.accept(game.rivals.tender!.contract.id);
+    const tender = game.rivals.tender!;
+    game.missions.accept(tender.contract.id);
     expect(game.rivals.updateMarkers()).toBe(7);
     expect(game.rivals.markers).toBe(markers);
-    expect(game.rivals.markers[6]).toMatchObject({ racing: true, moving: false });
+    // The rival racing the company for the tender: only the maps show it.
+    expect(game.rivals.markers[6]).toMatchObject({
+      racing: true,
+      moving: false,
+      key: '',
+      destinationCityId: tender.contract.destinationCityId,
+    });
   });
 
   it('keeps the rivals, the standing, the timers and a race going across a save', async () => {

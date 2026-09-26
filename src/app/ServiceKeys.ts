@@ -18,6 +18,7 @@ import type { NavigationService } from '../systems/navigation/NavigationService'
 import type { RivalService } from '../systems/rivals/RivalService';
 import type { SaveService } from '../systems/save/SaveService';
 import type { GameSessionService } from '../systems/session/GameSessionService';
+import type { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
 import type { TrafficService } from '../systems/traffic/TrafficService';
 import type { TutorialService } from '../systems/tutorial/TutorialService';
 import type { TimeOfDayService } from '../systems/weather/TimeOfDayService';
@@ -59,6 +60,8 @@ export const ServiceKeys = Object.freeze({
   fleet: serviceKey<FleetService>('FleetService'),
   /** The rival companies, the cities' standing, campaigns and tenders (spec §65 V3). */
   rivals: serviceKey<RivalService>('RivalService'),
+  /** The fleet's and the rivals' trucks in the traffic around the truck. */
+  companyTraffic: serviceKey<CompanyTraffic>('CompanyTraffic'),
   saves: serviceKey<SaveService>('SaveService'),
   session: serviceKey<GameSessionService>('GameSessionService'),
 });

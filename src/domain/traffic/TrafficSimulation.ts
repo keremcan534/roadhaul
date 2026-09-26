@@ -2,7 +2,8 @@ import { SeededRandom } from '../../core/random/SeededRandom';
 import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { MovingObstacles } from '../world/DrivingWorld';
-import { COMFORTABLE_DECELERATION, type LaneGraph } from './LaneGraph';
+import { COMFORTABLE_DECELERATION, type LaneGraph, type LanePosition } from './LaneGraph';
+import type { LaneRoute } from './laneRoutes';
 
 /** What a vehicle is doing (spec §19's traffic behaviours). */
 export const TRAFFIC_BEHAVIOURS = ['cruise', 'follow', 'stop', 'avoid', 'changeLane', 'turn', 'emergencyStop'] as const;
@@ -46,8 +47,12 @@ const LOOK_AHEAD_METERS = 40;
 const STOPPED_SPEED = 0.4;
 /** Vehicles are recycled this far beyond the traffic radius (so fresh ones do not vanish at once). */
 const RECYCLE_MARGIN_METERS = 80;
-/** Closer than this, new vehicles only appear behind the truck, where the camera does not look. */
+/** Closer than this, new vehicles only appear behind the truck, where the camera does not look… */
 const HIDDEN_DISTANCE_METERS = 350;
+/** …this far behind it. */
+const HIDDEN_BEHIND_METERS = 20;
+/** A guest comes onto the lane nearest where it is, no further off it than this. */
+const GUEST_LOCATE_METERS = 15;
 const SPAWN_SPACING_METERS = 30;
 const SPAWN_ATTEMPTS_PER_STEP = 6;
 /** When traffic starts (or the truck is moved), the roads fill at once, from this close. */
@@ -139,6 +144,8 @@ export class TrafficSimulation implements MovingObstacles {
   readonly circleVelocityZ: Float64Array;
   /** The vehicle slot each circle belongs to. */
   readonly circleOwner: Int32Array;
+  /** Vehicles brought in from outside the traffic (addGuest): the caller's id for each; -1 for the traffic's own. */
+  readonly guest: Int32Array;
   private circles = 0;
   private serials = 0;
 
@@ -164,6 +171,10 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly leaderGap: Float64Array;
   private readonly leaderSpeed: Float64Array;
   private readonly leaderKind: Uint8Array;
+  /** Where each guest is heading; null for the traffic's own, and for guests that have got there. */
+  private readonly routes: (LaneRoute | null)[];
+  /** Guests that have got there or been let go: they leave the road once out of sight. */
+  private readonly leaving: Uint8Array;
   private activeCount = 0;
   /** Everyone drives at this share of their usual speed (the weather). */
   private speedFactor = 1;
@@ -200,6 +211,8 @@ export class TrafficSimulation implements MovingObstacles {
   private truckReach = 0;
   private truckKnown = false;
   private filling = true;
+  /** Scratch result of locate() for addGuest(). */
+  private readonly located: LanePosition = { link: -1, s: 0 };
   /** Scratch results of pointAt() and scanTruck(). */
   private pointXOut = 0;
   private pointZOut = 0;
@@ -251,6 +264,9 @@ export class TrafficSimulation implements MovingObstacles {
     this.leaderGap = new Float64Array(capacity);
     this.leaderSpeed = new Float64Array(capacity);
     this.leaderKind = new Uint8Array(capacity);
+    this.guest = new Int32Array(capacity).fill(-1);
+    this.routes = new Array<LaneRoute | null>(capacity).fill(null);
+    this.leaving = new Uint8Array(capacity);
     const circles = capacity * MAX_CIRCLES_PER_VEHICLE;
     this.circleX = new Float64Array(circles);
     this.circleZ = new Float64Array(circles);
@@ -385,7 +401,8 @@ export class TrafficSimulation implements MovingObstacles {
       }
       const distance = Math.hypot(this.x[i]! - this.truckX, this.z[i]! - this.truckZ);
       const stuck = this.stuckSeconds[i]! > STUCK_RECYCLE_SECONDS && distance > STUCK_RECYCLE_DISTANCE_METERS;
-      if (distance > limit || stuck) {
+      const gone = this.leaving[i] === 1 && !this.inSight(this.x[i]!, this.z[i]!);
+      if (distance > limit || stuck || gone) {
         this.despawn(i);
       }
     }
@@ -403,6 +420,87 @@ export class TrafficSimulation implements MovingObstacles {
     }
     const type = this.types[typeIndex]!;
     return this.initVehicle(typeIndex, 0, type.cruiseSpeedFactor * cruiseFactor, link, s, speed);
+  }
+
+  /**
+   * Brings in a vehicle from outside the traffic (a company truck), as
+   * traffic appears: out of sight of the truck, within the traffic's reach,
+   * with room on the lane. It is of kind `types[typeIndex]`, painted
+   * `color`, on the rightmost lane nearest (x, z) that runs the way it faces
+   * (`heading`); it heads for `route`'s end and leaves the road once there
+   * and out of sight. `guest` is the caller's id for it (see `guest`). With
+   * every slot taken, a vehicle of the traffic's own out of sight makes room.
+   * Returns its slot, or -1. Allocation-free.
+   */
+  addGuest(guest: number, typeIndex: number, color: number, x: number, z: number, heading: number, route: LaneRoute): number {
+    if (this.capacity === 0 || !this.truckKnown) {
+      return -1;
+    }
+    const distance = Math.hypot(x - this.truckX, z - this.truckZ);
+    if (distance < this.settings.minSpawnDistanceMeters || distance > this.settings.radiusMeters || this.inSight(x, z)) {
+      return -1;
+    }
+    const located = this.located;
+    const type = this.types[typeIndex]!;
+    if (
+      !this.graph.locate(x, z, heading, GUEST_LOCATE_METERS, located) ||
+      !this.clearAt(located.link, located.s, type.lengthMeters) ||
+      (this.activeCount >= this.capacity && !this.makeRoom())
+    ) {
+      return -1;
+    }
+    const i = this.initVehicle(typeIndex, 0, type.cruiseSpeedFactor, located.link, located.s, null, route);
+    this.color[i] = color;
+    this.guest[i] = guest;
+    return i;
+  }
+
+  /** Lets guest `slot` go: it drives on as the traffic's own, and leaves the road once out of sight. */
+  releaseGuest(slot: number): void {
+    if (this.active[slot] === 1 && this.guest[slot]! >= 0) {
+      this.guest[slot] = -1;
+      this.routes[slot] = null;
+      this.leaving[slot] = 1;
+    }
+  }
+
+  /** Every slot taken: the vehicle of the traffic's own furthest from the truck, out of sight, leaves. */
+  private makeRoom(): boolean {
+    let furthest = -1;
+    let furthestDistance = -1;
+    for (let j = 0; j < this.capacity; j++) {
+      if (this.active[j] !== 1 || this.guest[j]! >= 0 || this.inSight(this.x[j]!, this.z[j]!)) {
+        continue;
+      }
+      const distance = Math.hypot(this.x[j]! - this.truckX, this.z[j]! - this.truckZ);
+      if (distance > furthestDistance) {
+        furthestDistance = distance;
+        furthest = j;
+      }
+    }
+    if (furthest < 0) {
+      return false;
+    }
+    this.despawn(furthest);
+    return true;
+  }
+
+  /** Where the camera, behind the truck and looking its way, could see a vehicle appear or vanish. */
+  private inSight(x: number, z: number): boolean {
+    const dx = x - this.truckX;
+    const dz = z - this.truckZ;
+    const ahead = dx * Math.sin(this.truckHeading) + dz * Math.cos(this.truckHeading);
+    return Math.hypot(dx, dz) < HIDDEN_DISTANCE_METERS && ahead > -HIDDEN_BEHIND_METERS;
+  }
+
+  /** No vehicle on `lane` within the spacing new vehicles keep of distance `s` along it. */
+  private clearAt(lane: number, s: number, lengthMeters: number): boolean {
+    for (let j = 0; j < this.capacity; j++) {
+      if (this.active[j] === 1 && this.link[j] === lane && Math.abs(this.s[j]! - s) < SPAWN_SPACING_METERS + lengthMeters) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private spawn(): void {
@@ -442,15 +540,12 @@ export class TrafficSimulation implements MovingObstacles {
     if (distance < minDistance || distance > this.settings.radiusMeters) {
       return false;
     }
-    const ahead = dx * Math.sin(this.truckHeading) + dz * Math.cos(this.truckHeading);
-    if (!filling && distance < HIDDEN_DISTANCE_METERS && ahead > -20) {
+    if (!filling && this.inSight(this.pointXOut, this.pointZOut)) {
       return false; // In front of the camera: it would pop up in view.
     }
     const type = this.types[typeIndex]!;
-    for (let j = 0; j < this.capacity; j++) {
-      if (this.active[j] === 1 && this.link[j] === lane && Math.abs(this.s[j]! - s) < SPAWN_SPACING_METERS + type.lengthMeters) {
-        return false;
-      }
+    if (!this.clearAt(lane, s, type.lengthMeters)) {
+      return false;
     }
     const colorIndex = Math.min(type.colors.length - 1, Math.floor(colorPick * type.colors.length));
     this.initVehicle(typeIndex, colorIndex, type.cruiseSpeedFactor * (0.92 + 0.14 * cruisePick), lane, s, null);
@@ -465,6 +560,7 @@ export class TrafficSimulation implements MovingObstacles {
     lane: number,
     s: number,
     speed: number | null,
+    route: LaneRoute | null = null,
   ): number {
     const graph = this.graph;
     const type = this.types[typeIndex]!;
@@ -481,8 +577,11 @@ export class TrafficSimulation implements MovingObstacles {
     this.cruiseFactor[i] = cruiseFactor;
     this.link[i] = lane;
     this.s[i] = s;
-    this.next[i] = this.choose(lane);
-    this.after[i] = this.next[i]! >= 0 ? this.choose(this.next[i]!) : -1;
+    this.guest[i] = -1;
+    this.routes[i] = route;
+    this.leaving[i] = 0;
+    this.next[i] = this.choose(i, lane);
+    this.after[i] = this.next[i]! >= 0 ? this.choose(i, this.next[i]!) : -1;
     this.segment[i] = graph.segmentAt(lane, s);
     this.lateral[i] = 0;
     this.lateralTarget[i] = 0;
@@ -515,13 +614,32 @@ export class TrafficSimulation implements MovingObstacles {
     return index;
   }
 
-  /** Picks where a vehicle goes after `link`, weighted; -1 where the road ends. */
-  private choose(link: number): number {
+  /**
+   * Picks where vehicle `i` goes after `link`: a guest the way with the
+   * least left to its route's end, the rest at random, weighted; -1 where the
+   * road ends.
+   */
+  private choose(i: number, link: number): number {
     const graph = this.graph;
     const first = graph.successorStart[link]!;
     const last = graph.successorStart[link + 1]!;
     if (last === first) {
       return -1;
+    }
+    const route = this.routes[i] ?? null;
+    if (route !== null) {
+      let best = -1;
+      let bestDistance = Infinity;
+      for (let k = first; k < last; k++) {
+        const next = graph.successors[k]!;
+        if (route.distances[next]! < bestDistance) {
+          bestDistance = route.distances[next]!;
+          best = next;
+        }
+      }
+      if (best >= 0) {
+        return best;
+      }
     }
     let total = 0;
     for (let k = first; k < last; k++) total += graph.successorWeights[k]!;
@@ -980,8 +1098,8 @@ export class TrafficSimulation implements MovingObstacles {
     // Still where it was: the new lane's middle is that far to one side, and it glides over.
     this.lateral[i]! += graph.laneOffset[from]! - graph.laneOffset[lane]!;
     this.changeFrom[i] = from;
-    this.next[i] = this.choose(lane);
-    this.after[i] = this.next[i]! >= 0 ? this.choose(this.next[i]!) : -1;
+    this.next[i] = this.choose(i, lane);
+    this.after[i] = this.next[i]! >= 0 ? this.choose(i, this.next[i]!) : -1;
   }
 
   /**
@@ -1057,7 +1175,7 @@ export class TrafficSimulation implements MovingObstacles {
       link = next;
       this.link[i] = link;
       this.next[i] = this.after[i]!;
-      this.after[i] = this.next[i]! >= 0 ? this.choose(this.next[i]!) : -1;
+      this.after[i] = this.next[i]! >= 0 ? this.choose(i, this.next[i]!) : -1;
       this.changeFrom[i] = -1;
       this.segment[i] = 0;
       if (this.avoidUntil[i]! >= 0) {
@@ -1065,6 +1183,12 @@ export class TrafficSimulation implements MovingObstacles {
       }
     }
     this.s[i] = s;
+    const route = this.routes[i] ?? null;
+    if (route !== null && route.arriveAt[link]! >= 0 && s >= route.arriveAt[link]!) {
+      // There: it drives on until out of sight, then leaves the road.
+      this.routes[i] = null;
+      this.leaving[i] = 1;
+    }
   }
 
   /** Puts vehicle `i` where its link and distance say, shifted sideways by any lane change or pass. */
