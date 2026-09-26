@@ -103,6 +103,25 @@ test('turns the light warm at dusk, with the sun low in a glowing sky', async ({
   expect(problems).toEqual([]);
 });
 
+test('lays a morning mist over the land at sunrise, and none when the address clears it', async ({ page }, testInfo) => {
+  test.setTimeout(60_000); // The game started twice, drawn in software.
+  const problems = watchForProblems(page);
+
+  await openGame(page, '?weather=dawn');
+  await waitForFrames(page, 10);
+  await expect(page.locator('html')).toHaveAttribute('data-mist', 'thick');
+  const misty = await sceneColor(page);
+  await testInfo.attach('morning mist', { body: await sceneScreenshot(page), contentType: 'image/png' });
+  // The same company, the same truck, the same morning: without the mist.
+  await driveIn(page, 'dawn&mist=0');
+  await expect(page.locator('html')).toHaveAttribute('data-mist', 'none');
+  const clear = await sceneColor(page);
+
+  // The mist's light hides the dark land far off: the picture is lighter.
+  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.1);
+  expect(problems).toEqual([]);
+});
+
 test('sets the time of day from Settings: night falls at once, the minimap shows the time, and it is kept', async ({
   page,
 }, testInfo) => {

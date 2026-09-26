@@ -44,6 +44,18 @@ export function requestedWetness(query: QueryParameters): number | null {
 }
 
 /**
+ * `?mist=1` keeps the morning mist that thick (0 none … 1 a morning's full
+ * mist) whatever the time and the weather: with `?time=` any hour, to look
+ * at it (with a low sun ahead, `?time=07:40`, its glow and the sun's shafts
+ * through it). Null when the URL does not say, or says something else.
+ */
+export function requestedMist(query: QueryParameters): number | null {
+  const text = query.get('mist')?.trim() ?? '';
+  const mist = text === '' ? Number.NaN : Number(text);
+  return mist >= 0 && mist <= 1 ? mist : null;
+}
+
+/**
  * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
  * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
  * along +x; 0 if left out), to look round a place without driving to it.

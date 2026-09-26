@@ -177,6 +177,7 @@ export const EN: StringTable = {
   'daylight.dusk.message': 'The sun is going down. Night is not far off.',
   'daylight.night.message': 'Night is falling: headlights on, drive carefully.',
   'daylight.dawn.message': 'Dawn is breaking. The road wakes up.',
+  'mist.message': 'Morning mist: less to see ahead. Keep your distance.',
 
   'hq.tab.events': 'Events',
   'hq.events.note': 'Events run by the calendar. Deliveries that meet their terms pay extra and count toward the reward.',

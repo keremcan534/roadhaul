@@ -177,6 +177,7 @@ export const TR: StringTable = {
   'daylight.dusk.message': 'Güneş batıyor. Gece yaklaşıyor.',
   'daylight.night.message': 'Gece oluyor: farlar yandı, dikkatli sür.',
   'daylight.dawn.message': 'Şafak söküyor. Yollar uyanıyor.',
+  'mist.message': 'Sabah sisi: görüş azaldı. Takip mesafeni koru.',
 
   'hq.tab.events': 'Etkinlikler',
   'hq.events.note': 'Etkinlikler takvime göre döner. Koşullarını karşılayan teslimatlar fazladan kazandırır ve ödüle sayılır.',

@@ -4,6 +4,7 @@ import {
   applyConfigOverrides,
   requestedDateMs,
   requestedLampLight,
+  requestedMist,
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
@@ -102,6 +103,17 @@ describe('requestedWetness', () => {
     expect(requestedWetness(query('?wet=0'))).toBe(0);
     for (const search of ['', '?wet=', '?wet=2', '?wet=-1', '?wet=soaked']) {
       expect(requestedWetness(query(search)), search).toBeNull();
+    }
+  });
+});
+
+describe('requestedMist', () => {
+  it('keeps the mist as thick as the URL says, from none to full, and leaves it to the morning otherwise', () => {
+    expect(requestedMist(query('?mist=1'))).toBe(1);
+    expect(requestedMist(query('?mist=0.5'))).toBe(0.5);
+    expect(requestedMist(query('?mist=0'))).toBe(0);
+    for (const search of ['', '?mist=', '?mist=1.5', '?mist=-0.2', '?mist=thick']) {
+      expect(requestedMist(query(search)), search).toBeNull();
     }
   });
 });
