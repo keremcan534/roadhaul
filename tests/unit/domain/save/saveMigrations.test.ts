@@ -6,6 +6,17 @@ const context = { defaultMapId: 'north_valley' };
 
 /** The fleet of a company from a build before v9: nobody hired yet. */
 const NO_FLEET = { drivers: [], jobsPlanned: 0 };
+/** The rivals of a company from a build before v10: they start out afresh when it is loaded. */
+const NEW_RIVALS = {
+  companies: [],
+  standing: [],
+  campaignCooldowns: [],
+  tender: null,
+  race: null,
+  nextTenderSeconds: null,
+  tendersPosted: 0,
+  jobsPlanned: 0,
+};
 
 /** A garage as v7 has it: every truck in its factory colour. */
 function inFactoryColours<T extends { vehicles: readonly object[] }>(garage: T): T {
@@ -39,7 +50,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 9,
+        version: 10,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {}, paintId: null }],
@@ -49,7 +60,7 @@ describe('save migrations', () => {
         stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
         events: { runs: [] },
         tutorial: { step: 'done' },
-        fleet: NO_FLEET,
+        fleet: NO_FLEET, rivals: NEW_RIVALS,
       },
     });
   });
@@ -114,13 +125,13 @@ describe('save migrations', () => {
       garage: inFactoryColours(v3.garage),
       // The contract under way is one of the game's own.
       missions: { active: { ...v3.missions.active, contract: null } },
-      fleet: NO_FLEET,
+      fleet: NO_FLEET, rivals: NEW_RIVALS,
     };
     expect(moved).toEqual({
       ok: true,
-      value: { ...v3, version: 9, world: { mapId: 'north_valley', truck: null }, ...added },
+      value: { ...v3, version: 10, world: { mapId: 'north_valley', truck: null }, ...added },
     });
-    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 9, ...added } });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 10, ...added } });
   });
 
   it('starts the events of a v4 save with no progress, keeping the rest', () => {
@@ -140,11 +151,11 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...v4,
-        version: 9,
+        version: 10,
         events: { runs: [] },
         tutorial: { step: 'done' },
         garage: inFactoryColours(v4.garage),
-        fleet: NO_FLEET,
+        fleet: NO_FLEET, rivals: NEW_RIVALS,
       },
     });
   });
@@ -165,7 +176,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v5, context)).toEqual({
       ok: true,
-      value: { ...v5, version: 9, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage), fleet: NO_FLEET },
+      value: { ...v5, version: 10, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage), fleet: NO_FLEET, rivals: NEW_RIVALS },
     });
   });
 
@@ -189,7 +200,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v6, context)).toEqual({
       ok: true,
-      value: { ...v6, version: 9, garage: inFactoryColours(v6.garage), fleet: NO_FLEET },
+      value: { ...v6, version: 10, garage: inFactoryColours(v6.garage), fleet: NO_FLEET, rivals: NEW_RIVALS },
     });
   });
 
@@ -220,9 +231,9 @@ describe('save migrations', () => {
 
     expect(migrateSave(v7, context)).toEqual({
       ok: true,
-      value: { ...v7, version: 9, missions: { active: { ...v7.missions.active, contract: null } }, fleet: NO_FLEET },
+      value: { ...v7, version: 10, missions: { active: { ...v7.missions.active, contract: null } }, fleet: NO_FLEET, rivals: NEW_RIVALS },
     });
-    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 9, fleet: NO_FLEET } });
+    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 10, fleet: NO_FLEET, rivals: NEW_RIVALS } });
   });
 
   it('gives a v8 company a fleet with nobody hired yet, and keeps the rest as it was', () => {
@@ -243,7 +254,42 @@ describe('save migrations', () => {
       tutorial: { step: 'done' },
     };
 
-    expect(migrateSave(v8, context)).toEqual({ ok: true, value: { ...v8, version: 9, fleet: NO_FLEET } });
+    expect(migrateSave(v8, context)).toEqual({ ok: true, value: { ...v8, version: 10, fleet: NO_FLEET, rivals: NEW_RIVALS } });
+  });
+
+  it('gives a v9 company rivals that start out afresh, and keeps the rest, its fleet too, as it was', () => {
+    const v9 = {
+      ...V1_SAVE,
+      version: 9,
+      garage: {
+        activeVehicleInstanceId: 'truck_001',
+        vehicles: [
+          { instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {}, paintId: null },
+          { instanceId: 'truck_002', definitionId: 'rh_h1', fuelLiters: 120, damage: 0, upgrades: {}, paintId: null },
+        ],
+      },
+      world: { mapId: 'north_valley', truck: null },
+      missions: { active: null },
+      stats: { deliveriesCompleted: 3, deliveriesFailed: 0, creditsEarned: 4000, distanceDrivenMeters: 8000 },
+      events: { runs: [] },
+      tutorial: { step: 'done' },
+      fleet: {
+        drivers: [
+          {
+            driverId: 'driver_kemal',
+            truckInstanceId: 'truck_002',
+            cityId: 'city_a',
+            job: null,
+            repairSecondsLeft: 0,
+            jobsCompleted: 4,
+            creditsEarned: 3200,
+          },
+        ],
+        jobsPlanned: 5,
+      },
+    };
+
+    expect(migrateSave(v9, context)).toEqual({ ok: true, value: { ...v9, version: 10, rivals: NEW_RIVALS } });
   });
 
   it('migrates odd data without throwing, leaving it to validation', () => {

@@ -8,7 +8,21 @@ import { CurrencyWallet, type SpendError } from '../../domain/economy/CurrencyWa
 import type { GameEvents } from '../GameEvents';
 
 /** Why money moved: shown on the result screen and used by future statistics. */
-export const MONEY_REASONS = ['delivery', 'event', 'fuel', 'repair', 'vehicle', 'upgrade', 'paint', 'fleet', 'hiring'] as const;
+export const MONEY_REASONS = [
+  'delivery',
+  'event',
+  'fuel',
+  'repair',
+  'vehicle',
+  'upgrade',
+  'paint',
+  'fleet',
+  'hiring',
+  'leaderBonus',
+  'tender',
+  'campaign',
+  'buyout',
+] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 
 /**

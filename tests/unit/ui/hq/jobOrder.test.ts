@@ -43,4 +43,22 @@ describe('sortJobOffers', () => {
       'level_2_own',
     ]);
   });
+
+  it('puts the offers picked first (a tender) ahead of the rest of their group', () => {
+    const offers = [
+      offer('open_own', null),
+      offer('open_daily', null, 1, true),
+      offer('tender_open', null, 1, true),
+      offer('level_3_daily', 'companyLevel', 3, true),
+      offer('tender_level_2', 'companyLevel', 2, true),
+    ];
+
+    expect(sortJobOffers(offers, (job) => job.mission.id.startsWith('tender')).map((job) => job.mission.id)).toEqual([
+      'tender_open',
+      'open_daily',
+      'open_own',
+      'tender_level_2',
+      'level_3_daily',
+    ]);
+  });
 });

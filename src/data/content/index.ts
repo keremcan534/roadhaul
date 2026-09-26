@@ -7,6 +7,7 @@ import { MAPS } from './maps';
 import { EVENTS } from './events';
 import { MISSIONS } from './missions';
 import { PAINTS } from './paints';
+import { RIVALS } from './rivals';
 import { TRAFFIC_VEHICLES } from './trafficVehicles';
 import { UPGRADES } from './upgrades';
 import { VEHICLES } from './vehicles';
@@ -26,4 +27,5 @@ export const GAME_CONTENT: GameContent = {
   events: EVENTS,
   paints: PAINTS,
   drivers: DRIVERS,
+  rivals: RIVALS,
 };

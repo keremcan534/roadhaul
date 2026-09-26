@@ -1,18 +1,25 @@
 import { FIELD_CROPS, type FieldCrop, type RoadKind } from '../../data/definitions/MapDefinition';
+import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { FleetService } from '../../systems/fleet/FleetService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
+import type { RivalService } from '../../systems/rivals/RivalService';
 import type { Strings } from '../i18n';
 import type { MapRoadRun, MapSketch } from './mapSketch';
 import { createCanvasTransform, type MapViewport } from './MapViewport';
 
-/** What the maps show besides the world: the truck, its contract's next bay and the route there, and the fleet's trucks. */
+/**
+ * What the maps show besides the world: the truck, its contract's next bay
+ * and the route there, the fleet's trucks, the rivals' trucks and who leads
+ * each city.
+ */
 export interface MapSources {
   readonly driving: DrivingService;
   readonly navigation: NavigationService;
   readonly missions: MissionService;
   readonly fleet: FleetService;
+  readonly rivals: RivalService;
 }
 
 /** How each kind of road is drawn, bottom to top: at least this wide on screen (px), its colour and its edge's. */
@@ -51,6 +58,8 @@ const COLORS = {
   north: '#f0643c',
 } as const;
 const ROUTE_PIXELS = 5;
+/** A city's ground is tinted in its leader's colour this far round its middle, meters. */
+const TERRITORY_METERS = 260;
 const LABEL_FONT = '800 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const SMALL_FONT = '800 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
@@ -90,6 +99,8 @@ export class MapPainter {
   private readonly deliveryText: string;
   /** Each driver's initials, for their truck's mark on the full map. */
   private readonly driverInitials: ReadonlyMap<string, string>;
+  /** Each company's colour as CSS: its trucks' arrows, and its territory's tint and rim. */
+  private readonly companyColors: ReadonlyMap<string, { readonly solid: string; readonly tint: string; readonly rim: string }>;
 
   constructor(
     private readonly sketch: MapSketch,
@@ -143,6 +154,12 @@ export class MapPainter {
         return [offer.definition.id, name.split(/\s+/).map((part) => part.charAt(0)).join('').slice(0, 2)] as const;
       }),
     );
+    const colors = new Map<string, { solid: string; tint: string; rim: string }>();
+    colors.set(PLAYER_COMPANY_ID, companyColor(0xffb020));
+    for (const rival of sources.rivals.definitions) {
+      colors.set(rival.id, companyColor(rival.color));
+    }
+    this.companyColors = colors;
   }
 
   /** Paints the whole picture onto `context`, whose canvas is the viewport's size times `pixelRatio`. */
@@ -168,6 +185,7 @@ export class MapPainter {
     context.fill(this.paved);
     context.fillStyle = COLORS.building;
     context.fill(this.buildings);
+    this.paintTerritory(context, view);
     context.lineCap = 'round';
     context.lineJoin = 'round';
     this.paintRoads(context, view, true);
@@ -177,6 +195,7 @@ export class MapPainter {
     // Screen pixels from here on: marks keep their size whatever the zoom.
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     this.paintPlaces(context, view, options);
+    this.paintRivals(context, view, options);
     this.paintFleet(context, view, options);
     const vehicle = this.sources.driving.vehicle;
     this.paintTruck(context, view, vehicle.x, vehicle.z, vehicle.heading, options.truckPixels);
@@ -315,6 +334,46 @@ export class MapPainter {
     }
   }
 
+  /** Each city's ground tinted in the colour of the company leading it, and ringed in it; none while it is contested. */
+  private paintTerritory(context: CanvasRenderingContext2D, view: MapViewport): void {
+    const cities = this.sketch.cities;
+    // World meters here: a rim 2 px wide on screen.
+    context.lineWidth = 2 / Math.max(1e-6, view.scale);
+    for (let i = 0; i < cities.length; i++) {
+      const city = cities[i]!;
+      const leader = this.sources.rivals.leaderOf(city.cityId);
+      const colors = leader === null ? undefined : this.companyColors.get(leader);
+      if (colors === undefined || !view.sees(this.around(city.x, city.z), TERRITORY_METERS * view.scale)) {
+        continue;
+      }
+      context.beginPath();
+      context.arc(city.x, city.z, TERRITORY_METERS, 0, Math.PI * 2);
+      context.fillStyle = colors.tint;
+      context.fill();
+      context.strokeStyle = colors.rim;
+      context.stroke();
+    }
+  }
+
+  /** The rivals' trucks: small arrows in their companies' colours; the one racing the company for its tender larger, ringed. */
+  private paintRivals(context: CanvasRenderingContext2D, view: MapViewport, options: PaintOptions): void {
+    const rivals = this.sources.rivals;
+    const count = rivals.updateMarkers();
+    const size = Math.max(8, options.truckPixels * 0.55);
+    for (let i = 0; i < count; i++) {
+      const marker = rivals.markers[i]!;
+      const markerSize = marker.racing ? size * 1.5 : size;
+      if (!view.sees(this.around(marker.x, marker.z), markerSize)) {
+        continue;
+      }
+      const color = this.companyColors.get(marker.rivalId)?.solid ?? COLORS.depot;
+      if (marker.racing) {
+        disc(context, view.screenX(marker.x, marker.z), view.screenY(marker.x, marker.z), markerSize * 0.75, COLORS.truck);
+      }
+      this.paintArrow(context, view, marker.x, marker.z, marker.heading, markerSize, color, 2);
+    }
+  }
+
   /** The fleet's trucks on their contracts: amber arrows, their drivers' initials beside them on the full map. */
   private paintFleet(context: CanvasRenderingContext2D, view: MapViewport, options: PaintOptions): void {
     const fleet = this.sources.fleet;
@@ -446,4 +505,12 @@ function polygonPath(corners: Float64Array): Path2D {
   }
   path.closePath();
   return path;
+}
+
+/** A company's colour (0xRRGGBB) as CSS: solid for its trucks, a faint tint and a stronger rim for its territory. */
+function companyColor(color: number): { solid: string; tint: string; rim: string } {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  return { solid: `rgb(${r} ${g} ${b})`, tint: `rgb(${r} ${g} ${b} / 16%)`, rim: `rgb(${r} ${g} ${b} / 55%)` };
 }

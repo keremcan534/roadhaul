@@ -56,6 +56,9 @@ export interface FleetJob {
   readonly incident: boolean;
 }
 
+/** What a contract asks of whoever drives it (a hired driver, or a rival's). */
+export type FleetDriver = Pick<DriverDefinition, 'speedFactor' | 'incidentChance' | 'payShare'>;
+
 /** Fleet contracts are of this difficulty's pay. */
 const FLEET_DIFFICULTY = 'normal';
 /** A fleet truck is loaded to this share of what it carries at least, and at most… */
@@ -68,16 +71,18 @@ const PAY_ROUNDING = 10;
 
 /**
  * The next contract for `driver` in `truck` (damaged `truckDamage`), from
- * `fromCityId` (any city with a depot if that one has none) to one of the
+ * `fromCityId` (any city with a depot if that one has none) to
+ * `toCityId` if that is another city with a depot, else to one of the
  * others; the same for the same `seed`. Null when no other city has a depot
  * or the truck carries none of the cargo.
  */
 export function planFleetJob(params: {
   readonly market: FleetMarket;
   readonly fromCityId: string;
+  readonly toCityId?: string;
   readonly truck: VehicleDefinition;
   readonly truckDamage: Fraction;
-  readonly driver: DriverDefinition;
+  readonly driver: FleetDriver;
   readonly rules: FleetJobRules;
   readonly seed: number;
 }): FleetJob | null {
@@ -93,7 +98,10 @@ export function planFleetJob(params: {
   const random = new SeededRandom(Math.imul(params.seed, 0x85ebca6b) ^ 0x7f4a7c15);
   const origin = cities.find((city) => city.id === params.fromCityId) ?? cities[0]!;
   const destinations = cities.filter((city) => city !== origin);
-  const destination = destinations[Math.min(destinations.length - 1, Math.floor(random.next() * destinations.length))]!;
+  const roll = random.next();
+  const destination =
+    destinations.find((city) => city.id === params.toCityId) ??
+    destinations[Math.min(destinations.length - 1, Math.floor(roll * destinations.length))]!;
   const load = cargo[Math.min(cargo.length - 1, Math.floor(random.next() * cargo.length))]!;
   const share = MIN_LOAD_SHARE + (MAX_LOAD_SHARE - MIN_LOAD_SHARE) * random.next();
   const cargoTons = Math.max(LOAD_STEP_TONS, Math.round((truck.maxPayloadTons * share) / LOAD_STEP_TONS) * LOAD_STEP_TONS);

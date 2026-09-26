@@ -70,6 +70,10 @@ export class Strings {
     return this.t(`event.${eventId}.name`);
   }
 
+  rivalName(rivalId: string): string {
+    return this.t(`rival.${rivalId}.name`);
+  }
+
   /** A whole number with the language's grouping: "12.000", "12,000". */
   number(value: number): string {
     return this.integer.format(value);

@@ -129,6 +129,63 @@ describe('GameConfig', () => {
     ]);
   });
 
+  it('checks the rivals: standing, leads and bonuses, their pay, campaigns, tenders and buy-outs in range', () => {
+    const rivals = DEFAULT_GAME_CONFIG.rivals;
+    const paths = (changes: Partial<GameConfig['rivals']>): string[] =>
+      validateGameConfig({ ...DEFAULT_GAME_CONFIG, rivals: { ...rivals, ...changes } }, catalog).map((issue) => issue.path);
+
+    expect(paths({})).toEqual([]);
+    expect(paths({ startingHomePoints: 0, firstTenderSeconds: 0, campaignCost: 0, leaderBonus: 0, tenderPrize: 0 })).toEqual([]);
+    expect(
+      paths({
+        deliveryPoints: 0,
+        fleetJobPoints: -1,
+        pointsHalfLifeSeconds: 0,
+        campaignPoints: Number.NaN,
+        campaignCooldownSeconds: 0,
+        decisionSeconds: -5,
+        tenderEverySeconds: 0,
+        tenderPoints: 0,
+        tenderRivalSpeedKmh: 0,
+      }),
+    ).toEqual([
+      'rivals.deliveryPoints',
+      'rivals.fleetJobPoints',
+      'rivals.pointsHalfLifeSeconds',
+      'rivals.campaignPoints',
+      'rivals.campaignCooldownSeconds',
+      'rivals.decisionSeconds',
+      'rivals.tenderEverySeconds',
+      'rivals.tenderPoints',
+      'rivals.tenderRivalSpeedKmh',
+    ]);
+    expect(
+      paths({
+        startingHomePoints: -1,
+        leadShare: 0,
+        leaderBonus: 1.5,
+        payFactor: 0,
+        driverPayShare: 1,
+        campaignCost: 10.5,
+        reserveCredits: -1,
+        firstTenderSeconds: -1,
+        tenderPrize: 2,
+        acquisitionPremium: 0.9,
+      }),
+    ).toEqual([
+      'rivals.startingHomePoints',
+      'rivals.leadShare',
+      'rivals.leaderBonus',
+      'rivals.payFactor',
+      'rivals.driverPayShare',
+      'rivals.campaignCost',
+      'rivals.reserveCredits',
+      'rivals.firstTenderSeconds',
+      'rivals.tenderPrize',
+      'rivals.acquisitionPremium',
+    ]);
+  });
+
   it('checks the traffic: how many vehicles, how far round the truck, and a speed limit for every kind of road', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,

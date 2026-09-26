@@ -6,16 +6,13 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { DriverDefinition } from '../../data/definitions/DriverDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
-import { fleetJobProfit, fleetJobSeed, planFleetJob, type FleetJob, type FleetJobRules, type FleetMarket } from '../../domain/fleet/fleetJobs';
+import { fleetJobProfit, fleetJobSeed, planFleetJob, type FleetJob, type FleetJobRules } from '../../domain/fleet/fleetJobs';
 import type { FleetSaveData, HiredDriverSaveData } from '../../domain/save/SaveGameData';
-import type { DrivingWorld } from '../../domain/world/DrivingWorld';
-import { createRouteTrace, type RouteTrace } from '../../domain/world/RoadNetwork';
-import { createRouteGuidance } from '../../domain/world/roadRoute';
-import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
 import type { CompanyLevelSource } from '../missions/MissionService';
 import type { GarageService } from '../vehicles/GarageService';
+import { placeOnJob, type DepotRoads, type JobRoute, type MapPlacement } from './DepotRoads';
 
 export type HireDriverError = 'unknownDriver' | 'alreadyHired' | 'locked' | SpendError;
 export type DismissDriverError = 'unknownDriver' | 'notHired';
@@ -57,23 +54,10 @@ export interface FleetDriverStatus {
 }
 
 /** A fleet truck on the map (for the map and the minimap). */
-export interface FleetMarker {
+export interface FleetMarker extends MapPlacement {
   driverId: string;
-  x: number;
-  z: number;
-  /** 0 faces +Z, π/2 faces +X. */
-  heading: number;
   /** On the road, not standing at a depot. */
   moving: boolean;
-}
-
-/** A contract's way on the map: the loading bay, the road there sample by sample, and the next bay. */
-interface FleetRoute {
-  readonly x: Float64Array;
-  readonly z: Float64Array;
-  /** Metres from the first point. */
-  readonly along: Float64Array;
-  readonly length: number;
 }
 
 /** A hired driver. */
@@ -86,8 +70,8 @@ interface HiredDriver {
   repairSecondsLeft: number;
   jobsCompleted: number;
   creditsEarned: Credits;
-  /** The job's way on the map, worked out when it starts (or loads). */
-  route: FleetRoute | null;
+  /** The job's way on the map, looked up when the map first shows it. */
+  route: JobRoute | null;
 }
 
 /** What the fleet did while the game was closed, added up as it catches up. */
@@ -116,14 +100,10 @@ export class FleetService {
   readonly markers: FleetMarker[] = [];
   private away: AwayTally | null = null;
   private readonly rules: FleetJobRules;
-  private market: FleetMarket | null = null;
-  private marketWorld: DrivingWorld | null = null;
-  private trace: RouteTrace | null = null;
-  private paces = new Float64Array(0);
 
   constructor(
     private readonly content: ContentCatalog,
-    private readonly driving: DrivingService,
+    private readonly roads: DepotRoads,
     private readonly garage: GarageService,
     private readonly economy: EconomyService,
     private readonly company: CompanyLevelSource,
@@ -312,7 +292,7 @@ export class FleetService {
       if (job === null || driver.truckInstanceId === null) {
         continue;
       }
-      const route = driver.route ?? this.routeFor(driver);
+      const route = driver.route ?? (driver.route = this.roads.route(job.originCityId, job.destinationCityId));
       if (route === null) {
         continue;
       }
@@ -322,11 +302,7 @@ export class FleetService {
         this.markers.push(marker);
       }
       marker.driverId = driver.definition.id;
-      const handling = Math.min(this.rules.handlingSeconds, job.durationSeconds) / 2;
-      const drive = Math.max(1e-6, job.durationSeconds - 2 * handling);
-      const share = Math.min(1, Math.max(0, (driver.elapsedSeconds - handling) / drive));
-      marker.moving = driver.elapsedSeconds > handling && share < 1;
-      placeAlong(route, share * route.length, marker);
+      marker.moving = placeOnJob(route, job, driver.elapsedSeconds, this.rules.handlingSeconds, marker);
       count++;
     }
     return count;
@@ -383,7 +359,7 @@ export class FleetService {
 
   /** Plans `driver`'s next contract from where they are (rare: once a contract, so it may allocate). */
   private startJob(driver: HiredDriver): FleetJob | null {
-    const market = this.marketNow();
+    const market = this.roads.market();
     const truck = this.garage.trucks.find((candidate) => candidate.instanceId === driver.truckInstanceId);
     if (market === null || truck === undefined) {
       return null;
@@ -515,87 +491,5 @@ export class FleetService {
   private homeCityId(): string {
     const cities = this.content.cities.all;
     return (cities.find((city) => city.specialization === 'starter') ?? cities[0])?.id ?? '';
-  }
-
-  /** The cities with a depot on the map being driven, the cargo, and the road between their bays. */
-  private marketNow(): FleetMarket | null {
-    if (!this.driving.isDriving) {
-      return null;
-    }
-    const world = this.driving.world;
-    if (this.market === null || this.marketWorld !== world) {
-      const route = createRouteGuidance();
-      const distances = new Map<string, number>();
-      this.marketWorld = world;
-      this.market = {
-        cities: this.content.cities.all.filter((city) => world.depotOf(city.id) !== undefined),
-        cargo: this.content.cargo.all,
-        distanceMeters: (originCityId, destinationCityId) => {
-          const key = `${originCityId}>${destinationCityId}`;
-          let meters = distances.get(key);
-          if (meters === undefined) {
-            const from = world.depotOf(originCityId)!.bay;
-            const to = world.depotOf(destinationCityId)!.bay;
-            meters = world.network.guide(from.x, from.z, to.x, to.z, route).distanceMeters;
-            distances.set(key, meters);
-          }
-          return meters;
-        },
-      };
-      this.trace = createRouteTrace(world.network);
-      this.paces = new Float64Array(world.roads.length).fill(1);
-    }
-    return this.market;
-  }
-
-  /** The way `driver`'s contract takes on the map, worked out once (when it starts, or after loading). */
-  private routeFor(driver: HiredDriver): FleetRoute | null {
-    const job = driver.job;
-    if (job === null || this.marketNow() === null) {
-      return null;
-    }
-    const world = this.driving.world;
-    const from = world.depotOf(job.originCityId)?.bay;
-    const to = world.depotOf(job.destinationCityId)?.bay;
-    if (from === undefined || to === undefined) {
-      return null;
-    }
-    const trace = world.network.trace(from.x, from.z, to.x, to.z, this.paces, this.trace!);
-    const count = trace.count + 2;
-    const x = new Float64Array(count);
-    const z = new Float64Array(count);
-    const along = new Float64Array(count);
-    x[0] = from.x;
-    z[0] = from.z;
-    x.set(trace.x.subarray(0, trace.count), 1);
-    z.set(trace.z.subarray(0, trace.count), 1);
-    x[count - 1] = to.x;
-    z[count - 1] = to.z;
-    for (let i = 1; i < count; i++) {
-      along[i] = along[i - 1]! + Math.hypot(x[i]! - x[i - 1]!, z[i]! - z[i - 1]!);
-    }
-    driver.route = { x, z, along, length: along[count - 1]! };
-    return driver.route;
-  }
-}
-
-/** Puts `marker` `distance` metres along `route`, facing along it. Allocation-free. */
-function placeAlong(route: FleetRoute, distance: number, marker: FleetMarker): void {
-  const along = route.along;
-  const last = along.length - 1;
-  let i = 1;
-  while (i < last && along[i]! < distance) {
-    i++;
-  }
-  const x0 = route.x[i - 1]!;
-  const z0 = route.z[i - 1]!;
-  const x1 = route.x[i]!;
-  const z1 = route.z[i]!;
-  const span = along[i]! - along[i - 1]!;
-  const t = span > 1e-9 ? Math.min(1, Math.max(0, (distance - along[i - 1]!) / span)) : 1;
-  marker.x = x0 + (x1 - x0) * t;
-  marker.z = z0 + (z1 - z0) * t;
-  if (Math.abs(x1 - x0) + Math.abs(z1 - z0) > 1e-9) {
-    marker.heading = Math.atan2(x1 - x0, z1 - z0);
   }
 }

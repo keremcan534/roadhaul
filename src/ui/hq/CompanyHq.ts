@@ -1,11 +1,14 @@
+import type { Clock } from '../../core/time/Clock';
 import type { ContentCatalog } from '../../data/ContentCatalog';
+import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
 import type { FleetService } from '../../systems/fleet/FleetService';
 import type { DailyContracts } from '../../systems/missions/DailyContracts';
-import type { MissionService } from '../../systems/missions/MissionService';
+import type { JobOffer, MissionService } from '../../systems/missions/MissionService';
+import type { RivalService } from '../../systems/rivals/RivalService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
 import type { GarageService, OwnedTruck } from '../../systems/vehicles/GarageService';
@@ -18,9 +21,10 @@ import { sortEvents } from './eventText';
 import { FleetPage } from './fleetPage';
 import { truckCard } from './garageCards';
 import { HQ_TABS, type HqTab } from './hqTabs';
-import { jobCard, routeText } from './jobCards';
+import { jobCard, routeText, type JobRivalry } from './jobCards';
 import { sortJobOffers } from './jobOrder';
 import { paintPicker } from './paintPicker';
+import { cssColor, RivalsPage } from './rivalsPage';
 import { truckPage } from './truckPage';
 import { upgradeCard } from './upgradeCards';
 
@@ -38,6 +42,8 @@ export interface CompanyHqServices {
   readonly specialEvents: EventService;
   readonly dailyContracts: DailyContracts;
   readonly fleet: FleetService;
+  readonly rivals: RivalService;
+  readonly clock: Clock;
 }
 
 /** Something shown on the truck in the showroom before it is bought: a paint, an upgrade's next level, another model. */
@@ -60,6 +66,10 @@ export interface CompanyHqActions {
   readonly onAssignDriver: (driverId: string, instanceId: string) => void;
   /** Calls a driver's truck back to the garage. */
   readonly onRecallTruck: (driverId: string) => void;
+  /** Runs a campaign in a city. */
+  readonly onCampaign: (cityId: string) => void;
+  /** Buys a rival company out. */
+  readonly onBuyOut: (rivalId: string) => void;
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
@@ -71,6 +81,7 @@ const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
   truck: 'truck',
   garage: 'garage',
   fleet: 'fleet',
+  rivals: 'rivals',
   events: 'events',
 };
 
@@ -103,6 +114,7 @@ export class CompanyHq {
   private tab: HqTab = 'jobs';
   private preview: TruckPreview | null = null;
   private readonly fleetPage: FleetPage;
+  private readonly rivalsPage: RivalsPage;
 
   constructor(
     parent: HTMLElement,
@@ -183,6 +195,12 @@ export class CompanyHq {
       onRecall: actions.onRecallTruck,
       onSwitch: actions.onSwitchTruck,
     });
+    this.rivalsPage = new RivalsPage(
+      document,
+      strings,
+      { rivals: services.rivals, economy: services.economy, company: services.company, now: () => services.clock.now() },
+      { onCampaign: actions.onCampaign, onBuyOut: actions.onBuyOut },
+    );
   }
 
   get isOpen(): boolean {
@@ -251,12 +269,16 @@ export class CompanyHq {
   }
 
   /**
-   * Moves the fleet page's progress bars on while it shows, and draws it
-   * again when a driver moves on to another contract: call a few times a
-   * second, not every frame.
+   * Moves the fleet page's progress bars and the rivals page's campaign
+   * waits on while they show, and draws them again when a driver moves on
+   * to another contract or something happens in the market: call a few
+   * times a second, not every frame.
    */
   tick(): void {
-    if (this.isOpen && this.tab === 'fleet' && this.fleetPage.tick()) {
+    if (!this.isOpen) {
+      return;
+    }
+    if ((this.tab === 'fleet' && this.fleetPage.tick()) || (this.tab === 'rivals' && this.rivalsPage.tick())) {
       this.refresh();
     }
   }
@@ -318,6 +340,8 @@ export class CompanyHq {
         return this.garagePage();
       case 'fleet':
         return this.fleetPage.render();
+      case 'rivals':
+        return this.rivalsPage.render();
       case 'events':
         return [
           element(this.root.ownerDocument, 'p', 'hq__note', this.strings.t('hq.events.note')),
@@ -331,8 +355,9 @@ export class CompanyHq {
   private jobsPage(): HTMLElement[] {
     const document = this.root.ownerDocument;
     const { strings, actions } = this;
-    const { missions, specialEvents, dailyContracts } = this.services;
-    const offers = sortJobOffers(missions.jobBoard());
+    const { missions, specialEvents, dailyContracts, rivals } = this.services;
+    // A tender is shown first among those like it: it is gone when the next comes.
+    const offers = sortJobOffers(missions.jobBoard(), (offer) => rivals.tenderFor(offer.mission.id) !== null);
     const busy = missions.active !== null;
     // The tutorial points at the first of the game's own contracts the company can take: it starts at home.
     const firstOwn = offers.find((offer) => !offer.daily && offer.blockedBy === null);
@@ -344,6 +369,7 @@ export class CompanyHq {
         actions.onAccept,
         offer.blockedBy === null ? specialEvents.eventsForContract(offer.mission) : [],
         busy,
+        this.rivalry(offer),
       );
       card.classList.toggle('job-card--tutorial', offer === firstOwn && !busy);
       return card;
@@ -369,6 +395,20 @@ export class CompanyHq {
       page.push(element(document, 'p', 'hq__note', note));
     }
     return [...page, ...cards];
+  }
+
+  /** What the rivals mean for a contract: a tender's race and prize, the bonus of a city the company leads. */
+  private rivalry(offer: JobOffer): JobRivalry {
+    const { rivals } = this.services;
+    const tender = rivals.tenderFor(offer.mission.id);
+    const color = tender === null ? null : rivals.colorOf(tender.rivalId);
+    return {
+      tender:
+        tender === null
+          ? null
+          : { rival: this.strings.rivalName(tender.rivalId), color: color === null ? '' : cssColor(color), prize: tender.prize },
+      leaderBonus: rivals.leaderOf(offer.mission.originCityId) === PLAYER_COMPANY_ID ? rivals.terms.leaderBonus : null,
+    };
   }
 
   /** Paint and upgrades for the truck being driven, each shown on it before it is bought, then the trucks. */

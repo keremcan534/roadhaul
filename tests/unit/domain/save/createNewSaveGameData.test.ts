@@ -39,6 +39,17 @@ describe('createNewSaveGameData', () => {
       events: { runs: [] },
       tutorial: { step: 'takeContract' },
       fleet: { drivers: [], jobsPlanned: 0 },
+      // The rivals start out when the game is loaded (RivalService.restore).
+      rivals: {
+        companies: [],
+        standing: [],
+        campaignCooldowns: [],
+        tender: null,
+        race: null,
+        nextTenderSeconds: null,
+        tendersPosted: 0,
+        jobsPlanned: 0,
+      },
     });
   });
 

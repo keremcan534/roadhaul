@@ -8,12 +8,14 @@ import type { CompanyService } from '../systems/company/CompanyService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
 import type { EventService } from '../systems/events/EventService';
+import type { DepotRoads } from '../systems/fleet/DepotRoads';
 import type { FleetService } from '../systems/fleet/FleetService';
 import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
 import type { DailyContracts } from '../systems/missions/DailyContracts';
 import type { MissionService } from '../systems/missions/MissionService';
 import type { NavigationService } from '../systems/navigation/NavigationService';
+import type { RivalService } from '../systems/rivals/RivalService';
 import type { SaveService } from '../systems/save/SaveService';
 import type { GameSessionService } from '../systems/session/GameSessionService';
 import type { TrafficService } from '../systems/traffic/TrafficService';
@@ -51,8 +53,12 @@ export const ServiceKeys = Object.freeze({
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),
   upgrades: serviceKey<UpgradeService>('UpgradeService'),
+  /** The cities' depots and the roads between them, for the fleet's and the rivals' contracts. */
+  depotRoads: serviceKey<DepotRoads>('DepotRoads'),
   /** The hired drivers and the trucks they take out on contracts (spec §27). */
   fleet: serviceKey<FleetService>('FleetService'),
+  /** The rival companies, the cities' standing, campaigns and tenders (spec §65 V3). */
+  rivals: serviceKey<RivalService>('RivalService'),
   saves: serviceKey<SaveService>('SaveService'),
   session: serviceKey<GameSessionService>('GameSessionService'),
 });

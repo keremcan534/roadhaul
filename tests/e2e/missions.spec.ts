@@ -101,7 +101,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(html(page)).toHaveAttribute('data-panel', 'open');
   await expect(page.locator('.hq__tab[data-tab="jobs"]')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
-  await expect(page.locator('.job-card')).toHaveCount(25);
+  await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(25);
   // The truck waits in the delivery depot's yard, where it can be serviced.
   await openPanel(page, 'truck');
   await expect(page.locator('.hq__truck-location')).toHaveText('At Demirkent depot');

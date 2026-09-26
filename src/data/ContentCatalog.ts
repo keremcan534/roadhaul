@@ -16,6 +16,7 @@ import {
   type TrafficVehicleDefinition,
 } from './definitions/TrafficVehicleDefinition';
 import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
+import { validateRivalCompanyDefinition, type RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import {
@@ -79,6 +80,7 @@ export class ContentCatalog {
   readonly events: DefinitionTable<EventDefinition>;
   readonly paints: DefinitionTable<PaintDefinition>;
   readonly drivers: DefinitionTable<DriverDefinition>;
+  readonly rivals: DefinitionTable<RivalCompanyDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -93,6 +95,7 @@ export class ContentCatalog {
     this.events = new DefinitionTable('event', content.events);
     this.paints = new DefinitionTable('paint', content.paints);
     this.drivers = new DefinitionTable('driver', content.drivers);
+    this.rivals = new DefinitionTable('rival company', content.rivals);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -120,10 +123,12 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'events', content.events, validateEventDefinition);
   validateTable(validator, 'paints', content.paints, validatePaintDefinition);
   validateTable(validator, 'drivers', content.drivers, validateDriverDefinition);
+  validateTable(validator, 'rivals', content.rivals, validateRivalCompanyDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);
   validateDaylightPhases(validator, content);
+  validateRivalReferences(validator, content);
   return validator.issues;
 }
 
@@ -163,6 +168,40 @@ function validateDaylightPhases(validator: Validator, content: GameContent): voi
       "must be higher than the night's",
     );
   }
+}
+
+/** Each rival's home city has a depot on a map, and its trucks exist; no two rivals share a home or a colour. */
+function validateRivalReferences(validator: Validator, content: GameContent): void {
+  if (![content.rivals, content.cities, content.vehicles, content.maps].every(Array.isArray)) {
+    return; // Already reported by validateTable.
+  }
+  const cityIds = new Set(content.cities.filter(isObject).map((city) => city.id));
+  const vehicleIds = new Set(content.vehicles.filter(isObject).map((vehicle) => vehicle.id));
+  const citiesWithDepots = new Set(
+    content.maps
+      .filter(isObject)
+      .flatMap((map) => (Array.isArray(map.depots) ? map.depots.filter(isObject).map((depot) => depot.cityId) : [])),
+  );
+  const homes = new Set<string>();
+  const colors = new Set<number>();
+  content.rivals.forEach((rival, index) => {
+    if (!isObject(rival)) {
+      return;
+    }
+    const path = `rivals[${index}]`;
+    if (validator.check(cityIds.has(rival.homeCityId), `${path}.homeCityId`, `unknown city "${rival.homeCityId}"`)) {
+      validator.check(
+        citiesWithDepots.has(rival.homeCityId),
+        `${path}.homeCityId`,
+        `city "${rival.homeCityId}" has no depot on any map`,
+      );
+    }
+    validator.check(!homes.has(rival.homeCityId), `${path}.homeCityId`, `another rival is at home in "${rival.homeCityId}"`);
+    homes.add(rival.homeCityId);
+    validator.check(!colors.has(rival.color), `${path}.color`, 'another rival has this colour');
+    colors.add(rival.color);
+    validator.check(vehicleIds.has(rival.vehicleId), `${path}.vehicleId`, `unknown vehicle "${rival.vehicleId}"`);
+  });
 }
 
 /**

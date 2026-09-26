@@ -23,7 +23,7 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, driver, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, driver, rival, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
@@ -36,6 +36,7 @@ describe('string tables', () => {
       ...TIME_FLOWS.map((flow) => `settings.timeFlow.${flow}`),
       ...GAME_CONTENT.events.flatMap((event) => [`event.${event.id}.name`, `event.${event.id}.description`]),
       ...GAME_CONTENT.drivers.map((driver) => `driver.${driver.id}.name`),
+      ...GAME_CONTENT.rivals.map((rival) => `rival.${rival.id}.name`),
       ...CARGO_CATEGORIES.map((category) => `cargoCategory.${category}`),
       ...TUTORIAL_STEPS.filter((step) => step !== 'done').map((step) => `tutorial.${step}`),
       ...QUALITY_CHOICES.map((choice) => `settings.quality.${choice}`),

@@ -1,15 +1,27 @@
 import type { EventDefinition } from '../../data/definitions/EventDefinition';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { Credits, Fraction } from '../../data/units';
 import type { JobOffer } from '../../systems/missions/MissionService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { cargoIcon, icon } from '../icons';
 
+/** What the rivals mean for a contract on the board. */
+export interface JobRivalry {
+  /** A tender: the rival racing for it (its name and colour, CSS), and the prize. */
+  readonly tender: { readonly rival: string; readonly color: string; readonly prize: Credits } | null;
+  /** The bonus it pays from a city the company leads. */
+  readonly leaderBonus: Fraction | null;
+}
+
+const NO_RIVALRY: JobRivalry = { tender: null, leaderBonus: null };
+
 /**
  * A contract on the job board (spec §28): its cargo's picture, route, cargo,
  * distance, time and pay; the running `events` it counts toward, with their
- * bonus; what blocks it, or the button to take it. While another contract is
- * `busy`, it says to finish that one first.
+ * bonus; a tender's rival and prize, and the leader's bonus of the city it
+ * leaves (`rivalry`); what blocks it, or the button to take it. While another
+ * contract is `busy`, it says to finish that one first.
  */
 export function jobCard(
   document: Document,
@@ -18,10 +30,14 @@ export function jobCard(
   onAccept: (missionId: string) => void,
   events: readonly EventDefinition[] = [],
   busy = false,
+  rivalry: JobRivalry = NO_RIVALRY,
 ): HTMLElement {
   const { mission, cargo } = offer;
+  const tender = rivalry.tender;
   const card = element(document, 'article', offer.blockedBy === null ? 'job-card' : 'job-card is-locked');
-  card.classList.toggle('job-card--daily', offer.daily);
+  // A tender is generated too, but it is not one of the contracts of the day.
+  card.classList.toggle('job-card--daily', offer.daily && tender === null);
+  card.classList.toggle('job-card--tender', tender !== null);
   card.dataset.missionId = mission.id;
   card.dataset.cargoCategory = cargo.category;
 
@@ -30,7 +46,11 @@ export function jobCard(
   picture.append(icon(document, cargoIcon(cargo.category)));
   const heading = element(document, 'div', 'job-card__heading');
   const badges = element(document, 'div', 'job-card__badges');
-  if (offer.daily) {
+  if (tender !== null) {
+    const badge = element(document, 'span', 'badge badge--tender');
+    badge.append(icon(document, 'flag'), element(document, 'span', '', strings.t('hq.tender')));
+    badges.append(badge);
+  } else if (offer.daily) {
     badges.append(element(document, 'span', 'badge badge--daily', strings.t('hq.daily')));
   }
   badges.append(
@@ -63,6 +83,11 @@ export function jobCard(
       strings.t('hq.eventBonus', { event: strings.eventName(event.id), percent: strings.percent(event.payBonus) }),
     ),
   );
+  if (rivalry.leaderBonus !== null) {
+    bonuses.push(
+      element(document, 'span', 'job-card__event job-card__leader', strings.t('hq.leaderBonus', { percent: strings.percent(rivalry.leaderBonus) })),
+    );
+  }
   const bottom = element(document, 'div', 'job-card__bottom');
   bottom.append(element(document, 'span', 'job-card__pay', strings.money(offer.basePay)));
   if (offer.blockedBy !== null) {
@@ -75,6 +100,15 @@ export function jobCard(
     );
   }
   card.append(top, route, load, facts);
+  if (tender !== null) {
+    const race = element(document, 'p', 'job-card__race');
+    race.style.setProperty('--company-color', tender.color);
+    race.append(
+      element(document, 'span', 'company-swatch'),
+      element(document, 'span', '', strings.t('hq.tenderRace', { company: tender.rival, prize: strings.money(tender.prize) })),
+    );
+    card.append(race);
+  }
   if (bonuses.length > 0) {
     const row = element(document, 'div', 'job-card__events');
     row.append(...bonuses);

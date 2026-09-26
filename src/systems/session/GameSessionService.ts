@@ -4,6 +4,7 @@ import { err, ok, type Result } from '../../core/Result';
 import type { Clock } from '../../core/time/Clock';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
+import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import { validateCompanyName, type CompanyNameError } from '../../domain/company/companyName';
 import { createNewSaveGameData } from '../../domain/save/createNewSaveGameData';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../domain/save/SaveGameData';
@@ -14,6 +15,7 @@ import type { EventService } from '../events/EventService';
 import type { FleetService } from '../fleet/FleetService';
 import type { GameEvents } from '../GameEvents';
 import type { MissionService } from '../missions/MissionService';
+import type { RivalService } from '../rivals/RivalService';
 import type { LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
 import type { TutorialService } from '../tutorial/TutorialService';
 import type { GarageService } from '../vehicles/GarageService';
@@ -34,6 +36,8 @@ export interface GameSessionDependencies {
   readonly garage: GarageService;
   /** The hired drivers and their trucks (spec §27). */
   readonly fleet: FleetService;
+  /** The rival companies and the cities' standing. */
+  readonly rivals: RivalService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
   readonly tutorial: TutorialService;
@@ -45,9 +49,11 @@ export interface GameSessionDependencies {
  * game or continues the saved one, hands each part of the save to the
  * service that owns it, and writes it back. It saves after every delivery,
  * failure, purchase and truck change, every change in the fleet and each of
- * its deliveries, when the player leaves the road for a menu, and every 20 s
- * of driving, so closing the tab loses little. A company continued after a
- * while away finds its fleet has worked on meanwhile (FleetService.catchUp).
+ * its deliveries, every campaign, buy-out and change of a city's leader,
+ * when the player leaves the road for a menu, and every 20 s of driving, so
+ * closing the tab loses little. A company continued after a while away finds
+ * the rivals and its fleet have worked on meanwhile (RivalService.catchUp,
+ * FleetService.catchUp).
  */
 export class GameSessionService {
   private active = false;
@@ -81,6 +87,17 @@ export class GameSessionService {
       events.on('FleetTruckAssigned', saveNow),
       events.on('FleetTruckRepaired', saveNow),
       events.on('FleetCaughtUp', saveNow),
+      events.on('RivalAcquired', saveNow),
+      events.on('CampaignRun', ({ companyId, away }) => {
+        if (companyId === PLAYER_COMPANY_ID && !away) {
+          saveNow();
+        }
+      }),
+      events.on('CityLeaderChanged', ({ away }) => {
+        if (!away) {
+          saveNow();
+        }
+      }),
       // While catching up, once at the end (FleetCaughtUp).
       events.on('FleetJobCompleted', ({ away }) => {
         if (!away) {
@@ -126,8 +143,9 @@ export class GameSessionService {
 
   /**
    * Loads the saved game. On any problem the current state is left as it
-   * was. The fleet then works through the time since the save was written
-   * (at most GameConfig.fleet.awayHours), as it would have on the road.
+   * was. The rivals, then the fleet, work through the time since the save
+   * was written (at most GameConfig.fleet.awayHours), as they would have on
+   * the road.
    */
   continueGame(): Result<void, LoadProblem> {
     const loaded = this.deps.saves.load();
@@ -136,7 +154,9 @@ export class GameSessionService {
     }
     this.apply(loaded.value);
     this.deps.logger.info(`Continuing "${loaded.value.profile.companyName}".`);
-    this.deps.fleet.catchUp((this.deps.clock.now() - loaded.value.updatedAtMs) / 1000);
+    const awaySeconds = (this.deps.clock.now() - loaded.value.updatedAtMs) / 1000;
+    this.deps.rivals.catchUp(awaySeconds);
+    this.deps.fleet.catchUp(awaySeconds);
     return ok(undefined);
   }
 
@@ -162,7 +182,7 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, garage, fleet, specialEvents, tutorial } = this.deps;
+    const { driving, missions, economy, company, garage, fleet, rivals, specialEvents, tutorial } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -185,6 +205,7 @@ export class GameSessionService {
       events: { runs: specialEvents.snapshot() },
       tutorial: { step: tutorial.step },
       fleet: fleet.snapshot(),
+      rivals: rivals.snapshot(),
     };
   }
 
@@ -196,7 +217,7 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, garage, fleet, specialEvents, tutorial } = this.deps;
+    const { driving, missions, economy, company, garage, fleet, rivals, specialEvents, tutorial } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -211,6 +232,7 @@ export class GameSessionService {
     garage.restore(save.garage);
     fleet.restore(save.fleet);
     missions.restore(save.missions.active);
+    rivals.restore(save.rivals); // After the contract under way: a tender being raced must be it.
     specialEvents.restore(save.events.runs);
     tutorial.restore(save.tutorial.step);
     this.createdAtMs = save.createdAtMs;

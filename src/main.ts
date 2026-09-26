@@ -9,6 +9,7 @@ import { GameLoop } from './core/time/GameLoop';
 import type { SteeringMode, TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
+import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
@@ -76,6 +77,7 @@ import { installGlass } from './ui/glass';
 import { glassModeFor, isGlassMode, lensSupported } from './ui/glassMode';
 import { CompanyHq, type TruckPreview } from './ui/hq/CompanyHq';
 import { driverName, truckNumber } from './ui/hq/fleetPage';
+import { routeText } from './ui/hq/jobCards';
 import type { HqTab } from './ui/hq/hqTabs';
 import { objectiveText } from './ui/hq/eventText';
 import { HudDock } from './ui/hud/HudDock';
@@ -146,7 +148,7 @@ const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehic
 const CLOCK_KEEP_SECONDS = 30;
 /** The company panel's fleet page moves its progress bars on this often, seconds. */
 const HQ_TICK_SECONDS = 0.5;
-/** Debug (`?debug`): F runs the fleet this many seconds on. */
+/** Debug (`?debug`): F runs the fleet and the rivals this many seconds on. */
 const FLEET_FAST_FORWARD_SECONDS = 600;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
@@ -224,6 +226,7 @@ async function start(): Promise<void> {
   const garage = services.resolve(ServiceKeys.garage);
   const upgrades = services.resolve(ServiceKeys.upgrades);
   const fleet = services.resolve(ServiceKeys.fleet);
+  const rivals = services.resolve(ServiceKeys.rivals);
   const session = services.resolve(ServiceKeys.session);
 
   // Older WebViews may only have navigator.language.
@@ -398,10 +401,10 @@ async function start(): Promise<void> {
     },
   });
   touch.size = settings.controlSize;
-  const hud = new MissionHud(ui, strings, missions, navigation, driving);
+  const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals);
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
   const mapSketch = sketchWorld(driving.world);
-  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet }, strings);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals }, strings);
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
@@ -712,7 +715,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet },
+    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, clock },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -792,6 +795,30 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.fleetCalledBack', { truck: truckName }), 'info');
         } else if (!recalled.ok) {
           logger.warn(`Could not call ${driverId}'s truck back: ${recalled.error}.`);
+        }
+      },
+      onCampaign: (cityId) => {
+        const run = rivals.runCampaign(cityId);
+        if (run.ok) {
+          toasts.show(strings.t('toast.campaignRun', { city: strings.cityName(cityId) }), 'success');
+        } else if (run.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (run.error === 'coolingDown') {
+          toasts.show(strings.t('toast.campaignCoolingDown'), 'warning');
+        } else {
+          logger.warn(`Could not run a campaign in ${cityId}: ${run.error}.`);
+        }
+      },
+      onBuyOut: (rivalId) => {
+        const bought = rivals.acquire(rivalId);
+        if (bought.ok) {
+          toasts.show(strings.t('toast.rivalAcquired', { company: strings.rivalName(rivalId) }), 'success');
+        } else if (bought.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (bought.error === 'tooStrong') {
+          toasts.show(strings.t('toast.rivalTooStrong'), 'warning');
+        } else {
+          logger.warn(`Could not buy ${rivalId} out: ${bought.error}.`);
         }
       },
       onBuyUpgrade: (upgradeId) => {
@@ -1014,6 +1041,51 @@ async function start(): Promise<void> {
       toasts.show(strings.t('toast.fleetAway', { jobs: strings.number(jobs), credits: strings.signedMoney(credits) }), 'success');
     }
   });
+  // The rivals: the panel keeps up; the player hears of what touches their company.
+  for (const name of ['RivalTruckBought', 'RivalAcquired'] as const) {
+    events.on(name, refreshHq);
+  }
+  events.on('CityLeaderChanged', ({ cityId, previousId, leaderId, away }) => {
+    refreshHq();
+    if (away) {
+      return;
+    }
+    const city = strings.cityName(cityId);
+    if (leaderId === PLAYER_COMPANY_ID) {
+      toasts.show(strings.t('toast.cityWon', { city, bonus: strings.percent(rivals.terms.leaderBonus) }), 'success');
+    } else if (previousId === PLAYER_COMPANY_ID) {
+      toasts.show(
+        leaderId === null ? strings.t('toast.cityContested', { city }) : strings.t('toast.cityLost', { city, company: strings.rivalName(leaderId) }),
+        'warning',
+      );
+    }
+  });
+  events.on('CampaignRun', ({ companyId, cityId, away }) => {
+    refreshHq();
+    if (!away && companyId !== PLAYER_COMPANY_ID && rivals.leaderOf(cityId) === PLAYER_COMPANY_ID) {
+      toasts.show(strings.t('toast.rivalCampaign', { company: strings.rivalName(companyId), city: strings.cityName(cityId) }), 'warning');
+    }
+  });
+  events.on('TenderPosted', ({ missionId, rivalId }) => {
+    refreshHq();
+    const tender = rivals.tenderFor(missionId);
+    if (tender !== null && isDriving()) {
+      toasts.show(strings.t('toast.tenderPosted', { route: routeText(strings, tender.contract), company: strings.rivalName(rivalId) }), 'info');
+    }
+  });
+  events.on('TenderRivalArrived', ({ rivalId }) =>
+    toasts.show(strings.t('toast.tenderRivalArrived', { company: strings.rivalName(rivalId) }), 'warning'),
+  );
+  events.on('TenderDecided', ({ won, rivalId, prize }) => {
+    if (result.isOpen) {
+      result.showTender(won, strings.rivalName(rivalId), prize);
+    }
+  });
+  events.on('LeaderBonusPaid', ({ cityId, bonus }) => {
+    if (result.isOpen) {
+      result.showLeaderBonus(strings.cityName(cityId), bonus);
+    }
+  });
   // A purchase ends any preview (refreshHq), then the truck shows what was bought.
   for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged'] as const) {
     events.on(name, () => {
@@ -1152,13 +1224,15 @@ async function start(): Promise<void> {
   }
 
   if (config.debug.showPerfOverlay) {
-    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area; F runs the fleet 10 minutes on.
+    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area; F runs the fleet and the rivals
+    // 10 minutes on.
     window.addEventListener('keydown', (event) => {
       if (event.repeat || !onRoad() || paused) {
         return;
       }
       if (event.code === 'KeyF') {
         fleet.update(FLEET_FAST_FORWARD_SECONDS);
+        rivals.update(FLEET_FAST_FORWARD_SECONDS);
         return;
       }
       const target = missions.target;
@@ -1211,8 +1285,9 @@ async function start(): Promise<void> {
         traffic.update(stepSeconds);
         timeOfDay.update(stepSeconds);
         weather.update(stepSeconds);
-        // The fleet's drivers work on while the player is in the panel or the menus.
+        // The fleet's drivers and the rivals work on while the player is in the panel or the menus.
         fleet.update(stepSeconds);
+        rivals.update(stepSeconds);
         if (!onRoad()) {
           return;
         }

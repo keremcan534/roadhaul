@@ -102,6 +102,24 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 8,
     migrate: (save) => ({ ...save, version: 9, fleet: { drivers: [], jobsPlanned: 0 } }),
   },
+  {
+    // v10 adds the rivals: they start out afresh, and the first tender is due soon.
+    from: 9,
+    migrate: (save) => ({
+      ...save,
+      version: 10,
+      rivals: {
+        companies: [],
+        standing: [],
+        campaignCooldowns: [],
+        tender: null,
+        race: null,
+        nextTenderSeconds: null,
+        tendersPosted: 0,
+        jobsPlanned: 0,
+      },
+    }),
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {

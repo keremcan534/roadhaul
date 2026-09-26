@@ -1,8 +1,10 @@
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateMissionDefinition, type MissionDefinition } from '../../data/definitions/MissionDefinition';
+import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import { validateCompanyName } from '../company/companyName';
 import { MISSION_STATES } from '../missions/MissionInstance';
+import { isTenderId, TENDER_ID_PREFIX } from '../rivals/tenders';
 import { TUTORIAL_STEPS } from '../tutorial/tutorialSteps';
 import { statBonuses, type FittedUpgrades } from '../vehicles/upgradeBonuses';
 import { CURRENT_SAVE_VERSION } from './SaveGameData';
@@ -111,21 +113,8 @@ export function validateSaveGameData(
     } else if (!isJson(contract)) {
       validator.report('missions.active.contract', 'must be null or a contract');
     } else {
-      // A generated contract, kept whole: its fields, and what it names in the content.
-      validateMissionDefinition(contract as unknown as MissionDefinition, 'missions.active.contract', validator);
+      validateGeneratedContract(contract, 'missions.active.contract', content, validator);
       validator.check(contract['id'] === missionId, 'missions.active.contract.id', 'must be the mission id');
-      validator.check(
-        typeof contract['cargoId'] === 'string' && content.cargo.has(contract['cargoId']),
-        'missions.active.contract.cargoId',
-        `unknown cargo ${JSON.stringify(contract['cargoId'])}`,
-      );
-      for (const key of ['originCityId', 'destinationCityId']) {
-        validator.check(
-          typeof contract[key] === 'string' && content.cities.has(contract[key]),
-          `missions.active.contract.${key}`,
-          `unknown city ${JSON.stringify(contract[key])}`,
-        );
-      }
     }
     validator.oneOf(active['state'], SAVED_MISSION_STATES, 'missions.active.state');
     for (const key of ['handlingSeconds', 'deliverySeconds']) {
@@ -151,7 +140,25 @@ export function validateSaveGameData(
   section('events', (events) => validateEventRuns(events['runs'], content, validator));
   section('tutorial', (tutorial) => validator.oneOf(tutorial['step'], TUTORIAL_STEPS, 'tutorial.step'));
   section('fleet', (fleet) => validateFleet(fleet, data['garage'], content, validator));
+  section('rivals', (rivals) => validateRivals(rivals, content, validator));
   return validator.issues;
+}
+
+/** A generated contract, kept whole: its fields, and what it names in the content. */
+function validateGeneratedContract(contract: Json, path: string, content: ContentCatalog, validator: Validator): void {
+  validateMissionDefinition(contract as unknown as MissionDefinition, path, validator);
+  validator.check(
+    typeof contract['cargoId'] === 'string' && content.cargo.has(contract['cargoId']),
+    `${path}.cargoId`,
+    `unknown cargo ${JSON.stringify(contract['cargoId'])}`,
+  );
+  for (const key of ['originCityId', 'destinationCityId']) {
+    validator.check(
+      typeof contract[key] === 'string' && content.cities.has(contract[key]),
+      `${path}.${key}`,
+      `unknown city ${JSON.stringify(contract[key])}`,
+    );
+  }
 }
 
 /**
@@ -253,6 +260,154 @@ function validateFleetJob(job: unknown, path: string, content: ContentCatalog, v
     `${path}.elapsedSeconds`,
     'must be from 0 to the contract\'s duration',
   );
+}
+
+/**
+ * The rivals: each a known one, listed once, with its money, its trucks (at
+ * most its fleet's size, none once bought out; in known cities, with sound
+ * contracts under way) and its timers; standing of known companies in known
+ * cities, once each; the company's campaign timers; and the tenders.
+ */
+function validateRivals(rivals: Json, content: ContentCatalog, validator: Validator): void {
+  const companies = rivals['companies'];
+  if (validator.check(Array.isArray(companies), 'rivals.companies', 'must be a list')) {
+    const seen = new Set<unknown>();
+    (companies as unknown[]).forEach((company, index) => {
+      const path = `rivals.companies[${index}]`;
+      if (!isJson(company)) {
+        validator.report(path, 'must be an object');
+        return;
+      }
+      const rivalId = company['rivalId'];
+      const rival = typeof rivalId === 'string' ? content.rivals.find(rivalId) : undefined;
+      validator.check(
+        rival !== undefined && !seen.has(rivalId),
+        `${path}.rivalId`,
+        `must be a known rival, listed once, not ${JSON.stringify(rivalId)}`,
+      );
+      seen.add(rivalId);
+      validator.check(
+        Number.isSafeInteger(company['credits']) && (company['credits'] as number) >= 0,
+        `${path}.credits`,
+        'must be a whole number of credits, 0 or more',
+      );
+      validator.boolean(company['acquired'], `${path}.acquired`);
+      for (const key of ['campaignCooldownSeconds', 'decisionSeconds']) {
+        validator.check(isFiniteNumber(company[key]) && (company[key] as number) >= 0, `${path}.${key}`, 'must be 0 or more');
+      }
+      const trucks = company['trucks'];
+      if (!validator.check(Array.isArray(trucks), `${path}.trucks`, 'must be a list')) {
+        return;
+      }
+      const count = (trucks as unknown[]).length;
+      validator.check(
+        rival === undefined || count <= rival.maxTrucks,
+        `${path}.trucks`,
+        `must be at most ${rival?.maxTrucks ?? 0} trucks`,
+      );
+      validator.check(company['acquired'] !== true || count === 0, `${path}.trucks`, 'must be none once bought out');
+      (trucks as unknown[]).forEach((truck, truckIndex) => {
+        const truckPath = `${path}.trucks[${truckIndex}]`;
+        if (!isJson(truck)) {
+          validator.report(truckPath, 'must be an object');
+          return;
+        }
+        const cityId = truck['cityId'];
+        validator.check(
+          typeof cityId === 'string' && content.cities.has(cityId),
+          `${truckPath}.cityId`,
+          `unknown city ${JSON.stringify(cityId)}`,
+        );
+        if (truck['job'] !== null) {
+          validateFleetJob(truck['job'], `${truckPath}.job`, content, validator);
+        }
+      });
+    });
+  }
+
+  const standing = rivals['standing'];
+  if (validator.check(Array.isArray(standing), 'rivals.standing', 'must be a list')) {
+    const seen = new Set<string>();
+    (standing as unknown[]).forEach((entry, index) => {
+      const path = `rivals.standing[${index}]`;
+      if (!isJson(entry)) {
+        validator.report(path, 'must be an object');
+        return;
+      }
+      const { cityId, companyId, points } = entry;
+      validator.check(
+        typeof cityId === 'string' && content.cities.has(cityId),
+        `${path}.cityId`,
+        `unknown city ${JSON.stringify(cityId)}`,
+      );
+      validator.check(
+        typeof companyId === 'string' && (companyId === PLAYER_COMPANY_ID || content.rivals.has(companyId)),
+        `${path}.companyId`,
+        `must be "${PLAYER_COMPANY_ID}" or a known rival, not ${JSON.stringify(companyId)}`,
+      );
+      const key = `${String(cityId)}>${String(companyId)}`;
+      validator.check(!seen.has(key), path, 'must be the only standing of its company in its city');
+      seen.add(key);
+      validator.check(isFiniteNumber(points) && points > 0, `${path}.points`, 'must be more than 0');
+    });
+  }
+
+  const cooldowns = rivals['campaignCooldowns'];
+  if (validator.check(Array.isArray(cooldowns), 'rivals.campaignCooldowns', 'must be a list')) {
+    const seen = new Set<unknown>();
+    (cooldowns as unknown[]).forEach((cooldown, index) => {
+      const path = `rivals.campaignCooldowns[${index}]`;
+      if (!isJson(cooldown)) {
+        validator.report(path, 'must be an object');
+        return;
+      }
+      const cityId = cooldown['cityId'];
+      validator.check(
+        typeof cityId === 'string' && content.cities.has(cityId) && !seen.has(cityId),
+        `${path}.cityId`,
+        `must be a known city, listed once, not ${JSON.stringify(cityId)}`,
+      );
+      seen.add(cityId);
+      validator.check(isFiniteNumber(cooldown['seconds']) && cooldown['seconds'] > 0, `${path}.seconds`, 'must be more than 0');
+    });
+  }
+
+  for (const key of ['tender', 'race']) {
+    if (rivals[key] !== null) {
+      validateTender(rivals[key], `rivals.${key}`, content, validator);
+    }
+  }
+  const next = rivals['nextTenderSeconds'];
+  validator.check(next === null || (isFiniteNumber(next) && next >= 0), 'rivals.nextTenderSeconds', 'must be null or 0 or more');
+  validator.nonNegativeInteger(rivals['tendersPosted'], 'rivals.tendersPosted');
+  validator.nonNegativeInteger(rivals['jobsPlanned'], 'rivals.jobsPlanned');
+}
+
+/** A tender: its generated contract, with a tender's id, the rival racing it, the prize and the rival's time. */
+function validateTender(tender: unknown, path: string, content: ContentCatalog, validator: Validator): void {
+  if (!isJson(tender)) {
+    validator.report(path, 'must be null or a tender');
+    return;
+  }
+  const contract = tender['contract'];
+  if (isJson(contract)) {
+    validateGeneratedContract(contract, `${path}.contract`, content, validator);
+    validator.check(
+      typeof contract['id'] === 'string' && isTenderId(contract['id']),
+      `${path}.contract.id`,
+      `must start with "${TENDER_ID_PREFIX}"`,
+    );
+  } else {
+    validator.report(`${path}.contract`, 'must be a contract');
+  }
+  const rivalId = tender['rivalId'];
+  validator.check(
+    typeof rivalId === 'string' && content.rivals.has(rivalId),
+    `${path}.rivalId`,
+    `unknown rival ${JSON.stringify(rivalId)}`,
+  );
+  validator.nonNegativeInteger(tender['prize'], `${path}.prize`);
+  validator.positiveNumber(tender['rivalSeconds'], `${path}.rivalSeconds`);
 }
 
 /** Each run names a known event, once, with a whole edition and progress of 0 or more. */

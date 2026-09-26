@@ -7,6 +7,17 @@ import { AUTOSAVE_INTERVAL_SECONDS } from '../../../../src/systems/session/GameS
 import { STEP_SECONDS } from '../../../support/driving';
 import { bootGame as boot, deliver, parkAtDepot, parkInTargetBay, play, reachLevel } from '../../../support/game';
 
+/** A save without its rivals: they work on while the game is closed (RivalService.catchUp). */
+function withoutRivals(save: SaveGameData): Omit<SaveGameData, 'rivals'> {
+  const { rivals: _rivals, ...rest } = save;
+  return rest;
+}
+
+/** How far each rival truck is into its contract, seconds. */
+function rivalProgress(save: SaveGameData): number[] {
+  return save.rivals.companies.flatMap((company) => company.trucks.map((truck) => truck.job?.elapsedSeconds ?? Number.NaN));
+}
+
 describe('GameSessionService', () => {
   it('founds a new company with the starting truck, credits and a full tank, and saves it', async () => {
     const game = await boot();
@@ -47,7 +58,9 @@ describe('GameSessionService', () => {
     expect(second.session.continueGame()).toEqual({ ok: true, value: undefined });
 
     const after = second.session.snapshot();
-    expect(after).toEqual({ ...before, updatedAtMs: 5_000 });
+    expect(withoutRivals(after)).toEqual({ ...withoutRivals(before), updatedAtMs: 5_000 });
+    // Meanwhile the rivals' trucks drove on for the 4 s the game was closed.
+    expect(rivalProgress(after)).toEqual(rivalProgress(before).map((seconds) => seconds + 4));
     expect(second.missions.active?.state).toBe('delivering');
     expect(second.missions.target?.kind).toBe('delivery');
     expect(second.driving.totalMassKg).toBe(first.driving.totalMassKg);
@@ -180,7 +193,7 @@ describe('GameSessionService', () => {
     expect(second.garage.activeTruck.upgrades).toEqual({ brakes: 1 });
     expect(second.garage.trucks[0]!.upgrades).toEqual({ fuel_tank: 1 });
     expect(second.fuel.fuelLiters).toBeCloseTo(first.fuel.fuelLiters, 9);
-    expect(second.session.snapshot()).toEqual({ ...first.session.snapshot(), updatedAtMs: 9_000 });
+    expect(withoutRivals(second.session.snapshot())).toEqual({ ...withoutRivals(first.session.snapshot()), updatedAtMs: 9_000 });
   });
 
   it('reports a missing or corrupted save and keeps playing nothing', async () => {
