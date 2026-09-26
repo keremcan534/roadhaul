@@ -307,6 +307,80 @@ export const MAPS: readonly MapDefinition[] = [
         ],
       },
     ],
+    // Woods: pines on both sides of the country road out of Amberfield toward Ironford, pines and broadleaves
+    // round the river's upper course, and an oak wood south of the highway. Each lies back from its roads.
+    forests: [
+      {
+        id: 'ironwood',
+        kind: 'pine',
+        outline: [
+          [803, 1463],
+          [974, 1377],
+          [1080, 1290],
+          [1171, 1204],
+          [1260, 1255],
+          [1300, 1330],
+          [1180, 1450],
+          [1065, 1530],
+          [950, 1600],
+          [860, 1615],
+          [815, 1540],
+        ],
+      },
+      {
+        id: 'ironwood_south',
+        kind: 'pine',
+        outline: [
+          [797, 1449],
+          [966, 1363],
+          [1070, 1280],
+          [1159, 1192],
+          [1100, 1120],
+          [1030, 1080],
+          [930, 1170],
+          [820, 1250],
+          [740, 1320],
+          [760, 1400],
+        ],
+      },
+      {
+        id: 'kestrel_woods',
+        kind: 'mixed',
+        outline: [
+          [-1180, 1340],
+          [-1060, 1290],
+          [-900, 1300],
+          [-770, 1320],
+          [-680, 1420],
+          [-660, 1580],
+          [-740, 1740],
+          [-880, 1820],
+          [-1040, 1810],
+          [-1160, 1700],
+          [-1210, 1520],
+        ],
+      },
+      {
+        id: 'oakhurst',
+        kind: 'broadleaf',
+        outline: [
+          [-340, -710],
+          [-100, -735],
+          [150, -720],
+          [300, -745],
+          [320, -880],
+          [150, -950],
+          [-100, -940],
+          [-320, -890],
+        ],
+      },
+    ],
+    // A park in each town: off Havenport's high street, inside Ironford's ring road, and Amberfield's green.
+    parks: [
+      { id: 'havenport_park', area: { x: -1755, z: -20, headingDegrees: 0, lengthMeters: 120, widthMeters: 70 } },
+      { id: 'ironford_park', area: { x: 1795, z: -510, headingDegrees: 0, lengthMeters: 100, widthMeters: 110 } },
+      { id: 'amberfield_green', area: { x: 270, z: 1560, headingDegrees: 90, lengthMeters: 90, widthMeters: 60 } },
+    ],
     // On A's high street, in the lane heading north past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     // Street lamps light the three towns' streets and B's ring road, on alternate sides; the towns have their

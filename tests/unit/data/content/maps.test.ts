@@ -9,6 +9,7 @@ import {
   type RectangleDefinition,
 } from '../../../../src/data/definitions/MapDefinition';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
+import { forestContains } from '../../../../src/domain/world/forests';
 import { createRouteGuidance } from '../../../../src/domain/world/roadRoute';
 import { ASPHALT } from '../../../../src/domain/world/Surface';
 
@@ -234,6 +235,45 @@ describe.each(MAPS)('map $id', (map) => {
       expect(offRiver(turbine.x, turbine.z, 20)).toBe(true);
     }
     expect(offRiver(map.spawn.x, map.spawn.z, 20)).toBe(true);
+  });
+
+  it('grows its forests beside its roads, not across them, and fills them with trees', () => {
+    for (const forest of world.forests) {
+      for (const road of world.roads) {
+        for (let i = 0; i < road.pointCount; i++) {
+          expect(forestContains(forest, road.x(i), road.z(i)), `${forest.id}, ${road.id} sample ${i}`).toBe(false);
+        }
+      }
+      const trees = world.trees.filter((tree) => forestContains(forest, tree.x, tree.z));
+      expect(trees.length, forest.id).toBeGreaterThan(300);
+    }
+  });
+
+  it('lays its parks out in its towns, clear of the roads, pavements, buildings and yards', () => {
+    for (const park of world.parks) {
+      const { area } = park;
+      for (const road of world.roads) {
+        for (let i = 0; i < road.pointCount; i++) {
+          expect(rectangleContains(area, road.x(i), road.z(i), road.widthMeters / 2 + 4), `${park.id}, ${road.id}`).toBe(false);
+        }
+      }
+      for (const building of map.buildings) {
+        const corners = rectangleCorners({ x: building.x, z: building.z, headingDegrees: 0, lengthMeters: building.depthMeters, widthMeters: building.widthMeters });
+        expect(corners.some(([x, z]) => rectangleContains(area, x, z, 2)), park.id).toBe(false);
+        expect(rectangleContains(area, building.x, building.z, 2), park.id).toBe(false);
+      }
+      for (const yard of map.depots.map((depot) => depot.yard)) {
+        expect(rectangleCorners(yard).some(([x, z]) => rectangleContains(area, x, z, 2)), park.id).toBe(false);
+      }
+      for (const [x, z] of rectangleCorners(area)) {
+        expect(world.surfaceAt(x, z)).not.toBe(ASPHALT);
+      }
+      const inPark = (x: number, z: number): boolean => rectangleContains(area, x, z);
+      expect(world.trees.filter((tree) => inPark(tree.x, tree.z)).length, park.id).toBeGreaterThan(12);
+      expect(world.streetFurniture.filter((piece) => piece.kind === 'bench' && inPark(piece.x, piece.z)).length, park.id).toBeGreaterThan(6);
+      expect(world.streetLamps.filter((lamp) => inPark(lamp.x, lamp.z)).length, park.id).toBeGreaterThan(3);
+    }
+    expect(world.parks.length).toBeGreaterThanOrEqual(map.depots.length);
   });
 
   it('has every kind of road (spec §20)', () => {
