@@ -17,6 +17,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
+import { SeasonShading } from '../../../../src/presentation/world/SeasonShading';
 import { TrackView } from '../../../../src/presentation/world/TrackView';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
@@ -230,8 +231,9 @@ describe('TrackView', () => {
         (object.material.flatShading ? crowns : trunks).add(object.material);
       }
     });
-    expect(crowns.size).toBe(1);
-    const crown = [...crowns][0]!;
+    // The evergreens' crowns and those that lose their leaves: both sway alike without the seasons to follow.
+    expect(crowns.size).toBe(2);
+    const [crown, other] = [...crowns] as [MeshLambertMaterial, MeshLambertMaterial];
     const shader = {
       uniforms: {} as Record<string, { value: number }>,
       vertexShader: '#include <common>\n#include <project_vertex>',
@@ -243,6 +245,7 @@ describe('TrackView', () => {
     expect(shader.vertexShader).toContain('mvPosition = instanceMatrix * mvPosition');
     expect(shader.vertexShader).toContain('up * up');
     expect(crown.customProgramCacheKey()).toBe('tree-crown-wind');
+    expect(other.customProgramCacheKey()).toBe('tree-crown-wind');
     for (const trunk of trunks) {
       expect(trunk.customProgramCacheKey()).not.toBe('tree-crown-wind');
     }
@@ -256,6 +259,43 @@ describe('TrackView', () => {
     expect(shader.uniforms['windStrength']!.value).toBe(calm);
     view.setRain(1);
     expect(shader.uniforms['windStrength']!.value).toBeGreaterThan(calm * 2);
+  });
+
+  it('follows the seasons: the grass\'s tint and the snow on the ground, and the broadleaf trees\' colours, not the pines\'', () => {
+    const scene = new Scene();
+    new TrackView(scene, world, { seasons: new SeasonShading('autumn') });
+    const crowns = new Map<string, MeshLambertMaterial>();
+    let ground: MeshBasicMaterial | undefined;
+    scene.traverse((object) => {
+      if (object instanceof InstancedMesh && object.material instanceof MeshLambertMaterial && object.material.flatShading) {
+        crowns.set(object.name.replace(/^forest:crowns:/, ''), object.material);
+      }
+      if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.defines?.['SEASONS'] !== undefined) {
+        ground = object.material;
+      }
+    });
+    const compile = (material: MeshBasicMaterial | MeshLambertMaterial) => {
+      const shader = {
+        uniforms: {} as Record<string, unknown>,
+        vertexShader: '#include <common>\n#include <begin_vertex>\n#include <color_vertex>\n#include <project_vertex>',
+        fragmentShader: '#include <common>\n#include <map_fragment>\n#include <color_fragment>',
+      };
+      material.onBeforeCompile(shader as never, undefined as never);
+      return shader;
+    };
+
+    const broadleaf = compile(crowns.get('broadleaf')!);
+    expect(broadleaf.vertexShader).toContain('seasonLeaves.x');
+    expect(broadleaf.uniforms).toHaveProperty('seasonLeaves');
+    expect(crowns.get('broadleaf')!.customProgramCacheKey()).toBe('tree-crown-wind|seasons');
+    const pine = compile(crowns.get('pine')!);
+    expect(pine.vertexShader).not.toContain('seasonLeaves');
+    expect(crowns.get('pine')!.customProgramCacheKey()).toBe('tree-crown-wind');
+
+    const soil = compile(ground!);
+    expect(soil.fragmentShader).toContain('sampledDiffuseColor.rgb = dried( sampledDiffuseColor.rgb ) * seasonGrass;');
+    expect(soil.fragmentShader).toContain('mix( diffuseColor.rgb, diffuse * SNOW, groundSnow )');
+    expect(soil.uniforms).toHaveProperty('snowCover');
   });
 
   it('draws four textured walls and a roof for every building', () => {

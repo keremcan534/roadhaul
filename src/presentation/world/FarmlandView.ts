@@ -21,6 +21,7 @@ import { fieldRowsImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { placeFlat } from './groundDecals';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
+import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 
 /** Fields lie on the grass, under everything else on the ground (see TrackView's layers). */
 const FIELD_Y = 0.006;
@@ -44,7 +45,35 @@ export interface FarmlandViewOptions {
   readonly anisotropy?: number;
   /** Where the pre-lit fields register, to follow the weather's light. */
   readonly prelit?: PrelitMaterials;
+  /** The seasons: young crops in spring, the harvest in autumn, snow over the ploughland in winter. */
+  readonly seasons?: SeasonShading;
 }
+
+/**
+ * The fields through the year, a field at a time (its seed, 0..1): in
+ * spring most are young and green, the rest ploughed; in summer they grow
+ * as the map sows them; in autumn most are stubble or ploughed after the
+ * harvest; in winter all lie ploughed, under the snow that lies (in the
+ * rows' furrows first). Linear colours of CROP_TINTS'.
+ */
+const FIELD_SEASONS_VERTEX = /* glsl */ `
+#include <begin_vertex>
+vFieldSeed = fieldSeed;
+`;
+const FIELD_SEASONS_FRAGMENT = /* glsl */ `
+{
+  const vec3 GREEN = vec3( 0.24, 0.48, 0.087 );
+  const vec3 STUBBLE = vec3( 0.69, 0.58, 0.27 );
+  const vec3 PLOUGHED = vec3( 0.27, 0.14, 0.07 );
+  vec3 spring = vFieldSeed < 0.7 ? GREEN : PLOUGHED;
+  vec3 autumn = vFieldSeed < 0.45 ? STUBBLE : vFieldSeed < 0.8 ? PLOUGHED : GREEN;
+  vec3 crop = spring * seasonWeights.x + vColor.rgb * seasonWeights.y + autumn * seasonWeights.z + PLOUGHED * seasonWeights.w;
+  diffuseColor.rgb *= crop;
+  float furrow = 1.0 - texture2D( map, vMapUv ).r;
+  float fieldSnow = smoothstep( 0.15, 0.55, snowCover + furrow * 0.35 - 0.15 ) * min( 1.0, snowCover * 10.0 );
+  diffuseColor.rgb = mix( diffuseColor.rgb, diffuse * SNOW, fieldSnow );
+}
+`;
 
 /**
  * The farm fields and the hay bales on the harvested ones. The fields are
@@ -74,6 +103,19 @@ export class FarmlandView {
           polygonOffsetUnits: -1,
         }),
       );
+      const seasons = options.seasons;
+      if (seasons !== undefined) {
+        material.onBeforeCompile = (shader) => {
+          seasons.attach(shader);
+          shader.vertexShader = shader.vertexShader
+            .replace('#include <common>', '#include <common>\nattribute float fieldSeed;\nvarying float vFieldSeed;')
+            .replace('#include <begin_vertex>', FIELD_SEASONS_VERTEX);
+          shader.fragmentShader = shader.fragmentShader
+            .replace('#include <common>', `#include <common>\n${SEASON_GLSL}\nvarying float vFieldSeed;`)
+            .replace('#include <color_fragment>', FIELD_SEASONS_FRAGMENT);
+        };
+        material.customProgramCacheKey = () => 'fields|seasons';
+      }
       options.prelit?.add(material);
       const parts = fields.map(fieldGeometry);
       const geometry = this.track(mergeGeometries(parts));
@@ -146,5 +188,14 @@ function fieldGeometry(field: Field): BufferGeometry {
     colors.set([tint.r, tint.g, tint.b], i * 3);
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  // Which crops the field grows through the year (FIELD_SEASONS_FRAGMENT): the same for the field every time.
+  const seed = hash(area.x, area.z);
+  geometry.setAttribute('fieldSeed', new BufferAttribute(new Float32Array(uv.count).fill(seed), 1));
   return placeFlat(geometry, area, FIELD_Y);
+}
+
+/** A small, stable hash of two coordinates, 0..1. */
+function hash(a: number, b: number): number {
+  const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+  return s - Math.floor(s);
 }

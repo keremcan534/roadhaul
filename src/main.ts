@@ -50,6 +50,7 @@ import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { LightningView } from './presentation/weather/LightningView';
 import { RainView } from './presentation/weather/RainView';
+import { SnowView } from './presentation/weather/SnowView';
 import { Thunderstorm } from './presentation/weather/Thunderstorm';
 import { LampLighting, type LampLightingOptions } from './presentation/world/LampLighting';
 import { PedestrianView } from './presentation/world/PedestrianView';
@@ -58,6 +59,7 @@ import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { BirdsView } from './presentation/world/BirdsView';
 import { CloudShadows } from './presentation/world/cloudShadows';
+import { SeasonShading } from './presentation/world/SeasonShading';
 import { FarmlandView } from './presentation/world/FarmlandView';
 import { HarbourView } from './presentation/world/HarbourView';
 import { SeaView } from './presentation/world/SeaView';
@@ -271,16 +273,20 @@ async function start(): Promise<void> {
       ? requestedGlass
       : glassModeFor(config.rendering.quality, software, lensSupported(navigator.userAgent)),
   );
+  // The seasons on the land: the grass, the broadleaf trees, the verges' flowers, the fields, the hills and the snow.
+  const seasonShading = new SeasonShading(season.season);
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
     cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
+    seasons: seasonShading,
   });
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
     prelit,
     sky: environment.sky,
     groundDetail: !software,
+    seasons: seasonShading,
   });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
@@ -295,6 +301,7 @@ async function start(): Promise<void> {
   new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
     anisotropy: renderHost.anisotropy,
     prelit,
+    seasons: seasonShading,
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
   const pedestrians = new PedestrianView(
@@ -307,6 +314,7 @@ async function start(): Promise<void> {
   const roadside = new RoadsideView(renderHost.scene, driving.world, {
     density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
     prelit,
+    seasons: seasonShading,
   });
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
   // At night the towns glow on the horizon, over their depots.
@@ -339,6 +347,7 @@ async function start(): Promise<void> {
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
+  const snowfall = new SnowView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   // Lightning in a storm: the flash lights the sky and the world, a bolt shows toward near strikes, thunder follows.
   const storm = new Thunderstorm();
   const lightning = new LightningView(renderHost.scene);
@@ -384,6 +393,7 @@ async function start(): Promise<void> {
     const inCab = drivingNow && mode === 'cabin';
     truck.setCabinView(inCab);
     rain.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
+    snowfall.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
     renderHost.mirrored = drivingNow && mode === 'rear';
     root.dataset.camera = mode;
   };
@@ -568,6 +578,7 @@ async function start(): Promise<void> {
       if (lampLight) {
         lampLighting.lightScene(renderHost.scene, prelit);
       }
+      seasonShading.shadeScene(renderHost.scene);
       cameraRig.setBody(definition.body);
       showCamera(onRoad());
     }
@@ -1295,6 +1306,7 @@ async function start(): Promise<void> {
     const width = canvas.clientWidth * renderHost.pixelRatio;
     const height = canvas.clientHeight * renderHost.pixelRatio;
     rain.setViewport(width, height);
+    snowfall.setViewport(width, height);
     scenery.setViewport(width, height);
   };
   const resize = (): void => {
@@ -1397,7 +1409,8 @@ async function start(): Promise<void> {
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
-        truck.setRain(weather.rain);
+        // The wipers sweep the snow off the glass too.
+        truck.setRain(Math.max(weather.rain, weather.snow * 0.35));
         // The pedals as the truck reads them (VehicleDynamics): on auto they swap roles in reverse.
         const reversing = vehicle.gear < 0;
         dashboard.fuelFraction = fuel.fraction;
@@ -1424,6 +1437,10 @@ async function start(): Promise<void> {
         cameraRig.update(pose, vehicle, deltaSeconds);
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
+        // The land turns to the season (over a moment, even paused: a season picked in Settings shows behind them),
+        // and the snow lies as the weather says.
+        seasonShading.setSeason(season.season);
+        seasonShading.update(deltaSeconds, weather.snowCover, renderHost.camera);
         mirroredSources[0] = truck;
         wetReflections?.update(renderHost.camera, wetness, weather.rain, lamps, paused ? 0 : deltaSeconds, mirroredSources);
         // Paused, no new strike: a flash under way still dies away. Half the strikes land where the camera looks
@@ -1449,6 +1466,7 @@ async function start(): Promise<void> {
         const eye = renderHost.camera.position;
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
+        snowfall.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.snow);
         // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
         effectsState.driving = simulating;
         effectsState.engineRunning = driving.isEngineRunning;
@@ -1545,6 +1563,7 @@ async function start(): Promise<void> {
   if (lampLight) {
     lampLighting.lightScene(renderHost.scene, prelit);
   }
+  seasonShading.shadeScene(renderHost.scene);
   renderHost.precompile();
   loop.start();
   root.dataset.bootState = 'ready';

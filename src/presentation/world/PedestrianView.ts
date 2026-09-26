@@ -22,6 +22,7 @@ import {
 } from '../../domain/world/pedestrians';
 import { createRoadPoint, type RoadPath } from '../../domain/world/RoadPath';
 import { KERB_HEIGHT_METERS, type Sidewalk, type StreetFurniture } from '../../domain/world/townscape';
+import { keptFromSnow } from './SeasonShading';
 
 /** People are placed from this seed, so a town always has the same ones. */
 const PEDESTRIAN_SEED = 97;
@@ -180,6 +181,8 @@ export class PedestrianView {
     // They move every frame: bounds computed once would go stale.
     this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+    // No snow settles on people.
+    keptFromSnow(this.mesh);
     scene.add(this.mesh);
   }
 

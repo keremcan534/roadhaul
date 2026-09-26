@@ -44,6 +44,7 @@ import {
 } from './lighting';
 import { unlitByLamps } from './LampLighting';
 import { Mist, MIST_GLSL, MIST_SKY_METERS } from './Mist';
+import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 
 const ZENITH = 0x3f7fc7;
 const HORIZON = 0xc4dcef;
@@ -304,6 +305,8 @@ export interface EnvironmentViewOptions {
   readonly cloudShare?: number;
   /** The region's latitude, degrees north: where the pole stands that the stars turn round. Default: 39. */
   readonly latitudeDegrees?: number;
+  /** The seasons, for the hills' green to follow, and the snow on their ridges. */
+  readonly seasons?: SeasonShading;
 }
 
 /**
@@ -436,11 +439,14 @@ export class EnvironmentView {
   private readonly groundLight = new Color();
   private readonly sceneLight = { keyDirection: this.keyDirection, key: new Color(), sky: new Color(), ground: new Color() };
 
+  private readonly seasons: SeasonShading | null;
+
   constructor(
     private readonly scene: Scene,
     options: EnvironmentViewOptions = {},
   ) {
     this.fogScale = options.hdr === true ? LINEAR_FOG_SCALE : 1;
+    this.seasons = options.seasons ?? null;
     const latitude = degreesToRadians(options.latitudeDegrees ?? DEFAULT_LATITUDE);
     this.pole = new Vector3(0, Math.sin(latitude), -Math.cos(latitude));
     this.background = new Color(HORIZON);
@@ -922,24 +928,48 @@ export class EnvironmentView {
     const material = this.track(new MeshLambertMaterial({ vertexColors: true, fog: false }));
     const { horizon: hazeColor, townGlow } = this.skyUniforms;
     const mist = this.mist.uniforms;
+    const seasons = this.seasons;
+    if (seasons !== null) {
+      material.defines = { SEASONS: '' };
+    }
     material.onBeforeCompile = (shader) => {
       shader.uniforms['hazeColor'] = hazeColor;
       shader.uniforms['townGlow'] = townGlow;
       Object.assign(shader.uniforms, mist);
+      seasons?.attach(shader);
       // The towns' lit haze lies before them (they stand for far mountains): its glow shows on them as on
       // the sky over them. Per vertex: it changes slowly round the ring.
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\nattribute float haze;\nvarying float vHaze;\nvarying vec3 vTownGlow;\n${TOWNS_GLOW}`)
+        .replace(
+          '#include <common>',
+          `#include <common>\nattribute float haze;\nvarying float vHaze;\nvarying float vHillHeight;\nvarying vec3 vTownGlow;\n${TOWNS_GLOW}`,
+        )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
           vHaze = haze;
+          vHillHeight = position.y;
           vec3 toHill = normalize((modelMatrix * vec4(transformed, 1.0)).xyz - cameraPosition);
           vTownGlow = townsGlow(normalize(toHill.xz + vec2(1e-5)), max(toHill.y, 0.0));`,
         );
       // The morning mist hides their feet; their ridges rise out of it.
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', `#include <common>\nuniform vec3 hazeColor;\nvarying float vHaze;\nvarying vec3 vTownGlow;\n${MIST_GLSL}`)
+        .replace(
+          '#include <common>',
+          `#include <common>\nuniform vec3 hazeColor;\nvarying float vHaze;\nvarying float vHillHeight;\nvarying vec3 vTownGlow;\n${MIST_GLSL}\n${
+            seasons === null ? '' : SEASON_GLSL
+          }`,
+        )
+        // The season's green on the hills, and snow on them down to a line that falls as more of it lies.
+        .replace(
+          '#include <color_fragment>',
+          `#include <color_fragment>
+          #ifdef SEASONS
+            diffuseColor.rgb = mix( diffuseColor.rgb, dried( diffuseColor.rgb ) * seasonGrass, 0.7 );
+            float snowLine = 60.0 * ( 1.0 - snowCover ) - 10.0;
+            diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 20.0, vHillHeight ) );
+          #endif`,
+        )
         .replace(
           '#include <opaque_fragment>',
           `#include <opaque_fragment>
@@ -949,6 +979,7 @@ export class EnvironmentView {
           }`,
         );
     };
+    material.customProgramCacheKey = () => (seasons === null ? 'hills' : 'hills|seasons');
     const hills = new Mesh(this.track(geometry), material);
     hills.name = 'hills';
     hills.frustumCulled = false;

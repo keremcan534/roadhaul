@@ -20,6 +20,7 @@ import type { BuildingObstacle, DrivingWorld, Field } from '../../domain/world/D
 import { createRoadPoint } from '../../domain/world/RoadPath';
 import type { PrelitMaterials } from './lighting';
 import { scattersLamplight } from './LampLighting';
+import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 
 /** What grows on the verges: tufts of grass, tufts in flower, and low bushes. */
 export const ROADSIDE_KINDS = ['tuft', 'flower', 'bush'] as const;
@@ -65,6 +66,8 @@ const UP = new Vector3(0, 1, 0);
 export interface RoadsideViewOptions {
   /** Share of the plants grown and how far away they are drawn (the graphics preset's). Default: 1. */
   readonly density?: Fraction;
+  /** The seasons: the grass's tint, the flowers out, and snow on the plants. */
+  readonly seasons?: SeasonShading;
   /** Where their material registers to be lit like the ground (pre-lit, like it). */
   readonly prelit?: PrelitMaterials;
 }
@@ -156,7 +159,7 @@ export class RoadsideView {
       if (kind !== 'bush') {
         material.side = DoubleSide;
       }
-      this.sway(material, WIND_BEND[kind]);
+      this.sway(material, WIND_BEND[kind], kind, options.seasons ?? null);
       // Leaves and petals catch lamplight whichever way they face.
       scattersLamplight(material);
       options.prelit?.add(material);
@@ -383,14 +386,27 @@ export class RoadsideView {
    * Bends `material`'s plants in the wind: the tips the most, each plant at
    * its own phase. The bend is a uniform, so every kind shares one program.
    */
-  private sway(material: MeshBasicMaterial, bend: number): void {
+  /**
+   * The wind bends `material`'s plants (of `kind`), the taller the more;
+   * with `seasons`, the grass takes the season's tint, the flowers are out
+   * only as the season has them, and snow buries the tufts' feet and
+   * whitens the plants' tops.
+   */
+  private sway(material: MeshBasicMaterial, bend: number, kind: RoadsideKind, seasons: SeasonShading | null): void {
     const wind = this.wind;
     const windBend = { value: bend };
+    if (seasons !== null) {
+      material.defines = { SEASONS: '', [`ROADSIDE_${kind.toUpperCase()}`]: '' };
+    }
     material.onBeforeCompile = (shader) => {
       shader.uniforms['windTime'] = wind;
       shader.uniforms['windBend'] = windBend;
+      seasons?.attach(shader);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float windTime;\nuniform float windBend;')
+        .replace(
+          '#include <common>',
+          `#include <common>\nuniform float windTime;\nuniform float windBend;\n${seasons === null ? '' : `${SEASON_GLSL}\nvarying float vSnow;`}`,
+        )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
@@ -403,10 +419,36 @@ export class RoadsideView {
             + 0.5 * sin( windTime * 3.3 + plantRoot.x * 0.9 - plantRoot.z * 0.6 );
           float bend = gust * position.y * position.y * windBend;
           transformed.x += bend;
-          transformed.z += bend * 0.6;`,
+          transformed.z += bend * 0.6;
+          #ifdef SEASONS
+            #ifdef ROADSIDE_FLOWER
+              // Out in spring and summer, a clump at a time.
+              float blooming = step( fract( plantRoot.x * 0.173 + plantRoot.z * 0.311 ), seasonFlowers );
+              transformed *= blooming;
+            #endif
+            #ifdef ROADSIDE_TUFT
+              // The snow buries the tufts' feet.
+              transformed.y *= 1.0 - 0.55 * snowCover;
+            #endif
+            // Snow on the plants' tops: the higher up the plant, the whiter.
+            vSnow = snowCover * smoothstep( 0.15, 0.6, position.y );
+          #endif`,
         );
+      if (seasons !== null) {
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <color_vertex>',
+          `#include <color_vertex>
+          #ifndef ROADSIDE_FLOWER
+            // The season's grass: drier as the year goes on, straw in winter.
+            vColor.rgb = dried( vColor.rgb ) * seasonGrass;
+          #endif`,
+        );
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', `#include <common>\n${SEASON_GLSL}\nvarying float vSnow;`)
+          .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix( diffuseColor.rgb, diffuse * SNOW, vSnow );');
+      }
     };
-    material.customProgramCacheKey = () => 'roadside-wind';
+    material.customProgramCacheKey = () => (seasons === null ? 'roadside-wind' : `roadside-wind|seasons|${kind}`);
   }
 }
 
