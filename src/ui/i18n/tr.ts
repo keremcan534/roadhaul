@@ -356,6 +356,10 @@ export const TR: StringTable = {
   'mission.hospital_restock.title': 'Hastane İkmali',
   'mission.quarry_run.title': 'Taş Ocağı Seferi',
   'mission.grand_opening.title': 'Büyük Açılış',
+  'mission.mine_supplies.title': 'Maden Erzakı',
+  'mission.drill_parts.title': 'Matkap Parçaları',
+  'mission.quarry_stone.title': 'Ocak Taşı',
+  'mission.miners_canteen.title': 'Maden Yemekhanesi',
 
   'dock.label': 'Şirket',
   'dock.jobs': 'İş al',

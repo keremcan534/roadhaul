@@ -2,7 +2,8 @@ import type { MissionDefinition } from '../definitions/MissionDefinition';
 
 /**
  * The MVP's 20 missions (spec §43, §77), between the depots of the three
- * cities. Titles come from the string tables (`mission.<id>.title`). Time
+ * cities, and four to and from Copperdale, the mining town the bigger map
+ * brought. Titles come from the string tables (`mission.<id>.title`). Time
  * limits cover the delivery leg, from loading to unloading: the road distance
  * at an average of 36 (easy), 42 (normal), 50 (hard) or 46 km/h (expert),
  * 15% more for loads over 10 t, and 50 s to leave one yard and park in the
@@ -250,5 +251,52 @@ export const MISSIONS: readonly MissionDefinition[] = [
     damageTolerance: 0.06,
     difficulty: 'expert',
     requiredCompanyLevel: 4,
+  },
+  {
+    id: 'mine_supplies',
+    originCityId: 'city_a',
+    destinationCityId: 'city_d',
+    cargoId: 'packaged_food',
+    cargoWeightTons: 2.5,
+    baseReward: 1000,
+    timeLimitSeconds: 390,
+    damageTolerance: 0.3,
+    difficulty: 'easy',
+  },
+  {
+    id: 'drill_parts',
+    originCityId: 'city_b',
+    destinationCityId: 'city_d',
+    cargoId: 'machine_parts',
+    cargoWeightTons: 4,
+    baseReward: 1900,
+    timeLimitSeconds: 330,
+    damageTolerance: 0.2,
+    difficulty: 'normal',
+    requiredCompanyLevel: 2,
+  },
+  {
+    id: 'quarry_stone',
+    originCityId: 'city_d',
+    destinationCityId: 'city_a',
+    cargoId: 'construction_materials',
+    cargoWeightTons: 16,
+    baseReward: 3700,
+    timeLimitSeconds: 380,
+    damageTolerance: 0.3,
+    difficulty: 'normal',
+    requiredCompanyLevel: 3,
+  },
+  {
+    id: 'miners_canteen',
+    originCityId: 'city_c',
+    destinationCityId: 'city_d',
+    cargoId: 'frozen_food',
+    cargoWeightTons: 7,
+    baseReward: 4600,
+    timeLimitSeconds: 500,
+    damageTolerance: 0.15,
+    difficulty: 'hard',
+    requiredCompanyLevel: 3,
   },
 ];

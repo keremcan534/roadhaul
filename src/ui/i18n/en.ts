@@ -356,6 +356,10 @@ export const EN: StringTable = {
   'mission.hospital_restock.title': 'Hospital Restock',
   'mission.quarry_run.title': 'Quarry Run',
   'mission.grand_opening.title': 'Grand Opening',
+  'mission.mine_supplies.title': 'Mine Supplies',
+  'mission.drill_parts.title': 'Drill Parts',
+  'mission.quarry_stone.title': 'Quarry Stone',
+  'mission.miners_canteen.title': "Miners' Canteen",
 
   'dock.label': 'Company',
   'dock.jobs': 'Jobs',

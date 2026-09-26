@@ -13,8 +13,9 @@ const startingTruck = vehicles.find((vehicle) => vehicle.id === DEFAULT_GAME_CON
 
 /** Checks the shipped contracts as a set: the balance a field-by-field validator cannot see. */
 describe('the shipped missions', () => {
-  it('number twenty, the MVP content (spec §43)', () => {
-    expect(missions).toHaveLength(20);
+  it('number twenty-four: the MVP\'s twenty (spec §43) and four to and from Copperdale', () => {
+    expect(missions).toHaveLength(24);
+    expect(missions.slice(20).every((mission) => [mission.originCityId, mission.destinationCityId].includes('city_d'))).toBe(true);
   });
 
   it('cover every difficulty', () => {
