@@ -12,18 +12,19 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   await continueSavedCompany(page, richCompany(), '?lang=en&debug');
   const credits = page.locator('.hq__credits');
 
-  // The league: the flatbed firm first, the company (60,000 and a 12,000 truck) second.
+  // The league: the two flatbed firms first, the company (60,000 and a 12,000 truck) third.
   await openPanel(page, 'rivals');
   const league = page.locator('.league__row');
-  await expect(league).toHaveCount(4);
+  await expect(league).toHaveCount(5);
   await expect(league.nth(0)).toHaveAttribute('data-company-id', 'rival_demirkent');
-  await expect(league.nth(1)).toHaveClass(/is-player/);
-  await expect(league.nth(1).locator('.league__name')).toHaveText('Kuzey Lojistik (you)');
-  await expect(league.nth(1).locator('.league__value')).toHaveText('72,000 credits');
+  await expect(league.nth(1)).toHaveAttribute('data-company-id', 'rival_bakirdere');
+  await expect(league.nth(2)).toHaveClass(/is-player/);
+  await expect(league.nth(2).locator('.league__name')).toHaveText('Kuzey Lojistik (you)');
+  await expect(league.nth(2).locator('.league__value')).toHaveText('72,000 credits');
 
   // Each city is led by its rival at first.
   const havenport = page.locator('.city-card[data-city-id="city_a"]');
-  await expect(page.locator('.city-card')).toHaveCount(3);
+  await expect(page.locator('.city-card')).toHaveCount(4);
   await expect(havenport.locator('.city-card__leader')).toHaveText('Led by Havenport Express');
   await expect(havenport.locator('.city-card__share')).toHaveText('Your share 0%');
 
@@ -41,7 +42,7 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   await expect(credits).toHaveText('20,200 credits');
   await expect(page.locator('.toast').filter({ hasText: 'You lead Havenport now' })).toBeVisible();
   await expect(rival).toHaveClass(/is-acquired/);
-  await expect(league).toHaveCount(3);
+  await expect(league).toHaveCount(4);
   await expect(havenport).toHaveClass(/is-yours/);
   await expect(havenport.locator('.city-card__share')).toHaveText('You lead: contracts from here pay 15% more');
   // The news, newest first: the city changing hands, and the buy-out that did it.
@@ -58,7 +59,7 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   await expect(tender).toHaveCount(1);
   await expect(page.locator('.job-card').first()).toHaveClass(/job-card--tender/);
   await expect(tender.locator('.badge--tender')).toHaveText('Tender');
-  await expect(tender.locator('.job-card__race')).toHaveText(/^Against (Amberfield Cargo|Ironford Haulage): first to unload wins [\d,]+ credits$/);
+  await expect(tender.locator('.job-card__race')).toHaveText(/^Against (Amberfield Cargo|Ironford Haulage|Copperdale Freight): first to unload wins [\d,]+ credits$/);
   // Contracts from Havenport pay the leader's bonus.
   await expect(page.locator('.job-card[data-mission-id="first_package"] .job-card__leader')).toHaveText("Leader's bonus 15%");
 
@@ -78,7 +79,7 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   await page.keyboard.press('KeyT');
   const result = page.locator('.result-dialog');
   await expect(result).toBeVisible({ timeout: 15_000 });
-  await expect(result.locator('.result-dialog__tender')).toHaveText(/^Tender won against (Amberfield Cargo|Ironford Haulage)\+[\d,]+ credits$/);
+  await expect(result.locator('.result-dialog__tender')).toHaveText(/^Tender won against (Amberfield Cargo|Ironford Haulage|Copperdale Freight)\+[\d,]+ credits$/);
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
   expect(problems).toEqual([]);
 });

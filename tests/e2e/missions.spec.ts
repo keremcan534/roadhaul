@@ -42,12 +42,12 @@ test('boots into the main menu, goes straight into the game, and opens the job b
   await expect(page.locator('.hq__company-name')).toHaveText('Kuzey Lojistik');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   await expect(page.locator('.hq__level')).toHaveText('Level 1 · Rookie');
-  // The game's own twenty, and five contracts of the day.
+  // The game's own twenty-four, and five contracts of the day.
   const own = page.locator('.job-card:not(.job-card--daily)');
-  await expect(own).toHaveCount(20);
+  await expect(own).toHaveCount(24);
   await expect(page.locator('.job-card--daily')).toHaveCount(5);
-  // Six need a higher company level; the other ten also need a bigger truck.
-  await expect(page.locator('.job-card.is-locked:not(.job-card--daily)')).toHaveCount(16);
+  // Seven need a higher company level; the other twelve also need a bigger truck.
+  await expect(page.locator('.job-card.is-locked:not(.job-card--daily)')).toHaveCount(19);
   const first = own.first();
   await expect(first.locator('.job-card__title')).toHaveText('First Package');
   await expect(first.locator('.job-card__route')).toHaveText('Havenport → Ironford');
@@ -101,7 +101,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(html(page)).toHaveAttribute('data-panel', 'open');
   await expect(page.locator('.hq__tab[data-tab="jobs"]')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
-  await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(25);
+  await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(29);
   // The truck waits in the delivery depot's yard, where it can be serviced.
   await openPanel(page, 'truck');
   await expect(page.locator('.hq__truck-location')).toHaveText('At Ironford depot');
