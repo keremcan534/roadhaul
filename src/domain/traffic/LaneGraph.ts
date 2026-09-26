@@ -78,6 +78,15 @@ interface LinkBuild {
   readonly weight: number;
 }
 
+/** A place on a link: which one, and how far along it, meters. */
+export interface LanePosition {
+  link: number;
+  s: number;
+}
+
+/** A lane runs this close to the way a vehicle faces, at most, to be the one it drives (60°). */
+const LOCATE_MIN_ALIGNMENT = 0.5;
+
 /**
  * The lanes of a map for traffic (roadmap step 22, spec §19: waypoint-based
  * traffic). Every link is a polyline of waypoints that vehicles follow:
@@ -256,6 +265,48 @@ export class LaneGraph {
   /** True for turns across a junction and U-turns. */
   isTurn(link: number): boolean {
     return this.kind[link] !== LANE;
+  }
+
+  /**
+   * The place on a rightmost lane nearest (x, z) that runs within 60° of
+   * `heading` (0 faces +Z, π/2 faces +X), no further than
+   * `maxDistanceMeters` from it: where a vehicle there, driving that way,
+   * would be. Fills `out` and returns true, or returns false when no lane is
+   * that close. Allocation-free, but it looks at every lane: call it now and
+   * then, not for every vehicle every step.
+   */
+  locate(x: number, z: number, heading: number, maxDistanceMeters: number, out: LanePosition): boolean {
+    const sin = Math.sin(heading);
+    const cos = Math.cos(heading);
+    let best = maxDistanceMeters;
+    let found = false;
+    for (let n = 0; n < this.spawnLanes.length; n++) {
+      const link = this.spawnLanes[n]!;
+      const last = this.pointStart[link + 1]! - 1;
+      for (let k = this.pointStart[link]!; k < last; k++) {
+        const ax = this.pointX[k]!;
+        const az = this.pointZ[k]!;
+        const dx = this.pointX[k + 1]! - ax;
+        const dz = this.pointZ[k + 1]! - az;
+        const lengthSquared = dx * dx + dz * dz;
+        if (lengthSquared < 1e-12) {
+          continue;
+        }
+        const length = Math.sqrt(lengthSquared);
+        if (dx * sin + dz * cos < LOCATE_MIN_ALIGNMENT * length) {
+          continue; // It runs another way.
+        }
+        const t = Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / lengthSquared));
+        const distance = Math.hypot(ax + dx * t - x, az + dz * t - z);
+        if (distance < best) {
+          best = distance;
+          out.link = link;
+          out.s = this.along[k]! + t * length;
+          found = true;
+        }
+      }
+    }
+    return found;
   }
 
   /** Index of the segment (points i, i + 1 of the link, counted from its first point) that holds distance `s`. */

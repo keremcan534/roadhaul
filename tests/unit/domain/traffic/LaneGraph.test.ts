@@ -210,6 +210,26 @@ describe('LaneGraph', () => {
     }
   });
 
+  it('locates the lane a vehicle at a place, facing a way, would drive in', () => {
+    const graph = laneGraphOf(straightStreet());
+    const north = laneAt(graph, 0, 0, 0);
+    const south = laneAt(graph, 0, 0, 180);
+    const out = { link: -1, s: 0 };
+
+    expect(graph.locate(-1, 50, 0, 10, out)).toBe(true);
+    expect(out.link).toBe(north);
+    // Straight along +Z from its first point: level with z = 50.
+    expect(out.s).toBeCloseTo(50 - graph.pointZ[graph.pointStart[north]!]!, 6);
+    // The same place facing the other way: the lane back, on the other side.
+    expect(graph.locate(-1, 50, Math.PI, 10, out)).toBe(true);
+    expect(out.link).toBe(south);
+    // Within 60° of a lane's way it still drives it; across the road, or too far off it, none.
+    expect(graph.locate(-1, 50, 0.9, 10, out)).toBe(true);
+    expect(out.link).toBe(north);
+    expect(graph.locate(-1, 50, Math.PI / 2, 10, out)).toBe(false);
+    expect(graph.locate(-15, 50, 0, 10, out)).toBe(false);
+  });
+
   it('lets traffic go round a closed road without junctions forever', () => {
     const graph = laneGraphOf(
       roadWorld([
