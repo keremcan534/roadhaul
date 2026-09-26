@@ -26,6 +26,7 @@ import { GameSessionService } from '../systems/session/GameSessionService';
 import { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
 import { TrafficService } from '../systems/traffic/TrafficService';
 import { TutorialService } from '../systems/tutorial/TutorialService';
+import { SeasonService } from '../systems/weather/SeasonService';
 import { TimeOfDayService } from '../systems/weather/TimeOfDayService';
 import { WeatherService } from '../systems/weather/WeatherService';
 import { DamageService } from '../systems/vehicles/DamageService';
@@ -117,9 +118,10 @@ export class GameBootstrapper {
         ServiceKeys.timeOfDay,
         new TimeOfDayService(catalog, clock, config.timeOfDay, this.options.localTimeOffsetMinutes ?? 0),
       );
+      const season = container.register(ServiceKeys.season, new SeasonService(clock, events));
       container.register(
         ServiceKeys.weather,
-        new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay),
+        new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),
       );
       // Subscription order matters: the economy and the company apply a delivery before the session saves it,
       // and the garage must be created after the services it drives (missions, damage, fuel).

@@ -17,8 +17,8 @@ describe('validateWeatherDefinition', () => {
     }
   });
 
-  it('ships the kinds of spec §38, with clear days the most common and rain the hardest on the driver', () => {
-    expect(WEATHER.map((weather) => weather.id)).toEqual(['clear', 'cloudy', 'rain']);
+  it('ships the kinds of spec §38 and snow, with clear days the most common and snow the hardest on the driver', () => {
+    expect(WEATHER.map((weather) => weather.id)).toEqual(['clear', 'cloudy', 'rain', 'snow']);
     const byId = (id: string) => WEATHER.find((weather) => weather.id === id)!;
     for (const weather of WEATHER) {
       expect(weather.weight).toBeLessThanOrEqual(byId('clear').weight);
@@ -38,6 +38,14 @@ describe('validateWeatherDefinition', () => {
     expect(rain.look.lamps).toBeGreaterThan(0);
     expect(rain.look.saturation).toBeLessThan(byId('clear').look.saturation);
     expect(byId('clear').look.lamps).toBe(0);
+    // Snow comes in winter, instead of rain, and grips less still.
+    const snow = byId('snow');
+    expect(snow.seasons).toEqual(['winter']);
+    expect(rain.seasons).not.toContain('winter');
+    expect(snow.snowfall).toBe(1);
+    expect(snow.gripFactor).toBeLessThan(rain.gripFactor);
+    expect(snow.trafficSpeedFactor).toBeLessThan(1);
+    expect(snow.look.rain).toBe(0);
   });
 
   it('reports successions that are not a list of other weathers', () => {

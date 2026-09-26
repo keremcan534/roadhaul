@@ -21,6 +21,7 @@ import type { GameSessionService } from '../systems/session/GameSessionService';
 import type { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
 import type { TrafficService } from '../systems/traffic/TrafficService';
 import type { TutorialService } from '../systems/tutorial/TutorialService';
+import type { SeasonService } from '../systems/weather/SeasonService';
 import type { TimeOfDayService } from '../systems/weather/TimeOfDayService';
 import type { WeatherService } from '../systems/weather/WeatherService';
 import type { DamageService } from '../systems/vehicles/DamageService';
@@ -41,6 +42,7 @@ export const ServiceKeys = Object.freeze({
   weather: serviceKey<WeatherService>('WeatherService'),
   /** The game's clock, and the sun, the moon and the stars it turns (spec §39). */
   timeOfDay: serviceKey<TimeOfDayService>('TimeOfDayService'),
+  season: serviceKey<SeasonService>('SeasonService'),
   /** The timed events of spec §22 (not the event bus: that is `events`). */
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),

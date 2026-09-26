@@ -1,12 +1,14 @@
 import type { Validator } from '../../core/validation/Validator';
 import type { Fraction } from '../units';
+import { isSeason } from './Season';
+import type { Season } from './Season';
 
 /**
- * A kind of weather (spec §38: clear, cloudy, rain). It changes how the
- * truck grips and how fast traffic drives, and how the world looks by day;
- * the time of day (DaylightDefinition) is apart from it, and the weather's
- * look is laid over the time's. Colours are 0xRRGGBB; light levels are
- * shares of a clear day's.
+ * A kind of weather (spec §38: clear, cloudy, rain, and snow in winter). It
+ * changes how the truck grips and how fast traffic drives, and how the
+ * world looks by day; the time of day (DaylightDefinition) is apart from
+ * it, and the weather's look is laid over the time's. Colours are
+ * 0xRRGGBB; light levels are shares of a clear day's.
  */
 export interface WeatherDefinition {
   /** Stable snake_case id. */
@@ -15,6 +17,10 @@ export interface WeatherDefinition {
   readonly weight: number;
   /** The weathers this one may turn into, by id (their weights decide which). Any other when absent. */
   readonly next?: readonly string[];
+  /** The seasons it may come in. Every season when absent. */
+  readonly seasons?: readonly Season[];
+  /** How hard it snows (0: not at all). Default: 0. */
+  readonly snowfall?: Fraction;
   /** It lasts a random time between these, seconds. */
   readonly minSeconds: number;
   readonly maxSeconds: number;
@@ -71,6 +77,19 @@ export function validateWeatherDefinition(weather: WeatherDefinition, path: stri
         }
       });
     }
+  }
+  if (weather.seasons !== undefined) {
+    const seasons = weather.seasons;
+    if (validator.check(Array.isArray(seasons) && seasons.length > 0, `${path}.seasons`, 'must list at least one season')) {
+      seasons.forEach((season, index) => {
+        if (validator.check(isSeason(season), `${path}.seasons[${index}]`, `unknown season "${String(season)}"`)) {
+          validator.check(seasons.indexOf(season) === index, `${path}.seasons[${index}]`, `"${season}" is listed twice`);
+        }
+      });
+    }
+  }
+  if (weather.snowfall !== undefined) {
+    validator.fraction(weather.snowfall, `${path}.snowfall`);
   }
   validator.positiveNumber(weather.minSeconds, `${path}.minSeconds`);
   validator.check(

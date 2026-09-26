@@ -25,6 +25,7 @@ import { browserStorage } from './platform/browser/browserStorage';
 import {
   applyConfigOverrides,
   requestedDateMs,
+  requestedSeason,
   requestedLampLight,
   requestedMist,
   requestedSpawn,
@@ -196,6 +197,7 @@ async function start(): Promise<void> {
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
+  const season = services.resolve(ServiceKeys.season);
   // The game's clock: the time the player picked and the way it goes (Settings), unless the address sets it
   // (`?time=`, `?weather=dawn|dusk|night`), which stops it there and keeps the player's own for later.
   const requestedTime = requestedTimeOfDay(query);
@@ -207,7 +209,9 @@ async function start(): Promise<void> {
         ? requestedTime.minutes
         : timeOfDay.timeOf(requestedTime.phase),
   );
-  // The weather: as it comes, or held as the player picked it (Settings), unless the address sets it (`?weather=`).
+  // The season and the weather: as they come, or held as the player picked them (Settings), unless the address sets
+  // them (`?season=`, `?weather=`).
+  season.hold(requestedSeason(query) ?? (settings.season === 'auto' ? null : settings.season));
   if ((query.get('weather')?.trim() ?? '') === '') {
     weather.hold(settings.weather === 'auto' ? null : settings.weather);
   }
@@ -668,6 +672,7 @@ async function start(): Promise<void> {
       timeFlow: timeOfDay.flow,
       clockPresets: clockPresets(),
       weather: weatherChoiceFor(weather.held),
+      season: season.held ?? 'auto',
     },
     {
     onQuality: (choice) => {
@@ -721,6 +726,11 @@ async function start(): Promise<void> {
     onWeather: (choice) => {
       weather.hold(choice === 'auto' ? null : choice);
       settings = { ...settings, weather: choice };
+      saveSettings(storage, settings);
+    },
+    onSeason: (choice) => {
+      season.hold(choice === 'auto' ? null : choice);
+      settings = { ...settings, season: choice };
       saveSettings(storage, settings);
     },
     onClose: () => settingsDialog.close(),
@@ -1048,6 +1058,12 @@ async function start(): Promise<void> {
       toasts.show(strings.t(`weather.${weatherId}.message`), 'info');
     }
   });
+  events.on('SeasonChanged', ({ season: now }) => {
+    root.dataset.season = now;
+    if (isDriving()) {
+      toasts.show(strings.t(`season.${now}.message`), 'info');
+    }
+  });
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
@@ -1176,6 +1192,7 @@ async function start(): Promise<void> {
   root.dataset.missionState = 'none';
   root.dataset.vehicle = driving.definition.id;
   root.dataset.weather = weather.current.id;
+  root.dataset.season = season.season;
   root.dataset.quality = quality;
   logger.info(`Graphics: ${quality}.`);
   showState(gameState.current);
@@ -1312,6 +1329,7 @@ async function start(): Promise<void> {
         // panel too, under the weather, while the truck waits.
         traffic.update(stepSeconds);
         timeOfDay.update(stepSeconds);
+        season.update(stepSeconds);
         weather.update(stepSeconds);
         // The fleet's drivers and the rivals work on while the player is in the panel or the menus, and those near
         // the truck join the traffic.

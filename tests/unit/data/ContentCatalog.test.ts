@@ -139,6 +139,14 @@ describe('ContentCatalog', () => {
     ]);
   });
 
+  it('reports a season no weather may come in', () => {
+    const content = contentFixture({
+      weather: [weatherFixture({ seasons: ['summer', 'autumn'] }), weatherFixture({ id: 'test_snow', seasons: ['winter'] })],
+    });
+
+    expect(validateGameContent(content)).toEqual([{ path: 'weather', message: 'must have weather that may come in spring' }]);
+  });
+
   it('has every weather the player may hold in Settings', () => {
     const catalog = ContentCatalog.create(GAME_CONTENT);
 

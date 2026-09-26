@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EventBus } from '../../../../src/core/events/EventBus';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import type { GameConfig } from '../../../../src/data/config/GameConfig';
+import type { Season } from '../../../../src/data/definitions/Season';
 import type { PerformanceModifier, DrivingService } from '../../../../src/systems/driving/DrivingService';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import type { TrafficService } from '../../../../src/systems/traffic/TrafficService';
@@ -256,6 +257,92 @@ describe('WeatherService', () => {
 
     expect(weather.held).toBeNull();
     expect(changes.length).toBeGreaterThan(0);
+  });
+
+  it('brings only the weather of the season: snow in winter, rain in the rest, and turns what is out of season at once', () => {
+    const logger = new MemoryLogger();
+    const events = new EventBus<GameEvents>(logger);
+    const quick = { minSeconds: 10, maxSeconds: 10 };
+    const content = ContentCatalog.create(
+      contentFixture({
+        weather: [
+          weatherFixture({ id: 'clear', ...quick }),
+          weatherFixture({ id: 'rain', seasons: ['spring', 'summer', 'autumn'], ...quick, look: { ...weatherFixture().look, rain: 1 } }),
+          weatherFixture({ id: 'snow', seasons: ['winter'], snowfall: 1, gripFactor: 0.7, ...quick }),
+        ],
+      }),
+    );
+    const season = { season: 'summer' as Season, groundSnow: 0 };
+    const seen = new Set<string>();
+    events.on('WeatherChanged', ({ weatherId }) => seen.add(weatherId));
+    const weather = new WeatherService(
+      content,
+      { setPerformanceModifier: () => {} } as unknown as DrivingService,
+      { setSpeedFactor: () => {} } as unknown as TrafficService,
+      events,
+      { initialWeatherId: 'rain', clearWeatherId: 'clear', changes: true, transitionSeconds: 1 },
+      logger,
+      null,
+      season,
+    );
+
+    run(weather, 400);
+    expect([...seen].sort()).toEqual(['clear', 'rain']);
+
+    // Winter comes in the rain: it turns at once (not at the spell's end), and the rain never comes back.
+    weather.hold('rain');
+    weather.hold(null);
+    season.season = 'winter';
+    season.groundSnow = 0.5;
+    seen.clear();
+    run(weather, 0.1);
+    expect(weather.current.id).not.toBe('rain');
+    run(weather, 400);
+    expect([...seen].sort()).toEqual(['clear', 'snow']);
+  });
+
+  it('lets snow settle while it falls and melt slowly after, down to what the season keeps', () => {
+    const season = { season: 'winter' as Season, groundSnow: 0.5 };
+    const logger = new MemoryLogger();
+    const content = ContentCatalog.create(
+      contentFixture({ weather: [weatherFixture({ id: 'clear' }), weatherFixture({ id: 'snow', snowfall: 1, seasons: ['winter'] })] }),
+    );
+    const weather = new WeatherService(
+      content,
+      { setPerformanceModifier: () => {} } as unknown as DrivingService,
+      { setSpeedFactor: () => {} } as unknown as TrafficService,
+      new EventBus<GameEvents>(logger),
+      { initialWeatherId: 'clear', clearWeatherId: 'clear', changes: false, transitionSeconds: 1 },
+      logger,
+      null,
+      season,
+    );
+    // A winter's day starts with the season's snow on the ground.
+    expect(weather.snowCover).toBe(0.5);
+    expect(weather.snow).toBe(0);
+
+    weather.set('snow');
+    expect(weather.snow).toBe(1);
+    run(weather, 10);
+    const settling = weather.snowCover;
+    expect(settling).toBeGreaterThan(0.5);
+    expect(settling).toBeLessThan(1);
+    run(weather, 60);
+    expect(weather.snowCover).toBe(1);
+    // Falling snow leaves the road wet with slush.
+    expect(weather.wetness).toBeCloseTo(0.5, 5);
+
+    weather.set('clear');
+    run(weather, 60);
+    expect(weather.snowCover).toBeGreaterThan(0.85);
+    run(weather, 1200);
+    expect(weather.snowCover).toBe(0.5);
+
+    // Spring melts the rest.
+    season.season = 'spring';
+    season.groundSnow = 0;
+    run(weather, 1200);
+    expect(weather.snowCover).toBe(0);
   });
 
   it('gives the truck its grip back when disposed', () => {

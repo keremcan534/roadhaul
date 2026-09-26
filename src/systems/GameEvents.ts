@@ -1,5 +1,6 @@
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { MissionDefinition } from '../data/definitions/MissionDefinition';
+import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
@@ -135,6 +136,11 @@ export interface GameEvents {
   WeatherChanged: {
     readonly weatherId: string;
     readonly previousId: string;
+  };
+  /** The season changed: the calendar turned over, or the player picked another in Settings. */
+  SeasonChanged: {
+    readonly season: Season;
+    readonly previous: Season;
   };
   /** The company hired a driver for its fleet (spec §27), and paid their fee. */
   DriverHired: {

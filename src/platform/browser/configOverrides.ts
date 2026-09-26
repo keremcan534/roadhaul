@@ -1,4 +1,5 @@
 import { isLogLevel } from '../../core/logging/Logger';
+import { isSeason, type Season } from '../../data/definitions/Season';
 import { MAX_TRAFFIC_VEHICLES, type GameConfig } from '../../data/config/GameConfig';
 import { parseClock } from '../../core/time/dayTime';
 import { isDaylightPhase, type DaylightPhase } from '../../data/definitions/DaylightDefinition';
@@ -68,6 +69,12 @@ export function requestedSpawn(query: QueryParameters): { readonly x: number; re
     return null;
   }
   return { x, z, headingDegrees };
+}
+
+/** `?season=winter` (or `spring`, `summer`, `autumn`) holds that season; null when the URL does not say, or says something else. */
+export function requestedSeason(query: QueryParameters): Season | null {
+  const season = query.get('season')?.trim();
+  return isSeason(season) ? season : null;
 }
 
 /** A time of day the URL asks for: a time on the clock, or the moment the sky takes one of the time's looks. */
