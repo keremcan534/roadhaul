@@ -95,6 +95,8 @@ export class MapPainter {
   private readonly paved = new Path2D();
   /** The sea, when the world has one. */
   private readonly sea: Path2D | null;
+  /** The rivers' water, in one path. */
+  private readonly rivers: Path2D;
   private readonly transform = createCanvasTransform();
   /** A box round one point, for MapViewport.sees without allocating. */
   private readonly pointBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
@@ -127,6 +129,10 @@ export class MapPainter {
         }),
     );
     this.sea = sketch.sea === null ? null : polygonPath(sketch.sea.corners);
+    this.rivers = new Path2D();
+    for (const river of sketch.rivers) {
+      this.rivers.addPath(polygonPath(river.corners));
+    }
     for (const area of sketch.pavedAreas) {
       this.paved.moveTo(area.corners[0]!, area.corners[1]!);
       for (let i = 2; i < area.corners.length; i += 2) {
@@ -198,10 +204,11 @@ export class MapPainter {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    context.fillStyle = COLORS.sea;
     if (this.sea !== null) {
-      context.fillStyle = COLORS.sea;
       context.fill(this.sea);
     }
+    context.fill(this.rivers);
     for (let i = 0; i < this.fields.length; i++) {
       const field = this.fields[i]!;
       context.fillStyle = field.color;

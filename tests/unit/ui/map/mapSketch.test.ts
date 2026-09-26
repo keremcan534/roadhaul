@@ -131,6 +131,23 @@ describe('sketchWorld', () => {
     expect(sketch.bounds.minX).toBeLessThan(quay.minX);
   });
 
+  it('draws each river\'s water from its source to its mouth, a little wider than it is so it shows', () => {
+    expect(sketch.rivers).toHaveLength(world.rivers.length);
+    const [kestrel] = world.rivers;
+    const { corners, minX, maxX, minZ, maxZ } = sketch.rivers[0]!;
+    const count = corners.length / 2;
+    // Down one bank and back up the other: the source's two corners are the first and the last.
+    const across = Math.hypot(corners[0]! - corners[(count - 1) * 2]!, corners[1]! - corners[(count - 1) * 2 + 1]!);
+    expect(across).toBeCloseTo(kestrel!.widthMeters + 6, 6);
+    expect(maxZ).toBeGreaterThan(kestrel!.z(0));
+    const mouth = Math.min(kestrel!.mouthIndex, kestrel!.pointCount - 1);
+    expect(minX).toBeLessThan(kestrel!.x(mouth));
+    for (let i = 0; i <= mouth; i += 25) {
+      const [x, z] = [kestrel!.x(i), kestrel!.z(i)];
+      expect(x > minX && x < maxX && z > minZ && z < maxZ, `sample ${i}`).toBe(true);
+    }
+  });
+
   it('has the farm fields with their crops, and the wind turbines', () => {
     expect(sketch.fields.map((field) => field.crop)).toEqual(world.fields.map((field) => field.crop));
     sketch.fields.forEach((field, index) => {
