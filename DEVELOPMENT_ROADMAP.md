@@ -228,7 +228,7 @@ The player asked for the most detail round the roads, a realistic cab with its s
 | The sky and the light | ✅ | The Earth's shadow and the Belt of Venus opposite the sun at twilight; the towns' glow on the night's horizon; the sun's glare and the lens's ghosts where it shows (the colour pass); broken cloud's shadows drifting over the land and all on it |
 
 - The scenery costs about 25 ms to place and 90 ms to build on a desktop (the parts are stamped from shared ones and merged per 600 m tile); a phone takes several times that at boot.
-- The cloud shadows and the sun's glare are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.
+- The cloud shadows, the sun's glare and shafts and the land's mist are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.
 - `?spawn=x,z,heading` starts a new game's truck anywhere on the map, to look round a place.
 
 ### Tester feedback: the truck's looks and the driving feel (between steps 28 and 29)

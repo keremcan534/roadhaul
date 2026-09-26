@@ -539,11 +539,11 @@ async function start(): Promise<void> {
       // clouds shade it.
       if (!software) {
         cloudShadows.shadeScene(renderHost.scene, prelit);
+        environment.mist.shadeScene(renderHost.scene);
       }
       if (lampLight) {
         lampLighting.lightScene(renderHost.scene, prelit);
       }
-      environment.mist.shadeScene(renderHost.scene);
       cameraRig.setBody(definition.body);
       showCamera(onRoad());
     }
@@ -1323,15 +1323,16 @@ async function start(): Promise<void> {
     },
     { maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds },
   );
-  // Every view is in the scene: the clouds' shadows on the pre-lit ground, the lamps' light and the morning mist on
-  // everything, and the GPU compiling the shaders now, behind the menu, not on the road.
+  // Every view is in the scene: the clouds' shadows and the morning mist on the land (not drawn in software, where
+  // every pixel's instructions count: the sky and its hills still show the mist), the lamps' light on everything, and
+  // the GPU compiling the shaders now, behind the menu, not on the road.
   if (!software) {
     cloudShadows.shadeScene(renderHost.scene, prelit);
+    environment.mist.shadeScene(renderHost.scene);
   }
   if (lampLight) {
     lampLighting.lightScene(renderHost.scene, prelit);
   }
-  environment.mist.shadeScene(renderHost.scene);
   renderHost.precompile();
   loop.start();
   root.dataset.bootState = 'ready';
