@@ -32,6 +32,18 @@ export function requestedLampLight(query: QueryParameters): boolean | null {
 }
 
 /**
+ * `?wet=1` keeps the roads that wet (0 dry … 1 soaked) whatever the
+ * weather does: with `?weather=clear`, as just after the rain (and with a
+ * low sun, `?time=17:45`, a rainbow). Null when the URL does not say, or
+ * says something else.
+ */
+export function requestedWetness(query: QueryParameters): number | null {
+  const text = query.get('wet')?.trim() ?? '';
+  const wetness = text === '' ? Number.NaN : Number(text);
+  return wetness >= 0 && wetness <= 1 ? wetness : null;
+}
+
+/**
  * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
  * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
  * along +x; 0 if left out), to look round a place without driving to it.

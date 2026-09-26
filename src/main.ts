@@ -26,6 +26,7 @@ import {
   requestedLampLight,
   requestedSpawn,
   requestedTimeOfDay,
+  requestedWetness,
 } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
@@ -185,6 +186,8 @@ async function start(): Promise<void> {
         ? requestedTime.minutes
         : timeOfDay.timeOf(requestedTime.phase),
   );
+  /** How wet the roads are: the weather's, or as the address keeps them (`?wet=`). */
+  const keptWetness = requestedWetness(query);
   /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
   const clearDay = content.weather.get(config.weather.clearWeatherId).look;
   const weatherLook = createSkyLook();
@@ -1123,9 +1126,11 @@ async function start(): Promise<void> {
           skyLook,
         );
         const lamps = skyLook.lamps;
+        // The roads stay wet a while after the rain: they shine, and a low sun shows a rainbow in the drops still about.
+        const wetness = keptWetness ?? weather.wetness;
         showDaylight();
         track.setLamps(lamps);
-        track.setWetness(weather.rain);
+        track.setWetness(wetness);
         track.update(paused ? 0 : deltaSeconds);
         roadFurniture.setLamps(lamps);
         streetLamps.setLamps(lamps);
@@ -1160,8 +1165,9 @@ async function start(): Promise<void> {
         lookAround.update(deltaSeconds);
         cameraRig.look(lookAround.yaw, lookAround.pitch);
         cameraRig.update(pose, vehicle, deltaSeconds);
-        lampLighting.setWetness(weather.rain);
+        lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
+        environment.setWetness(wetness);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
@@ -1179,7 +1185,7 @@ async function start(): Promise<void> {
         effectsState.speed = vehicle.speed;
         effectsState.heading = pose.heading;
         effectsState.offRoad = driving.surface.name === 'grass';
-        effectsState.rain = weather.rain;
+        effectsState.wetness = wetness;
         truckEffects.update(paused ? 0 : deltaSeconds, truck, effectsState, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);

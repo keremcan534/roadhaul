@@ -14,6 +14,12 @@ const WEATHER_SEED = 38;
 const GRIP_STEP = 0.01;
 /** The time of day changes traffic's speed in steps this small. */
 const TRAFFIC_STEP = 0.005;
+/**
+ * The roads wet through this many seconds after hard rain starts (lighter
+ * rain wets them less), and dry off this many seconds after it stops.
+ */
+const WETTING_SECONDS = 20;
+const DRYING_SECONDS = 180;
 
 /** How the time of day changes traffic's speed (TimeOfDayService). */
 export interface DaylightTraffic {
@@ -27,8 +33,9 @@ export interface DaylightTraffic {
  * effects, blended: the truck's grip (a DrivingService performance
  * modifier) and how fast traffic drives, with the time of day's slower
  * traffic in the dark (`daylight`) on top. Presentation reads `previous`,
- * `current` and `blend` (and the blended `rain` and `lamps`) to draw it,
- * over the time of day's look. Call update() every fixed step.
+ * `current` and `blend` (and the blended `rain` and `lamps`, and how wet
+ * the roads are) to draw it, over the time of day's look. Call update()
+ * every fixed step.
  */
 export class WeatherService {
   private currentWeather: WeatherDefinition;
@@ -38,6 +45,7 @@ export class WeatherService {
   private readonly random = new SeededRandom(WEATHER_SEED);
   private appliedGrip = Number.NaN;
   private appliedTraffic = Number.NaN;
+  private wetnessValue: number;
   /** Reused for every grip update. */
   private readonly modifier = { torqueFactor: 1, brakeFactor: 1, gripFactor: 1, stabilityFactor: 1 };
 
@@ -53,6 +61,7 @@ export class WeatherService {
     this.currentWeather = content.weather.get(config.initialWeatherId);
     this.previousWeather = this.currentWeather;
     this.remainingSeconds = this.spellLength(this.currentWeather);
+    this.wetnessValue = this.currentWeather.look.rain;
     this.apply();
   }
 
@@ -86,7 +95,20 @@ export class WeatherService {
     return mix(this.previousWeather.look.lamps, this.currentWeather.look.lamps, this.blendValue);
   }
 
-  /** Advances the schedule and the transition by `dt` seconds. Allocation-free, except when the weather turns. */
+  /**
+   * How wet the roads are, 0..1: they wet through soon after the rain starts
+   * (as wet as it rains hard) and dry off slowly after it stops, so they
+   * shine and throw spray a while after the rain. A game that starts in the
+   * rain starts wet.
+   */
+  get wetness(): number {
+    return this.wetnessValue;
+  }
+
+  /**
+   * Advances the schedule, the transition and the roads' wetness by `dt`
+   * seconds. Allocation-free, except when the weather turns.
+   */
   update(dt: number): void {
     if (this.blendValue < 1) {
       this.blendValue = Math.min(1, this.blendValue + dt / this.config.transitionSeconds);
@@ -94,6 +116,11 @@ export class WeatherService {
     } else if (this.daylight !== null) {
       this.applyTraffic();
     }
+    const rain = this.rain;
+    this.wetnessValue =
+      this.wetnessValue < rain
+        ? Math.min(rain, this.wetnessValue + dt / WETTING_SECONDS)
+        : Math.max(rain, this.wetnessValue - dt / DRYING_SECONDS);
     if (!this.config.changes) {
       return;
     }
@@ -103,7 +130,10 @@ export class WeatherService {
     }
   }
 
-  /** Turns the weather to `weatherId` straight away (no transition). For tests and the debug switch. */
+  /**
+   * Turns the weather to `weatherId` straight away (no transition); the
+   * roads wet or dry from there. For tests and the debug switch.
+   */
   set(weatherId: string): void {
     const next = this.content.weather.get(weatherId);
     const previous = this.currentWeather;

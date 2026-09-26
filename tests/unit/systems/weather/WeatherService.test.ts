@@ -127,6 +127,43 @@ describe('WeatherService', () => {
     expect(weather.lamps).toBe(0.4);
   });
 
+  it('wets the roads soon after the rain starts, and dries them off slowly after it stops', () => {
+    const { weather } = setup({ changes: false });
+    expect(weather.wetness).toBe(0);
+
+    weather.set('test_rain');
+    run(weather, 5);
+    const wetting = weather.wetness;
+    expect(wetting).toBeGreaterThan(0.1);
+    expect(wetting).toBeLessThan(0.5);
+    run(weather, 30);
+    expect(weather.wetness).toBe(1);
+
+    // The rain stops: the roads stay wet a while (the rainbow's and the puddles' time), then dry.
+    weather.set('test_clear');
+    run(weather, 30);
+    expect(weather.wetness).toBeGreaterThan(0.7);
+    run(weather, 60);
+    expect(weather.wetness).toBeGreaterThan(0.3);
+    expect(weather.wetness).toBeLessThan(0.7);
+    run(weather, 120);
+    expect(weather.wetness).toBe(0);
+  });
+
+  it('starts wet in the rain, and never wetter than the rain makes it', () => {
+    expect(setup({ initialWeatherId: 'test_rain' }).weather.wetness).toBe(1);
+
+    // Turning to rain, the roads wet as it comes on.
+    const { weather } = setup();
+    let wettest = 0;
+    run(weather, 141, () => {
+      wettest = Math.max(wettest, weather.wetness - weather.rain);
+    });
+    expect(wettest).toBeLessThanOrEqual(0);
+    expect(weather.current.id).toBe('test_rain');
+    expect(weather.wetness).toBe(1);
+  });
+
   it('never turns into the weather it already is', () => {
     const { weather, changes } = setup();
 

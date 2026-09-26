@@ -410,6 +410,33 @@ describe('EnvironmentView', () => {
     expect(dome(scene).fragmentShader).toContain('earthShadow');
   });
 
+  it('shows a rainbow opposite a low sun in the rain passing by or just gone, not in the rain, the dry, the dark or a high sun', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const rainbow = dome(scene).uniforms['rainbow']!;
+    const rainbowAt = (elevation: number, weather: string, wetness: number): number => {
+      view.setWetness(wetness);
+      view.applySky(skyAt(elevation, weather), placed(toward(elevation, 250)));
+      return rainbow.value as number;
+    };
+
+    // Just after the rain, the ground still wet and the sun out low: a bright bow, fading as the ground dries.
+    expect(rainbowAt(12, 'clear', 0.9)).toBeGreaterThan(0.9);
+    expect(rainbowAt(12, 'clear', 0.2)).toBeLessThan(rainbowAt(12, 'clear', 0.9));
+    expect(rainbowAt(12, 'clear', 0)).toBe(0);
+    // In the rain itself the drops are all round and the sun hidden; under cloud too little sun gets through.
+    expect(rainbowAt(12, 'rain', 1)).toBe(0);
+    expect(rainbowAt(12, 'cloudy', 0.9)).toBeLessThan(0.5);
+    // Too high a sun sets the bow below the hills; none once it has set.
+    expect(rainbowAt(45, 'clear', 0.9)).toBe(0);
+    expect(rainbowAt(-2, 'clear', 0.9)).toBe(0);
+    // Showers: halfway from the rain to the sun, still falling.
+    view.setWetness(1);
+    view.applySky(composeHalfway('rain', 'clear'), placed(toward(12, 250)));
+    expect(rainbow.value).toBeGreaterThan(0.5);
+    expect(dome(scene).fragmentShader).toContain('rainbowOver(sky, direction, up, sunDirection, sunColor, rainbow)');
+  });
+
   it('glows over the towns at night on the horizon toward each: all round in one, smaller and dimmer the farther', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);
