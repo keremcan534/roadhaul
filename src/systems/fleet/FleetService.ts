@@ -11,12 +11,13 @@ import type { FleetSaveData, HiredDriverSaveData } from '../../domain/save/SaveG
 import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
 import type { CompanyLevelSource } from '../missions/MissionService';
-import type { GarageService } from '../vehicles/GarageService';
+import type { BuyTruckError, GarageService, TruckOffer } from '../vehicles/GarageService';
 import { placeOnJob, type CompanyTruckMarker, type DepotRoads, type JobRoute } from './DepotRoads';
 
 export type HireDriverError = 'unknownDriver' | 'alreadyHired' | 'locked' | SpendError;
 export type DismissDriverError = 'unknownDriver' | 'notHired';
 export type AssignTruckError = 'notHired' | 'hasTruck' | 'unknownTruck' | 'playersTruck' | 'truckTaken';
+export type BuyTruckForError = 'notHired' | 'hasTruck' | BuyTruckError;
 export type RecallTruckError = 'notHired' | 'noTruck';
 
 /** A driver the company can hire, or has. */
@@ -198,6 +199,48 @@ export class FleetService {
    * it out on a contract from the HQ's city at once, and on the next ones
    * after it. Not the truck the player drives, nor one another driver has.
    */
+  /**
+   * The truck a driver without one would be bought (buyTruckFor): the
+   * cheapest model the dealer sells the company now. Null while the garage
+   * is full.
+   */
+  truckToBuy(): TruckOffer | null {
+    if (!this.garage.hasRoom) {
+      return null;
+    }
+    let cheapest: TruckOffer | null = null;
+    for (const offer of this.garage.dealer()) {
+      if (!offer.locked && (cheapest === null || offer.price < cheapest.price)) {
+        cheapest = offer;
+      }
+    }
+    return cheapest;
+  }
+
+  /** Buys `driverId` the truck truckToBuy() names and sends them out with it at once. */
+  buyTruckFor(driverId: string): Result<FleetDriverStatus, BuyTruckForError> {
+    const driver = this.find(driverId);
+    if (driver === undefined) {
+      return err('notHired');
+    }
+    if (driver.truckInstanceId !== null) {
+      return err('hasTruck');
+    }
+    const offer = this.truckToBuy();
+    if (offer === null) {
+      return err('garageFull');
+    }
+    const bought = this.garage.buy(offer.definition.id);
+    if (!bought.ok) {
+      return err(bought.error);
+    }
+    const assigned = this.assign(driverId, bought.value.instanceId);
+    if (!assigned.ok) {
+      throw new Error(`A new truck could not go out with ${driverId}: ${assigned.error}.`); // A free driver takes a new truck.
+    }
+    return assigned;
+  }
+
   assign(driverId: string, instanceId: string): Result<FleetDriverStatus, AssignTruckError> {
     const driver = this.find(driverId);
     if (driver === undefined) {

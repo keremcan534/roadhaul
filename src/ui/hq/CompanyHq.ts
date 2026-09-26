@@ -64,6 +64,8 @@ export interface CompanyHqActions {
   readonly onDismissDriver: (driverId: string) => void;
   /** Sends a truck in the garage out on contracts with a hired driver. */
   readonly onAssignDriver: (driverId: string, instanceId: string) => void;
+  /** Buys a hired driver without a truck the cheapest one on sale, and sends them out with it. */
+  readonly onBuyTruckFor: (driverId: string) => void;
   /** Calls a driver's truck back to the garage. */
   readonly onRecallTruck: (driverId: string) => void;
   /** Runs a campaign in a city. */
@@ -192,6 +194,7 @@ export class CompanyHq {
       onHire: actions.onHireDriver,
       onDismiss: actions.onDismissDriver,
       onAssign: actions.onAssignDriver,
+      onBuyTruckFor: actions.onBuyTruckFor,
       onRecall: actions.onRecallTruck,
       onSwitch: actions.onSwitchTruck,
     });

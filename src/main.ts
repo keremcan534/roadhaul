@@ -791,6 +791,20 @@ async function start(): Promise<void> {
           logger.warn(`Could not send ${instanceId} out with ${driverId}: ${assigned.error}.`);
         }
       },
+      onBuyTruckFor: (driverId) => {
+        const sent = fleet.buyTruckFor(driverId);
+        if (sent.ok) {
+          const instanceId = sent.value.truckInstanceId!;
+          const truckName = `${strings.vehicleName(garage.trucks.find((owned) => owned.instanceId === instanceId)!.definition.id)} ${truckNumber(instanceId)}`;
+          toasts.show(strings.t('toast.fleetSentOut', { driver: driverName(strings, { id: driverId }), truck: truckName }), 'success');
+        } else if (sent.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (sent.error === 'garageFull') {
+          toasts.show(strings.t('toast.garageFull'), 'warning');
+        } else {
+          logger.warn(`Could not buy ${driverId} a truck: ${sent.error}.`);
+        }
+      },
       onRecallTruck: (driverId) => {
         const instanceId = fleet.hired.find((driver) => driver.definition.id === driverId)?.truckInstanceId ?? null;
         const recalled = fleet.recall(driverId);
