@@ -95,11 +95,13 @@ export interface SceneryViewOptions {
  * benches, litter bins and bus shelters; billboards and speed limit signs;
  * and the flocks and herds grazing, heads down, now and then looking round.
  *
- * Everything that keeps still is merged, per 600 m tile, into one mesh of
- * one material over a procedural atlas (propImages.ts), and the pavements
- * into one more, so the camera culls what is out of view; the wires are one
- * set of lines, the animals four instanced meshes (bodies and heads).
- * update() animates the grazing and allocates nothing.
+ * Everything that keeps still is stamped from parts built once (Parts) and
+ * merged, per 600 m tile, into one mesh of one material over a procedural
+ * atlas (propImages.ts), and the pavements into one more, so the camera
+ * culls what is out of view; the wires are one mesh of ribbons the shader
+ * widens to at least a pixel (setViewport), the animals four instanced
+ * meshes (bodies and heads). update() animates the grazing and allocates
+ * nothing.
  */
 export class SceneryView {
   private readonly root = new Group();
