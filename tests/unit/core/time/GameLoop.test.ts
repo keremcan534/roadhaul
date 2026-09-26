@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FixedTimestep } from '../../../../src/core/time/FixedTimestep';
-import { GameLoop, type FrameScheduler, type GameLoopHandlers } from '../../../../src/core/time/GameLoop';
+import { GameLoop, type FrameScheduler, type GameLoopHandlers, type GameLoopOptions } from '../../../../src/core/time/GameLoop';
 
 /** Hand-cranked stand-in for requestAnimationFrame. Like the real one, it can hold several requests. */
 class FakeScheduler implements FrameScheduler {
@@ -34,7 +34,7 @@ class FakeScheduler implements FrameScheduler {
   }
 }
 
-function createLoop(overrides: Partial<GameLoopHandlers> = {}) {
+function createLoop(overrides: Partial<GameLoopHandlers> = {}, options: Partial<GameLoopOptions> = {}, maxStepsPerFrame = 5) {
   const scheduler = new FakeScheduler();
   const calls: string[] = [];
   const errors: unknown[] = [];
@@ -44,7 +44,7 @@ function createLoop(overrides: Partial<GameLoopHandlers> = {}) {
     onError: (error) => errors.push(error),
     ...overrides,
   };
-  const loop = new GameLoop(scheduler, new FixedTimestep(0.01, 5), handlers, { maxFrameDeltaSeconds: 0.25 });
+  const loop = new GameLoop(scheduler, new FixedTimestep(0.01, maxStepsPerFrame), handlers, { maxFrameDeltaSeconds: 0.25, ...options });
   return { loop, scheduler, calls, errors };
 }
 
@@ -97,6 +97,24 @@ describe('GameLoop', () => {
     scheduler.frame(61_000);
 
     expect(calls.filter((call) => call.startsWith('fixed'))).toHaveLength(5);
+    expect(calls.at(-1)).toMatch(/^frame 0\.250 /);
+  });
+
+  it('catches the simulation up further than the animation where it is asked to: slow drawing, real time', () => {
+    const { loop, scheduler, calls } = createLoop({}, { maxSimulationDeltaSeconds: 0.5 }, 60);
+    loop.start();
+    scheduler.frame(1000);
+    calls.length = 0;
+
+    // A 0.4 s frame: all of it simulated, the animation's step clamped as before.
+    scheduler.frame(1400);
+    expect(calls.filter((call) => call.startsWith('fixed'))).toHaveLength(40);
+    expect(calls.at(-1)).toMatch(/^frame 0\.250 /);
+
+    // A long gap: no more than its own cap simulated.
+    calls.length = 0;
+    scheduler.frame(61_400);
+    expect(calls.filter((call) => call.startsWith('fixed'))).toHaveLength(50);
     expect(calls.at(-1)).toMatch(/^frame 0\.250 /);
   });
 

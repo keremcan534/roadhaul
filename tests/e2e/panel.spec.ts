@@ -23,7 +23,7 @@ const VIEWPORTS = {
 
 for (const [orientation, viewport] of Object.entries(VIEWPORTS)) {
   test(`opens the company panel beside the road and scrolls its pages with a finger, ${orientation}`, async ({ page }) => {
-    test.setTimeout(60_000);
+    test.slow();
     const problems = watchForProblems(page);
     if (viewport !== null) {
       await page.setViewportSize(viewport);

@@ -6,7 +6,7 @@ function hint(page: Page) {
 }
 
 test('teaches the first contract and the first upgrade by playing, one short hint at a time', async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.slow();
   const problems = watchForProblems(page);
   const html = page.locator('html');
   await openGame(page, '?debug&lang=en');

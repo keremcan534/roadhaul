@@ -60,7 +60,7 @@ async function expectLaidOut(page: Page, controls: readonly string[], context: s
 for (const [orientation, viewport] of Object.entries(VIEWPORTS)) {
   for (const steering of ['wheel', 'tilt', 'buttons'] as const) {
     test(`lays out the ${steering} controls in every size without overlaps, ${orientation}`, async ({ page }) => {
-      test.setTimeout(60_000); // The game started, and the settings opened and closed twice, drawn in software.
+      test.slow(); // The game started, and the settings opened and closed twice, drawn in software.
       const problems = watchForProblems(page);
       if (viewport !== null) {
         await page.setViewportSize(viewport);

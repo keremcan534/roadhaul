@@ -119,11 +119,13 @@ const SOFTWARE_SHADOW_MAP_SIZE = 1024;
 const SOFTWARE_VEGETATION_SHARE = 0.5;
 const SOFTWARE_CLOUD_SHARE = 0.5;
 /**
- * Drawn in software, a frame takes about 100 ms; a fixed step, well under a
- * millisecond. Up to this many steps a frame keep the simulation in real
- * time down to 5 FPS (the configured cap would slow it to half speed).
+ * Drawn in software, a frame takes 200 ms or more, half a second on a slow
+ * machine; a fixed step, well under a millisecond. Frames simulated up to
+ * this long, in up to this many steps, keep the game in real time down to
+ * 2 FPS, where the configured caps would slow it to a sixth.
  */
-const SOFTWARE_MAX_STEPS_PER_FRAME = 12;
+const SOFTWARE_MAX_SIMULATION_DELTA_SECONDS = 0.5;
+const SOFTWARE_MAX_STEPS_PER_FRAME = 30;
 /**
  * How many lamps light the night (LampLighting), per graphics preset: the
  * nearest street lamps and vehicles. Drawn in software (with ?lamps=1), as
@@ -1321,7 +1323,12 @@ async function start(): Promise<void> {
         showFatalError(document, 'RoadHaul stopped because of an error.', error);
       },
     },
-    { maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds },
+    {
+      maxFrameDeltaSeconds: config.simulation.maxFrameDeltaSeconds,
+      maxSimulationDeltaSeconds: software
+        ? Math.max(SOFTWARE_MAX_SIMULATION_DELTA_SECONDS, config.simulation.maxFrameDeltaSeconds)
+        : config.simulation.maxFrameDeltaSeconds,
+    },
   );
   // Every view is in the scene: the clouds' shadows and the morning mist on the land (not drawn in software, where
   // every pixel's instructions count: the sky and its hills still show the mist), the lamps' light on everything, and

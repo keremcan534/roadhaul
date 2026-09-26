@@ -25,6 +25,13 @@ export interface GameLoopOptions {
    * this so the game does not try to simulate the whole gap at once.
    */
   readonly maxFrameDeltaSeconds: number;
+  /**
+   * How much of a longer frame the simulation catches up, when it may catch up
+   * more than the animation does (maxFrameDeltaSeconds, the default): where
+   * drawing is slow but simulating quick (drawn in software), the game keeps
+   * real time down to a lower frame rate.
+   */
+  readonly maxSimulationDeltaSeconds?: number;
 }
 
 /**
@@ -84,11 +91,13 @@ export class GameLoop {
 
   private tick(timestampMs: number, frameHandle: number): void {
     const elapsedSeconds =
-      this.previousTimestampMs === null ? 0 : (timestampMs - this.previousTimestampMs) / 1000;
+      this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0);
     this.previousTimestampMs = timestampMs;
-    const deltaSeconds = Math.min(Math.max(elapsedSeconds, 0), this.options.maxFrameDeltaSeconds);
+    const deltaSeconds = Math.min(elapsedSeconds, this.options.maxFrameDeltaSeconds);
 
-    const steps = this.timestep.advance(deltaSeconds);
+    const steps = this.timestep.advance(
+      Math.min(elapsedSeconds, this.options.maxSimulationDeltaSeconds ?? this.options.maxFrameDeltaSeconds),
+    );
     for (let i = 0; i < steps; i++) {
       this.handlers.fixedUpdate(this.timestep.stepSeconds);
       if (this.handle !== frameHandle) {

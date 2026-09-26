@@ -63,7 +63,7 @@ test('speaks Turkish when asked to', async ({ page }) => {
 });
 
 test('delivers a contract from the pickup bay to the delivery bay', async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.slow();
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?debug&lang=en');
   await takeContract(page, 'first_package');
@@ -110,7 +110,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
 });
 
 test('offers contracts of the day, and keeps one under way across a reload', async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.slow();
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?debug&lang=en');
 
@@ -211,7 +211,7 @@ test('pauses the drive when the player leaves the game: another tab, or the app 
 });
 
 test('keeps the mission HUD clear of the buttons and its text whole in both orientations', async ({ page }) => {
-  test.setTimeout(90_000);
+  test.slow();
   /** True when a text is cut off with an ellipsis. */
   const truncated = (selector: string) =>
     page.locator(selector).evaluate((element) => element.scrollWidth > element.clientWidth + 1);
@@ -257,7 +257,7 @@ test('keeps the mission HUD clear of the buttons and its text whole in both orie
 });
 
 test('continues the saved company after the page reloads', async ({ page }) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?lang=en');
   await takeContract(page, 'first_package');
@@ -306,7 +306,7 @@ async function driveUntilFuelBurns(page: Page): Promise<void> {
 }
 
 test('burns fuel while driving, and refuels only at a depot or rest area', async ({ page }) => {
-  test.setTimeout(60_000); // It drives until the gauge moves (up to 30 s, drawn in software), then stops twice.
+  test.slow(); // It drives until the gauge moves (up to 30 s, drawn in software), then stops twice.
   const problems = watchForProblems(page);
   // fuelScale burns fuel as fast as the old test track did, so the gauge moves within seconds.
   await openGame(page, '?lang=en&debug&fuelScale=60');
@@ -339,7 +339,7 @@ test('burns fuel while driving, and refuels only at a depot or rest area', async
 });
 
 test('offers fuel, repairs and the road again at the rest area', async ({ page }) => {
-  test.setTimeout(60_000); // It drives until the gauge moves (up to 30 s, drawn in software), then stops.
+  test.slow(); // It drives until the gauge moves (up to 30 s, drawn in software), then stops.
   const problems = watchForProblems(page);
   await openGame(page, '?lang=en&debug&fuelScale=60');
   await driveUntilFuelBurns(page);

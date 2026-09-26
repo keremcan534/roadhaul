@@ -61,7 +61,7 @@ async function driveIn(page: Page, weather: string): Promise<void> {
 }
 
 test('starts the weather given with ?weather=, and draws the rain', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // A new game and thirty frames of rain, drawn in software beside other tests.
+  test.slow(); // A new game and thirty frames of rain, drawn in software beside other tests.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=rain');
@@ -73,7 +73,7 @@ test('starts the weather given with ?weather=, and draws the rain', async ({ pag
 });
 
 test('darkens the world at night, with the lamps and headlights lit', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=clear');
@@ -93,7 +93,7 @@ test('darkens the world at night, with the lamps and headlights lit', async ({ p
 });
 
 test('turns the light warm at dusk, with the sun low in a glowing sky', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
 
   await openGame(page, '?weather=clear');
@@ -110,7 +110,7 @@ test('turns the light warm at dusk, with the sun low in a glowing sky', async ({
 });
 
 test('lays a morning mist at sunrise, and none when the address clears it', async ({ page }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
 
   // On the highway, looking along it to the hills.
@@ -133,7 +133,7 @@ test('lays a morning mist at sunrise, and none when the address clears it', asyn
 test('sets the time of day from Settings: night falls at once, the minimap shows the time, and it is kept', async ({
   page,
 }, testInfo) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   await openGame(page, '?weather=clear');
   const html = page.locator('html');

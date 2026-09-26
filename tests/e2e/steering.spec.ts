@@ -13,7 +13,7 @@ import {
 } from './support';
 
 test('steers by turning the phone once tilt is picked in Settings', async ({ page }) => {
-  test.setTimeout(60_000); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
+  test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await openGame(page, '?debug');
   const html = page.locator('html');
@@ -54,7 +54,7 @@ test('steers by turning the phone once tilt is picked in Settings', async ({ pag
 });
 
 test('takes the phone as it is held as straight ahead when the tilt button is tapped', async ({ page }) => {
-  test.setTimeout(60_000); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
+  test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await seedSettings(page, { steering: 'tilt', tiltSensitivity: 'high' });
   await openGame(page, '?debug');
@@ -95,7 +95,7 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
 });
 
 test('steers with the left and right buttons', async ({ page }) => {
-  test.setTimeout(60_000); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
+  test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await seedSettings(page, { steering: 'buttons' });
   await openGame(page, '?debug');
@@ -125,7 +125,7 @@ test('steers with the left and right buttons', async ({ page }) => {
 });
 
 test('draws the controls in the size picked, and remembers the controls picked', async ({ page }) => {
-  test.setTimeout(60_000); // The game started twice, drawn in software.
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
   await openGame(page);
   const width = async (): Promise<number> => (await page.locator('.steering-wheel').boundingBox())!.width;

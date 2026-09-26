@@ -9,7 +9,7 @@ async function credits(locator: Locator): Promise<number> {
 }
 
 test('shows the events in the company panel, and pays a careful delivery the Safe Driver bonus', async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.slow();
   const problems = watchForProblems(page);
   await openCompanyHq(page, '?debug&lang=en', { date: SAFE_DRIVER_WEEK });
   const card = (eventId: string): Locator => page.locator(`.event-card[data-event-id="${eventId}"]`);
