@@ -78,8 +78,12 @@ describe('GameConfig', () => {
     ]);
   });
 
-  it('reports contracts, trucks and upgrades locked behind a company level that does not exist', () => {
-    const config: GameConfig = { ...DEFAULT_GAME_CONFIG, company: { levelXp: [0, 1000] } };
+  it('reports contracts, trucks, upgrades and drivers locked behind a company level that does not exist', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      company: { levelXp: [0, 1000] },
+      fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3] },
+    };
     const beyondLevel2 = (level: number | undefined): boolean => (level ?? 1) > 2;
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
@@ -96,8 +100,33 @@ describe('GameConfig', () => {
             : [],
         ),
       ),
+      ...GAME_CONTENT.drivers.flatMap((driver, index) =>
+        beyondLevel2(driver.requiredCompanyLevel) ? [`content.drivers[${index}].requiredCompanyLevel`] : [],
+      ),
     ]);
     expect(validateGameConfig(config, catalog).length).toBeGreaterThan(10);
+  });
+
+  it('checks the fleet: a garage for every company level that never shrinks, and sound paces, pay, wear and time away', () => {
+    const fleet = DEFAULT_GAME_CONFIG.fleet;
+    const paths = (changes: Partial<GameConfig['fleet']>): string[] =>
+      validateGameConfig({ ...DEFAULT_GAME_CONFIG, fleet: { ...fleet, ...changes } }, catalog).map((issue) => issue.path);
+
+    expect(paths({})).toEqual([]);
+    expect(paths({ garageSlots: [2, 3, 4] })).toEqual(['fleet.garageSlots']);
+    expect(paths({ garageSlots: [2, 3, 2, 6, 8] })).toEqual(['fleet.garageSlots']);
+    expect(paths({ garageSlots: [0, 3, 4, 6, 8] })).toEqual(['fleet.garageSlots']);
+    expect(
+      paths({ averageSpeedKmh: 0, handlingSeconds: -1, payFactor: 3, incidentDamage: 1.5, repairAtDamage: 0, repairSeconds: 0, awayHours: 48 }),
+    ).toEqual([
+      'fleet.averageSpeedKmh',
+      'fleet.handlingSeconds',
+      'fleet.payFactor',
+      'fleet.incidentDamage',
+      'fleet.repairAtDamage',
+      'fleet.repairSeconds',
+      'fleet.awayHours',
+    ]);
   });
 
   it('checks the traffic: how many vehicles, how far round the truck, and a speed limit for every kind of road', () => {

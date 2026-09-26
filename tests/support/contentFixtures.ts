@@ -1,6 +1,7 @@
 import type { CargoDefinition } from '../../src/data/definitions/CargoDefinition';
 import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { DaylightDefinition } from '../../src/data/definitions/DaylightDefinition';
+import type { DriverDefinition } from '../../src/data/definitions/DriverDefinition';
 import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
 import type { MapDefinition, SeaDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
@@ -174,6 +175,7 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     daylight: daylightFixtures(),
     events: [eventFixture()],
     paints: [paintFixture(), paintFixture({ id: 'test_gold', color: 0xd4af37, price: 3000, requiredCompanyLevel: 2 })],
+    drivers: [driverFixture(), driverFixture({ id: 'test_veteran', skill: 4, speedFactor: 1.1, incidentChance: 0.05, payShare: 0.3, hiringFee: 5000, requiredCompanyLevel: 2 })],
     ...overrides,
   };
 }
@@ -191,6 +193,11 @@ export function daylightFixtures(): DaylightDefinition[] {
       look: { ...day, zenithColor: 0x070d1c, horizonColor: 0x1b2740, sunlight: 0.1, skylight: 0.3, lamps: 1, stars: 1, moon: 1 },
     },
   ];
+}
+
+/** A steady driver: average pace, one contract in ten damages the truck, a quarter of the pay, 1,000 credits to hire. */
+export function driverFixture(overrides: Partial<DriverDefinition> = {}): DriverDefinition {
+  return { id: 'test_driver', skill: 2, speedFactor: 1, incidentChance: 0.1, payShare: 0.25, hiringFee: 1000, ...overrides };
 }
 
 /** A red paint for 1,000 credits, open from level 1. */

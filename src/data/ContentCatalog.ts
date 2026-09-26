@@ -2,6 +2,7 @@ import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
 import { validateCityDefinition, type CityDefinition } from './definitions/CityDefinition';
+import { validateDriverDefinition, type DriverDefinition } from './definitions/DriverDefinition';
 import { validateEventDefinition, type EventDefinition } from './definitions/EventDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
 import {
@@ -77,6 +78,7 @@ export class ContentCatalog {
   readonly daylight: DefinitionTable<DaylightDefinition>;
   readonly events: DefinitionTable<EventDefinition>;
   readonly paints: DefinitionTable<PaintDefinition>;
+  readonly drivers: DefinitionTable<DriverDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -90,6 +92,7 @@ export class ContentCatalog {
     this.daylight = new DefinitionTable('daylight', content.daylight);
     this.events = new DefinitionTable('event', content.events);
     this.paints = new DefinitionTable('paint', content.paints);
+    this.drivers = new DefinitionTable('driver', content.drivers);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -116,6 +119,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'daylight', content.daylight, validateDaylightDefinition);
   validateTable(validator, 'events', content.events, validateEventDefinition);
   validateTable(validator, 'paints', content.paints, validatePaintDefinition);
+  validateTable(validator, 'drivers', content.drivers, validateDriverDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);

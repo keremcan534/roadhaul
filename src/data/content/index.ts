@@ -2,6 +2,7 @@ import type { GameContent } from '../GameContent';
 import { CARGO } from './cargo';
 import { CITIES } from './cities';
 import { DAYLIGHT } from './daylight';
+import { DRIVERS } from './drivers';
 import { MAPS } from './maps';
 import { EVENTS } from './events';
 import { MISSIONS } from './missions';
@@ -24,4 +25,5 @@ export const GAME_CONTENT: GameContent = {
   daylight: DAYLIGHT,
   events: EVENTS,
   paints: PAINTS,
+  drivers: DRIVERS,
 };
