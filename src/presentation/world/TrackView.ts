@@ -56,6 +56,7 @@ import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMat
 import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
+import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 
 const MARKING_COLOR = 0xf4f3ec;
 const TRUNK_COLOR = 0x5e4330;
@@ -67,6 +68,8 @@ const PINE_COLORS = [0x2f5e34, 0x355f2e, 0x2a5233, 0x3b6a37] as const;
 const BROADLEAF_COLORS = [0x4f8a3c, 0x5c9442, 0x44803e, 0x6b9a3f, 0x7f9b3a] as const;
 /** The trees: the wild ones (pine, broadleaf) and the planted species (countryside.ts). */
 type TreeKind = 'pine' | 'broadleaf' | TreeSpecies;
+/** The trees that lose their leaves in autumn: they follow the season (SeasonShading). */
+const DECIDUOUS: ReadonlySet<TreeKind> = new Set<TreeKind>(['broadleaf', 'poplar']);
 /**
  * Each kind of tree's shape: its trunk's height (and girth, times the
  * trunk's), where the middle of its crown is over the trunk (for the
@@ -136,6 +139,7 @@ const UP = new Vector3(0, 1, 0);
  * GROUND_DETAIL (TrackViewOptions.groundDetail) each is sampled once.
  */
 const GROUND_MAP_FRAGMENT = /* glsl */ `
+float groundSnow = 0.0;
 #ifdef USE_MAP
   vec4 sampledDiffuseColor = texture2D( map, vMapUv );
   vec2 meadowUv = vMapUv * ${(GRASS_TILE_METERS / MEADOW_TILE_METERS).toFixed(4)};
@@ -148,7 +152,24 @@ const GROUND_MAP_FRAGMENT = /* glsl */ `
     float meadowShade = texture2D( meadow, meadowUv ).r;
   #endif
   sampledDiffuseColor.rgb *= mix( vec3( 0.8, 0.92, 0.8 ), vec3( 1.16, 1.08, 0.8 ), meadowShade );
+  #ifdef SEASONS
+    // Snow lying in patches that grow together as more of it lies (another scale of the meadows' shade, frayed
+    // by the grass's own grain: the lighter tufts whiten first), until the ground is white. Then the season's
+    // grass, drier as the year goes on.
+    float grain = smoothstep( 0.06, 0.24, sampledDiffuseColor.g );
+    float snowLine = 0.2 + 0.55 * texture2D( meadow, meadowUv * 6.1 + vec2( 0.37, 0.61 ) ).r - 0.22 * grain;
+    groundSnow = smoothstep( snowLine - 0.06, snowLine + 0.06, snowCover ) * min( 1.0, snowCover * 10.0 );
+    sampledDiffuseColor.rgb = dried( sampledDiffuseColor.rgb ) * seasonGrass;
+  #endif
   diffuseColor *= sampledDiffuseColor;
+#endif
+`;
+
+/** After the ground's vertex colours: the snow lying on it, white in the ground's light. */
+const GROUND_SNOW_FRAGMENT = /* glsl */ `
+#include <color_fragment>
+#ifdef SEASONS
+  diffuseColor.rgb = mix( diffuseColor.rgb, diffuse * SNOW, groundSnow );
 #endif
 `;
 
@@ -161,6 +182,36 @@ const GROUND_MAP_FRAGMENT = /* glsl */ `
 const CROWN_SWAY = 0.011;
 const RAIN_WIND = 1.3;
 const WIND_DIRECTION = { x: 0.8, z: 0.6 } as const;
+/**
+ * After three's vertex colours, for the trees that lose their leaves: the
+ * season's colours, a tree at a time (seasonLeaves: x autumn, y bare,
+ * z blossom). Autumn turns them gold, orange or rust; winter leaves them
+ * bare, grey-brown and thinner; spring puts some in white or pink blossom.
+ * Linear colours.
+ */
+const DECIDUOUS_COLOR_VERTEX = /* glsl */ `
+#include <color_vertex>
+#if defined( SEASONS ) && defined( USE_INSTANCING )
+{
+  vec2 tree = vec2( instanceMatrix[3][0], instanceMatrix[3][2] );
+  float leaf = fract( sin( dot( tree, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );
+  vec3 turned = leaf < 0.4 ? vec3( 0.66, 0.35, 0.01 ) : leaf < 0.75 ? vec3( 0.64, 0.14, 0.013 ) : vec3( 0.35, 0.05, 0.01 );
+  vColor.rgb = mix( vColor.rgb, turned * ( 0.8 + 0.4 * leaf ), seasonLeaves.x );
+  vColor.rgb = mix( vColor.rgb, vec3( 0.147, 0.11, 0.084 ), seasonLeaves.y );
+  vec3 blossom = leaf < 0.5 ? vec3( 0.94, 0.85, 0.87 ) : vec3( 0.89, 0.48, 0.58 );
+  vColor.rgb = mix( vColor.rgb, blossom, seasonLeaves.z * step( 0.6, fract( leaf * 7.0 ) ) );
+}
+#endif
+`;
+
+/** In winter the bare crowns stand thinner round their branches. */
+const DECIDUOUS_BEGIN_VERTEX = /* glsl */ `
+#include <begin_vertex>
+#ifdef SEASONS
+  transformed *= 1.0 - 0.38 * seasonLeaves.y;
+#endif
+`;
+
 /** Replaces three.js's project_vertex: the crown, placed by its instance, then swayed in the world. */
 const CROWN_PROJECT_VERTEX = /* glsl */ `
 vec4 mvPosition = vec4( transformed, 1.0 );
@@ -254,6 +305,8 @@ export interface TrackViewOptions {
    * surface on screen, for rendering without a GPU). Default: true.
    */
   readonly groundDetail?: boolean;
+  /** The seasons, for the grass, the broadleaf trees and the snow on the ground to follow. */
+  readonly seasons?: SeasonShading;
 }
 
 /**
@@ -273,6 +326,7 @@ export class TrackView {
   /** Where the shadow decals reach without pre-lit materials to follow the sun: the reference sun's way. */
   private readonly fixedShadowReach = { value: new Vector2(SHADOW_OFFSET_PER_METER.x, SHADOW_OFFSET_PER_METER.z) };
   private readonly prelit: PrelitMaterials | undefined;
+  private readonly seasons: SeasonShading | null;
   /** Facades whose windows light up at night. */
   private readonly facades: MeshLambertMaterial[] = [];
   private lamps = 0;
@@ -293,6 +347,7 @@ export class TrackView {
     options: TrackViewOptions = {},
   ) {
     this.prelit = options.prelit;
+    this.seasons = options.seasons ?? null;
     this.wet = {
       wetness: { value: 0 },
       rainfall: { value: 0 },
@@ -377,15 +432,16 @@ export class TrackView {
     const grass = this.texture(toTexture(grassImage(), { repeat: true, anisotropy }));
     grass.repeat.set(size / GRASS_TILE_METERS, size / GRASS_TILE_METERS);
     const material = this.track(new MeshBasicMaterial({ map: grass, vertexColors: true, color: this.groundLight }));
-    if (detail) {
-      material.defines = { GROUND_DETAIL: '' };
-    }
+    const seasons = this.seasons;
+    material.defines = { ...(detail ? { GROUND_DETAIL: '' } : {}), ...(seasons === null ? {} : { SEASONS: '' }) };
     const meadow = { value: this.texture(toTexture(meadowImage(), { repeat: true, srgb: false })) };
     material.onBeforeCompile = (shader) => {
       shader.uniforms['meadow'] = meadow;
+      seasons?.attach(shader);
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform sampler2D meadow;')
-        .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT);
+        .replace('#include <common>', `#include <common>\nuniform sampler2D meadow;\n${seasons === null ? '' : SEASON_GLSL}`)
+        .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT)
+        .replace('#include <color_fragment>', GROUND_SNOW_FRAGMENT);
     };
     this.prelit?.add(material);
     return new Mesh(geometry, material);
@@ -543,7 +599,10 @@ export class TrackView {
         cypress: this.track(cypressCrownGeometry()),
         olive: this.track(oliveCrownGeometry()),
       },
-      crownMaterial: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }))),
+      crownMaterials: {
+        evergreen: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }), false)),
+        deciduous: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }), true)),
+      },
       shadow: this.track(flatQuad()),
       shadowMaterial: this.shadowMaterial(softShadowImage(), 0.42, 'tree'),
     };
@@ -578,7 +637,9 @@ export class TrackView {
     const trunks = this.track(new InstancedMesh(parts.trunk, parts.trunkMaterial, indices.length));
     const crowns = new Map<TreeKind, InstancedMesh>();
     for (const [kind, count] of counts) {
-      const crown = this.track(new InstancedMesh(parts.crowns[kind], parts.crownMaterial, count));
+      const crown = this.track(
+        new InstancedMesh(parts.crowns[kind], parts.crownMaterials[DECIDUOUS.has(kind) ? 'deciduous' : 'evergreen'], count),
+      );
       crown.name = `forest:crowns:${kind}`;
       crown.count = 0;
       crowns.set(kind, crown);
@@ -740,16 +801,30 @@ export class TrackView {
   }
 
   /** Sways the trees' crowns (instanced) in the wind (update, setWetness). Returns the material. */
-  private swaying(material: MeshLambertMaterial): MeshLambertMaterial {
+  /** The wind sways `material`'s crowns; a `deciduous` tree's follow the season too. */
+  private swaying(material: MeshLambertMaterial, deciduous: boolean): MeshLambertMaterial {
     const wind = this.wind;
+    const seasons = deciduous ? this.seasons : null;
+    if (seasons !== null) {
+      material.defines = { SEASONS: '' };
+    }
     material.onBeforeCompile = (shader) => {
       shader.uniforms['windTime'] = wind.windTime;
       shader.uniforms['windStrength'] = wind.windStrength;
+      seasons?.attach(shader);
       shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', '#include <common>\nuniform float windTime;\nuniform float windStrength;')
+        .replace(
+          '#include <common>',
+          `#include <common>\nuniform float windTime;\nuniform float windStrength;\n${seasons === null ? '' : SEASON_GLSL}`,
+        )
         .replace('#include <project_vertex>', CROWN_PROJECT_VERTEX);
+      if (seasons !== null) {
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <color_vertex>', DECIDUOUS_COLOR_VERTEX)
+          .replace('#include <begin_vertex>', DECIDUOUS_BEGIN_VERTEX);
+      }
     };
-    material.customProgramCacheKey = () => 'tree-crown-wind';
+    material.customProgramCacheKey = () => (seasons === null ? 'tree-crown-wind' : 'tree-crown-wind|seasons');
     return material;
   }
 
@@ -898,7 +973,8 @@ interface TreeParts {
   readonly trunk: BufferGeometry;
   readonly trunkMaterial: Material;
   readonly crowns: Readonly<Record<TreeKind, BufferGeometry>>;
-  readonly crownMaterial: Material;
+  /** The crowns of trees in leaf all year, and of those that lose their leaves (they follow the season). */
+  readonly crownMaterials: { readonly evergreen: Material; readonly deciduous: Material };
   readonly shadow: BufferGeometry;
   readonly shadowMaterial: Material;
 }

@@ -17,6 +17,7 @@ import {
 } from './definitions/TrafficVehicleDefinition';
 import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
 import { validateRivalCompanyDefinition, type RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
+import { SEASONS } from './definitions/Season';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
 import { validateVehicleDefinition, type VehicleDefinition } from './definitions/VehicleDefinition';
 import {
@@ -127,6 +128,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);
+  validateWeatherSeasons(validator, content);
   validateDaylightPhases(validator, content);
   validateRivalReferences(validator, content);
   return validator.issues;
@@ -145,6 +147,24 @@ function validateWeatherSuccessions(validator: Validator, content: GameContent):
       });
     }
   });
+}
+
+/** Every season has weather that may come in it. */
+function validateWeatherSeasons(validator: Validator, content: GameContent): void {
+  if (!Array.isArray(content.weather)) {
+    return; // Already reported by validateTable.
+  }
+  const weathers = content.weather.filter(isObject);
+  if (weathers.length === 0) {
+    return; // Nothing to follow the seasons: already reported.
+  }
+  for (const season of SEASONS) {
+    validator.check(
+      weathers.some((weather) => !Array.isArray(weather.seasons) || (weather.seasons as readonly unknown[]).includes(season)),
+      'weather',
+      `must have weather that may come in ${season}`,
+    );
+  }
 }
 
 /** Every time of day with a look of its own is there, and night falls after dusk and dawn. */

@@ -5,10 +5,12 @@ import {
   isControlSize,
   isSteeringMode,
   isTiltSensitivity,
+  isSeasonChoice,
   isTimeFlow,
   isWeatherChoice,
   type CameraMode,
   type ControlSize,
+  type SeasonChoice,
   type SteeringMode,
   type TiltSensitivity,
   type TimeFlow,
@@ -35,6 +37,8 @@ export interface DeviceSettings {
   readonly clockMinutes: number;
   /** The weather: as it comes, or held as one kind. */
   readonly weather: WeatherChoice;
+  /** The season: the calendar's, or held as one. */
+  readonly season: SeasonChoice;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
@@ -49,6 +53,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   timeFlow: 'passes',
   clockMinutes: 10 * 60,
   weather: 'auto',
+  season: 'auto',
 });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
@@ -58,7 +63,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather } =
+    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather, season } =
       parsed as Record<string, unknown>;
     return {
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
@@ -74,6 +79,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
           ? clockMinutes
           : DEFAULT_SETTINGS.clockMinutes,
       weather: isWeatherChoice(weather) ? weather : DEFAULT_SETTINGS.weather,
+      season: isSeasonChoice(season) ? season : DEFAULT_SETTINGS.season,
     };
   } catch {
     return DEFAULT_SETTINGS;

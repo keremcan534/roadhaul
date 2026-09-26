@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TIME_FLOWS, WEATHER_CHOICES } from '../../../../src/data/config/controls';
+import { SEASON_CHOICES, TIME_FLOWS, WEATHER_CHOICES } from '../../../../src/data/config/controls';
+import { SEASONS } from '../../../../src/data/definitions/Season';
 import { GAME_CONTENT } from '../../../../src/data/content';
 import { DEFAULT_GAME_CONFIG, QUALITY_CHOICES } from '../../../../src/data/config/GameConfig';
 import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
@@ -35,6 +36,8 @@ describe('string tables', () => {
       ...CLOCK_PRESETS.map((preset) => `settings.clock.${preset}`),
       ...TIME_FLOWS.map((flow) => `settings.timeFlow.${flow}`),
       ...WEATHER_CHOICES.map((choice) => `settings.weather.${choice}`),
+      ...SEASON_CHOICES.map((choice) => `settings.season.${choice}`),
+      ...SEASONS.map((season) => `season.${season}.message`),
       ...GAME_CONTENT.events.flatMap((event) => [`event.${event.id}.name`, `event.${event.id}.description`]),
       ...GAME_CONTENT.drivers.map((driver) => `driver.${driver.id}.name`),
       ...GAME_CONTENT.rivals.map((rival) => `rival.${rival.id}.name`),

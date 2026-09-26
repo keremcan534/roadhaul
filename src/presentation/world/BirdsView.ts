@@ -14,6 +14,7 @@ import { SeededRandom } from '../../core/random/SeededRandom';
 import { shorelineXAt } from '../../data/definitions/MapDefinition';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import type { PrelitMaterials } from './lighting';
+import { keptFromSnow } from './SeasonShading';
 
 /** Flocks over the fields: this many (every so many fields), of this many birds. */
 const FIELD_FLOCKS = 4;
@@ -113,6 +114,8 @@ export class BirdsView {
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
     this.mesh.name = 'birds';
+    // No snow settles on birds.
+    keptFromSnow(this.mesh);
     scene.add(this.mesh);
     this.update(0, 0, 0);
   }

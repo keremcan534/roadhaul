@@ -163,12 +163,64 @@ test('sets the time of day from Settings: night falls at once, the minimap shows
   expect(problems).toEqual([]);
 });
 
+test('holds the season picked in Settings: the land turns at once, snow lies in winter, and it is kept', async ({
+  page,
+}, testInfo) => {
+  test.slow(); // The game started twice, drawn in software.
+  const problems = watchForProblems(page);
+  // A July day: the calendar's summer (the tests' own date is December's: winter).
+  await openGame(page, '?lang=en&weather=clear', { date: '2025-07-15' });
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('data-season', 'summer');
+  await waitForFrames(page, 10);
+  const summer = await sceneColor(page, 0.6, 1);
+
+  await openSettingsWhileDriving(page);
+  const row = page.locator('.settings [data-setting="season"]');
+  await expect(row.locator('.settings__label')).toHaveText('Season');
+  await expect(row.locator('[data-season="auto"]')).toHaveAttribute('aria-checked', 'true');
+  await row.locator('[data-season="winter"]').click();
+  await expect(row.locator('[data-season="winter"]')).toHaveAttribute('aria-checked', 'true');
+  // Winter's weather can be picked too.
+  await expect(page.locator('.settings [data-setting="weather"] [data-weather="snow"]')).toBeVisible();
+  await closeSettingsAndResume(page);
+
+  // The land turns in a few seconds: snow lies on the ground, so the lower part of the picture grows lighter and
+  // loses summer's green.
+  await expect(html).toHaveAttribute('data-season', 'winter');
+  const green = (color: { r: number; g: number; b: number }): number => color.g - (color.r + color.b) / 2;
+  await expect
+    .poll(async () => {
+      const winter = await sceneColor(page, 0.6, 1);
+      return brightness(winter) > brightness(summer) * 1.15 && green(winter) < green(summer) * 0.5;
+    }, { timeout: 30_000 })
+    .toBe(true);
+  await testInfo.attach('winter from settings', { body: await sceneScreenshot(page), contentType: 'image/png' });
+
+  // Kept on the phone: a new visit starts in winter, and the setting says so.
+  await page.reload();
+  await expect(html).toHaveAttribute('data-boot-state', 'ready');
+  await expect(html).toHaveAttribute('data-season', 'winter');
+  await page.locator('[data-action="settings"]').click();
+  await expect(row.locator('[data-season="winter"]')).toHaveAttribute('aria-checked', 'true');
+
+  // Back to the calendar: July's summer.
+  await row.locator('[data-season="auto"]').click();
+  await expect(html).toHaveAttribute('data-season', 'summer');
+  await page.locator('[data-action="close-settings"]').click();
+  await page.reload();
+  await expect(html).toHaveAttribute('data-boot-state', 'ready');
+  await expect(html).toHaveAttribute('data-season', 'summer');
+  expect(problems).toEqual([]);
+});
+
 test('holds the weather picked in Settings from the moment it is picked, keeps it, and lets it change again', async ({
   page,
 }, testInfo) => {
   test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
-  await openGame(page, '?lang=en');
+  // An October day: rain is in season (in winter, the tests' own season, it turns to snow).
+  await openGame(page, '?lang=en', { date: '2025-10-01' });
   const html = page.locator('html');
   // A new company's day starts clear, and the weather changes as it comes.
   await expect(html).toHaveAttribute('data-weather', 'clear');

@@ -4,14 +4,15 @@ import type { WeatherDefinition } from '../definitions/WeatherDefinition';
  * The region's weather (spec §38). Clear days are the most common; rain
  * comes now and then and asks more of the driver: the road is slippery, the
  * lamps come on under the dark clouds, and the headlights only reach so far.
- * Each look is the weather's by day; the time of day (daylight.ts) is laid
- * under it.
+ * In winter snow comes instead of rain: the road grips less still, traffic
+ * slows, and the land turns white. Each look is the weather's by day; the
+ * time of day (daylight.ts) is laid under it.
  */
 export const WEATHER: readonly WeatherDefinition[] = [
   {
     id: 'clear',
     weight: 5,
-    next: ['cloudy', 'rain'],
+    next: ['cloudy', 'rain', 'snow'],
     minSeconds: 240,
     maxSeconds: 420,
     gripFactor: 1,
@@ -38,7 +39,7 @@ export const WEATHER: readonly WeatherDefinition[] = [
   {
     id: 'cloudy',
     weight: 3,
-    next: ['clear', 'rain'],
+    next: ['clear', 'rain', 'snow'],
     minSeconds: 180,
     maxSeconds: 360,
     gripFactor: 1,
@@ -66,6 +67,7 @@ export const WEATHER: readonly WeatherDefinition[] = [
     id: 'rain',
     weight: 2,
     next: ['clear', 'cloudy'],
+    seasons: ['spring', 'summer', 'autumn'],
     minSeconds: 150,
     maxSeconds: 300,
     gripFactor: 0.78,
@@ -87,6 +89,35 @@ export const WEATHER: readonly WeatherDefinition[] = [
       contrast: 0.97,
       warmth: -0.16,
       bloom: 0.35,
+    },
+  },
+  {
+    id: 'snow',
+    weight: 3,
+    next: ['cloudy', 'clear'],
+    seasons: ['winter'],
+    minSeconds: 180,
+    maxSeconds: 360,
+    gripFactor: 0.7,
+    trafficSpeedFactor: 0.8,
+    snowfall: 1,
+    look: {
+      zenithColor: 0x8a96a3,
+      horizonColor: 0xd3dae1,
+      fogDensity: 0.0058,
+      sunlight: 0.18,
+      skylight: 0.9,
+      lightColor: 0xf1f5fa,
+      cloudCover: 1,
+      cloudBrightness: 0.82,
+      rain: 0,
+      lamps: 0.3,
+      stars: 0,
+      moon: 0,
+      saturation: 0.86,
+      contrast: 0.98,
+      warmth: -0.12,
+      bloom: 0.25,
     },
   },
 ];

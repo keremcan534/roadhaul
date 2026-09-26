@@ -64,11 +64,22 @@ export function isTimeFlow(value: unknown): value is TimeFlow {
  * WeatherService), or held as one kind of weather, by its id in the
  * weather content.
  */
-export const WEATHER_CHOICES = ['auto', 'clear', 'cloudy', 'rain'] as const;
+export const WEATHER_CHOICES = ['auto', 'clear', 'cloudy', 'rain', 'snow'] as const;
 export type WeatherChoice = (typeof WEATHER_CHOICES)[number];
 
 export function isWeatherChoice(value: unknown): value is WeatherChoice {
   return (WEATHER_CHOICES as readonly unknown[]).includes(value);
+}
+
+/**
+ * The season (Settings): the calendar's (`auto`: SeasonService), or held as
+ * one season.
+ */
+export const SEASON_CHOICES = ['auto', 'spring', 'summer', 'autumn', 'winter'] as const;
+export type SeasonChoice = (typeof SEASON_CHOICES)[number];
+
+export function isSeasonChoice(value: unknown): value is SeasonChoice {
+  return (SEASON_CHOICES as readonly unknown[]).includes(value);
 }
 
 /** The choice that shows the weather `held` (its id, or null while it changes by itself): `auto` for one not offered. */

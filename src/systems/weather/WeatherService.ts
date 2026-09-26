@@ -7,6 +7,7 @@ import type { WeatherDefinition } from '../../data/definitions/WeatherDefinition
 import type { DrivingService } from '../driving/DrivingService';
 import type { GameEvents } from '../GameEvents';
 import type { TrafficService } from '../traffic/TrafficService';
+import type { SeasonSource } from './SeasonService';
 
 /** Seeds the weather's schedule. */
 const WEATHER_SEED = 38;
@@ -20,6 +21,17 @@ const TRAFFIC_STEP = 0.005;
  */
 const WETTING_SECONDS = 20;
 const DRYING_SECONDS = 180;
+/** Falling snow leaves the roads this wet, as slush. */
+const SLUSH_WETNESS = 0.5;
+/**
+ * Snow covers the ground this many seconds after it starts to fall hard,
+ * and melts this many seconds after it stops (down to the season's own).
+ * When the season turns (the calendar's, or the player's pick), the ground
+ * turns with the land, in this many seconds.
+ */
+const SNOWING_SECONDS = 40;
+const MELTING_SECONDS = 600;
+const SEASON_TURN_SECONDS = 2.5;
 
 /** How the time of day changes traffic's speed (TimeOfDayService). */
 export interface DaylightTraffic {
@@ -34,9 +46,11 @@ export interface DaylightTraffic {
  * modifier) and how fast traffic drives, with the time of day's slower
  * traffic in the dark (`daylight`) on top. Presentation reads `previous`,
  * `current` and `blend` (and the blended `rain` and `lamps`, and how wet
- * the roads are) to draw it, over the time of day's look. The player may
- * hold it as one weather (hold(), Settings), and let it change again. Call
- * update() every fixed step.
+ * the roads are, and how much snow lies) to draw it, over the time of
+ * day's look. It follows the season (`season`): a weather comes only in
+ * the seasons it names (snow in winter, rain in the others). The player
+ * may hold it as one weather (hold(), Settings), and let it change again.
+ * Call update() every fixed step.
  */
 export class WeatherService {
   private currentWeather: WeatherDefinition;
@@ -47,6 +61,10 @@ export class WeatherService {
   private appliedGrip = Number.NaN;
   private appliedTraffic = Number.NaN;
   private wetnessValue: number;
+  private snowCoverValue: number;
+  /** The season's snow when last looked at; while the season turns, the cover follows it at the land's pace. */
+  private seasonSnow: number;
+  private seasonTurning = false;
   /** Whether the schedule runs: the config's to begin with, then the player's (hold). */
   private changing: boolean;
   /** Reused for every grip update. */
@@ -60,11 +78,14 @@ export class WeatherService {
     private readonly config: GameConfig['weather'],
     private readonly logger: Logger,
     private readonly daylight: DaylightTraffic | null = null,
+    private readonly season: SeasonSource | null = null,
   ) {
     this.currentWeather = content.weather.get(config.initialWeatherId);
     this.previousWeather = this.currentWeather;
     this.remainingSeconds = this.spellLength(this.currentWeather);
-    this.wetnessValue = this.currentWeather.look.rain;
+    this.wetnessValue = Math.max(this.currentWeather.look.rain, SLUSH_WETNESS * (this.currentWeather.snowfall ?? 0));
+    this.seasonSnow = season?.groundSnow ?? 0;
+    this.snowCoverValue = Math.max(this.currentWeather.snowfall ?? 0, this.seasonSnow);
     this.changing = config.changes;
     this.apply();
   }
@@ -99,6 +120,21 @@ export class WeatherService {
     return mix(this.previousWeather.look.rain, this.currentWeather.look.rain, this.blendValue);
   }
 
+  /** How hard it snows now, 0..1 (blended during a transition). */
+  get snow(): number {
+    return mix(this.previousWeather.snowfall ?? 0, this.currentWeather.snowfall ?? 0, this.blendValue);
+  }
+
+  /**
+   * How much of the ground snow covers, 0..1: it settles soon after snow
+   * starts to fall (as much as it falls hard) and melts slowly after it
+   * stops, down to what the season keeps (some in winter, none else). When
+   * the season turns, it turns with it in a few seconds.
+   */
+  get snowCover(): number {
+    return this.snowCoverValue;
+  }
+
   /** How brightly headlights and lamps shine for the weather (rain darkens the day), 0..1, blended during a transition. */
   get lamps(): number {
     return mix(this.previousWeather.look.lamps, this.currentWeather.look.lamps, this.blendValue);
@@ -125,17 +161,37 @@ export class WeatherService {
     } else if (this.daylight !== null) {
       this.applyTraffic();
     }
-    const rain = this.rain;
+    const snow = this.snow;
+    const wet = Math.max(this.rain, SLUSH_WETNESS * snow);
     this.wetnessValue =
-      this.wetnessValue < rain
-        ? Math.min(rain, this.wetnessValue + dt / WETTING_SECONDS)
-        : Math.max(rain, this.wetnessValue - dt / DRYING_SECONDS);
+      this.wetnessValue < wet
+        ? Math.min(wet, this.wetnessValue + dt / WETTING_SECONDS)
+        : Math.max(wet, this.wetnessValue - dt / DRYING_SECONDS);
+    const seasonSnow = this.season?.groundSnow ?? 0;
+    if (seasonSnow !== this.seasonSnow) {
+      this.seasonSnow = seasonSnow;
+      this.seasonTurning = true;
+    }
+    const cover = Math.max(snow, seasonSnow);
+    this.snowCoverValue =
+      this.snowCoverValue < cover
+        ? Math.min(cover, this.snowCoverValue + dt / (this.seasonTurning ? SEASON_TURN_SECONDS : SNOWING_SECONDS))
+        : Math.max(cover, this.snowCoverValue - dt / (this.seasonTurning ? SEASON_TURN_SECONDS : MELTING_SECONDS));
+    if (this.snowCoverValue === cover) {
+      this.seasonTurning = false;
+    }
     if (!this.changing) {
       return;
     }
     this.remainingSeconds -= dt;
-    if (this.remainingSeconds <= 0) {
-      this.turnTo(this.pickNext());
+    // Out of season (the season has turned): it turns now, to what the season brings.
+    if (this.remainingSeconds <= 0 || (this.blendValue === 1 && !this.inSeason(this.currentWeather))) {
+      const next = this.pickNext();
+      if (next !== this.currentWeather) {
+        this.turnTo(next);
+      } else {
+        this.remainingSeconds = this.spellLength(next);
+      }
     }
   }
 
@@ -189,12 +245,15 @@ export class WeatherService {
     this.events.emit('WeatherChanged', { weatherId: next.id, previousId: this.previousWeather.id });
   }
 
-  /** Another weather than the current one, one it may turn into (the day's order), by weight. */
+  /**
+   * Another weather than the current one, in season, one it may turn into
+   * (the day's order), by weight; any other in season when none of those is.
+   */
   private pickNext(): WeatherDefinition {
     const allowed = this.currentWeather.next;
-    const choices = this.content.weather.all.filter(
-      (weather) => weather !== this.currentWeather && (allowed === undefined || allowed.includes(weather.id)),
-    );
+    const others = this.content.weather.all.filter((weather) => weather !== this.currentWeather && this.inSeason(weather));
+    const successors = others.filter((weather) => allowed === undefined || allowed.includes(weather.id));
+    const choices = successors.length > 0 ? successors : others;
     if (choices.length === 0) {
       return this.currentWeather;
     }
@@ -207,6 +266,11 @@ export class WeatherService {
       }
     }
     return choices[choices.length - 1]!;
+  }
+
+  /** Whether `weather` may come in the season now (any, without a season to follow). */
+  private inSeason(weather: WeatherDefinition): boolean {
+    return this.season === null || weather.seasons === undefined || weather.seasons.includes(this.season.season);
   }
 
   private spellLength(weather: WeatherDefinition): number {

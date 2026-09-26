@@ -13,6 +13,7 @@ const DEFAULTS: DeviceSettings = {
   timeFlow: 'passes',
   clockMinutes: 600,
   weather: 'auto',
+  season: 'auto',
 };
 
 describe('device settings', () => {
@@ -31,6 +32,7 @@ describe('device settings', () => {
       timeFlow: 'stopped',
       clockMinutes: 21 * 60 + 15,
       weather: 'rain',
+      season: 'winter',
     };
     expect(saveSettings(storage, picked)).toBe(true);
 
@@ -43,7 +45,7 @@ describe('device settings', () => {
       '{',
       'null',
       '[]',
-      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm"}',
+      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon"}',
     ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);
