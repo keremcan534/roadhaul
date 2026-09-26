@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   centreOf,
   headingChange,
+  OPEN_ROAD,
   openGame,
   sceneScreenshot,
   shownHeading,
@@ -111,7 +112,7 @@ for (const [key, direction, name] of [
 ] as const) {
   test(`steers ${name} with the ${key} key`, async ({ page }) => {
     const problems = watchForProblems(page);
-    await openGame(page, '?debug');
+    await openGame(page, OPEN_ROAD);
     await page.keyboard.down('ArrowUp');
     await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
     const before = await shownHeading(page);
@@ -129,7 +130,7 @@ for (const [key, direction, name] of [
 
 test('turns the truck right when the on-screen wheel turns clockwise', async ({ page }) => {
   const problems = watchForProblems(page);
-  await openGame(page, '?debug');
+  await openGame(page, OPEN_ROAD);
   await page.keyboard.down('ArrowUp'); // Gas from the keyboard, steering from the touch wheel.
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
   const before = await shownHeading(page);
