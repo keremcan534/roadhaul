@@ -13,6 +13,7 @@ import {
   ShaderMaterial,
   ShadowMaterial,
   Vector3,
+  Vector4,
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { smoothstep } from '../../../../src/core/math/scalar';
@@ -344,7 +345,7 @@ describe('EnvironmentView', () => {
     const shader = { uniforms: {} as Record<string, unknown>, vertexShader: '#include <common>\n#include <begin_vertex>', fragmentShader: '#include <common>\n#include <opaque_fragment>' };
     material.onBeforeCompile(shader as never, undefined as never);
     expect(shader.uniforms['hazeColor']).toBe(view.sky.horizon);
-    expect(shader.fragmentShader).toContain('mix(gl_FragColor.rgb, hazeColor, vHaze)');
+    expect(shader.fragmentShader).toContain('mix(gl_FragColor.rgb, hazeColor, vHaze) + vTownGlow');
   });
 
   it('lowers the sun at dusk: warm, low light, a glowing horizon, less of it on flat ground, and a glow after sunset', () => {
@@ -407,6 +408,44 @@ describe('EnvironmentView', () => {
     view.applySky(skyAt(-5), placed(toward(-5, 250)));
     expect(uniforms['earthShadow']!.value).toBeGreaterThan(shallow);
     expect(dome(scene).fragmentShader).toContain('earthShadow');
+  });
+
+  it('glows over the towns at night on the horizon toward each: all round in one, smaller and dimmer the farther', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const glow = dome(scene).uniforms['townGlow']!.value as Vector4[];
+    view.setTowns([
+      { x: 0, z: 0 },
+      { x: 3000, z: 0 },
+    ]);
+
+    // Not by day, even with the lamps lit under rain clouds.
+    view.applySky(skyAt(40), placed(toward(40, 180)));
+    view.update({ x: -2000, z: 0 });
+    expect(glow.every((town) => town.z === 0)).toBe(true);
+    view.applySky(skyAt(40, 'rain'), placed(toward(40, 180)));
+    view.update({ x: -2000, z: 0 });
+    expect(glow.every((town) => town.z === 0)).toBe(true);
+
+    view.applySky(skyAt(-20), placed(toward(-20, 250)));
+    view.update({ x: -2000, z: 0 });
+    const [near, farther] = glow.map((town) => town.clone());
+    // Both east of the camera: the way toward them along +x; the nearer a little brighter (less air between)
+    // and standing taller (its glow fading slower up the sky); the unused slots dark.
+    expect(near!.x).toBeCloseTo(1, 6);
+    expect(near!.y).toBeCloseTo(0, 6);
+    expect(near!.z).toBeGreaterThan(farther!.z);
+    expect(near!.w).toBeLessThan(farther!.w / 2);
+    expect(glow[2]!.z).toBe(0);
+    // In the town: all round, and at its brightest.
+    view.update({ x: 50, z: 0 });
+    expect(Math.hypot(glow[0]!.x, glow[0]!.y)).toBeLessThan(0.1);
+    expect(glow[0]!.z).toBeGreaterThan(near!.z);
+    // On the sky, the hills' haze and the clouds' undersides alike.
+    expect(dome(scene).fragmentShader).toContain('townsGlow(bearing, height)');
+    const cloudMaterial = clouds(scene).material as ShaderMaterial;
+    expect(cloudMaterial.uniforms['townGlow']).toBe(dome(scene).uniforms['townGlow']);
+    expect(cloudMaterial.vertexShader).toContain('vTownGlow = townsGlow(');
   });
 
   it('tells the colour pass where the sun is and how it may glare, and the clouds how much light they can shade', () => {

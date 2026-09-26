@@ -225,7 +225,7 @@ The player asked for the most detail round the roads, a realistic cab with its s
 | The towns | ✅ | Pavements with kerbs along every street (paved ground: asphalt grip, no grass), benches, bins and a bus shelter, billboards for four original local businesses on the roads in, speed limits where the roads enter (map flag `streetscape`) |
 | The country | ✅ | Power lines on wooden poles along the country roads with their wires, fences round the grain and dry-stone walls round the other fields, boulders, grazing sheep and cows, poplar windbreaks, olive groves and cypress avenues into the towns (map flag `countryside`); the poles, boulders, animals and furniture are solid |
 | Road studs | ✅ | Cat's eyes on the highway's lines, lighting up in the headlights |
-| The sky and the light | ✅ | The Earth's shadow and the Belt of Venus opposite the sun at twilight; the sun's glare and the lens's ghosts where it shows (the colour pass); broken cloud's shadows drifting over the land and all on it |
+| The sky and the light | ✅ | The Earth's shadow and the Belt of Venus opposite the sun at twilight; the towns' glow on the night's horizon; the sun's glare and the lens's ghosts where it shows (the colour pass); broken cloud's shadows drifting over the land and all on it |
 
 - The scenery costs about 25 ms to place and 90 ms to build on a desktop (the parts are stamped from shared ones and merged per 600 m tile); a phone takes several times that at boot.
 - The cloud shadows and the sun's glare are left out when drawn in software, where every pixel counts; the end-to-end tests there see the rest.

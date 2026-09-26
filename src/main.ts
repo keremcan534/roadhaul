@@ -260,6 +260,8 @@ async function start(): Promise<void> {
     prelit,
   });
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
+  // At night the towns glow on the horizon, over their depots.
+  environment.setTowns(driving.world.depots.map((depot) => depot.yard));
   // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
   const scenery = new SceneryView(renderHost.scene, driving.world, { castShadows, anisotropy: renderHost.anisotropy });
   // The sea mirrors the sky, so it follows the weather with it.
