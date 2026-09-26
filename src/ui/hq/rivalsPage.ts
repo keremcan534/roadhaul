@@ -4,6 +4,7 @@ import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { CityStatus, LeagueEntry, MarketNews, RivalService, RivalStatus } from '../../systems/rivals/RivalService';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { shareBar } from './shareBar';
 
 /** The player's company on the map and in the bars: the fleet's amber. */
 export const PLAYER_COLOR = '#ffb020';
@@ -155,21 +156,12 @@ export class RivalsPage {
           : strings.t('hq.rivals.leader', { company: this.companyName(city.leaderId, false) }),
       ),
     );
-    const bar = element(document, 'div', 'share-bar');
-    bar.setAttribute('role', 'img');
-    const described: string[] = [];
-    for (const { companyId, share } of city.shares) {
-      if (share <= 0) {
-        continue;
-      }
-      const part = element(document, 'span', 'share-bar__part');
-      part.dataset.companyId = companyId;
-      part.style.width = `${(share * 100).toFixed(2)}%`;
-      part.style.setProperty('--company-color', this.color(companyId));
-      bar.append(part);
-      described.push(`${this.companyName(companyId, false)} ${strings.percent(share)}`);
-    }
-    bar.setAttribute('aria-label', described.join(', '));
+    const bar = shareBar(
+      document,
+      city.shares,
+      (companyId) => this.color(companyId),
+      (companyId, share) => `${this.companyName(companyId, false)} ${strings.percent(share)}`,
+    );
     const own = city.shares.find((share) => share.companyId === PLAYER_COMPANY_ID)?.share ?? 0;
     const standing = element(
       document,
