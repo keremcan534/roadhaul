@@ -132,19 +132,20 @@ export class RenderHost {
   }
 
   /**
-   * The sun lies toward `direction` (unit: it is that far off) and may glare
-   * on the picture at `strength` (0..1): the colour pass draws its glare and
-   * the lens's ghosts where it shows (PostProcessing.setSun); not when drawn
-   * in software. Call with the camera placed for the frame. Allocation-free.
+   * The sun lies toward `direction` (unit: it is that far off), may glare on
+   * the picture at `strength` (0..1) and send shafts through the air at
+   * `shafts` (0..1): the colour pass draws its glare, the lens's ghosts and
+   * the shafts round it (PostProcessing.setSun); not when drawn in software.
+   * Call with the camera placed for the frame. Allocation-free.
    */
-  setSun(direction: Readonly<{ x: number; y: number; z: number }>, strength: number): void {
+  setSun(direction: Readonly<{ x: number; y: number; z: number }>, strength: number, shafts = 0): void {
     // In software every pixel of the glare counts: none there.
     if (this.post === null || this.softwareRendering) {
       return;
     }
     this.camera.updateMatrixWorld();
-    if (strength > 0 && sunOnPicture(this.camera, direction, this.sunPoint)) {
-      this.post.setSun(this.sunPoint.x, this.sunPoint.y, strength);
+    if ((strength > 0 || shafts > 0) && sunOnPicture(this.camera, direction, this.sunPoint)) {
+      this.post.setSun(this.sunPoint.x, this.sunPoint.y, strength, shafts);
     } else {
       this.post.setSun(-10, -10, 0);
     }
