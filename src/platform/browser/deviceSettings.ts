@@ -6,11 +6,13 @@ import {
   isSteeringMode,
   isTiltSensitivity,
   isTimeFlow,
+  isWeatherChoice,
   type CameraMode,
   type ControlSize,
   type SteeringMode,
   type TiltSensitivity,
   type TimeFlow,
+  type WeatherChoice,
 } from '../../data/config/controls';
 import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfig';
 
@@ -31,6 +33,8 @@ export interface DeviceSettings {
   readonly timeFlow: TimeFlow;
   /** The game's time of day, minutes after midnight: picked in Settings, and kept as the day goes on. */
   readonly clockMinutes: number;
+  /** The weather: as it comes, or held as one kind. */
+  readonly weather: WeatherChoice;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
@@ -44,6 +48,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   camera: 'chase',
   timeFlow: 'passes',
   clockMinutes: 10 * 60,
+  weather: 'auto',
 });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
@@ -53,10 +58,8 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes } = parsed as Record<
-      string,
-      unknown
-    >;
+    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather } =
+      parsed as Record<string, unknown>;
     return {
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
       sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
@@ -70,6 +73,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
         typeof clockMinutes === 'number' && clockMinutes >= 0 && clockMinutes < MINUTES_PER_DAY
           ? clockMinutes
           : DEFAULT_SETTINGS.clockMinutes,
+      weather: isWeatherChoice(weather) ? weather : DEFAULT_SETTINGS.weather,
     };
   } catch {
     return DEFAULT_SETTINGS;

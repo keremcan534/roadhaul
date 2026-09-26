@@ -6,7 +6,7 @@ import { shiftedClock, systemClock } from './core/time/Clock';
 import { formatClock } from './core/time/dayTime';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
-import type { SteeringMode, TiltStatus } from './data/config/controls';
+import { weatherChoiceFor, type SteeringMode, type TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
@@ -207,6 +207,10 @@ async function start(): Promise<void> {
         ? requestedTime.minutes
         : timeOfDay.timeOf(requestedTime.phase),
   );
+  // The weather: as it comes, or held as the player picked it (Settings), unless the address sets it (`?weather=`).
+  if ((query.get('weather')?.trim() ?? '') === '') {
+    weather.hold(settings.weather === 'auto' ? null : settings.weather);
+  }
   /** How wet the roads are: the weather's, or as the address keeps them (`?wet=`). */
   const keptWetness = requestedWetness(query);
   /** How thick the morning mist lies: the morning's, or as the address keeps it (`?mist=`). */
@@ -663,6 +667,7 @@ async function start(): Promise<void> {
       clockMinutes: timeOfDay.minutes,
       timeFlow: timeOfDay.flow,
       clockPresets: clockPresets(),
+      weather: weatherChoiceFor(weather.held),
     },
     {
     onQuality: (choice) => {
@@ -712,6 +717,11 @@ async function start(): Promise<void> {
       settings = { ...settings, timeFlow: flow, clockMinutes: timeOfDay.minutes };
       saveSettings(storage, settings);
       settingsDialog.showClock(timeOfDay.minutes, clockPresets());
+    },
+    onWeather: (choice) => {
+      weather.hold(choice === 'auto' ? null : choice);
+      settings = { ...settings, weather: choice };
+      saveSettings(storage, settings);
     },
     onClose: () => settingsDialog.close(),
     },
@@ -789,6 +799,20 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.fleetSentOut', { driver: driverName(strings, { id: driverId }), truck: truckName }), 'success');
         } else {
           logger.warn(`Could not send ${instanceId} out with ${driverId}: ${assigned.error}.`);
+        }
+      },
+      onBuyTruckFor: (driverId) => {
+        const sent = fleet.buyTruckFor(driverId);
+        if (sent.ok) {
+          const instanceId = sent.value.truckInstanceId!;
+          const truckName = `${strings.vehicleName(garage.trucks.find((owned) => owned.instanceId === instanceId)!.definition.id)} ${truckNumber(instanceId)}`;
+          toasts.show(strings.t('toast.fleetSentOut', { driver: driverName(strings, { id: driverId }), truck: truckName }), 'success');
+        } else if (sent.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (sent.error === 'garageFull') {
+          toasts.show(strings.t('toast.garageFull'), 'warning');
+        } else {
+          logger.warn(`Could not buy ${driverId} a truck: ${sent.error}.`);
         }
       },
       onRecallTruck: (driverId) => {

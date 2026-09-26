@@ -34,8 +34,9 @@ export interface DaylightTraffic {
  * modifier) and how fast traffic drives, with the time of day's slower
  * traffic in the dark (`daylight`) on top. Presentation reads `previous`,
  * `current` and `blend` (and the blended `rain` and `lamps`, and how wet
- * the roads are) to draw it, over the time of day's look. Call update()
- * every fixed step.
+ * the roads are) to draw it, over the time of day's look. The player may
+ * hold it as one weather (hold(), Settings), and let it change again. Call
+ * update() every fixed step.
  */
 export class WeatherService {
   private currentWeather: WeatherDefinition;
@@ -46,6 +47,8 @@ export class WeatherService {
   private appliedGrip = Number.NaN;
   private appliedTraffic = Number.NaN;
   private wetnessValue: number;
+  /** Whether the schedule runs: the config's to begin with, then the player's (hold). */
+  private changing: boolean;
   /** Reused for every grip update. */
   private readonly modifier = { torqueFactor: 1, brakeFactor: 1, gripFactor: 1, stabilityFactor: 1 };
 
@@ -62,6 +65,7 @@ export class WeatherService {
     this.previousWeather = this.currentWeather;
     this.remainingSeconds = this.spellLength(this.currentWeather);
     this.wetnessValue = this.currentWeather.look.rain;
+    this.changing = config.changes;
     this.apply();
   }
 
@@ -78,6 +82,11 @@ export class WeatherService {
   /** How far the transition from `previous` to `current` is, 0..1. */
   get blend(): number {
     return this.blendValue;
+  }
+
+  /** The weather it keeps (hold(), or the config's that it may not change), or null while it changes by itself. */
+  get held(): string | null {
+    return this.changing ? null : this.currentWeather.id;
   }
 
   /** The truck's grip now, as a factor (blended during a transition). */
@@ -121,7 +130,7 @@ export class WeatherService {
       this.wetnessValue < rain
         ? Math.min(rain, this.wetnessValue + dt / WETTING_SECONDS)
         : Math.max(rain, this.wetnessValue - dt / DRYING_SECONDS);
-    if (!this.config.changes) {
+    if (!this.changing) {
       return;
     }
     this.remainingSeconds -= dt;
@@ -145,6 +154,24 @@ export class WeatherService {
     if (previous !== next) {
       this.events.emit('WeatherChanged', { weatherId: next.id, previousId: previous.id });
     }
+  }
+
+  /**
+   * Keeps the weather as `weatherId` from now on: it turns to it straight
+   * away (set), the roads wetting or drying from there, and turns no more.
+   * Null lets it change by itself again: the weather now lasts a spell, then
+   * turns as it would.
+   */
+  hold(weatherId: string | null): void {
+    if (weatherId === null) {
+      if (!this.changing) {
+        this.changing = true;
+        this.remainingSeconds = this.spellLength(this.currentWeather);
+      }
+      return;
+    }
+    this.changing = false;
+    this.set(weatherId);
   }
 
   dispose(): void {

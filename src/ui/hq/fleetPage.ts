@@ -20,6 +20,7 @@ export interface FleetPageActions {
   readonly onHire: (driverId: string) => void;
   readonly onDismiss: (driverId: string) => void;
   readonly onAssign: (driverId: string, instanceId: string) => void;
+  readonly onBuyTruckFor: (driverId: string) => void;
   readonly onRecall: (driverId: string) => void;
   readonly onSwitch: (instanceId: string) => void;
 }
@@ -218,6 +219,9 @@ export class FleetPage {
       ),
     );
     const bottom = element(document, 'div', 'driver-card__bottom');
+    if (truck === undefined) {
+      bottom.append(this.truckFor(driver.definition.id, trucks));
+    }
     const dismiss = button(document, 'button--secondary', strings.t('hq.fleet.dismiss'), 'dismiss-driver', () =>
       actions.onDismiss(driver.definition.id),
     );
@@ -225,6 +229,42 @@ export class FleetPage {
     bottom.append(dismiss);
     card.append(bottom);
     return card;
+  }
+
+  /**
+   * For a hired driver without a truck: the truck waiting in the garage to
+   * give them, else one to buy them (the cheapest on sale), else why not.
+   */
+  private truckFor(driverId: string, trucks: readonly OwnedTruck[]): HTMLElement {
+    const { document, strings, actions } = this;
+    const waiting = trucks.find((candidate) => !candidate.active && candidate.driverId === null);
+    let control: HTMLButtonElement;
+    if (waiting !== undefined) {
+      control = button(
+        document,
+        'button--primary',
+        strings.t('hq.fleet.give', { truck: `${strings.vehicleName(waiting.definition.id)} · ${truckNumber(waiting.instanceId)}` }),
+        'give-truck',
+        () => actions.onAssign(driverId, waiting.instanceId),
+      );
+      control.dataset.instanceId = waiting.instanceId;
+    } else {
+      const offer = this.services.fleet.truckToBuy();
+      if (offer === null) {
+        return element(document, 'p', 'driver-card__hint', strings.t('hq.fleet.garageFull', { count: this.services.garage.capacity }));
+      }
+      control = button(
+        document,
+        'button--primary',
+        strings.t('hq.fleet.buyFor', { truck: strings.vehicleName(offer.definition.id), price: strings.money(offer.price) }),
+        'buy-truck-for',
+        () => actions.onBuyTruckFor(driverId),
+      );
+      control.dataset.vehicleId = offer.definition.id;
+      control.disabled = !this.services.economy.canAfford(offer.price);
+    }
+    control.dataset.driverId = driverId;
+    return control;
   }
 
   private marketCard(offer: DriverOffer): HTMLElement {

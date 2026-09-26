@@ -54,3 +54,31 @@ test('hires a driver, buys a second truck and sends it out on contracts that pay
   await expect(page.locator('.fleet-truck[data-instance-id="truck_002"]')).toHaveAttribute('data-state', 'you');
   expect(problems).toEqual([]);
 });
+
+test('gives a driver waiting for a truck one from their card: bought for them, or one waiting in the garage', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await continueSavedCompany(page, savedCompany({ credits: 40_000 }), '?lang=en');
+  const credits = page.locator('.hq__credits');
+  await openPanel(page, 'fleet');
+  await page.locator('[data-action="hire-driver"][data-driver-id="driver_selin"]').click();
+  const selin = page.locator('.driver-card[data-driver-id="driver_selin"][data-hired="true"]');
+  await expect(selin.locator('.driver-card__status')).toHaveText('Waiting for a truck');
+
+  // No truck waiting in the garage: the cheapest on sale, bought and sent out with her at once.
+  const buy = selin.locator('[data-action="buy-truck-for"]');
+  await expect(buy).toHaveText('Buy them a RoadHaul H1 · 12,000 credits');
+  await buy.click();
+  await expect(credits).toHaveText('26,500 credits');
+  const second = page.locator('.fleet-truck[data-instance-id="truck_002"]');
+  await expect(second).toHaveAttribute('data-state', 'onContract');
+  await expect(selin.locator('.driver-card__status')).toHaveText(/^Drives the RoadHaul H1 · /);
+
+  // Called back, the truck waits in the garage, and her card gives it back to her.
+  await second.locator('[data-action="recall-truck"]').click();
+  const give = selin.locator('[data-action="give-truck"]');
+  await expect(give).toHaveAttribute('data-instance-id', 'truck_002');
+  await give.click();
+  await expect(second).toHaveAttribute('data-state', 'onContract');
+  await expect(credits).toHaveText('26,500 credits');
+  expect(problems).toEqual([]);
+});

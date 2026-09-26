@@ -236,6 +236,16 @@ describe('TrafficView', () => {
     expect(glows.geometry.drawRange.count).toBe(8);
     const glow = new Vector3().fromBufferAttribute(glows.geometry.getAttribute('position') as BufferAttribute, 0);
     expect(glow.distanceTo(lamp)).toBeLessThan(0.2);
+    // The headlights' glows face the way the car goes, the tail lights' back: none shows from the wrong side.
+    const facings = glows.geometry.getAttribute('facing') as BufferAttribute;
+    const facing = new Vector3();
+    for (let i = 0; i < 4; i++) {
+      facing.fromBufferAttribute(facings, i);
+      const way = i < 2 ? 1 : -1;
+      expect(facing.x).toBeCloseTo(way * forwardX, 6);
+      expect(facing.y).toBe(0);
+      expect(facing.z).toBeCloseTo(way * forwardZ, 6);
+    }
 
     view.setLamps(0);
     view.update(sim, 1);

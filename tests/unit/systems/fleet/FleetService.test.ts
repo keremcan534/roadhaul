@@ -74,6 +74,29 @@ describe('FleetService', () => {
     expect(game.fleet.waiting.map((driver) => driver.definition.id)).toEqual(['driver_selin']);
   });
 
+  it('buys a driver without a truck the cheapest one on sale and sends them out at once; not with the garage full or the money short', async () => {
+    const game = await newCompany(1, 30_000);
+    game.fleet.hire('driver_kemal');
+    const credits = game.economy.credits;
+    expect(game.fleet.truckToBuy()?.definition.id).toBe('rh_h1');
+
+    const out = game.fleet.buyTruckFor('driver_kemal');
+    expect(out.ok && out.value).toMatchObject({ truckInstanceId: 'truck_002', activity: 'onContract' });
+    expect(game.economy.credits).toBe(credits - 12_000);
+    expect(game.garage.trucks[1]).toMatchObject({ instanceId: 'truck_002', driverId: 'driver_kemal' });
+    expect(game.fleet.buyTruckFor('driver_kemal')).toEqual({ ok: false, error: 'hasTruck' });
+    expect(game.fleet.buyTruckFor('driver_selin')).toEqual({ ok: false, error: 'notHired' });
+    // A level 1 company's garage holds two trucks: full now.
+    game.fleet.hire('driver_selin');
+    expect(game.fleet.truckToBuy()).toBeNull();
+    expect(game.fleet.buyTruckFor('driver_selin')).toEqual({ ok: false, error: 'garageFull' });
+
+    const poor = await newCompany(1, 5000);
+    poor.fleet.hire('driver_kemal');
+    expect(poor.fleet.buyTruckFor('driver_kemal')).toEqual({ ok: false, error: 'insufficientFunds' });
+    expect(poor.garage.trucks).toHaveLength(1);
+  });
+
   it('takes contract after contract between the cities, and pays the company each one\'s pay less the driver\'s share and the diesel', async () => {
     const game = await companyWithDriver();
     game.fleet.assign('driver_kemal', 'truck_002');

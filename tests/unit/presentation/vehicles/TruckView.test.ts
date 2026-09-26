@@ -475,13 +475,17 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(glows.geometry.drawRange.count).toBe(4);
     const positions = glows.geometry.getAttribute('position');
     const colors = glows.geometry.getAttribute('color');
+    const facings = glows.geometry.getAttribute('facing');
     for (let i = 0; i < 4; i++) {
       if (i < 2) {
         expect(positions.getZ(i)).toBeGreaterThan(front);
         expect(colors.getX(i) - colors.getZ(i)).toBeLessThan(0.5); // White, a little warm.
+        // Seen only from ahead of the truck, not round its cab from behind.
+        expect([facings.getX(i), facings.getY(i), facings.getZ(i)]).toEqual([0, 0, 1]);
       } else {
         expect(positions.getZ(i)).toBeLessThan(front - truck.body.lengthMeters);
         expect(colors.getX(i) - colors.getZ(i)).toBeGreaterThan(0.8); // Red.
+        expect([facings.getX(i), facings.getY(i), facings.getZ(i)]).toEqual([0, 0, -1]);
       }
     }
 
@@ -523,6 +527,44 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(turnedLeft.y).toBe(left.y);
     expect(forward.x).toBeCloseTo(1, 12);
     expect(forward.y).toBe(0);
+    expect(forward.z).toBeCloseTo(0, 12);
+  });
+
+  it('says what box its body fills, following the truck round: what keeps other lamps\' light off the road ahead', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    view.update({ x: 0, z: 0, heading: 0 }, state, 0);
+    const middle = new Vector3();
+    const forward = new Vector3();
+    const halfSize = new Vector3();
+    const left = new Vector3();
+    const right = new Vector3();
+    const facing = new Vector3();
+    view.headlamps(left, right, facing);
+
+    view.bodyBox(middle, forward, halfSize);
+
+    // From the ground to the top of the body, as wide as the truck, from its tail to its nose (the headlamps just
+    // ahead of it).
+    const { lengthMeters, widthMeters, heightMeters } = truck.body;
+    expect(halfSize.x).toBeCloseTo(widthMeters / 2, 6);
+    expect(halfSize.y).toBeCloseTo(heightMeters / 2, 6);
+    expect(halfSize.z * 2).toBeGreaterThan(lengthMeters - 0.5);
+    expect(halfSize.z * 2).toBeLessThan(lengthMeters + 0.5);
+    expect(middle.x).toBe(0);
+    expect(middle.y).toBeCloseTo(heightMeters / 2, 6);
+    expect(middle.z + halfSize.z).toBeLessThan(left.z);
+    expect(middle.z + halfSize.z).toBeGreaterThan(left.z - 0.3);
+    expect(forward.toArray()).toEqual([0, 0, 1]);
+
+    // A quarter turn to the left faces +x.
+    view.update({ x: 100, z: 50, heading: Math.PI / 2 }, state, 0);
+    const turned = new Vector3();
+    view.bodyBox(turned, forward, halfSize);
+    expect(turned.x).toBeCloseTo(100 + middle.z, 6);
+    expect(turned.z).toBeCloseTo(50, 6);
+    expect(forward.x).toBeCloseTo(1, 12);
     expect(forward.z).toBeCloseTo(0, 12);
   });
 
