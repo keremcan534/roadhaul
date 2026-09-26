@@ -79,6 +79,44 @@ describe('TrafficView', () => {
     }
   });
 
+  it('paints only the painted parts, and lights the buses\' windows and route signs at night', () => {
+    const bus = TRAFFIC_VEHICLES.find((type) => type.kind === 'bus')!;
+    for (const type of TRAFFIC_VEHICLES) {
+      const geometry = vehicleGeometry(type);
+      const paint = geometry.getAttribute('paint');
+      const glow = geometry.getAttribute('glow');
+      const color = geometry.getAttribute('color');
+      expect(paint.count, type.id).toBe(geometry.getAttribute('position').count);
+      let glowing = 0;
+      let orange = 0;
+      for (let i = 0; i < paint.count; i++) {
+        // White takes the vehicle's paint; glass, tyres and trim keep their own colour.
+        const white = color.getX(i) > 0.99 && color.getY(i) > 0.99 && color.getZ(i) > 0.99;
+        expect(paint.getX(i), type.id).toBe(white ? 1 : 0);
+        glowing += glow.getX(i) + glow.getY(i) + glow.getZ(i) > 0 ? 1 : 0;
+        orange += glow.getX(i) > glow.getZ(i) * 4 ? 1 : 0;
+      }
+      // Only the bus glows: its lit windows, and its route sign in orange.
+      expect(glowing > 0, type.id).toBe(type === bus);
+      expect(orange > 0, type.id).toBe(type === bus);
+      geometry.dispose();
+    }
+
+    const scene = new Scene();
+    const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8);
+    const material = meshesOf(scene)[0]!.material as MeshBasicMaterial;
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      vertexShader: '#include <common>\n#include <color_vertex>',
+      fragmentShader: '#include <common>\n#include <emissivemap_fragment>',
+    };
+    material.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.vertexShader).toContain('mix( vec3( 1.0 ), instanceColor.rgb, paint )');
+    expect(shader.fragmentShader).toContain('totalEmissiveRadiance += vGlow * nightLights;');
+    view.setLamps(0.7);
+    expect(shader.uniforms['nightLights']!.value).toBe(0.7);
+  });
+
   it('puts two headlights on the front of every kind and two tail lights on the back, the glows just outside', () => {
     for (const type of TRAFFIC_VEHICLES) {
       const lamps = vehicleLamps(type);

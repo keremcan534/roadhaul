@@ -253,7 +253,9 @@ The player asked for graphics that make you say "wow" (rainbows, rain reflection
 | Puddles | ✅ | They fill the road's dips as it gets wetter (none when damp, about a sixth of the road when soaked) and dry back with it. Darker, mirroring the sky like still water; rings where the drops fall. One 128 px noise map |
 | Lightning and thunder | ✅ | In heavy rain: seeded strikes near and far, a few strokes each. The flash lights the sky, the clouds and the world; a bolt shows toward strikes within 4.5 km (one draw call while it shows). The thunder follows by the distance over the speed of sound: a crack when near, then a rolling rumble |
 | The sun's glitter on the sea | ✅ | Small facets that turn over sparkle where they catch the light: a glittering path toward a low sun, or the moon at night. A few lines in the sea's shader |
-| City life: buses, people on the pavements, parked cars | Next | The second "wow" batch |
+| People on the pavements | ✅ | Walkers up and down the town pavements and people waiting at the bus stops, placed from a seed, their walk in the vertex shader. Fewer at night and in the rain, umbrellas up in the rain. One draw call; 40, 80 or 140 at most by preset |
+| Detailed buses | ✅ | Two-tone, with window panes, doors, a route sign and air-conditioning. Their windows and route signs light up at night. Only painted parts take a vehicle's paint now |
+| Parked cars | Later | Along the kerb they would narrow the lanes; in yards and lots they need collisions and must leave room to manoeuvre |
 | Light shafts, morning mist | Later | Light shafts on the high preset only |
 
 ## Next step: 29 Device testing
