@@ -182,6 +182,41 @@ export interface RiverDefinition {
 /** How wide a river's water may be, meters. */
 export const RIVER_WIDTH_RANGE_METERS = [8, 60] as const;
 
+/** What grows in a forest: pines, broadleaf trees, or stands of each. */
+export const FOREST_KINDS = ['pine', 'broadleaf', 'mixed'] as const;
+export type ForestKind = (typeof FOREST_KINDS)[number];
+
+/**
+ * A forest: trees standing close inside an outline, on a darker floor of
+ * needles and fallen leaves. The roads, rivers, fields and whatever else
+ * stands there keep the trees back (DrivingWorld plants them).
+ */
+export interface ForestDefinition {
+  /** Stable snake_case id. */
+  readonly id: string;
+  readonly kind: ForestKind;
+  /** Its outline: three or more [x, z] corners in the map, in order either way round. */
+  readonly outline: readonly Point2[];
+}
+
+/** A forest covers at least this much ground, square meters. */
+export const MIN_FOREST_AREA_SQUARE_METERS = 2500;
+
+/**
+ * A town park: a mown lawn in a rectangle, crossed by gravel paths from the
+ * middle of each side to a fountain in its middle, with trees round its
+ * edges, benches and bins beside the paths and lamps along them
+ * (DrivingWorld lays it out).
+ */
+export interface ParkDefinition {
+  /** Stable snake_case id. */
+  readonly id: string;
+  readonly area: RectangleDefinition;
+}
+
+/** A park is at least this long and wide, meters: room for its paths, fountain and trees. */
+export const MIN_PARK_SIDE_METERS = 40;
+
 /**
  * A drivable area (spec §20, one region of the world): roads, buildings,
  * depots, rest areas, city name boards, the truck's start and scenery.
@@ -203,6 +238,10 @@ export interface MapDefinition {
   readonly sea?: SeaDefinition;
   /** Rivers across the land, under bridges where the roads cross them; absent: none. */
   readonly rivers?: readonly RiverDefinition[];
+  /** Forests; absent: none. */
+  readonly forests?: readonly ForestDefinition[];
+  /** The towns' parks; absent: none. */
+  readonly parks?: readonly ParkDefinition[];
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
@@ -329,6 +368,30 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       sizeValid && Math.abs(x) <= map.halfSizeMeters && Math.abs(z) <= map.halfSizeMeters;
     const seen = new Set<string>();
     map.rivers.forEach((river, index) => validateRiver(river, `${path}.rivers[${index}]`, validator, onMap, seen));
+  }
+  if (map.forests !== undefined && validator.check(Array.isArray(map.forests), `${path}.forests`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.forests.forEach((forest, index) => validateForest(forest, `${path}.forests[${index}]`, validator, inside, seen));
+  }
+  if (map.parks !== undefined && validator.check(Array.isArray(map.parks), `${path}.parks`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.parks.forEach((park, index) => {
+      const parkPath = `${path}.parks[${index}]`;
+      if (!validator.check(typeof park === 'object' && park !== null, parkPath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(park.id, `${parkPath}.id`)) {
+        validator.check(!seen.has(park.id), `${parkPath}.id`, `duplicate park id "${park.id}"`);
+        seen.add(park.id);
+      }
+      if (validateRectangle(park.area, `${parkPath}.area`, validator, inside)) {
+        validator.check(
+          Math.min(park.area.lengthMeters, park.area.widthMeters) >= MIN_PARK_SIDE_METERS,
+          `${parkPath}.area`,
+          `must be at least ${MIN_PARK_SIDE_METERS} m each way`,
+        );
+      }
+    });
   }
   const spawn = map.spawn;
   if (validator.check(typeof spawn === 'object' && spawn !== null, `${path}.spawn`, 'must be an object')) {
@@ -519,6 +582,65 @@ function validateRiver(
       );
     });
   }
+}
+
+function validateForest(
+  forest: ForestDefinition,
+  path: string,
+  validator: Validator,
+  inside: (x: number, z: number) => boolean,
+  seen: Set<string>,
+): void {
+  if (!validator.check(typeof forest === 'object' && forest !== null, path, 'must be an object')) {
+    return;
+  }
+  if (validator.id(forest.id, `${path}.id`)) {
+    validator.check(!seen.has(forest.id), `${path}.id`, `duplicate forest id "${forest.id}"`);
+    seen.add(forest.id);
+  }
+  validator.oneOf(forest.kind, FOREST_KINDS, `${path}.kind`);
+  const outline = forest.outline;
+  if (!validator.check(Array.isArray(outline) && outline.length >= 3, `${path}.outline`, 'needs at least 3 corners')) {
+    return;
+  }
+  const cornersValid = outline.every((point, index) =>
+    validator.check(
+      Array.isArray(point) && point.length === 2 && inside(point[0], point[1]),
+      `${path}.outline[${index}]`,
+      'must be an [x, z] pair inside the map',
+    ),
+  );
+  if (cornersValid) {
+    validator.check(
+      polygonArea(outline) >= MIN_FOREST_AREA_SQUARE_METERS,
+      `${path}.outline`,
+      `must cover at least ${MIN_FOREST_AREA_SQUARE_METERS} m²`,
+    );
+  }
+}
+
+/** The area inside a polygon's outline (its corners in order, either way round), square meters. */
+export function polygonArea(outline: readonly Point2[]): number {
+  let twice = 0;
+  for (let i = 0; i < outline.length; i++) {
+    const [ax, az] = outline[i]!;
+    const [bx, bz] = outline[(i + 1) % outline.length]!;
+    twice += ax * bz - bx * az;
+  }
+  return Math.abs(twice) / 2;
+}
+
+/** Whether (x, z) lies inside a polygon's outline (even-odd). */
+export function polygonContains(outline: readonly Point2[], x: number, z: number): boolean {
+  let inside = false;
+  for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+    const [ax, az] = outline[i]!;
+    const [bx, bz] = outline[j]!;
+    if (az > z !== bz > z && x < ((bx - ax) * (z - az)) / (bz - az) + ax) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 function validateRoad(

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Validator } from '../../../../src/core/validation/Validator';
 import {
   isInSea,
+  polygonArea,
+  polygonContains,
   rectangleContains,
   rectangleCorners,
   shorelineXAt,
@@ -275,6 +277,57 @@ describe('rivers', () => {
       'map.rivers[3].points[1]',
       'map.rivers[4].id',
     ]);
+  });
+});
+
+describe('forests and parks', () => {
+  const forest = {
+    id: 'test_wood',
+    kind: 'pine' as const,
+    outline: [
+      [20, 20],
+      [120, 20],
+      [120, 120],
+    ] as [number, number][],
+  };
+  const park = { id: 'test_park', area: { x: 0, z: -100, headingDegrees: 0, lengthMeters: 60, widthMeters: 50 } };
+
+  it('accepts a forest with an outline in the map, and a park big enough for its paths', () => {
+    expect(issuePaths(mapFixture({ forests: [forest], parks: [park] }))).toEqual([]);
+    expect(polygonArea(forest.outline)).toBeCloseTo(5000, 9);
+    expect(polygonContains(forest.outline, 100, 50)).toBe(true);
+    expect(polygonContains(forest.outline, 50, 100)).toBe(false);
+  });
+
+  it('asks each forest for an id of its own, a kind, three or more corners in the map and some ground', () => {
+    const map = mapFixture({
+      forests: [
+        { ...forest, kind: 'jungle' as never },
+        { ...forest, id: 'test_wood_2', outline: forest.outline.slice(0, 2) },
+        { ...forest, id: 'test_wood_3', outline: [...forest.outline.slice(0, 2), [120, 400]] },
+        { ...forest, id: 'test_wood_4', outline: [[0, 0], [30, 0], [30, 30]] },
+        forest,
+      ],
+    });
+    expect(issuePaths(map)).toEqual([
+      'map.forests[0].kind',
+      'map.forests[1].outline',
+      'map.forests[2].outline[2]',
+      'map.forests[3].outline',
+      'map.forests[4].id',
+    ]);
+  });
+
+  it('asks each park for an id of its own and room in the map for its paths', () => {
+    const map = mapFixture({
+      parks: [
+        { ...park, id: 'test_park_1', area: { ...park.area, widthMeters: 30 } },
+        { ...park, id: 'test_park_2', area: { ...park.area, z: -180 } },
+        park,
+        park,
+      ],
+    });
+    expect(issuePaths(map)).toEqual(['map.parks[0].area', 'map.parks[1].area', 'map.parks[3].id']);
   });
 });
 
