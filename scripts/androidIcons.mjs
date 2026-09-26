@@ -1,6 +1,7 @@
-// Draws the Android app's launcher icons: a dark box truck on the road, on
-// the game's amber. Original art, drawn in code like the game's textures, so
-// the app ships no borrowed images (spec §85).
+// Draws the Android app's launcher icons: RoadHaul's mark (an R whose leg is
+// a road running toward the viewer, src/ui/brand.ts) in asphalt on the
+// game's amber. Original art, drawn in code like the game's textures, so the
+// app ships no borrowed images (spec §85).
 //
 //   node scripts/androidIcons.mjs
 //
@@ -16,30 +17,28 @@ import { deflateSync } from 'node:zlib';
 
 const RES = join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/res');
 
-const AMBER = [0xf2, 0xb2, 0x33];
-const INK = [0x1b, 0x24, 0x30];
-const SKY = [0x9f, 0xd3, 0xff];
-const STEEL = [0xe8, 0xed, 0xf2];
+const AMBER = [0xf2, 0xa3, 0x3a];
+const ASPHALT = [0x16, 0x19, 0x1d];
+/** A part painted with this shows the plate under it (the road's dashes, the R's counter). */
+const PLATE = 'plate';
 
 /** Launcher sizes in pixels for each density: legacy icons are 48 dp, adaptive layers 108 dp. */
 const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
 
-// The truck, in the adaptive layer's 108-unit square. Everything stays inside
-// its 33-unit safe circle round (54, 54), which every launcher's mask keeps.
-const TRUCK = [
-  { color: INK, shape: roundedRect(28, 36, 60, 61, 2) }, // Box.
-  { color: AMBER, shape: roundedRect(31, 52, 57, 54.5, 1) }, // Stripe on the box.
-  { color: INK, shape: polygon([61, 41], [73, 41], [80, 50], [80, 61], [61, 61]) }, // Cab.
-  { color: SKY, shape: polygon([65, 44], [72, 44], [77, 50.5], [65, 50.5]) }, // Windscreen.
-  { color: INK, shape: roundedRect(28, 60, 80, 64.5, 1) }, // Chassis.
-  { color: INK, shape: circle(37, 66, 6) },
-  { color: STEEL, shape: circle(37, 66, 2.4) },
-  { color: INK, shape: circle(71, 66, 6) },
-  { color: STEEL, shape: circle(71, 66, 2.4) },
-  { color: INK, shape: roundedRect(33, 75.5, 43, 78, 1.25) }, // Road markings.
-  { color: INK, shape: roundedRect(49, 75.5, 59, 78, 1.25) },
-  { color: INK, shape: roundedRect(65, 75.5, 75, 78, 1.25) },
+// The mark, in its own 100-unit square (src/ui/brand.ts), painted in order.
+const MARK = [
+  { color: ASPHALT, shape: roundedRect(18, 10, 40.5, 90, 2) }, // The R's stem.
+  { color: ASPHALT, shape: (x, y) => (x >= 40 && x <= 56 && y >= 10 && y <= 58) || (x >= 56 && circle(56, 34, 24)(x, y)) }, // Its bowl.
+  { color: PLATE, shape: (x, y) => (x >= 40 && x <= 54 && y >= 25 && y <= 43) || (x >= 54 && circle(54, 34, 9)(x, y)) }, // The counter.
+  { color: ASPHALT, shape: polygon([42.5, 58], [65, 58], [96, 90], [44.5, 90]) }, // The leg: a road.
+  { color: PLATE, shape: polygon([53.99, 60.5], [56.09, 60.5], [58.67, 65], [56.04, 65]) }, // Its centre line.
+  { color: PLATE, shape: polygon([57.87, 69], [60.98, 69], [65, 76], [61.06, 76]) },
+  { color: PLATE, shape: polygon([63.12, 80.5], [67.59, 80.5], [73.05, 90], [67.45, 90]) },
 ];
+// Where the mark sits in the adaptive layer's 108-unit square: its middle, (57, 50), at the square's, and small
+// enough that everything stays inside the 33-unit safe circle round (54, 54) that every launcher's mask keeps.
+const MARK_SCALE = 0.6;
+const MARK_CENTER = [57, 50];
 
 function roundedRect(x0, y0, x1, y1, r) {
   return (x, y) => {
@@ -70,7 +69,7 @@ function polygon(...points) {
 /**
  * Renders `size` × `size` pixels, 4 × 4 samples each. `background(u, v)`
  * says whether a point (0..1 across the image) is on the icon's plate;
- * `zoom` shows the middle 108 / zoom units of the truck's square.
+ * `zoom` shows the middle 108 / zoom units of the adaptive square.
  */
 function render(size, background, zoom) {
   const pixels = Buffer.alloc(size * size * 4);
@@ -87,10 +86,13 @@ function render(size, background, zoom) {
           const v = (py + (sy + 0.5) / samples) / size;
           const x = 54 + (u - 0.5) * (108 / zoom);
           const y = 54 + (v - 0.5) * (108 / zoom);
-          let color = background(u, v) ? AMBER : null;
-          for (const part of TRUCK) {
-            if (part.shape(x, y)) {
-              color = part.color;
+          const markX = MARK_CENTER[0] + (x - 54) / MARK_SCALE;
+          const markY = MARK_CENTER[1] + (y - 54) / MARK_SCALE;
+          const plate = background(u, v) ? AMBER : null;
+          let color = plate;
+          for (const part of MARK) {
+            if (part.shape(markX, markY)) {
+              color = part.color === PLATE ? plate : part.color;
             }
           }
           if (color !== null) {
