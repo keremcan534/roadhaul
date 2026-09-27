@@ -41,6 +41,78 @@ describe('GameSessionService', () => {
     expect(game.session.hasSavedGame()).toBe(false);
   });
 
+  it('reads the saved company for the main menu without loading it', async () => {
+    const first = await boot();
+    expect(first.session.readSave()).toEqual({ ok: false, error: 'missing' });
+    first.session.startNewGame('Kuzey Lojistik');
+    first.missions.accept('first_package');
+    first.session.save();
+
+    const second = await boot(first.storage, 5_000);
+    const read = second.session.readSave();
+
+    expect(read.ok && read.value).toMatchObject({
+      companyName: 'Kuzey Lojistik',
+      level: 1,
+      credits: DEFAULT_GAME_CONFIG.newGame.startingCredits,
+      trucks: 1,
+      drivers: 0,
+      truckModelId: DEFAULT_GAME_CONFIG.newGame.startingVehicleId,
+      contract: { missionId: 'first_package', state: 'accepted' },
+    });
+    expect(second.session.isActive).toBe(false);
+  });
+
+  it('starts a new company at the depot picked, and saves it there', async () => {
+    const game = await boot();
+    const places = game.session.startPlaces(null);
+    const ironford = places.find((place) => place.kind === 'depot' && place.cityId === 'city_b')!;
+
+    game.session.startNewGame('Kuzey Lojistik', ironford.id);
+
+    expect(places[0]).toMatchObject({ id: 'home', kind: 'home', cityId: 'city_a', ...game.driving.world.spawn });
+    expect(game.driving.servicePoint).toMatchObject({ kind: 'depot', depot: { cityId: 'city_b' } });
+    expect(JSON.parse(game.storage.getItem(SAVE_KEYS.main)!).world.truck).toEqual({
+      x: ironford.x,
+      z: ironford.z,
+      headingRadians: ironford.heading,
+    });
+  });
+
+  it('continues where the truck was left, or at the rest area picked', async () => {
+    const first = await boot();
+    first.session.startNewGame('Kuzey Lojistik');
+    first.driving.placeTruck(-1700, -520, 0.4);
+    first.session.save();
+
+    const second = await boot(first.storage, 5_000);
+    const read = second.session.readSave();
+    const places = second.session.startPlaces(read.ok ? read.value : null);
+    expect(places[0]).toMatchObject({ id: 'left', kind: 'left', cityId: 'city_a', x: -1700, z: -520, heading: 0.4 });
+    const rest = places.find((place) => place.kind === 'restArea')!;
+
+    expect(second.session.continueGame(rest.id)).toEqual({ ok: true, value: undefined });
+
+    expect(second.driving.servicePoint?.kind).toBe('restArea');
+    const third = await boot(first.storage, 9_000);
+    third.session.continueGame();
+    expect(third.driving.vehicle).toMatchObject({ x: -1700, z: -520, heading: 0.4 });
+  });
+
+  it('goes on with a contract under way from where the truck was, and knows no other places', async () => {
+    const first = await boot();
+    first.session.startNewGame('Kuzey Lojistik');
+    first.missions.accept('first_package');
+    first.session.save();
+    const second = await boot(first.storage, 5_000);
+    const depot = second.session.startPlaces(null).find((place) => place.kind === 'depot')!;
+
+    expect(() => second.session.continueGame(depot.id)).toThrow('A contract is under way');
+    expect(() => second.session.startNewGame('Other Lojistik', 'nowhere')).toThrow('No place to start at is called nowhere');
+    expect(second.session.isActive).toBe(false);
+    expect(second.session.continueGame('left')).toEqual({ ok: true, value: undefined });
+  });
+
   it('continues a game exactly where it was left: money, progress, truck, fuel, damage and the contract', async () => {
     const first = await boot();
     first.session.startNewGame('Kuzey Lojistik');
