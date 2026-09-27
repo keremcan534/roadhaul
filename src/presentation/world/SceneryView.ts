@@ -101,8 +101,8 @@ const PILLAR_STONE = 0xb8b0a1;
 const PILLAR_CAP = 0xcac3b5;
 const MAILBOX_COLORS = [0x2f5d8a, 0x3e6b3d, 0x9a3a2e, 0x4b5058] as const;
 const MAILBOX_FLAG = 0xc7372f;
-/** The highway's fence: its wires' heights on its posts. */
-const FENCE_WIRE_HEIGHTS = [0.42, 0.78, 1.12] as const;
+/** The highway's fence: its two wires' heights on its posts. */
+const FENCE_WIRE_HEIGHTS = [0.55, 1.05] as const;
 /** Grazing: a head goes down and up this often (seconds), and now and then lifts to look round. */
 const GRAZE_PERIOD_SECONDS = 3.4;
 const LOOK_ROUND_EVERY_SECONDS = 23;
@@ -868,7 +868,9 @@ function addHedge(tiles: Tiles, hedge: Hedgerow): void {
  * The chunks of hedge from point `first` to point `last` of `points`,
  * dressed in their greens: each a block narrowing upward, its top a low
  * hump (four faces up to a ridge point, higher than its corners). The
- * sides' normals lean up, as foliage catches the sky: soft, not boxy.
+ * sides' normals lean up, as foliage catches the sky: soft, not boxy. A
+ * chunk's ends lie inside its neighbours, so only the hedge's own two ends
+ * are closed: a chunk is eight triangles, six meters of hedge.
  */
 function hedgeGeometry(points: readonly Point2[], first: number, last: number): BufferGeometry {
   const positions: number[] = [];
@@ -941,7 +943,11 @@ function hedgeGeometry(points: readonly Point2[], first: number, last: number): 
     const middleY = height * 0.45;
     for (let side = 0; side < 4; side++) {
       const next = (side + 1) % 4;
-      face([foot[side]!, foot[next]!, top[next]!, top[side]!], mx, middleY, mz, 0.55);
+      // Sides 1 and 3 are the chunk's ends: closed only where the hedge ends.
+      const open = (side === 1 && i < points.length - 2) || (side === 3 && i > 0);
+      if (!open) {
+        face([foot[side]!, foot[next]!, top[next]!, top[side]!], mx, middleY, mz, 0.55);
+      }
       face([top[side]!, top[next]!, ridge], mx, middleY, mz, 0.2);
     }
   }
@@ -974,9 +980,9 @@ function mailboxGeometry(look: number): BufferGeometry {
   ]);
 }
 
-/** A post of the highway's fence: a round wooden stake. */
+/** A post of the highway's fence: a wooden stake, four-sided and open at its ends (eight triangles: there are many). */
 function wireFencePostGeometry(): BufferGeometry {
-  return dress(new CylinderGeometry(0.05, 0.06, 1.3, 6).translate(0, 0.6, 0), WEATHERED_WOOD);
+  return dress(new CylinderGeometry(0.05, 0.065, 1.3, 4, 1, true).translate(0, 0.6, 0), WEATHERED_WOOD);
 }
 
 /** The fences' wires, straight from post to post at each of FENCE_WIRE_HEIGHTS, as line segments (like the power lines'). */
@@ -1137,9 +1143,9 @@ function roadSignGeometry(kind: RoadSignKind): BufferGeometry {
   }
 }
 
-/** A sign's grey post from the ground to `top`, behind its face and back. */
+/** A sign's grey post from the ground to `top`, behind its face and back: open at its ends, its top hidden by the sign. */
 function signPost(top: number): BufferGeometry {
-  return dress(new CylinderGeometry(0.03, 0.03, top, 6).translate(0, top / 2, -0.05), STEEL);
+  return dress(new CylinderGeometry(0.03, 0.03, top, 6, 1, true).translate(0, top / 2, -0.05), STEEL);
 }
 
 /** A warning triangle (upside down: give way) on its post: `face` toward +z (mirrored across for the right-hand ones), its back plain. */

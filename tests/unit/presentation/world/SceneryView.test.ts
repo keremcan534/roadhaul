@@ -71,10 +71,10 @@ describe('SceneryView', () => {
     const fenceSpans = world.roadFences.reduce((sum, fence) => sum + fence.points.length - 1, 0);
     expect(fenceSpans).toBeGreaterThan(0);
 
-    // The power lines: three wires a span, eight pieces each, four corners a piece; then the fences' three straight ones.
+    // The power lines: three wires a span, eight pieces each, four corners a piece; then the fences' two straight ones.
     const position = wires!.geometry.getAttribute('position') as BufferAttribute;
     const powerCorners = spans * 3 * 8 * 4;
-    expect(position.count).toBe(powerCorners + fenceSpans * 3 * 4);
+    expect(position.count).toBe(powerCorners + fenceSpans * 2 * 4);
     expect(wires!.frustumCulled).toBe(false);
     let fenceHighest = -Infinity;
     for (let index = powerCorners; index < position.count; index++) {
@@ -273,10 +273,10 @@ describe('SceneryView', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, edged, { debrisCapacity: 2 });
     expect(edged.hedgerows.length).toBeGreaterThan(0);
-    // The hedges add to the tiles' vertices: a hedge's chunk is some twenty-eight of them.
+    // The hedges add to the tiles' vertices: a chunk is twenty of them (its two sides, its hump), more at the hedge's ends.
     const vertices = meshes(scene, 'scenery:').filter((mesh) => /scenery:-?\d+,-?\d+$/.test(mesh.name)).reduce((sum, mesh) => sum + mesh.geometry.getAttribute('position').count, 0);
     const chunks = edged.hedgerows.reduce((sum, hedge) => sum + hedge.points.length - 1, 0);
-    expect(vertices).toBeGreaterThan(chunks * 28);
+    expect(vertices).toBeGreaterThan(chunks * 20);
 
     expect(edged.farmGates).toHaveLength(1);
     const { mailbox } = edged.farmGates[0]!;

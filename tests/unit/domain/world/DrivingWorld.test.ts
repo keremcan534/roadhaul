@@ -9,6 +9,7 @@ import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { input, STEP_SECONDS } from '../../../support/driving';
 import { billboardLegs } from '../../../../src/domain/world/townscape';
 import { directionBoardLegs } from '../../../../src/domain/world/roadSigns';
+import { HEDGE_STEP_METERS } from '../../../../src/domain/world/roadsides';
 import { knockableCode } from '../../../../src/domain/crash/knockables';
 import { mapFixture, seaFixture, vehicleFixture } from '../../../support/contentFixtures';
 
@@ -860,7 +861,7 @@ describe('DrivingWorld', () => {
       }
       expect(region.directionBoards.length).toBeGreaterThan(30);
       expect(region.directionBoards.every((board) => board.rows.length >= 1 && board.rows.length <= 3)).toBe(true);
-      const hedged = region.hedgerows.reduce((sum, hedge) => sum + (hedge.points.length - 1) * 4, 0);
+      const hedged = region.hedgerows.reduce((sum, hedge) => sum + (hedge.points.length - 1) * HEDGE_STEP_METERS, 0);
       expect(hedged).toBeGreaterThan(15_000);
       expect(region.farmGates.length).toBeGreaterThan(20);
       expect(region.roadFences.length).toBeGreaterThan(1);

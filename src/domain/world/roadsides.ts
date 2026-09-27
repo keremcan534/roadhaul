@@ -43,7 +43,7 @@ export interface FarmGate {
   readonly heading: number;
 }
 
-/** A post-and-wire fence along a road: a post at each point, three wires between them. */
+/** A post-and-wire fence along a road: a post at each point, wires between them. */
 export interface RoadFence {
   readonly points: readonly Point2[];
 }
@@ -56,7 +56,7 @@ export interface RoadsideGround extends SceneryGround {
 }
 
 /** Hedgerows: a point every this many meters, this far out from the road's edge (a run's own, within this). */
-export const HEDGE_STEP_METERS = 4;
+export const HEDGE_STEP_METERS = 6;
 const HEDGE_OUT_METERS = [9, 11] as const;
 /** A road's side is hedged in runs this long, this far apart, this share of them grown; shorter pieces are left out. */
 const HEDGE_RUN_METERS = [60, 240] as const;
@@ -75,7 +75,7 @@ const MAILBOX_BESIDE_METERS = 1.3;
 export const MAILBOX_RADIUS_METERS = 0.14;
 /** The highway's fence: this far out from its edge, a post every this many meters, clear of its junctions by this much. */
 const FENCE_OUT_METERS = 14;
-export const FENCE_POST_SPACING_METERS = 4;
+export const FENCE_POST_SPACING_METERS = 5;
 const FENCE_JUNCTION_CLEARANCE_METERS = 45;
 const FENCE_LEAST_METERS = 40;
 
