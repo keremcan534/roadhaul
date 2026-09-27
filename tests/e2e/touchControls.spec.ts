@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
   centreOf,
-  closeSettingsAndResume,
+  closeControlsAndResume,
   openGame,
-  openSettingsWhileDriving,
+  openControlsWhileDriving,
   seedSettings,
   shownSpeed,
   watchForProblems,
@@ -20,7 +20,7 @@ const COMMON_CONTROLS = [
   '.minimap',
   '.hud-dock',
 ];
-/** The controls each way of steering (Settings) adds. */
+/** The controls each way of steering (the controls' page) adds. */
 const STEERING_CONTROLS = {
   wheel: ['.steering-wheel'],
   tilt: ['.tilt-button'],
@@ -60,7 +60,7 @@ async function expectLaidOut(page: Page, controls: readonly string[], context: s
 for (const [orientation, viewport] of Object.entries(VIEWPORTS)) {
   for (const steering of ['wheel', 'tilt', 'buttons'] as const) {
     test(`lays out the ${steering} controls in every size without overlaps, ${orientation}`, async ({ page }) => {
-      test.slow(); // The game started, and the settings opened and closed twice, drawn in software.
+      test.slow(); // The game started, and the controls opened and closed twice, drawn in software.
       const problems = watchForProblems(page);
       if (viewport !== null) {
         await page.setViewportSize(viewport);
@@ -71,9 +71,9 @@ for (const [orientation, viewport] of Object.entries(VIEWPORTS)) {
       const controls = [...STEERING_CONTROLS[steering], ...COMMON_CONTROLS];
       await expectLaidOut(page, controls, 'normal size');
       for (const size of ['small', 'large'] as const) {
-        await openSettingsWhileDriving(page);
-        await page.locator(`.settings [data-control-size="${size}"]`).click();
-        await closeSettingsAndResume(page);
+        await openControlsWhileDriving(page);
+        await page.locator(`.controls [data-control-size="${size}"]`).click();
+        await closeControlsAndResume(page);
         await expectLaidOut(page, controls, `${size} size`);
       }
       expect(problems).toEqual([]);

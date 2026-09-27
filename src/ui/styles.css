@@ -781,10 +781,188 @@ body {
 
 /* ---- Main menu (src/ui/menus/MainMenu.ts) ---- */
 
+/* The brand and the company beside where to start and the buttons; one above the other on an upright screen. */
 .main-menu {
+  flex-direction: row;
+  justify-content: safe center;
+  gap: clamp(16px, 5vw, 64px);
+  overflow-y: auto;
   background:
     radial-gradient(ellipse at 50% 45%, rgb(10 14 20 / 10%), rgb(10 14 20 / 70%) 75%),
     linear-gradient(180deg, rgb(10 14 20 / 20%), rgb(10 14 20 / 55%));
+}
+
+.main-menu__side,
+.main-menu__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 420px);
+}
+
+@media (orientation: portrait) {
+  .main-menu {
+    flex-direction: column;
+    justify-content: safe center;
+  }
+}
+
+.main-menu__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* The saved company at a glance. */
+.main-menu__card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 16px;
+  box-sizing: border-box;
+  border-radius: 22px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop-small);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+}
+
+.main-menu__card[hidden] {
+  display: none;
+}
+
+.main-menu__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.main-menu__card-name {
+  overflow: hidden;
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-menu__card-level {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--rh-accent);
+  color: #1b1e22;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.main-menu__card-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.main-menu__figure {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.main-menu__figure-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.main-menu__card-line {
+  overflow: hidden;
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-menu__card-line[hidden] {
+  display: none;
+}
+
+.main-menu__card-contract {
+  color: var(--rh-accent);
+  font-weight: 700;
+}
+
+/* Where the drive starts: a chip for each place. */
+.main-menu__start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.main-menu__label {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.main-menu__places {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.main-menu .main-menu__place {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 14px;
+  --rh-icon-accent: currentColor;
+}
+
+.main-menu__place:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.main-menu__place-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.main-menu__start-note {
+  max-width: 360px;
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+  text-align: center;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 70%);
+}
+
+.main-menu__start-note[hidden] {
+  display: none;
+}
+
+.main-menu__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
 }
 
 /* The brand's lockup (src/ui/brand.ts): the mark over the wordmark, the motto under it. */
@@ -3236,6 +3414,248 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 .pause-menu__panel {
   width: min(100%, 320px);
+}
+
+/* The map, the controls and the settings side by side: each an icon over its name. */
+.pause-menu__tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.pause-menu__tools .button {
+  flex-direction: column;
+  gap: 4px;
+  min-height: 60px;
+  padding: 8px 4px;
+  border-radius: 20px;
+  font-size: 13px;
+}
+
+/* ---- Controls (src/ui/menus/ControlsDialog.ts) ---- */
+
+.controls {
+  /* A dialog over the main menu and the pause menu, which are screens too. */
+  z-index: 12;
+  background: radial-gradient(ellipse at 50% 50%, rgb(8 11 15 / 22%), rgb(8 11 15 / 55%));
+}
+
+.controls__panel {
+  width: min(100%, 520px);
+}
+
+/* The ways of steering: a card each, its picture over its name and how it goes. */
+.controls__cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.controls .controls__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 104px;
+  padding: 10px 6px;
+  border-radius: 20px;
+  text-align: center;
+}
+
+.controls__card-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.controls__card-title {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.controls__card-note {
+  color: var(--rh-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.controls__card.is-selected .controls__card-note {
+  color: rgb(27 30 34 / 78%);
+}
+
+/* The screen's controls in miniature, at the size picked and for the way of steering picked. */
+.controls__preview {
+  --rh-preview-scale: 1;
+  position: relative;
+  width: min(100%, 260px);
+  aspect-ratio: 19.5 / 9;
+  margin: 4px auto 0;
+  overflow: hidden;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgb(120 170 210 / 55%) 0 46%, rgb(70 92 64 / 70%) 46% 100%),
+    rgb(30 38 46);
+  box-shadow: var(--rh-glass-rim-inner);
+}
+
+.controls__preview[data-size='small'] {
+  --rh-preview-scale: 0.8;
+}
+
+.controls__preview[data-size='large'] {
+  --rh-preview-scale: 1.22;
+}
+
+.controls__preview-steer,
+.controls__preview-pedal {
+  position: absolute;
+  bottom: 8%;
+  box-sizing: border-box;
+  transition:
+    width 200ms ease-out,
+    height 200ms ease-out;
+}
+
+/* The wheel: a ring with its hub. */
+.controls__preview-steer {
+  left: 6%;
+  width: calc(40px * var(--rh-preview-scale));
+  height: calc(40px * var(--rh-preview-scale));
+  border: calc(5px * var(--rh-preview-scale)) solid rgb(255 255 255 / 85%);
+  border-radius: 50%;
+}
+
+.controls__preview-steer::after {
+  content: '';
+  position: absolute;
+  inset: 32%;
+  border-radius: 50%;
+  background: var(--rh-accent);
+}
+
+/* Buttons: two keys side by side. */
+.controls__preview[data-mode='buttons'] .controls__preview-steer {
+  width: calc(26px * var(--rh-preview-scale));
+  height: calc(30px * var(--rh-preview-scale));
+  border: 0;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 85%);
+  box-shadow: calc(32px * var(--rh-preview-scale)) 0 rgb(255 255 255 / 85%);
+}
+
+.controls__preview[data-mode='buttons'] .controls__preview-steer::after {
+  display: none;
+}
+
+/* Tilt: the phone itself steers; a small button makes the way it is held straight ahead. */
+.controls__preview[data-mode='tilt'] .controls__preview-steer {
+  left: auto;
+  right: calc(6% + 40px * var(--rh-preview-scale));
+  width: calc(24px * var(--rh-preview-scale));
+  height: calc(24px * var(--rh-preview-scale));
+  border-width: calc(3px * var(--rh-preview-scale));
+}
+
+.controls__preview-pedal {
+  right: 6%;
+  width: calc(24px * var(--rh-preview-scale));
+  height: calc(46px * var(--rh-preview-scale));
+  border-radius: 8px;
+  background: var(--rh-accent);
+}
+
+.controls__preview-pedal--brake {
+  right: calc(6% + 30px * var(--rh-preview-scale));
+  height: calc(32px * var(--rh-preview-scale));
+  background: rgb(255 255 255 / 70%);
+}
+
+/* Steering by tilt, the brake moves under the left thumb. */
+.controls__preview[data-mode='tilt'] .controls__preview-pedal--brake {
+  right: auto;
+  left: 6%;
+}
+
+/* The keyboard's keys and what they do. */
+.controls__keys[hidden] {
+  display: none;
+}
+
+.controls__key-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.controls__key-caps {
+  display: flex;
+  gap: 4px;
+}
+
+.controls__key {
+  min-width: 22px;
+  padding: 2px 6px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 14%);
+  box-shadow:
+    inset 0 -2px rgb(0 0 0 / 35%),
+    var(--rh-glass-rim-inner);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.controls__key-action {
+  margin: 0;
+  color: var(--rh-muted);
+}
+
+/* Screens on their side: the steering and its size beside the camera and the keys. */
+@media (orientation: landscape) and (min-width: 700px) {
+  .controls .controls__panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 8px 22px;
+    width: min(100%, 800px);
+  }
+
+  .controls .controls__panel > .panel__title {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+
+  /* The size and its picture on the right, beside the steering and the camera; the keys under both. */
+  .controls .controls__panel > [data-setting='control-size'] {
+    grid-row: 2 / span 3;
+    grid-column: 2;
+  }
+
+  .controls .controls__panel > [data-setting='keys'] {
+    grid-column: 1 / -1;
+  }
+
+  .controls .controls__preview {
+    width: min(100%, 230px);
+  }
+
+  .controls .settings__close {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    align-self: center;
+    min-width: 110px;
+  }
+
+  .controls .settings__choice {
+    min-height: 36px;
+    padding: 4px 8px;
+  }
 }
 
 /* ---- New company (src/ui/menus/NewCompanyDialog.ts) ---- */

@@ -11,7 +11,9 @@ export interface PauseMenuActions {
   readonly onAbandon: () => void;
   /** Back to the main menu: the game is saved, a contract under way included. */
   readonly onMainMenu: () => void;
-  /** Opens the settings over the menu (steering, controls, sound), which stays open under them. */
+  /** Opens the controls over the menu (steering, their size, the camera), which stays open under them. */
+  readonly onControls: () => void;
+  /** Opens the settings over the menu (graphics, time, weather, sound), the same way. */
   readonly onSettings: () => void;
   /** Opens the map over the menu, the same way. */
   readonly onMap: () => void;
@@ -23,8 +25,8 @@ export type RoadsideFuelOffer = { readonly cost: string } | 'emergency' | null;
 /**
  * The pause button shown on the road, and the menu it opens: resume, put a
  * stuck truck back on the road, call a fuel truck, abandon the contract, the
- * map, the settings, and the main menu (the game is saved, so a contract
- * waits there for Continue).
+ * map, the controls and the settings side by side, and the main menu (the
+ * game is saved, so a contract waits there for Continue).
  */
 export class PauseMenu {
   private readonly pauseButton: HTMLButtonElement;
@@ -58,14 +60,19 @@ export class PauseMenu {
       closeThen(actions.onAbandon),
     );
     this.fuelButton = button(document, 'button--secondary', '', 'roadside-fuel', closeThen(actions.onRoadsideFuel));
+    const tools = element(document, 'div', 'pause-menu__tools');
+    tools.append(
+      withIcon(button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap), 'map'),
+      withIcon(button(document, 'button--secondary', strings.t('pause.controls'), 'pause-controls', actions.onControls), 'controls'),
+      withIcon(button(document, 'button--secondary', strings.t('pause.settings'), 'pause-settings', actions.onSettings), 'settings'),
+    );
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('pause.title')),
       withIcon(button(document, 'button--primary', strings.t('pause.resume'), 'resume', closeThen(actions.onResume)), 'play'),
       button(document, 'button--secondary', strings.t('pause.recover'), 'recover', closeThen(actions.onRecover)),
       this.fuelButton,
       this.abandonButton,
-      withIcon(button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap), 'map'),
-      withIcon(button(document, 'button--ghost', strings.t('pause.settings'), 'pause-settings', actions.onSettings), 'settings'),
+      tools,
       withIcon(
         button(document, 'button--ghost', strings.t('pause.mainMenu'), 'pause-main-menu', closeThen(actions.onMainMenu)),
         'home',

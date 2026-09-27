@@ -12,9 +12,11 @@ import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { KnockableKind } from './domain/crash/knockables';
 import { bayParkingPose } from './domain/missions/loadingBay';
+import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
+import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, type StartPlace } from './domain/world/startPlaces';
 import {
   brakePedalOf,
   combineVehicleInputs,
@@ -100,6 +102,8 @@ import { MapPainter } from './ui/map/MapPainter';
 import { sketchWorld } from './ui/map/mapSketch';
 import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
+import { locationText } from './ui/hq/truckPage';
+import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
@@ -577,6 +581,7 @@ async function start(): Promise<void> {
       paused = false;
       gameState.transitionTo('mainMenu');
     },
+    onControls: () => openControls(),
     onSettings: () => openSettings(),
     onMap: () => openMap(),
   });
@@ -586,13 +591,15 @@ async function start(): Promise<void> {
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
-      } else if (!settingsDialog.isOpen && !newCompany.isOpen && !result.isOpen && isDriving()) {
+      } else if (!settingsDialog.isOpen && !controlsDialog.isOpen && !newCompany.isOpen && !result.isOpen && isDriving()) {
         openMap();
       }
     },
     onPause: () => {
       if (settingsDialog.isOpen) {
         settingsDialog.close(); // Over the pause menu, which stays.
+      } else if (controlsDialog.isOpen) {
+        controlsDialog.close(); // The same.
       } else if (worldMap.isOpen) {
         closeMap();
       } else if (hq.isOpen) {
@@ -608,16 +615,19 @@ async function start(): Promise<void> {
   const menuMessage = (): string | null => (persistent ? null : strings.t('menu.storageOff'));
   /** What the garage shows on the truck before it is bought (the company panel's previews); null for nothing. */
   let truckPreview: TruckPreview | null = null;
+  /** The place picked on the main menu to start at: the truck is shown there behind the menu. */
+  let menuPreview: StartPlace | null = null;
   /**
    * Shows the truck being driven, with its paint and upgraded parts, or with
    * what the garage previews on it: another look gets its own view, and the
    * camera follows it.
    */
   const showTruck = (): void => {
-    const active = garage.activeTruck;
+    // Before a company is loaded (the main menu at the start), the truck behind the menu wears its factory colour.
+    const active = session.isActive ? garage.activeTruck : null;
     let definition = driving.definition;
-    let paint = active.paint?.color ?? definition.factoryColor;
-    let fitted = active.upgrades;
+    let paint = active?.paint?.color ?? definition.factoryColor;
+    let fitted = active?.upgrades ?? {};
     if (truckPreview?.kind === 'paint') {
       paint = truckPreview.paintId === null ? definition.factoryColor : content.paints.get(truckPreview.paintId).color;
     } else if (truckPreview?.kind === 'upgrade') {
@@ -656,19 +666,22 @@ async function start(): Promise<void> {
     }
     truck.setLoaded(truckPreview?.kind !== 'truck' && driving.cargoMassKg > 0);
     root.dataset.vehicle = driving.definition.id;
-    root.dataset.paint = active.paint?.id ?? 'factory';
+    root.dataset.paint = active?.paint?.id ?? 'factory';
     root.dataset.truckView = truck.key;
   };
   const enterCompany = (): void => {
     truckPreview = null;
+    menuPreview = null;
     showTruck();
     syncMissionView();
     root.dataset.tutorialStep = tutorial.step;
     gameState.transitionTo('driving');
   };
+  /** Where a new company's truck starts: the place picked on the main menu (a new company's own start for `left`). */
+  let newCompanyStart = HOME_START_ID;
   const newCompany = new NewCompanyDialog(ui, strings, {
     onStart: (companyName) => {
-      const founded = session.startNewGame(companyName);
+      const founded = session.startNewGame(companyName, newCompanyStart);
       if (!founded.ok) {
         return founded.error;
       }
@@ -679,21 +692,70 @@ async function start(): Promise<void> {
     onBack: () => newCompany.close(),
   });
   const mainMenu = new MainMenu(ui, strings, {
-    onContinue: () => {
-      const continued = session.continueGame();
+    onContinue: (startId) => {
+      const continued = session.continueGame(startId);
       if (continued.ok) {
         enterCompany();
       } else {
-        mainMenu.update(session.hasSavedGame(), strings.t(`menu.problem.${continued.error}`));
+        showMainMenu(strings.t(`menu.problem.${continued.error}`));
       }
     },
-    onNewCompany: () => newCompany.open(session.hasSavedGame()),
+    onNewCompany: (startId) => {
+      newCompanyStart = startId === LEFT_START_ID ? HOME_START_ID : startId;
+      newCompany.open(session.hasSavedGame());
+    },
+    onPreviewStart: (place) => {
+      menuPreview = place;
+    },
+    onControls: () => openControls(),
     onSwitchLanguage: () => {
       query.set('lang', language === 'tr' ? 'en' : 'tr');
       window.location.search = query.toString();
     },
     onSettings: () => openSettings(),
   });
+  /**
+   * The main menu as the save stands: the saved company's card (its truck
+   * shown behind the menu, where it was left), where a drive can start, and
+   * `problem` (a load problem), the save's own or saving being off.
+   */
+  const showMainMenu = (problem: string | null = null): void => {
+    const read = session.readSave();
+    const saved = read.ok ? read.value : null;
+    const readProblem = read.ok || read.error === 'missing' ? null : strings.t(`menu.problem.${read.error}`);
+    // The saved company's truck behind the menu, until the company is loaded.
+    const model = saved === null || session.isActive ? null : saved.truckModelId;
+    const shownModel = truckPreview?.kind === 'truck' ? truckPreview.definitionId : null;
+    if (model !== shownModel) {
+      truckPreview = model === null || model === driving.definition.id ? null : { kind: 'truck', definitionId: model };
+      showTruck();
+    }
+    mainMenu.update({
+      saved,
+      truckWhere: saved === null ? null : whereLeft(saved),
+      places: session.startPlaces(saved),
+      startLocked: saved !== null && saved.contract !== null,
+      message: problem ?? readProblem ?? menuMessage(),
+    });
+  };
+  /** Where the saved company's truck was left, in words: at a depot or the rest area, or on the road near a town. */
+  const whereLeft = (saved: SaveSummary): string => {
+    const world = driving.world;
+    const truck = saved.truck;
+    if (saved.mapId !== world.id) {
+      return strings.t('hq.location.road');
+    }
+    const x = truck?.x ?? world.spawn.x;
+    const z = truck?.z ?? world.spawn.z;
+    const heading = truck?.headingRadians ?? world.spawn.heading;
+    const ahead = content.vehicles.get(saved.truckModelId).body.wheelbaseMeters / 2;
+    const point = world.servicePointAt(x + Math.sin(heading) * ahead, z + Math.cos(heading) * ahead);
+    if (point !== null) {
+      return locationText(strings, point);
+    }
+    const city = nearestDepotCity(world.depots, x, z);
+    return city === null ? strings.t('hq.location.road') : strings.t('menu.card.near', { city: strings.cityName(city) });
+  };
   /** Keeps the clock's time in the settings as the day goes on, so the next visit picks it up. */
   const keepClock = (): void => {
     if (requestedTime === null && timeOfDay.flow !== 'device') {
@@ -770,21 +832,6 @@ async function start(): Promise<void> {
       }
       window.location.search = query.toString();
     },
-    onSteering: (mode) => {
-      settings = { ...settings, steering: mode };
-      saveSettings(storage, settings);
-      applySteering(mode);
-    },
-    onTiltSensitivity: (sensitivity) => {
-      settings = { ...settings, tiltSensitivity: sensitivity };
-      saveSettings(storage, settings);
-      tilt.sensitivity = sensitivity;
-    },
-    onControlSize: (size) => {
-      settings = { ...settings, controlSize: size };
-      saveSettings(storage, settings);
-      touch.size = size;
-    },
     onSound: (on) => {
       settings = { ...settings, sound: on };
       saveSettings(storage, settings);
@@ -819,6 +866,44 @@ async function start(): Promise<void> {
     onClose: () => settingsDialog.close(),
     },
   );
+  /** The controls as set now, for their page. */
+  const controlsShown = () => ({
+    steering: settings.steering,
+    tiltSensitivity: settings.tiltSensitivity,
+    controlSize: settings.controlSize,
+    camera: settings.camera,
+  });
+  // The controls' page, before a drive (the main menu) or during one (the pause menu). The keys only where there
+  // is a keyboard: a mouse or touchpad points finely.
+  const controlsDialog = new ControlsDialog(ui, strings, controlsShown(), window.matchMedia('(any-pointer: fine)').matches, {
+    onSteering: (mode) => {
+      settings = { ...settings, steering: mode };
+      saveSettings(storage, settings);
+      applySteering(mode);
+    },
+    onTiltSensitivity: (sensitivity) => {
+      settings = { ...settings, tiltSensitivity: sensitivity };
+      saveSettings(storage, settings);
+      tilt.sensitivity = sensitivity;
+    },
+    onControlSize: (size) => {
+      settings = { ...settings, controlSize: size };
+      saveSettings(storage, settings);
+      touch.size = size;
+    },
+    onCamera: (mode) => {
+      settings = { ...settings, camera: mode };
+      saveSettings(storage, settings);
+      cameraRig.currentMode = mode;
+      lookAround.reset();
+      showCamera(onRoad());
+    },
+    onClose: () => controlsDialog.close(),
+  });
+  const openControls = (): void => {
+    controlsDialog.show(controlsShown());
+    controlsDialog.open();
+  };
   const hq = new CompanyHq(
     ui,
     strings,
@@ -1044,7 +1129,7 @@ async function start(): Promise<void> {
     if (status === 'unavailable') {
       settings = { ...settings, steering: 'wheel' };
       saveSettings(storage, settings);
-      settingsDialog.showSteering('wheel');
+      controlsDialog.show(controlsShown());
       applySteering('wheel');
       toasts.show(strings.t('toast.tiltUnavailable'), 'warning');
     }
@@ -1293,7 +1378,7 @@ async function start(): Promise<void> {
     const drivingNow = state === 'driving';
     mainMenu.visible = state === 'mainMenu';
     if (state === 'mainMenu') {
-      mainMenu.update(session.hasSavedGame(), menuMessage());
+      showMainMenu();
     }
     if (!drivingNow) {
       hq.close();
@@ -1362,7 +1447,7 @@ async function start(): Promise<void> {
   const goBack = (): boolean => {
     const action = backAction({
       gameState: gameState.current,
-      menuDialogOpen: settingsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
+      menuDialogOpen: settingsDialog.isOpen || controlsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
       panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
@@ -1370,6 +1455,7 @@ async function start(): Promise<void> {
     switch (action) {
       case 'closeDialog':
         settingsDialog.close();
+        controlsDialog.close();
         newCompany.close();
         closeMap();
         break;
@@ -1494,6 +1580,17 @@ async function start(): Promise<void> {
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         interpolateBodyPose(bodyPose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        if (menuPreview !== null && gameState.current === 'mainMenu') {
+          // Behind the main menu, the truck stands, level, where the drive would start.
+          pose.x = menuPreview.x;
+          pose.z = menuPreview.z;
+          pose.heading = menuPreview.heading;
+          bodyPose.bank = 0;
+          bodyPose.tilt = 0;
+          bodyPose.rise = 0;
+          bodyPose.lean = 0;
+          bodyPose.dip = 0;
+        }
         if (vehicle.attitude !== shownAttitude) {
           shownAttitude = vehicle.attitude;
           root.dataset.attitude = shownAttitude;

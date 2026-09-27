@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
 import {
   centreOf,
-  closeSettingsAndResume,
+  closeControlsAndResume,
   headingChange,
   OPEN_ROAD,
   openGame,
-  openSettingsWhileDriving,
+  openControlsWhileDriving,
   seedSettings,
   shownHeading,
   shownSpeed,
@@ -13,22 +13,22 @@ import {
   watchForProblems,
 } from './support';
 
-test('steers by turning the phone once tilt is picked in Settings', async ({ page }) => {
+test('steers by turning the phone once tilt is picked in the controls', async ({ page }) => {
   test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await openGame(page, OPEN_ROAD);
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-tilt', 'off');
 
-  await openSettingsWhileDriving(page);
-  const settings = page.locator('.settings');
-  await expect(settings.locator('[data-setting="tilt-sensitivity"]')).toBeHidden();
-  await settings.locator('[data-steering="tilt"]').click();
-  await expect(settings.locator('[data-steering="tilt"]')).toHaveAttribute('aria-checked', 'true');
-  await expect(settings.locator('[data-setting="tilt-sensitivity"]')).toBeVisible();
+  await openControlsWhileDriving(page);
+  const controls = page.locator('.controls');
+  await expect(controls.locator('[data-setting="tilt-sensitivity"]')).toBeHidden();
+  await controls.locator('[data-steering="tilt"]').click();
+  await expect(controls.locator('[data-steering="tilt"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(controls.locator('[data-setting="tilt-sensitivity"]')).toBeVisible();
   // Listening, but nothing has come from the motion sensor yet.
   await expect(html).toHaveAttribute('data-tilt', 'waiting');
-  await closeSettingsAndResume(page);
+  await closeControlsAndResume(page);
 
   // The wheel makes way for the tilt button; the brake moves under the left thumb.
   await expect(page.locator('.steering-wheel')).toBeHidden();
@@ -132,24 +132,24 @@ test('draws the controls in the size picked, and remembers the controls picked',
   const width = async (): Promise<number> => (await page.locator('.steering-wheel').boundingBox())!.width;
   const normal = await width();
 
-  await openSettingsWhileDriving(page);
-  await page.locator('.settings [data-control-size="large"]').click();
-  await page.locator('.settings [data-steering="buttons"]').click();
-  await page.locator('.settings [data-steering="wheel"]').click();
-  await closeSettingsAndResume(page);
+  await openControlsWhileDriving(page);
+  await page.locator('.controls [data-control-size="large"]').click();
+  await page.locator('.controls [data-steering="buttons"]').click();
+  await page.locator('.controls [data-steering="wheel"]').click();
+  await closeControlsAndResume(page);
   expect(await width()).toBeGreaterThan(normal * 1.1);
 
-  await openSettingsWhileDriving(page);
-  await page.locator('.settings [data-control-size="small"]').click();
-  await page.locator('.settings [data-steering="buttons"]').click();
-  await closeSettingsAndResume(page);
+  await openControlsWhileDriving(page);
+  await page.locator('.controls [data-control-size="small"]').click();
+  await page.locator('.controls [data-steering="buttons"]').click();
+  await closeControlsAndResume(page);
   await expect(page.locator('.steer-buttons')).toBeVisible();
 
   // Kept on the phone: a new visit starts with them.
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'mainMenu');
-  await page.locator('[data-action="settings"]').click();
-  await expect(page.locator('.settings [data-steering="buttons"]')).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('.settings [data-control-size="small"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-action="controls"]').click();
+  await expect(page.locator('.controls [data-steering="buttons"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('.controls [data-control-size="small"]')).toHaveAttribute('aria-checked', 'true');
   expect(problems).toEqual([]);
 });

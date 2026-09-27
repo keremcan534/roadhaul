@@ -269,3 +269,18 @@ export async function closeSettingsAndResume(page: Page): Promise<void> {
   await page.locator('[data-action="resume"]').click();
   await expect(page.locator('.pause-menu')).toBeHidden();
 }
+
+/** Pauses the drive and opens the controls' page from the pause menu. */
+export async function openControlsWhileDriving(page: Page): Promise<void> {
+  await page.locator('.pause-button').click();
+  await page.locator('[data-action="pause-controls"]').click();
+  await expect(page.locator('.controls')).toBeVisible();
+}
+
+/** Closes the controls' page, then the pause menu: back on the road. */
+export async function closeControlsAndResume(page: Page): Promise<void> {
+  await page.locator('[data-action="close-controls"]').click();
+  await expect(page.locator('.controls')).toBeHidden();
+  await page.locator('[data-action="resume"]').click();
+  await expect(page.locator('.pause-menu')).toBeHidden();
+}
