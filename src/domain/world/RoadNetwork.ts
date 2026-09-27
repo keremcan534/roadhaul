@@ -77,8 +77,9 @@ export class RoadNetwork {
   readonly nodeCount: number;
   private readonly nodeX: Float64Array;
   private readonly nodeZ: Float64Array;
-  /** Which road each node belongs to. */
+  /** Which road each node belongs to, and each road's first node. */
   private readonly roadOf: Int32Array;
+  private readonly firstNode: Int32Array;
   /** Neighbours of node i: neighbours[firstNeighbour[i]] up to (not including) neighbours[firstNeighbour[i + 1]]. */
   private readonly firstNeighbour: Int32Array;
   private readonly neighbours: Int32Array;
@@ -103,10 +104,11 @@ export class RoadNetwork {
       }
     };
 
-    const firstNode: number[] = [];
+    this.firstNode = new Int32Array(roads.length);
+    const firstNode = this.firstNode;
     let base = 0;
     roads.forEach((road, roadIndex) => {
-      firstNode.push(base);
+      firstNode[roadIndex] = base;
       for (let i = 0; i < road.pointCount; i++) {
         this.nodeX[base + i] = road.x(i);
         this.nodeZ[base + i] = road.z(i);
@@ -208,6 +210,37 @@ export class RoadNetwork {
       }
     }
     return best;
+  }
+
+  /** The node of road `roadIndex`'s sample `sampleIndex`. */
+  nodeOf(roadIndex: number, sampleIndex: number): number {
+    return this.firstNode[roadIndex]! + sampleIndex;
+  }
+
+  /**
+   * The shortest distance by road from every node to the nearest of
+   * `targets` (nodes), meters; Infinity where no road leads to one. Worked
+   * out afresh on each call (nothing is cached): for placing things once.
+   */
+  distancesTo(targets: readonly number[]): Float64Array {
+    const distance = new Float64Array(this.nodeCount).fill(Infinity);
+    const queue = new MinHeap(this.nodeCount);
+    for (const target of targets) {
+      distance[target] = 0;
+      queue.push(target, 0);
+    }
+    while (queue.size > 0) {
+      const node = queue.pop();
+      for (let edge = this.firstNeighbour[node]!; edge < this.firstNeighbour[node + 1]!; edge++) {
+        const neighbour = this.neighbours[edge]!;
+        const viaNode = distance[node]! + this.edgeLengths[edge]!;
+        if (viaNode < distance[neighbour]!) {
+          distance[neighbour] = viaNode;
+          queue.push(neighbour, viaNode);
+        }
+      }
+    }
+    return distance;
   }
 
   /**

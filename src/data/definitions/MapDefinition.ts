@@ -292,6 +292,14 @@ export interface MapDefinition {
      */
     readonly countryside?: boolean;
     /**
+     * Road signs along the country roads: warnings before the sharp bends
+     * and the junctions, chevrons round the sharpest bends, give way and
+     * stop where lanes and roads meet them, and direction boards to the
+     * towns and villages (before the junctions, and just out of each town).
+     * Absent or false: none.
+     */
+    readonly roadSigns?: boolean;
+    /**
      * Side roads: about this many narrow lanes per kilometre of country
      * road leave it (now and then crossing it) and wind off across the land
      * to farmsteads and hamlets, or on to join another road, with fields
@@ -489,7 +497,7 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
         `must be 0 to ${MAX_SIDE_ROADS_PER_KILOMETER}`,
       );
     }
-    for (const flag of ['streetscape', 'countryside'] as const) {
+    for (const flag of ['streetscape', 'countryside', 'roadSigns'] as const) {
       const value = scenery[flag];
       if (value !== undefined) {
         validator.check(typeof value === 'boolean', `${path}.scenery.${flag}`, 'must be true or false');

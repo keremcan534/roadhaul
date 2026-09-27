@@ -135,4 +135,26 @@ describe('RoadNetwork', () => {
     network.guide(0, -100, 300, 0, out);
     expect(out.distanceMeters).toBe(first);
   });
+
+  it('numbers each road\'s samples after the last road\'s, and gives every node its distance to the nearest of several targets', () => {
+    const network = new RoadNetwork([loop, spur, island]);
+    const spurEnd = network.nodeOf(1, spur.pointCount - 1);
+    const islandStart = network.nodeOf(2, 0);
+
+    expect(network.nodeOf(0, 0)).toBe(0);
+    expect(network.nodeOf(1, 0)).toBe(loop.pointCount);
+    expect(islandStart).toBe(loop.pointCount + spur.pointCount);
+
+    const distances = network.distancesTo([spurEnd, islandStart]);
+    expect(distances).toHaveLength(network.nodeCount);
+    expect(distances[spurEnd]).toBe(0);
+    expect(distances[islandStart]).toBe(0);
+    // The spur's start is the spur's length away; the loop's west side half the loop further (400 m round either way).
+    expect(distances[network.nodeOf(1, 0)]).toBeCloseTo(spur.lengthMeters, 0);
+    const west = network.nearestNode(-100, 0);
+    expect(distances[west]).toBeGreaterThan(spur.lengthMeters + 380);
+    expect(distances[west]).toBeLessThan(spur.lengthMeters + 410);
+    // The island's far end, reached only from its own start.
+    expect(distances[network.nodeOf(2, island.pointCount - 1)]).toBeCloseTo(island.lengthMeters, 0);
+  });
 });
