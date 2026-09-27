@@ -1,13 +1,19 @@
 import type { EventBus, Unsubscribe } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
 import { err, ok, type Result } from '../../core/Result';
+import { degreesToRadians } from '../../core/math/scalar';
 import type { Clock } from '../../core/time/Clock';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
+import type { MapDefinition } from '../../data/definitions/MapDefinition';
+import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import { validateCompanyName, type CompanyNameError } from '../../domain/company/companyName';
+import type { TruckPose } from '../../domain/missions/loadingBay';
 import { createNewSaveGameData } from '../../domain/save/createNewSaveGameData';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../domain/save/SaveGameData';
+import { summarizeSave, type SaveSummary } from '../../domain/save/saveSummary';
+import { HOME_START_ID, LEFT_START_ID, startPlaces, type StartPlace } from '../../domain/world/startPlaces';
 import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
 import type { DrivingService } from '../driving/DrivingService';
@@ -126,12 +132,48 @@ export class GameSessionService {
     return this.deps.saves.hasSave();
   }
 
-  /** Founds a new company with the player's name, replacing any saved game. */
-  startNewGame(companyName: string): Result<void, CompanyNameError> {
+  /**
+   * The saved company at a glance (the main menu's card), read without
+   * loading it; the problem that keeps it from being continued otherwise.
+   */
+  readSave(): Result<SaveSummary, LoadProblem> {
+    const loaded = this.deps.saves.load();
+    return loaded.ok ? ok(summarizeSave(loaded.value, this.deps.content)) : err(loaded.error);
+  }
+
+  /**
+   * Where a drive can start: on the map of `saved`, where its truck was
+   * left (at the map's own start if it was never parked), or for a new
+   * company (`saved` null) at the starting map's own start; then each depot
+   * and rest area (startPlaces), parked for the truck `saved` drives (the
+   * starting truck for a new company).
+   */
+  startPlaces(saved: SaveSummary | null): StartPlace[] {
+    const { content, config } = this.deps;
+    const left =
+      saved === null
+        ? null
+        : saved.truck === null
+          ? mapStart(content.maps.get(saved.mapId))
+          : { x: saved.truck.x, z: saved.truck.z, heading: saved.truck.headingRadians };
+    return this.placesOn(
+      saved?.mapId ?? config.newGame.startingMapId,
+      content.vehicles.get(saved?.truckModelId ?? config.newGame.startingVehicleId).body,
+      left,
+    );
+  }
+
+  /**
+   * Founds a new company with the player's name, replacing any saved game.
+   * Its truck starts at the map's own start, or at the depot or rest area
+   * `startId` picks (startPlaces).
+   */
+  startNewGame(companyName: string, startId: string = HOME_START_ID): Result<void, CompanyNameError> {
     const name = validateCompanyName(companyName);
     if (!name.ok) {
       return err(name.error);
     }
+    this.checkStart(startId, this.deps.config.newGame.startingMapId);
     const { config, content, clock } = this.deps;
     const save = createNewSaveGameData({
       companyName: name.value,
@@ -141,6 +183,7 @@ export class GameSessionService {
       nowMs: clock.now(),
     });
     this.apply(save);
+    this.startAt(startId);
     this.deps.logger.info(`New company "${name.value}".`);
     this.save();
     return ok(undefined);
@@ -148,16 +191,23 @@ export class GameSessionService {
 
   /**
    * Loads the saved game. On any problem the current state is left as it
-   * was. The rivals, then the fleet, work through the time since the save
-   * was written (at most GameConfig.fleet.awayHours), as they would have on
-   * the road.
+   * was. The truck is where it was left, or at the depot or rest area
+   * `startId` picks (startPlaces): not with a contract under way, which
+   * goes on from where the truck was. The rivals, then the fleet, work
+   * through the time since the save was written (at most
+   * GameConfig.fleet.awayHours), as they would have on the road.
    */
-  continueGame(): Result<void, LoadProblem> {
+  continueGame(startId: string = LEFT_START_ID): Result<void, LoadProblem> {
     const loaded = this.deps.saves.load();
     if (!loaded.ok) {
       return err(loaded.error);
     }
+    if (startId !== LEFT_START_ID && loaded.value.missions.active !== null) {
+      throw new Error(`A contract is under way: the drive goes on where the truck was left, not at ${startId}.`);
+    }
+    this.checkStart(startId, loaded.value.world.mapId);
     this.apply(loaded.value);
+    this.startAt(startId);
     this.deps.logger.info(`Continuing "${loaded.value.profile.companyName}".`);
     const awaySeconds = (this.deps.clock.now() - loaded.value.updatedAtMs) / 1000;
     this.deps.rivals.catchUp(awaySeconds);
@@ -221,6 +271,43 @@ export class GameSessionService {
     }
   }
 
+  /** The start places on map `mapId`, parked for a truck of `body`; `left` as in startPlaces. */
+  private placesOn(mapId: string, body: VehicleBody, left: TruckPose | null): StartPlace[] {
+    const map = this.deps.content.maps.get(mapId);
+    return startPlaces({ spawn: mapStart(map), depots: map.depots, restAreas: map.restAreas }, body, left);
+  }
+
+  /**
+   * Throws for a place to start at that is not one of map `mapId`'s start
+   * places: a bug in the caller. Before anything is loaded.
+   */
+  private checkStart(startId: string, mapId: string): void {
+    const map = this.deps.content.maps.get(mapId);
+    const known =
+      startId === LEFT_START_ID ||
+      startId === HOME_START_ID ||
+      map.depots.some((depot) => depot.id === startId) ||
+      map.restAreas.some((restArea) => restArea.id === startId);
+    if (!known) {
+      throw new Error(`No place to start at is called ${startId}.`);
+    }
+  }
+
+  /**
+   * Parks the truck at the depot or rest area `startId` names (checked
+   * already), parked for the truck now driven; for `left` and `home` it
+   * stays where the save put it.
+   */
+  private startAt(startId: string): void {
+    const { driving, logger } = this.deps;
+    const place = this.placesOn(driving.world.id, driving.definition.body, null).find((candidate) => candidate.id === startId);
+    if (place === undefined || place.kind === 'home') {
+      return;
+    }
+    driving.placeTruck(place.x, place.z, place.heading);
+    logger.info(`Starting at ${startId}.`);
+  }
+
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
     const { driving, missions, economy, company, garage, fleet, rivals, facilities, specialEvents, tutorial } = this.deps;
@@ -247,4 +334,9 @@ export class GameSessionService {
     this.sinceAutosave = 0;
     this.active = true;
   }
+}
+
+/** Where a truck starts on `map` unless it was parked: its spawn, the heading in radians. */
+function mapStart(map: MapDefinition): TruckPose {
+  return { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
 }

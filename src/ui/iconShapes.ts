@@ -80,6 +80,14 @@ const ICONS = {
   fuelTank: `<path ${HOLES} d="M8.6 2.2h3.6a.8.8 0 0 1 .8.8v1.2h1.6l4.8 4.8v11.4a1.6 1.6 0 0 1-1.6 1.6H6.2a1.6 1.6 0 0 1-1.6-1.6V5.8a1.6 1.6 0 0 1 1.6-1.6h1.6V3a.8.8 0 0 1 .8-.8zm-2 4.4h3.6V5.2H6.6z"/><path d="M8.8 10.8l6.4 6.4M15.2 10.8l-6.4 6.4" ${accentLine(2.2)}/>`,
   // The menus and the HUD.
   play: `<path d="M7.2 3.6a1.2 1.2 0 0 1 1.8-1l11.4 8.4a1.2 1.2 0 0 1 0 2L9 21.4a1.2 1.2 0 0 1-1.8-1z"/>`,
+  // A gamepad: the controls page.
+  controls: `<path ${HOLES} d="M7.2 6.2h9.6a5 5 0 0 1 4.9 4.1l1 5.6a2.9 2.9 0 0 1-5 2.4l-2.1-2.3H8.4l-2.1 2.3a2.9 2.9 0 0 1-5-2.4l1-5.6a5 5 0 0 1 4.9-4.1zM6.4 9.4v1.8H4.6v2h1.8V15h2v-1.8h1.8v-2H8.4V9.4z"/><circle ${ACCENT} cx="16.2" cy="10.4" r="1.3"/><circle ${ACCENT} cx="18.6" cy="13" r="1.3"/>`,
+  // How the truck is steered: the wheel on the screen, turning the phone, or left and right buttons.
+  steering: `<path ${HOLES} d="M12 2.4a9.6 9.6 0 1 1 0 19.2 9.6 9.6 0 0 1 0-19.2zm0 2.5a7.1 7.1 0 1 0 0 14.2 7.1 7.1 0 0 0 0-14.2z"/><rect x="4.4" y="10.8" width="15.2" height="2.6" rx="1"/><rect x="10.8" y="12" width="2.4" height="7.4" rx="1"/><circle ${ACCENT} cx="12" cy="12.1" r="2.8"/>`,
+  tilt: `<rect x="7.6" y="3" width="8.8" height="18" rx="2.2" transform="rotate(24 12 12)"/><rect ${ACCENT} x="9.2" y="5.4" width="5.6" height="11.6" rx=".8" transform="rotate(24 12 12)"/><path d="M2.4 9.4a9.6 9.6 0 0 0 1.4 7.4" ${line(2)}/><path d="M21.6 14.6a9.6 9.6 0 0 0-1.4-7.4" ${line(2)}/>`,
+  arrows: `<rect x="1.6" y="5.6" width="9.8" height="12.8" rx="2.6"/><rect x="12.6" y="5.6" width="9.8" height="12.8" rx="2.6"/><path ${ACCENT} d="M8.4 8.8L4.6 12l3.8 3.2z"/><path ${ACCENT} d="M15.6 8.8l3.8 3.2-3.8 3.2z"/>`,
+  camera: `<rect x="1.8" y="6.2" width="14" height="11.6" rx="2.4"/><path d="M17 10.4l5.2-3.2v9.6L17 13.6z"/><circle ${ACCENT} cx="6.2" cy="10" r="1.7"/>`,
+  keyboard: `<path ${HOLES} d="M3 5.2h18a1.8 1.8 0 0 1 1.8 1.8v10a1.8 1.8 0 0 1-1.8 1.8H3A1.8 1.8 0 0 1 1.2 17V7A1.8 1.8 0 0 1 3 5.2zM4.4 8v2.2h2.2V8zm3.7 0v2.2h2.2V8zm3.7 0v2.2H14V8zm3.7 0v2.2h2.2V8zM4.4 11.4v2.2h2.2v-2.2zm13 0v2.2h2.2v-2.2zM7.6 14.6v1.8h8.8v-1.8z"/><rect ${ACCENT} x="17.4" y="8" width="2.2" height="2.2" rx=".4"/>`,
   plus: `<path d="M12 4v16M4 12h16" ${line(3)}/>`,
   home: `<path ${HOLES} d="M11.2 2.6a1.2 1.2 0 0 1 1.6 0l9 7.6a.8.8 0 0 1-.5 1.4H19.6v8.8a1.2 1.2 0 0 1-1.2 1.2H5.6a1.2 1.2 0 0 1-1.2-1.2v-8.8H2.7a.8.8 0 0 1-.5-1.4zM9.8 14v7.6h4.4V14z"/>`,
   settings: `<path ${HOLES} d="M10.13 4.22L10.34 1.53L13.66 1.53L13.87 4.22L16.18 5.18L18.23 3.42L20.58 5.77L18.82 7.82L19.78 10.13L22.47 10.34L22.47 13.66L19.78 13.87L18.82 16.18L20.58 18.23L18.23 20.58L16.18 18.82L13.87 19.78L13.66 22.47L10.34 22.47L10.13 19.78L7.82 18.82L5.77 20.58L3.42 18.23L5.18 16.18L4.22 13.87L1.53 13.66L1.53 10.34L4.22 10.13L5.18 7.82L3.42 5.77L5.77 3.42L7.82 5.18ZM8.7 12a3.3 3.3 0 1 0 6.6 0a3.3 3.3 0 1 0 -6.6 0Z"/>`,

@@ -325,6 +325,15 @@ main menu ─► the road ─► Jobs: the job board over it ─► accept ─�
 - **Presentation and UI.** `DepotView` draws the yards and bay lines and lights a beacon over the next bay; `RestAreaView` draws the rest area's lot, stalls and fuel canopy. The UI (`src/ui/menus`, `hq`, `hud`) shows the main menu, the company panel, the mission HUD, the pause menu and the result, and only calls service methods. The simulation stands still while a menu or result is open; the result offers the next job or the road, and the truck stays where it was left between contracts.
 - **Text.** Player-facing text comes from string tables (`src/ui/i18n`, Turkish and English) with keys derived from ids (`mission.first_package.title`); a generated contract is named after its cargo. A unit test keeps both languages complete.
 
+### The main menu
+
+The title screen (`MainMenu`, ui) is the hub before a drive, over the circling camera:
+
+- **The saved company at a glance.** `GameSessionService.readSave()` reads the save without loading it (`summarizeSave`, domain): the company's name and level, credits, trucks, drivers and deliveries, the truck driven and where it was left (at a depot, the rest area, or on the road near a town), and the contract under way. A save that cannot be read says why at once, before Continue is pressed.
+- **Where the drive starts.** `startPlaces` (domain) lists where the truck was left (for a new company, the map's own start, near its home town), then each depot's bay and each rest area's lot, the truck parked squarely in it. The first is picked. Behind the menu the truck stands at the place picked: the frame draws it there, the simulation's truck does not move, so nothing is saved there. `continueGame(startId)` and `startNewGame(name, startId)` park the truck there once the company is loaded. With a contract under way the drive goes on from where the truck was: the other places show, disabled, and the session refuses them.
+- **The controls before the drive.** `ControlsDialog`, from the main menu and the pause menu: the way of steering as three cards (the wheel, the phone's tilt, buttons), tilt sensitivity, the controls' size with a small picture of the screen's controls at that size, the camera a drive starts with, and the keyboard's keys where there is a keyboard (a fine pointer). Each applies at once and is kept on the device. The settings keep the graphics, the time, the weather, the season, the sound and the performance display.
+- **The layout.** The brand and the company's card beside where to start and the buttons on a screen on its side; one above the other on an upright one, scrolling when it must.
+
 ### Economy, the truck's upkeep and the company
 
 Roadmap steps 14–17 give deliveries consequences (spec §13–18):
