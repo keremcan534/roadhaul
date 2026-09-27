@@ -88,6 +88,27 @@ describe('GameLoop', () => {
     expect(calls).toEqual(['fixed 0.01', 'fixed 0.01', 'frame 0.025 0.50']);
   });
 
+  it('runs game time slower than real time by its time scale: fewer steps, shorter frames', () => {
+    const { loop, scheduler, calls } = createLoop();
+    loop.start();
+    scheduler.frame(1000);
+    calls.length = 0;
+
+    loop.timeScale = 0.4;
+    scheduler.frame(1050);
+    expect(calls).toEqual(['fixed 0.01', 'fixed 0.01', 'frame 0.020 0.00']);
+
+    // Frozen, and back to real time; a bad scale counts as real time.
+    calls.length = 0;
+    loop.timeScale = 0;
+    scheduler.frame(1100);
+    expect(calls).toEqual(['frame 0.000 0.00']);
+    calls.length = 0;
+    loop.timeScale = Number.NaN;
+    scheduler.frame(1130);
+    expect(calls).toEqual(['fixed 0.01', 'fixed 0.01', 'fixed 0.01', 'frame 0.030 0.00']);
+  });
+
   it('clamps long frames such as returning from a background tab', () => {
     const { loop, scheduler, calls } = createLoop();
     loop.start();
