@@ -63,19 +63,27 @@ describe('SceneryView', () => {
     }
   });
 
-  it('hangs the wires between neighbouring poles, sagging, a pixel wide at least, in one draw', () => {
+  it('hangs the wires between neighbouring poles, sagging, and the highway fence\'s straight, a pixel wide at least, in one draw', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, world);
     const [wires] = meshes(scene, 'scenery:wires');
     const spans = world.powerLines.reduce((sum, line) => sum + line.poles.length - 1, 0);
+    const fenceSpans = world.roadFences.reduce((sum, fence) => sum + fence.points.length - 1, 0);
+    expect(fenceSpans).toBeGreaterThan(0);
 
-    // Three wires a span, eight pieces each, four corners a piece.
+    // The power lines: three wires a span, eight pieces each, four corners a piece; then the fences' three straight ones.
     const position = wires!.geometry.getAttribute('position') as BufferAttribute;
-    expect(position.count).toBe(spans * 3 * 8 * 4);
+    const powerCorners = spans * 3 * 8 * 4;
+    expect(position.count).toBe(powerCorners + fenceSpans * 3 * 4);
     expect(wires!.frustumCulled).toBe(false);
+    let fenceHighest = -Infinity;
+    for (let index = powerCorners; index < position.count; index++) {
+      fenceHighest = Math.max(fenceHighest, position.getY(index));
+    }
+    expect(fenceHighest).toBeLessThan(1.2);
     let lowest = Infinity;
     let highest = -Infinity;
-    for (let index = 0; index < position.count; index++) {
+    for (let index = 0; index < powerCorners; index++) {
       lowest = Math.min(lowest, position.getY(index));
       highest = Math.max(highest, position.getY(index));
     }
@@ -246,6 +254,40 @@ describe('SceneryView', () => {
     view.drawDebris(debris, 1);
 
     expect(meshes(scene, 'scenery:fallen:').filter((mesh) => mesh.visible).map((mesh) => mesh.name)).toEqual(['scenery:fallen:sign:stop']);
+  });
+
+  it('draws the hedgerows in the tiles, and a farm gate\'s mailbox knocked over in its own look', () => {
+    const edged = new DrivingWorld(
+      mapFixture({
+        halfSizeMeters: 600,
+        roads: [
+          { id: 'main_road', kind: 'rural', widthMeters: 8, closed: false, controlPoints: [[-560, 0], [0, 0], [560, 0]] },
+          { id: 'farm_lane', kind: 'lane', widthMeters: 5.5, closed: false, controlPoints: [[0, 0], [0, 300]] },
+        ],
+        buildings: [],
+        depots: [],
+        spawn: { x: 0, z: -300, headingDegrees: 90 },
+        scenery: { seed: 3, treesPerKilometer: 0, countryside: true },
+      }),
+    );
+    const scene = new Scene();
+    const view = new SceneryView(scene, edged, { debrisCapacity: 2 });
+    expect(edged.hedgerows.length).toBeGreaterThan(0);
+    // The hedges add to the tiles' vertices: a hedge's chunk is some twenty-eight of them.
+    const vertices = meshes(scene, 'scenery:').filter((mesh) => /scenery:-?\d+,-?\d+$/.test(mesh.name)).reduce((sum, mesh) => sum + mesh.geometry.getAttribute('position').count, 0);
+    const chunks = edged.hedgerows.reduce((sum, hedge) => sum + hedge.points.length - 1, 0);
+    expect(vertices).toBeGreaterThan(chunks * 28);
+
+    expect(edged.farmGates).toHaveLength(1);
+    const { mailbox } = edged.farmGates[0]!;
+    const debris = new DebrisSimulation(2);
+    const shape = KNOCKABLES.mailbox.shape;
+    debris.launch({ kind: knockableCode('mailbox'), ref: edged.circleIndexOf(mailbox), shape, x: 0, y: 1, z: 0, heading: 0, vx: 0, vy: 0, vz: 0, spinX: 0, spinY: 0, spinZ: 0 });
+    view.drawDebris(debris, 1);
+
+    const shown = meshes(scene, 'scenery:fallen:').filter((mesh) => mesh.visible).map((mesh) => mesh.name);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatch(/^scenery:fallen:mailbox:\d$/);
   });
 
   it('frees everything it made', () => {

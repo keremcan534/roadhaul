@@ -4,6 +4,7 @@ import {
   BufferGeometry,
   CircleGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   Euler,
@@ -28,6 +29,8 @@ import type { Grazer, GrazerKind, PowerLine } from '../../domain/world/countrysi
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import type { RoadPath } from '../../domain/world/RoadPath';
 import type { RoadSignKind } from '../../domain/world/roadSigns';
+import { HEDGE_STEP_METERS, type Hedgerow, type RoadFence } from '../../domain/world/roadsides';
+import type { Point2 } from '../../data/definitions/MapDefinition';
 import {
   KERB_HEIGHT_METERS,
   OUTLINE_ROW,
@@ -82,6 +85,24 @@ const CHEVRON_WIDTH = 0.45;
 const CHEVRON_HEIGHT = 0.6;
 const SIGN_MIDDLE_Y = 2.05;
 const CHEVRON_MIDDLE_Y = 1.2;
+/**
+ * Hedgerows (roadsides.ts): a chunk of hedge each point to the next, a
+ * little longer so they meet, of its own thickness and height, its top
+ * narrower and uneven, in one of these greens; drawn in pieces of this many
+ * chunks, each filed where its middle is.
+ */
+const HEDGE_OVERLAP = 0.6;
+const HEDGE_THICKNESS = [1.1, 1.6] as const;
+const HEDGE_HEIGHT = [1.3, 2.3] as const;
+const HEDGE_GREENS = [0x4d8238, 0x5a9042, 0x457431, 0x62984a] as const;
+const HEDGE_PIECE_CHUNKS = 10;
+/** A farm gate's stone pillars; its mailbox in one of these colours, its flag red. */
+const PILLAR_STONE = 0xb8b0a1;
+const PILLAR_CAP = 0xcac3b5;
+const MAILBOX_COLORS = [0x2f5d8a, 0x3e6b3d, 0x9a3a2e, 0x4b5058] as const;
+const MAILBOX_FLAG = 0xc7372f;
+/** The highway's fence: its wires' heights on its posts. */
+const FENCE_WIRE_HEIGHTS = [0.42, 0.78, 1.12] as const;
 /** Grazing: a head goes down and up this often (seconds), and now and then lifts to look round. */
 const GRAZE_PERIOD_SECONDS = 3.4;
 const LOOK_ROUND_EVERY_SECONDS = 23;
@@ -168,12 +189,13 @@ export class SceneryView {
   private shownKnocks = -1;
   /**
    * The props knocked over, tumbling about: one set of copies per look (a
-   * kind of furniture, a speed sign's limit, a road sign's kind); the
-   * furniture's by its knockable code, each sign's by its circle.
+   * kind of furniture, a speed sign's limit, a road sign's kind, a
+   * mailbox's colour); the furniture's by its knockable code, the signs'
+   * and mailboxes' by their circle.
    */
   private readonly fallen: DebrisInstances[] = [];
   private readonly fallenByCode: (DebrisInstances | undefined)[] = [];
-  private readonly fallenSigns = new Map<number, DebrisInstances>();
+  private readonly fallenByCircle = new Map<number, DebrisInstances>();
   private readonly signLimits = new Map<number, number>();
   // Scratch objects reused every frame.
   private readonly matrix = new Matrix4();
@@ -205,6 +227,28 @@ export class SceneryView {
       } else {
         addWall(tiles, parts, edge.from, edge.to);
       }
+    }
+    for (const hedge of world.hedgerows) {
+      addHedge(tiles, hedge);
+    }
+    const mailboxLooks = new Map<number, number>();
+    for (const gate of world.farmGates) {
+      for (const pillar of gate.pillars) {
+        tiles.add(pillar.x, pillar.z, parts.place('gate-pillar', gatePillarGeometry, pillar.x, pillar.z, gate.heading));
+      }
+      const { mailbox } = gate;
+      const look = Math.floor(hash(mailbox.x, mailbox.z) * MAILBOX_COLORS.length);
+      const circle = world.circleIndexOf(mailbox);
+      tiles.add(mailbox.x, mailbox.z, parts.place(`mailbox:${look}`, () => mailboxGeometry(look), mailbox.x, mailbox.z, mailbox.heading), circle);
+      mailboxLooks.set(circle, look);
+    }
+    for (const fence of world.roadFences) {
+      fence.points.forEach(([x, z], index) => {
+        const [nextX, nextZ] = fence.points[Math.min(index + 1, fence.points.length - 1)]!;
+        const [lastX, lastZ] = fence.points[Math.max(index - 1, 0)]!;
+        const lean = (hash(x, z) - 0.5) * 0.05;
+        tiles.add(x, z, parts.place('wire-fence-post', wireFencePostGeometry, x, z, Math.atan2(nextX - lastX, nextZ - lastZ), parts.shape().makeRotationZ(lean)));
+      });
     }
     world.rocks.forEach((rock, index) => {
       const shape = index % ROCK_SHAPES;
@@ -277,7 +321,16 @@ export class SceneryView {
           fallen = fallenOf('speedSign', speedSignGeometry(limit), `scenery:fallen:speed:${limit}`);
           signs.set(limit, fallen);
         }
-        this.fallenSigns.set(circle, fallen);
+        this.fallenByCircle.set(circle, fallen);
+      }
+      const mailboxes = new Map<number, DebrisInstances>();
+      for (const [circle, look] of mailboxLooks) {
+        let fallen = mailboxes.get(look);
+        if (fallen === undefined) {
+          fallen = fallenOf('mailbox', mailboxGeometry(look), `scenery:fallen:mailbox:${look}`);
+          mailboxes.set(look, fallen);
+        }
+        this.fallenByCircle.set(circle, fallen);
       }
       const roadSigns = new Map<RoadSignKind, DebrisInstances>();
       for (const [circle, kind] of signKinds) {
@@ -286,7 +339,7 @@ export class SceneryView {
           fallen = fallenOf('roadSign', roadSignGeometry(kind), `scenery:fallen:sign:${kind}`);
           roadSigns.set(kind, fallen);
         }
-        this.fallenSigns.set(circle, fallen);
+        this.fallenByCircle.set(circle, fallen);
       }
     }
     if (paving.size > 0) {
@@ -300,7 +353,7 @@ export class SceneryView {
         this.culling.add(mesh);
       }
     }
-    const wires = wireSegments(world.powerLines);
+    const wires = [...wireSegments(world.powerLines), ...fenceWireSegments(world.roadFences)];
     if (wires.length > 0) {
       const mesh = new Mesh(this.track(wireRibbons(wires)), this.track(wireMaterial(this.resolution)));
       mesh.name = 'scenery:wires';
@@ -396,7 +449,9 @@ export class SceneryView {
           continue;
         }
         const code = debris.kind[slot]!;
-        const look = code === SPEED_SIGN_CODE || code === ROAD_SIGN_CODE ? this.fallenSigns.get(debris.ref[slot]!) : this.fallenByCode[code];
+        // The signs and mailboxes are looked up by their circle (each its own look); a wreck's ref is no circle.
+        const byCircle = code === SPEED_SIGN_CODE || code === ROAD_SIGN_CODE || code === MAILBOX_CODE;
+        const look = byCircle ? this.fallenByCircle.get(debris.ref[slot]!) : this.fallenByCode[code];
         look?.add(debris, slot, alpha);
       }
     }
@@ -479,6 +534,7 @@ export class SceneryView {
 const UP = new Vector3(0, 1, 0);
 const SPEED_SIGN_CODE = knockableCode('speedSign');
 const ROAD_SIGN_CODE = knockableCode('roadSign');
+const MAILBOX_CODE = knockableCode('mailbox');
 /** Where a sheep's and a cow's neck is on its body (the head turns there), meters up and forward. */
 const SHEEP_NECK = { y: 0.78, z: 0.55 } as const;
 const COW_NECK = { y: 1.32, z: 1.0 } as const;
@@ -791,6 +847,151 @@ function addFence(tiles: Tiles, parts: Parts, from: readonly [number, number], t
   for (const y of [0.52, 0.94]) {
     tiles.add(middleX, middleZ, parts.place('fence-rail', rail, middleX, middleZ, heading, parts.shape().makeScale(1, 1, length).setPosition(0.07, y, 0)));
   }
+}
+
+/**
+ * A hedgerow along its points, in pieces of HEDGE_PIECE_CHUNKS chunks, each
+ * piece filed where its middle is. A chunk runs from a point to the next,
+ * a little longer, its thickness, height and green its own (by where it
+ * is), its top narrower and uneven: a wild hedge, not a clipped one.
+ */
+function addHedge(tiles: Tiles, hedge: Hedgerow): void {
+  const { points } = hedge;
+  for (let first = 0; first + 1 < points.length; first += HEDGE_PIECE_CHUNKS) {
+    const last = Math.min(points.length - 1, first + HEDGE_PIECE_CHUNKS);
+    const middle = points[Math.round((first + last) / 2)]!;
+    tiles.add(middle[0], middle[1], hedgeGeometry(points, first, last));
+  }
+}
+
+/**
+ * The chunks of hedge from point `first` to point `last` of `points`,
+ * dressed in their greens: each a block narrowing upward, its top a low
+ * hump (four faces up to a ridge point, higher than its corners). The
+ * sides' normals lean up, as foliage catches the sky: soft, not boxy.
+ */
+function hedgeGeometry(points: readonly Point2[], first: number, last: number): BufferGeometry {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const color = new Color();
+  const u = (PROP_ATLAS.plain.x + PROP_ATLAS.plain.width / 2) / PROP_ATLAS_WIDTH;
+  const v = (PROP_ATLAS.plain.y + PROP_ATLAS.plain.height / 2) / PROP_ATLAS_HEIGHT;
+  const edgeA = new Vector3();
+  const edgeB = new Vector3();
+  const normal = new Vector3();
+  /** Adds a flat polygon (a triangle or a quad, its corners given round it either way), wound and lit to face away from (cx, cy, cz). */
+  const face = (corners: readonly (readonly [number, number, number])[], cx: number, cy: number, cz: number, lift: number): void => {
+    const [a, b, c] = corners;
+    edgeA.set(b![0] - a![0], b![1] - a![1], b![2] - a![2]);
+    edgeB.set(c![0] - a![0], c![1] - a![1], c![2] - a![2]);
+    normal.crossVectors(edgeA, edgeB).normalize();
+    let mx = 0;
+    let my = 0;
+    let mz = 0;
+    for (const [x, y, z] of corners) {
+      mx += x / corners.length;
+      my += y / corners.length;
+      mz += z / corners.length;
+    }
+    const outward = normal.x * (mx - cx) + normal.y * (my - cy) + normal.z * (mz - cz) >= 0;
+    const ordered = outward ? corners : [...corners].reverse();
+    if (!outward) {
+      normal.negate();
+    }
+    normal.y += lift;
+    normal.normalize();
+    const base = positions.length / 3;
+    for (const [x, y, z] of ordered) {
+      positions.push(x, y, z);
+      normals.push(normal.x, normal.y, normal.z);
+      colors.push(color.r, color.g, color.b);
+    }
+    indices.push(base, base + 1, base + 2);
+    if (ordered.length === 4) {
+      indices.push(base, base + 2, base + 3);
+    }
+  };
+  for (let i = first; i < last; i++) {
+    const [ax, az] = points[i]!;
+    const [bx, bz] = points[i + 1]!;
+    const length = Math.hypot(bx - ax, bz - az) || HEDGE_STEP_METERS;
+    const alongX = (bx - ax) / length;
+    const alongZ = (bz - az) / length;
+    const mx = (ax + bx) / 2;
+    const mz = (az + bz) / 2;
+    const own = hash(mx, mz);
+    const half = length / 2 + HEDGE_OVERLAP / 2;
+    const width = (HEDGE_THICKNESS[0] + (HEDGE_THICKNESS[1] - HEDGE_THICKNESS[0]) * hash(mz, mx)) / 2;
+    const height = HEDGE_HEIGHT[0] + (HEDGE_HEIGHT[1] - HEDGE_HEIGHT[0]) * own;
+    color.setHex(HEDGE_GREENS[Math.floor(own * HEDGE_GREENS.length) % HEDGE_GREENS.length]!).multiplyScalar(0.9 + 0.2 * hash(mx + 3, mz));
+    // Corners round the chunk, at its foot (sunk a little) and at its shoulders (drawn in, each at its own height).
+    const at = (along: number, across: number, y: number): [number, number, number] => [
+      mx + alongX * along - alongZ * across,
+      y,
+      mz + alongZ * along + alongX * across,
+    ];
+    const shoulder = (along: number, across: number): [number, number, number] =>
+      at(along * 0.94, across * 0.64, height * (0.68 + 0.18 * hash(mx + along * 7, mz + across * 5)));
+    const foot = [at(-half, -width, -0.1), at(half, -width, -0.1), at(half, width, -0.1), at(-half, width, -0.1)];
+    const top = [shoulder(-half, -width), shoulder(half, -width), shoulder(half, width), shoulder(-half, width)];
+    // The hump's top, off the middle and higher or lower, so no two chunks match.
+    const ridge = at((hash(mx, mz + 13) - 0.5) * half, (hash(mx + 11, mz) - 0.5) * width * 0.5, height * (0.95 + 0.2 * hash(mz + 17, mx)));
+    const middleY = height * 0.45;
+    for (let side = 0; side < 4; side++) {
+      const next = (side + 1) % 4;
+      face([foot[side]!, foot[next]!, top[next]!, top[side]!], mx, middleY, mz, 0.55);
+      face([top[side]!, top[next]!, ridge], mx, middleY, mz, 0.2);
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array(normals), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array((positions.length / 3) * 2).map((_, i) => (i % 2 === 0 ? u : v)), 2));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+/** A farm gate's stone pillar with its cap. */
+function gatePillarGeometry(): BufferGeometry {
+  return mergeParts([
+    dress(new BoxGeometry(0.5, 1.45, 0.5).translate(0, 0.72, 0), PILLAR_STONE),
+    dress(new BoxGeometry(0.62, 0.12, 0.62).translate(0, 1.5, 0), PILLAR_CAP),
+    dress(new ConeGeometry(0.3, 0.22, 4).rotateY(Math.PI / 4).translate(0, 1.67, 0), PILLAR_CAP),
+  ]);
+}
+
+/** A mailbox of colour `look` on its wooden post, its rounded lid, its lid's front toward +z and a red flag at its side. */
+function mailboxGeometry(look: number): BufferGeometry {
+  const body = MAILBOX_COLORS[look % MAILBOX_COLORS.length]!;
+  return mergeParts([
+    dress(new BoxGeometry(0.08, 1.05, 0.08).translate(0, 0.52, 0), WEATHERED_WOOD),
+    dress(new BoxGeometry(0.24, 0.2, 0.44).translate(0, 1.13, 0), body),
+    dress(new CylinderGeometry(0.12, 0.12, 0.44, 8, 1, false, -Math.PI / 2, Math.PI).rotateX(Math.PI / 2).translate(0, 1.23, 0), body),
+    dress(new BoxGeometry(0.02, 0.16, 0.07).translate(0.13, 1.25, -0.08), MAILBOX_FLAG),
+  ]);
+}
+
+/** A post of the highway's fence: a round wooden stake. */
+function wireFencePostGeometry(): BufferGeometry {
+  return dress(new CylinderGeometry(0.05, 0.06, 1.3, 6).translate(0, 0.6, 0), WEATHERED_WOOD);
+}
+
+/** The fences' wires, straight from post to post at each of FENCE_WIRE_HEIGHTS, as line segments (like the power lines'). */
+function fenceWireSegments(fences: readonly RoadFence[]): number[] {
+  const positions: number[] = [];
+  for (const fence of fences) {
+    for (let i = 0; i + 1 < fence.points.length; i++) {
+      const [ax, az] = fence.points[i]!;
+      const [bx, bz] = fence.points[i + 1]!;
+      for (const y of FENCE_WIRE_HEIGHTS) {
+        positions.push(ax, y, az, bx, y, bz);
+      }
+    }
+  }
+  return positions;
 }
 
 /** A dry-stone wall from `from` to `to`, in stretches each showing the stones' picture, a little uneven on top. */
