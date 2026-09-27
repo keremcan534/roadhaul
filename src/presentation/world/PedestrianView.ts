@@ -32,6 +32,31 @@ const REACH_METERS = 140;
 const PAVEMENT_Y = 0.03 + KERB_HEIGHT_METERS;
 /** Numbers per person in the `person` attribute: how far through the walking cycle (radians), walking (1) or standing (0), how they look (0..1). */
 const PERSON_STRIDE = 3;
+/**
+ * People jump out of the truck's way (dodge): out of the path it will
+ * sweep within this many seconds, to this far clear of its side (meters),
+ * quickly (this rate, 1/s), hopping up to this high as they go; once it
+ * has passed they drift back to their way at the slower rate.
+ */
+const DODGE_LOOK_AHEAD_SECONDS = 1.2;
+const DODGE_CLEARANCE_METERS = 1;
+const DODGE_RATE = 10;
+const RETURN_RATE = 1.2;
+const DODGE_HOP_METERS = 0.35;
+
+/** The truck as the people see it coming (PedestrianView.update): where it is, and its body round its rear axle. */
+export interface TruckNearby {
+  x: number;
+  z: number;
+  /** Radians, 0 toward +z. */
+  heading: number;
+  /** Along its heading, m/s (negative in reverse). */
+  speed: number;
+  /** How far its body reaches behind (negative) and ahead of its rear axle, and half its width, meters. */
+  rear: number;
+  front: number;
+  halfWidth: number;
+}
 
 /** The parts of a person, as the shader colours and moves them. */
 const PART = { skin: 0, hair: 1, shirt: 2, trousers: 3, shoes: 4, umbrella: 5, shaft: 6 } as const;
@@ -139,6 +164,10 @@ export class PedestrianView {
   private readonly pose = createPedestrianPose();
   private readonly point = createRoadPoint();
   private time = 0;
+  /** How far each walker and each one waiting has stepped out of the truck's way (x, z per person), and how high they hop. */
+  private readonly walkerDodge: Float32Array;
+  private readonly waitingDodge: Float32Array;
+  private hop = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -149,6 +178,8 @@ export class PedestrianView {
   ) {
     this.capacity = Math.max(1, options.capacity ?? 120);
     this.people = placePedestrians(roads, sidewalks, furniture, PEDESTRIAN_SEED);
+    this.walkerDodge = new Float32Array(this.people.walkers.length * 2);
+    this.waitingDodge = new Float32Array(this.people.waiting.length * 2);
     this.reachOf = new Float64Array(sidewalks.length * 3);
     sidewalks.forEach((sidewalk, index) => {
       const road = roads[sidewalk.roadIndex]!;
@@ -200,9 +231,15 @@ export class PedestrianView {
    * Places the people near `eye` as they are after `deltaSeconds` more
    * (0 while paused): as many as are out in a crowd `crowd` strong (0..1:
    * 1 by day, thinner at night and in the rain), their umbrellas `umbrella`
-   * open (0..1). Allocation-free.
+   * open (0..1). Those in the way of `truck` jump aside. Allocation-free.
    */
-  update(deltaSeconds: number, eye: Readonly<{ x: number; z: number }>, crowd: number, umbrella: number): void {
+  update(
+    deltaSeconds: number,
+    eye: Readonly<{ x: number; z: number }>,
+    crowd: number,
+    umbrella: number,
+    truck: Readonly<TruckNearby> | null = null,
+  ): void {
     this.time += deltaSeconds;
     this.uniforms.umbrella.value = Math.min(1, Math.max(0, umbrella));
     const person = this.person.array as Float32Array;
@@ -221,7 +258,13 @@ export class PedestrianView {
       if (dx * dx + dz * dz > reachSq) {
         continue;
       }
-      this.mesh.setMatrixAt(count, this.matrix.makeRotationY(pose.heading).setPosition(pose.x, PAVEMENT_Y, pose.z));
+      this.dodge(this.walkerDodge, i, pose.x, pose.z, deltaSeconds, truck);
+      this.mesh.setMatrixAt(
+        count,
+        this.matrix
+          .makeRotationY(pose.heading)
+          .setPosition(pose.x + this.walkerDodge[i * 2]!, PAVEMENT_Y + this.hop, pose.z + this.walkerDodge[i * 2 + 1]!),
+      );
       person[count * PERSON_STRIDE] = pose.stride;
       person[count * PERSON_STRIDE + 1] = 1;
       person[count * PERSON_STRIDE + 2] = walker.look;
@@ -234,7 +277,13 @@ export class PedestrianView {
       if (!crowdShows(one.presence, crowd) || dx * dx + dz * dz > reachSq) {
         continue;
       }
-      this.mesh.setMatrixAt(count, this.matrix.makeRotationY(one.heading).setPosition(one.x, PAVEMENT_Y, one.z));
+      this.dodge(this.waitingDodge, i, one.x, one.z, deltaSeconds, truck);
+      this.mesh.setMatrixAt(
+        count,
+        this.matrix
+          .makeRotationY(one.heading)
+          .setPosition(one.x + this.waitingDodge[i * 2]!, PAVEMENT_Y + this.hop, one.z + this.waitingDodge[i * 2 + 1]!),
+      );
       person[count * PERSON_STRIDE] = 0;
       person[count * PERSON_STRIDE + 1] = 0;
       person[count * PERSON_STRIDE + 2] = one.look;
@@ -252,6 +301,42 @@ export class PedestrianView {
     this.mesh.geometry.dispose();
     (this.mesh.material as MeshLambertMaterial).dispose();
     this.mesh.dispose();
+  }
+
+  /**
+   * Person `i` (its step aside in `steps`), whose way puts it at (x, z):
+   * in the path `truck` sweeps within DODGE_LOOK_AHEAD_SECONDS, it jumps
+   * out to its side of it, hopping (`hop`); clear of it, it drifts back.
+   */
+  private dodge(steps: Float32Array, i: number, x: number, z: number, dt: number, truck: Readonly<TruckNearby> | null): void {
+    let toX = 0;
+    let toZ = 0;
+    if (truck !== null) {
+      const sin = Math.sin(truck.heading);
+      const cos = Math.cos(truck.heading);
+      const dx = x - truck.x;
+      const dz = z - truck.z;
+      const along = dx * sin + dz * cos;
+      // The truck's right is (-cos, sin).
+      const right = -dx * cos + dz * sin;
+      const clear = truck.halfWidth + DODGE_CLEARANCE_METERS;
+      const ahead = truck.front + Math.max(0, truck.speed) * DODGE_LOOK_AHEAD_SECONDS + DODGE_CLEARANCE_METERS;
+      const behind = truck.rear + Math.min(0, truck.speed) * DODGE_LOOK_AHEAD_SECONDS - DODGE_CLEARANCE_METERS;
+      if (along > behind && along < ahead && Math.abs(right) < clear) {
+        const step = (right >= 0 ? clear : -clear) - right;
+        toX = -cos * step;
+        toZ = sin * step;
+      }
+    }
+    const fromX = steps[i * 2]!;
+    const fromZ = steps[i * 2 + 1]!;
+    const ease = 1 - Math.exp(-(toX !== 0 || toZ !== 0 ? DODGE_RATE : RETURN_RATE) * dt);
+    const nowX = fromX + (toX - fromX) * ease;
+    const nowZ = fromZ + (toZ - fromZ) * ease;
+    steps[i * 2] = nowX;
+    steps[i * 2 + 1] = nowZ;
+    // Off the ground while still jumping clear.
+    this.hop = toX !== 0 || toZ !== 0 ? Math.min(DODGE_HOP_METERS, Math.hypot(toX - nowX, toZ - nowZ) * 0.5) : 0;
   }
 
   /** Whether any of pavement `index` comes within reach of `eye`. */
