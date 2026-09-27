@@ -1,6 +1,7 @@
 import { approach, clamp, clamp01, degreesToRadians, finiteOr, kmhToMetersPerSecond, smoothstep } from '../../core/math/scalar';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Surface } from '../world/Surface';
+import { BodyMotion, type BodyBuild } from './bodyMotion';
 import type { PerformanceFactors } from './performance';
 import { brakePedalOf, drivePedalOf, type GearLever, type VehicleInput } from './VehicleInput';
 import type { VehicleRuntimeState } from './VehicleRuntimeState';
@@ -51,6 +52,23 @@ const STEER_PACE_EASES_FROM = 5;
 const STEER_PACE_EASES_TO = 22;
 /** Letting go, the steering comes back to straight this much faster than it turns: the tyres pull it back. */
 const STEER_RETURN_SPEEDUP = 1.6;
+/**
+ * The truck corners up to this much harder than its rollover threshold
+ * (bodyMotion) where the tyres hold it: a turn held there lifts the inside
+ * wheels and, held on, rolls the truck over; let go, it comes back down.
+ */
+export const ROLLOVER_MARGIN = 1.15;
+/**
+ * The tyres pull a sideways slide (a crash's shove) back to nothing over
+ * about this long (seconds), and a spin beyond the path's over about this
+ * long, no harder than they grip.
+ */
+const SLIP_RELAX_SECONDS = 0.25;
+const SPIN_RELAX_SECONDS = 0.35;
+/** A slide or spin this small (m/s, rad/s) has died away. */
+const SLIP_REST = 1e-3;
+/** Out of the wheels' hold (over, in the air), the engine revs free: this share of its range at full throttle. */
+const FREE_REV_SHARE = 0.6;
 /** The truck's path bends toward the front wheels' over about this long (its weight turning), seconds. */
 const TURN_IN_SECONDS = 0.15;
 /**
@@ -72,10 +90,14 @@ const CLUTCH_TAKE_UP_RATE = 3.5;
  * with a real drivetrain: torque/power curve, automatic gearbox, speed governor,
  * drag, rolling resistance, engine braking, brakes, grip-limited traction and
  * cornering, and reverse: by brake at a standstill, or by the gear lever
- * (VehicleInput.lever). No tyre slip or body physics: trucks should feel
- * heavy and planted, not drift. The steering is speed-sensitive (its whole
- * travel steers at every speed), paced, self-centring, and the path follows
- * the wheels over a moment; the pedals press in and let go smoothly.
+ * (VehicleInput.lever). The tyres do not drift (trucks feel heavy and
+ * planted): a crash's shove or spin (slipSpeed, spinRate) dies away as they
+ * grip again. The steering is speed-sensitive (its whole travel steers at
+ * every speed), paced, self-centring, and the path follows the wheels over a
+ * moment; the pedals press in and let go smoothly. Cornering is capped by the
+ * tyres, or a little past the rollover threshold: the body (BodyMotion) leans
+ * on its springs, lifts its inside wheels past it and rolls over if held.
+ * Over or in the air, nothing drives or steers it until it is back down.
  *
  * Every step mutates the given state in place and allocates nothing.
  */
@@ -92,6 +114,8 @@ export class VehicleDynamics {
   /** The steering's pace at walking speed: its whole travel per second. */
   private readonly steerPace: number;
   private massKg: number;
+  private cargoMassKg: number;
+  private readonly body: BodyMotion;
   private torqueFactor = 1;
   private brakeFactor = 1;
   private gripFactor = 1;
@@ -114,7 +138,9 @@ export class VehicleDynamics {
     this.maxReverseSpeed = kmhToMetersPerSecond(handling.maxReverseSpeedKmh);
     this.maxSteerAngle = degreesToRadians(handling.maxSteerAngleDegrees);
     this.steerPace = handling.steerSpeedDegreesPerSecond / handling.maxSteerAngleDegrees;
-    this.massKg = body.massKg + usableCargoMass(cargoMassKg);
+    this.cargoMassKg = usableCargoMass(cargoMassKg);
+    this.massKg = body.massKg + this.cargoMassKg;
+    this.body = new BodyMotion(definition, this.cargoMassKg);
   }
 
   /** Truck plus cargo. */
@@ -122,9 +148,16 @@ export class VehicleDynamics {
     return this.massKg;
   }
 
-  /** Loading and unloading change how the truck accelerates, brakes and corners. */
+  /** Where the truck's weight sits and how it turns, with its cargo and body strength (BodyMotion): for collisions. */
+  get build(): Readonly<BodyBuild> {
+    return this.body.build;
+  }
+
+  /** Loading and unloading change how the truck accelerates, brakes and corners, and how high its weight sits. */
   setCargoMass(cargoMassKg: number): void {
-    this.massKg = this.definition.body.massKg + usableCargoMass(cargoMassKg);
+    this.cargoMassKg = usableCargoMass(cargoMassKg);
+    this.massKg = this.definition.body.massKg + this.cargoMassKg;
+    this.body.rebuild(this.cargoMassKg, this.stabilityFactor);
   }
 
   /**
@@ -137,6 +170,7 @@ export class VehicleDynamics {
     this.brakeFactor = Math.max(0, finiteOr(factors.brakeFactor, 1));
     this.gripFactor = Math.max(0, finiteOr(factors.gripFactor, 1));
     this.stabilityFactor = Math.max(0, finiteOr(factors.stabilityFactor, 1));
+    this.body.rebuild(this.cargoMassKg, this.stabilityFactor);
   }
 
   /** A stalled engine (an empty tank) drives nothing; the truck still rolls, brakes and steers. */
@@ -159,6 +193,20 @@ export class VehicleDynamics {
       z,
       heading,
       speed: 0,
+      slipSpeed: 0,
+      spinRate: 0,
+      attitude: 'wheels',
+      lean: 0,
+      leanRate: 0,
+      bank: 0,
+      bankRate: 0,
+      dip: 0,
+      dipRate: 0,
+      tilt: 0,
+      tiltRate: 0,
+      rise: 0,
+      riseSpeed: 0,
+      groundImpact: 0,
       steerPosition: 0,
       steerAngle: 0,
       pathCurvature: 0,
@@ -187,6 +235,10 @@ export class VehicleDynamics {
     const brake = pedalTravel(input.brake);
 
     const lever = input.lever ?? 'auto';
+    if (state.attitude === 'airborne' || state.attitude === 'overturned') {
+      this.stepLoose(state, steerInput, throttle, brake, surface, dt);
+      return;
+    }
     // What the driver asks for decides the direction; the pedals as they have come down so far drive and brake.
     this.updateDirection(state, throttle, brake, lever, dt);
     state.throttlePedal = approach(
@@ -204,6 +256,30 @@ export class VehicleDynamics {
     this.updateGear(state, drivePedal, dt);
     this.updateSpeed(state, drivePedal, brakePedal, surface, dt);
     this.updateSteeringAndPosition(state, steerInput, surface, dt);
+  }
+
+  /**
+   * Off its wheels (over, in the air): the pedals and the wheel still move
+   * and the engine revs free, but nothing drives, brakes or steers the
+   * truck; the body slides, rolls or flies on (BodyMotion).
+   */
+  private stepLoose(
+    state: VehicleRuntimeState,
+    steerInput: number,
+    throttle: number,
+    brake: number,
+    surface: Surface,
+    dt: number,
+  ): void {
+    state.throttlePedal = approach(state.throttlePedal, throttle, (throttle > state.throttlePedal ? THROTTLE_PRESS_RATE : THROTTLE_RELEASE_RATE) * dt);
+    state.brakePedal = approach(state.brakePedal, brake, (brake > state.brakePedal ? BRAKE_PRESS_RATE : BRAKE_RELEASE_RATE) * dt);
+    state.steerPosition = approach(state.steerPosition, steerInput, this.steerPace * dt);
+    state.steerAngle = state.steerPosition * this.maxSteerAngle;
+    state.directionChangeTimer = 0;
+    state.shiftTimer = 0;
+    const { idleRpm, maxRpm } = this.definition.powertrain;
+    state.engineRpm = this.engineRunning ? idleRpm + state.throttlePedal * FREE_REV_SHARE * (maxRpm - idleRpm) : idleRpm;
+    this.body.stepLoose(state, surface, dt);
   }
 
   private updateDirection(
@@ -338,12 +414,10 @@ export class VehicleDynamics {
     const returning = Math.abs(steerInput) < Math.abs(state.steerPosition) || steerInput * state.steerPosition < 0;
     state.steerPosition = approach(state.steerPosition, steerInput, (returning ? pace * STEER_RETURN_SPEEDUP : pace) * dt);
 
-    // The sharpest the truck may turn: no tighter than the tyres hold or it stays upright
-    // (lateral acceleration v² · tan(angle) / wheelbase ≤ limit).
-    const { tireGrip, maxLateralAccelerationG } = this.definition.handling;
-    const lateralLimit =
-      Math.min(tireGrip * this.gripFactor * surface.gripFactor, maxLateralAccelerationG * this.stabilityFactor) *
-      GRAVITY;
+    // The sharpest the truck may turn: no tighter than the tyres hold, or a little past what lifts its inside
+    // wheels (lateral acceleration v² · tan(angle) / wheelbase ≤ limit).
+    const grip = this.definition.handling.tireGrip * this.gripFactor * surface.gripFactor * GRAVITY;
+    const lateralLimit = Math.min(grip, ROLLOVER_MARGIN * this.body.build.rolloverAcceleration);
     const speedSquared = state.speed * state.speed;
     const limitedAngle =
       speedSquared > 1e-6 ? Math.atan((lateralLimit * this.wheelbase) / speedSquared) : this.maxSteerAngle;
@@ -361,12 +435,35 @@ export class VehicleDynamics {
       -limitCurvature,
       limitCurvature,
     );
-    const yawRate = -state.speed * state.pathCurvature;
+    // A crash's spin turns the truck under its motion (the rear axle slides sideways as it turns); the slide and
+    // the spin die away as the tyres grip, no faster than their grip allows. The grip's pull is what the truck feels.
+    const slipBefore = state.slipSpeed;
+    state.slipSpeed -= state.speed * state.spinRate * dt;
+    if (state.slipSpeed !== 0) {
+      const pull = state.slipSpeed * (1 - Math.exp(-dt / SLIP_RELAX_SECONDS));
+      state.slipSpeed -= clamp(pull, -grip * dt, grip * dt);
+      if (Math.abs(state.slipSpeed) < SLIP_REST) {
+        state.slipSpeed = 0;
+      }
+    }
+    if (state.spinRate !== 0) {
+      const { halfWheelbase, yawGyration } = this.body.build;
+      const spinGrip = (grip * halfWheelbase) / yawGyration;
+      const pull = state.spinRate * (1 - Math.exp(-dt / SPIN_RELAX_SECONDS));
+      state.spinRate -= clamp(pull, -spinGrip * dt, spinGrip * dt);
+      if (Math.abs(state.spinRate) < SLIP_REST) {
+        state.spinRate = 0;
+      }
+    }
+    const yawRate = -state.speed * state.pathCurvature + state.spinRate;
     state.heading += yawRate * dt;
-    state.x += state.speed * Math.sin(state.heading) * dt;
-    state.z += state.speed * Math.cos(state.heading) * dt;
-    state.lateralAcceleration = state.speed * yawRate;
+    const sin = Math.sin(state.heading);
+    const cos = Math.cos(state.heading);
+    state.x += (state.speed * sin + state.slipSpeed * cos) * dt;
+    state.z += (state.speed * cos - state.slipSpeed * sin) * dt;
+    state.lateralAcceleration = state.speed * yawRate + (state.slipSpeed - slipBefore) / dt;
     state.odometerMeters += Math.abs(state.speed) * dt;
+    this.body.stepGrounded(state, dt);
   }
 
   /** Engine revolutions per wheel revolution in `gear`. */

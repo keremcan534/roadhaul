@@ -1,3 +1,5 @@
+import type { BodyAttitude } from './bodyMotion';
+
 /**
  * Live state of a truck while it is being driven (spec §49). VehicleDynamics
  * mutates it in place every fixed step, so the simulation does not allocate.
@@ -10,6 +12,8 @@ export interface VehicleRuntimeState {
   /**
    * Position of the rear axle's midpoint on the ground, meters: the kinematic
    * bicycle model's reference point. The body centre is `wheelbase / 2` ahead.
+   * With the truck off its wheels (bodyMotion), it is where that point would
+   * be under the centre of mass: the truck rolling on an edge moves it.
    */
   x: number;
   z: number;
@@ -17,6 +21,43 @@ export interface VehicleRuntimeState {
   heading: number;
   /** Meters per second along the heading; negative while reversing. */
   speed: number;
+  /**
+   * The rear axle's speed sideways, m/s toward the truck's left: a shove
+   * from a crash, a slide on its side. The tyres pull it back to nothing
+   * (they do not drift); 0 in plain driving.
+   */
+  slipSpeed: number;
+  /** Turning beyond the path the wheels follow, rad/s (positive turning left): a crash's spin, dying away. */
+  spinRate: number;
+  /** How the truck stands: on its wheels, up on some of them, in the air, or over (bodyMotion). */
+  attitude: BodyAttitude;
+  /**
+   * The body's lean on its springs, radians: positive leaning right (its
+   * left side up), out of a left turn; and how fast it leans.
+   */
+  lean: number;
+  leanRate: number;
+  /**
+   * The whole truck's roll off its wheels (up on the right ones, over on
+   * its side or roof), radians, the same way round, and its rate. 0 on all
+   * its wheels; never wrapped while it rolls.
+   */
+  bank: number;
+  bankRate: number;
+  /** The body's pitch on its springs, radians: positive nose down (braking); and its rate. */
+  dip: number;
+  dipRate: number;
+  /** The whole truck's pitch off its wheels (up on the front ones, end over end), radians, nose down; and its rate. */
+  tilt: number;
+  tiltRate: number;
+  /**
+   * How far the centre of mass is above where it rests on the wheels, m
+   * (up on two wheels, in the air; below on its side), and how fast it rises.
+   */
+  rise: number;
+  riseSpeed: number;
+  /** How hard the body struck the ground in the last step, m/s: lifted wheels slamming down, a side, a landing. */
+  groundImpact: number;
   /**
    * Where the steering wheel is, -1 full left … +1 full right: it follows the
    * driver's input at the steering's pace, and comes back to straight faster.
@@ -46,9 +87,9 @@ export interface VehicleRuntimeState {
   timeInGear: number;
   /** Seconds the driver has held the pedal that asks to change direction at a standstill. */
   directionChangeTimer: number;
-  /** m/s² along the heading. Used for body pitch and engine sound. */
+  /** m/s² along the heading, from the tyres (or the ground's drag while over). Used for body pitch and engine sound. */
   longitudinalAcceleration: number;
-  /** m/s² toward the truck's left. Used for body roll. */
+  /** m/s² toward the truck's left, from the tyres (or the ground's drag while over). Used for body roll. */
   lateralAcceleration: number;
   /** Distance driven, meters. Used for wheel rotation, fuel and statistics. */
   odometerMeters: number;

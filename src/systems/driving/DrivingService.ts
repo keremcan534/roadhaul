@@ -305,7 +305,7 @@ export class DrivingService {
     session.surface = surface;
     session.dynamics.step(state, input, surface, dt);
 
-    const impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers);
+    const impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers, session.dynamics);
     if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }

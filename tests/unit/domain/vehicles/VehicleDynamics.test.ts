@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_PERFORMANCE } from '../../../../src/domain/vehicles/performance';
-import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
+import { ROLLOVER_MARGIN, VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { vehicleFixture } from '../../../support/contentFixtures';
 import { drive, input, kmh, STEP_SECONDS } from '../../../support/driving';
@@ -183,37 +183,52 @@ describe('VehicleDynamics', () => {
     expect((maxX - minX) / 2).toBeCloseTo(expectedRadius, 1);
   });
 
-  it('caps the lateral acceleration at the stability limit at speed', () => {
+  it('corners at speed up to a little past the rollover threshold: held there, it lifts its wheels and goes over', () => {
     const { dynamics, state } = setup();
     drive(dynamics, state, input({ throttle: 1 }), 60);
+    const threshold = truck.handling.maxLateralAccelerationG * 9.81;
     let peak = 0;
+    let lifted = -1;
+    let over = -1;
 
-    for (let i = 0; i < 180; i++) {
+    for (let i = 0; i < 240 && over < 0; i++) {
       dynamics.step(state, input({ throttle: 1, steer: 1 }), ASPHALT, STEP_SECONDS);
-      peak = Math.max(peak, Math.abs(state.lateralAcceleration));
+      if (state.attitude !== 'overturned') {
+        peak = Math.max(peak, Math.abs(state.lateralAcceleration));
+      }
+      if (lifted < 0 && state.attitude === 'tipping') lifted = i;
+      if (over < 0 && state.attitude === 'overturned') over = i;
     }
 
-    expect(peak).toBeLessThanOrEqual(truck.handling.maxLateralAccelerationG * 9.81 + 1e-9);
-    expect(peak).toBeGreaterThan(truck.handling.maxLateralAccelerationG * 9.81 * 0.95);
+    expect(peak).toBeLessThanOrEqual(ROLLOVER_MARGIN * threshold + 1e-9);
+    expect(peak).toBeGreaterThan(ROLLOVER_MARGIN * threshold * 0.98);
+    // The inside wheels lift within a second of full steering, and it takes over a second more to go over.
+    expect(lifted).toBeGreaterThan(0);
+    expect(lifted).toBeLessThan(60);
+    expect(over - lifted).toBeGreaterThan(60);
+    // Turning right, it goes over onto its left side.
+    expect(state.bank).toBeLessThan(0);
   });
 
   it('spreads the steering over its whole travel at speed: a light touch turns gently, a full turn at the limit', () => {
     const lateralG = (steer: number): number => {
       const { dynamics, state } = setup();
-      for (let i = 0; i < 180; i++) {
+      // The wheel already turned: a second for the truck to turn in, before a full turn could lift its wheels.
+      state.steerPosition = steer;
+      for (let i = 0; i < 60; i++) {
         state.speed = 80 / 3.6;
         dynamics.step(state, input({ steer }), ASPHALT, STEP_SECONDS);
       }
       return Math.abs(state.lateralAcceleration) / 9.81;
     };
-    const limit = truck.handling.maxLateralAccelerationG;
+    const limit = truck.handling.maxLateralAccelerationG * ROLLOVER_MARGIN;
 
     // No hair trigger on the open road: a tenth of the travel turns a little, half about half as hard.
     expect(lateralG(0.1)).toBeGreaterThan(limit * 0.05);
     expect(lateralG(0.1)).toBeLessThan(limit * 0.15);
     expect(lateralG(0.5)).toBeGreaterThan(lateralG(0.25) * 1.8);
     expect(lateralG(0.5)).toBeLessThan(limit * 0.7);
-    expect(lateralG(1)).toBeCloseTo(limit, 3);
+    expect(lateralG(1)).toBeCloseTo(limit, 2);
   });
 
   it('sweeps the steering slower at speed, and back to straight faster than it turns', () => {
@@ -369,13 +384,14 @@ describe('VehicleDynamics', () => {
       const { dynamics, state } = setup();
       dynamics.setPerformance({ ...BASE_PERFORMANCE, stabilityFactor });
       state.speed = 60 / 3.6;
-      // Long enough for the steering to sweep over at speed and the truck to turn in.
-      drive(dynamics, state, input({ steer: 1 }), 2);
+      // The wheel already turned: long enough for the truck to turn in, not to go over.
+      state.steerPosition = 1;
+      drive(dynamics, state, input({ steer: 1 }), 1);
       return Math.abs(state.lateralAcceleration) / 9.81;
     };
-    // The fixture corners at 0.4 g at most: its tyres (0.85) hold more, so the body sets the limit.
-    expect(lateralAt60(1)).toBeCloseTo(truck.handling.maxLateralAccelerationG, 2);
-    expect(lateralAt60(1.15)).toBeCloseTo(truck.handling.maxLateralAccelerationG * 1.15, 2);
+    // The fixture tips at 0.4 g: its tyres (0.85) hold more, so its body sets the limit, a little past that.
+    expect(lateralAt60(1)).toBeCloseTo(truck.handling.maxLateralAccelerationG * ROLLOVER_MARGIN, 2);
+    expect(lateralAt60(1.15)).toBeCloseTo(truck.handling.maxLateralAccelerationG * 1.15 * ROLLOVER_MARGIN, 2);
 
     // On grass the tyres, not the 70 kN brakes, set how hard the truck can stop.
     const stopFrom15 = (gripFactor: number): number => {

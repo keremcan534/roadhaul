@@ -104,13 +104,19 @@ describe('DrivingService', () => {
       spawn: { x: 184, z: -190, headingDegrees: angleDegrees },
     });
     driving.start('test_truck', 'test_map');
+    let largestTurn = 0;
 
-    stepFor(driving, 40, input({ throttle: 1 }), () => driving.vehicle.z > 150);
+    stepFor(driving, 40, input({ throttle: 1 }), () => {
+      largestTurn = Math.max(largestTurn, Math.abs(driving.vehicle.heading - driving.previousPose.heading));
+      return driving.vehicle.z > 150;
+    });
 
     expect(collisions).toHaveLength(1);
-    // It slid along the wall instead of sticking to it, and kept accelerating.
+    // It slid along the wall instead of sticking to it, turned along it over many steps (never in a jump), and
+    // kept accelerating.
     expect(driving.vehicle.z).toBeGreaterThan(150);
-    expect(driving.vehicle.heading).toBeCloseTo(0, 6);
+    expect(largestTurn).toBeLessThan((1 * Math.PI) / 180);
+    expect(Math.abs(driving.vehicle.heading)).toBeLessThan((1 * Math.PI) / 180);
     expect(driving.vehicle.speed * 3.6).toBeGreaterThan(60);
   });
 
