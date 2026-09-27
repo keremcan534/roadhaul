@@ -2,16 +2,19 @@ import { describe, expect, it } from 'vitest';
 import { Validator } from '../../../../src/core/validation/Validator';
 import {
   isInSea,
+  MAX_SIDE_ROADS_PER_KILOMETER,
   polygonArea,
   polygonContains,
   rectangleContains,
   rectangleCorners,
   shorelineXAt,
   validateMapDefinition,
+  VILLAGE_HOUSES_RANGE,
   type DepotDefinition,
   type MapDefinition,
   type RiverDefinition,
   type RoadKind,
+  type VillageDefinition,
 } from '../../../../src/data/definitions/MapDefinition';
 import { mapFixture, seaFixture } from '../../../support/contentFixtures';
 
@@ -52,6 +55,12 @@ describe('validateMapDefinition', () => {
     const [road] = mapFixture().roads;
 
     expect(issuePaths(mapFixture({ roads: [{ ...road!, kind: 'motorway' as RoadKind }] }))).toEqual(['map.roads[0].kind']);
+  });
+
+  it('knows the lanes the country grows as a kind of road', () => {
+    const [road] = mapFixture().roads;
+
+    expect(issuePaths(mapFixture({ roads: [{ ...road!, kind: 'lane', widthMeters: 5.5 }] }))).toEqual([]);
   });
 
   it('reports missing roads and buildings instead of crashing', () => {
@@ -328,6 +337,122 @@ describe('forests and parks', () => {
       ],
     });
     expect(issuePaths(map)).toEqual(['map.parks[0].area', 'map.parks[1].area', 'map.parks[3].id']);
+  });
+});
+
+describe('villages', () => {
+  const village = (overrides: Partial<VillageDefinition> = {}): VillageDefinition => ({
+    id: 'test_village',
+    x: 0,
+    z: 100,
+    headingDegrees: 90,
+    houses: 8,
+    ...overrides,
+  });
+  const [fewest, most] = VILLAGE_HOUSES_RANGE;
+
+  it('accepts villages in the map, along either of its axes either way, with a whole number of houses, a green or none', () => {
+    expect(issuePaths(mapFixture({ villages: [] }))).toEqual([]);
+    expect(
+      issuePaths(
+        mapFixture({
+          villages: [
+            village(),
+            village({ id: 'test_village_2', x: -199, z: 199, headingDegrees: -180, houses: fewest, green: true }),
+            village({ id: 'test_village_3', headingDegrees: 270, houses: most, green: false }),
+            village({ id: 'test_village_4', headingDegrees: 0 }),
+            village({ id: 'test_village_5', headingDegrees: 360 }),
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it('asks each village for a snake_case id of its own', () => {
+    const map = mapFixture({
+      villages: [village({ id: 'Test Village' }), village(), village({ id: 'test-village' }), village(), village({ id: '' })],
+    });
+
+    expect(issuePaths(map)).toEqual(['map.villages[0].id', 'map.villages[2].id', 'map.villages[3].id', 'map.villages[4].id']);
+  });
+
+  it('keeps each village inside the map', () => {
+    const map = mapFixture({
+      villages: [
+        village({ id: 'edge', x: 200 }),
+        village({ id: 'south', z: -250 }),
+        village({ id: 'nowhere', x: Number.NaN }),
+        village({ id: 'inside', x: 199.9, z: -199.9 }),
+      ],
+    });
+
+    expect(issuePaths(map)).toEqual(['map.villages[0]', 'map.villages[1]', 'map.villages[2]']);
+  });
+
+  it("runs each village's street along one of the map's axes", () => {
+    const headings = [45, 91, -30, Number.NaN, Number.POSITIVE_INFINITY];
+    const map = mapFixture({ villages: headings.map((headingDegrees, index) => village({ id: `village_${index}`, headingDegrees })) });
+
+    expect(issuePaths(map)).toEqual(headings.map((_, index) => `map.villages[${index}].headingDegrees`));
+  });
+
+  it(`asks for ${fewest} to ${most} houses, a whole number of them`, () => {
+    const counts = [fewest - 1, most + 1, 7.5, 0, Number.NaN, '8' as unknown as number];
+    const map = mapFixture({ villages: counts.map((houses, index) => village({ id: `village_${index}`, houses })) });
+
+    expect(issuePaths(map)).toEqual(counts.map((_, index) => `map.villages[${index}].houses`));
+  });
+
+  it('asks whether a village has a green with a plain yes or no', () => {
+    const map = mapFixture({
+      villages: [village({ green: 'yes' as unknown as boolean }), village({ id: 'test_village_2', green: 1 as unknown as boolean })],
+    });
+
+    expect(issuePaths(map)).toEqual(['map.villages[0].green', 'map.villages[1].green']);
+  });
+
+  it('reports a village that is not an object, and villages that are not a list, instead of crashing', () => {
+    expect(issuePaths(mapFixture({ villages: [null as unknown as VillageDefinition, village()] }))).toEqual(['map.villages[0]']);
+    expect(issuePaths(mapFixture({ villages: 'none' as unknown as VillageDefinition[] }))).toEqual(['map.villages']);
+  });
+
+  it('reports every problem of a village at once', () => {
+    const map = mapFixture({ villages: [village({ id: 'Bad Village', x: 300, headingDegrees: 10, houses: 99, green: 'no' as unknown as boolean })] });
+
+    expect(issuePaths(map)).toEqual([
+      'map.villages[0].id',
+      'map.villages[0]',
+      'map.villages[0].headingDegrees',
+      'map.villages[0].houses',
+      'map.villages[0].green',
+    ]);
+  });
+});
+
+describe('side roads', () => {
+  const sided = (sideRoadsPerKilometer?: number): MapDefinition =>
+    mapFixture({ scenery: { seed: 1, treesPerKilometer: 0, ...(sideRoadsPerKilometer === undefined ? {} : { sideRoadsPerKilometer }) } });
+
+  it(`grows none unless the map asks, and from none to ${MAX_SIDE_ROADS_PER_KILOMETER} a kilometre when it does`, () => {
+    expect(issuePaths(sided())).toEqual([]);
+    for (const perKilometer of [0, 0.5, 2, MAX_SIDE_ROADS_PER_KILOMETER]) {
+      expect(issuePaths(sided(perKilometer)), String(perKilometer)).toEqual([]);
+    }
+  });
+
+  it('refuses fewer than none, more than the most, and what is not a number', () => {
+    for (const perKilometer of [
+      -1,
+      -0.01,
+      MAX_SIDE_ROADS_PER_KILOMETER + 0.01,
+      MAX_SIDE_ROADS_PER_KILOMETER * 2,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      '2' as unknown as number,
+    ]) {
+      expect(issuePaths(sided(perKilometer)), String(perKilometer)).toEqual(['map.scenery.sideRoadsPerKilometer']);
+    }
   });
 });
 

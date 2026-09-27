@@ -7,6 +7,7 @@ async function trafficCount(page: Page): Promise<number> {
 }
 
 test('fills the roads with traffic behind the menu and around the truck', async ({ page }, testInfo) => {
+  test.slow(); // The game started twice, drawn in software.
   const problems = watchForProblems(page);
 
   await openMainMenu(page);
