@@ -75,7 +75,7 @@ import { SceneryView } from './presentation/world/SceneryView';
 import { StreetLampView } from './presentation/world/StreetLampView';
 import { WindTurbineView } from './presentation/world/WindTurbineView';
 import { TrackView } from './presentation/world/TrackView';
-import { interpolatePose } from './systems/driving/DrivingService';
+import { createTruckPose, interpolateBodyPose, interpolatePose } from './systems/driving/DrivingService';
 import { CLOCK_PRESETS, type ClockPreset } from './systems/weather/TimeOfDayService';
 import type { GameState } from './systems/gameState/GameState';
 import { LookAround } from './ui/controls/LookAround';
@@ -92,6 +92,7 @@ import { HudDock } from './ui/hud/HudDock';
 import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
+import { RolloverPanel } from './ui/hud/RolloverPanel';
 import { Toasts } from './ui/hud/Toasts';
 import { TutorialHint, tutorialShows, type TutorialPlace } from './ui/hud/TutorialHint';
 import { chooseLanguage, stringsFor } from './ui/i18n';
@@ -170,6 +171,10 @@ const WRECK_SHAKE = 0.8;
 const FULL_SHAKE_SPEED = 15;
 /** A car wrecked at least this fast (m/s, about 45 km/h) is worth a moment of slow motion. */
 const SLOW_MOTION_SPEED = 12.5;
+/** A blow (or the truck slamming down) this hard, m/s, jolts the view fully (VehicleCollided). */
+const BLOW_SHAKE_SPEED = 8;
+/** The truck going over at least this fast (m/s, about 30 km/h) is worth a moment of slow motion. */
+const ROLLOVER_SLOW_MOTION_SPEED = 8;
 /** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
 const CLOCK_KEEP_SECONDS = 30;
 /** The company panel's fleet page moves its progress bars on this often, seconds. */
@@ -455,7 +460,7 @@ async function start(): Promise<void> {
    * camera's picture mirrored.
    */
   const showCamera = (drivingNow: boolean): void => {
-    const mode = cameraRig.currentMode;
+    const mode = cameraRig.shownMode;
     const inCab = drivingNow && mode === 'cabin';
     truck.setCabinView(inCab);
     rain.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
@@ -531,6 +536,7 @@ async function start(): Promise<void> {
     }
   };
   const restArea = new RestAreaPanel(ui, strings, { driving, fuel, damage, economy }, { onRefuel: () => refuel(false), onRepair: repair });
+  const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   const roadsideFuelOffer = (): RoadsideFuelOffer => {
     if (fuel.missingLiters < 0.5) {
       return null;
@@ -1075,7 +1081,19 @@ async function start(): Promise<void> {
       restArea.refresh();
     }
   };
-  events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => audio.crash(impactSpeedMetersPerSecond));
+  events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => {
+    audio.crash(impactSpeedMetersPerSecond);
+    // A hard blow, or the truck slamming down on its side, jolts the view.
+    cameraRig.shake(Math.min(1.2, impactSpeedMetersPerSecond / BLOW_SHAKE_SPEED));
+  });
+  // Going over: the moment runs slow, and the panel offers to put it back on its wheels once it has come to rest.
+  let overturns = 0;
+  events.on('TruckOverturned', ({ speedMetersPerSecond }) => {
+    if (speedMetersPerSecond >= ROLLOVER_SLOW_MOTION_SPEED) {
+      slowMotion.trigger();
+    }
+    root.dataset.overturns = String(++overturns);
+  });
   // Crashes: bits, sparks and dust fly, it sounds, and the view jolts as hard as the truck struck.
   let knockedOver = 0;
   let wrecked = 0;
@@ -1424,6 +1442,10 @@ async function start(): Promise<void> {
   const dashboard = { fuelFraction: 1, clockMinutes: 0, drivePedal: 0, brakePedal: 0 };
   let menuFrames = 0;
   const pose = { x: 0, z: 0, heading: 0 };
+  /** How the truck's body stands between fixed steps (no allocation). */
+  const bodyPose = createTruckPose();
+  /** The truck's attitude as last shown (html[data-attitude]). */
+  let shownAttitude = '';
   /** The truck as the towns' people see it coming, refreshed every frame (no allocation). */
   const truckNearby: TruckNearby = { x: 0, z: 0, heading: 0, speed: 0, rear: 0, front: 0, halfWidth: 0 };
   const loop = new GameLoop(
@@ -1471,6 +1493,11 @@ async function start(): Promise<void> {
         const vehicle = driving.vehicle;
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        interpolateBodyPose(bodyPose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        if (vehicle.attitude !== shownAttitude) {
+          shownAttitude = vehicle.attitude;
+          root.dataset.attitude = shownAttitude;
+        }
         roadFurniture.update(pose.x, pose.z, pose.heading);
         // The sky: the time of day's look with the weather's over it. Its lamps light up at dusk and in the rain.
         mixWeather(weather.previous.look, weather.current.look, weather.blend, weatherLook);
@@ -1535,7 +1562,8 @@ async function start(): Promise<void> {
         dashboard.brakePedal = brakePedalOf(driverInput.throttle, driverInput.brake, driverInput.lever, reversing);
         truck.setDashboard(dashboard);
         truck.setNavigation(minimap.picture, minimap.paintCount);
-        truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
+        truck.setBuild(driving.build);
+        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose);
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
         streetLamps.showKnocked(world.knocked, world.knockVersion);
@@ -1560,7 +1588,13 @@ async function start(): Promise<void> {
         }
         lookAround.update(deltaSeconds);
         cameraRig.look(lookAround.yaw, lookAround.pitch);
-        cameraRig.update(pose, vehicle, deltaSeconds);
+        // Over, the cameras on the truck give way to the chase camera; back on its wheels, they come back.
+        cameraRig.setBuild(driving.build);
+        cameraRig.setOverturned(vehicle.attitude === 'overturned');
+        if (cameraRig.shownMode !== root.dataset.camera) {
+          showCamera(onRoad());
+        }
+        cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
         // The land turns to the season (over a moment, even paused: a season picked in Settings shows behind them),
@@ -1608,6 +1642,23 @@ async function start(): Promise<void> {
         effectsState.offRoad = driving.surface.name === 'grass';
         effectsState.wetness = wetness;
         truckEffects.update(paused ? 0 : deltaSeconds, truck, effectsState, renderHost.camera);
+        // Over and sliding on its body: sparks off the road, dust off the grass.
+        if (vehicle.attitude === 'overturned' && !paused) {
+          const along = vehicle.heading;
+          const ahead = driving.build.cogAhead;
+          const slideX = vehicle.speed * Math.sin(along) + vehicle.slipSpeed * Math.cos(along);
+          const slideZ = vehicle.speed * Math.cos(along) - vehicle.slipSpeed * Math.sin(along);
+          crashEffects.scrape(
+            pose.x + Math.sin(along) * ahead,
+            pose.z + Math.cos(along) * ahead,
+            along,
+            driving.build.halfLength * 0.8,
+            Math.hypot(slideX, slideZ),
+            Math.atan2(slideX, slideZ),
+            driving.surface.name === 'asphalt',
+            deltaSeconds,
+          );
+        }
         crashEffects.update(paused ? 0 : deltaSeconds, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
@@ -1630,6 +1681,10 @@ async function start(): Promise<void> {
         worldMap.frame();
         restArea.visible = simulating;
         restArea.update();
+        // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
+        const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);
+        rollover.visible = simulating;
+        rollover.update(vehicle.attitude, sliding);
         const tutorialStep = tutorial.step;
         const tutorialAt = hintPlace();
         tutorialHint.show(tutorialAt !== null && tutorialShows(tutorialStep, tutorialAt) ? tutorialStep : null, tutorialAt);
