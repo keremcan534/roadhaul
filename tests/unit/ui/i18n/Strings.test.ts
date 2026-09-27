@@ -24,9 +24,10 @@ describe('string tables', () => {
     expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
   });
 
-  it('name every city, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, driver, rival, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, village, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, driver, rival, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
+      ...GAME_CONTENT.maps.flatMap((map) => (map.villages ?? []).map((village) => `village.${village.id}.name`)),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
       ...GAME_CONTENT.missions.map((mission) => `mission.${mission.id}.title`),
       ...GAME_CONTENT.vehicles.map((vehicle) => `vehicle.${vehicle.id}.name`),

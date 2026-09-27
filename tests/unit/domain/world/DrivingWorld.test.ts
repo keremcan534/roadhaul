@@ -3,6 +3,7 @@ import { MAPS } from '../../../../src/data/content/maps';
 import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
+import { RoadGrid } from '../../../../src/domain/world/RoadGrid';
 import { DrivingWorld, type MovingObstacles } from '../../../../src/domain/world/DrivingWorld';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { billboardLegs } from '../../../../src/domain/world/townscape';
@@ -449,14 +450,12 @@ describe('DrivingWorld', () => {
       const region = new DrivingWorld(MAPS[0]!);
       expect(region.fields.length).toBeGreaterThan(0);
       expect(region.windTurbines.length).toBeGreaterThan(0);
-      for (const tree of region.trees) {
-        for (const field of region.fields) {
-          expect(rectangleContains(field.area, tree.x, tree.z, 2.9)).toBe(false);
-        }
-        for (const turbine of region.windTurbines) {
-          expect(Math.hypot(tree.x - turbine.x, tree.z - turbine.z)).toBeGreaterThan(11.9);
-        }
-      }
+      const inFields = region.trees.filter((tree) => region.fields.some((field) => rectangleContains(field.area, tree.x, tree.z, 2.9)));
+      const byTurbines = region.trees.filter((tree) =>
+        region.windTurbines.some((turbine) => Math.hypot(tree.x - turbine.x, tree.z - turbine.z) <= 11.9),
+      );
+      expect(inFields).toEqual([]);
+      expect(byTurbines).toEqual([]);
     });
   });
 
@@ -565,30 +564,31 @@ describe('DrivingWorld', () => {
 
     it('line the roads without standing on them, near the start or outside the map', () => {
       expect(forest.trees.length).toBeGreaterThan(100);
-      for (const tree of forest.trees) {
-        expect(forest.surfaceAt(tree.x, tree.z)).toBe(GRASS);
-        expect(Math.min(...forest.roads.map((road) => road.distanceTo(tree.x, tree.z)))).toBeGreaterThan(8);
-        expect(Math.hypot(tree.x - forest.spawn.x, tree.z - forest.spawn.z)).toBeGreaterThan(19);
-        expect(Math.abs(tree.x)).toBeLessThan(map.halfSizeMeters);
-        expect(Math.abs(tree.z)).toBeLessThan(map.halfSizeMeters);
-      }
+      // Every tree at least 3.5 m past every road's edge (4 m past the road it lines).
+      const nearRoads = new RoadGrid(forest.roads, 4);
+      const misplaced = forest.trees.filter(
+        (tree) =>
+          forest.surfaceAt(tree.x, tree.z) !== GRASS ||
+          nearRoads.nearRoad(tree.x, tree.z, 3.49) ||
+          Math.hypot(tree.x - forest.spawn.x, tree.z - forest.spawn.z) <= 19 ||
+          Math.abs(tree.x) >= map.halfSizeMeters ||
+          Math.abs(tree.z) >= map.halfSizeMeters,
+      );
+      expect(misplaced).toEqual([]);
     });
 
     it('keep clear of turning circles', () => {
       expect(forest.turningCircles.length).toBeGreaterThan(0);
-      for (const tree of forest.trees) {
-        for (const circle of forest.turningCircles) {
-          expect(Math.hypot(tree.x - circle.x, tree.z - circle.z)).toBeGreaterThan(circle.radiusMeters + 3);
-        }
-      }
+      // Some 14,000 trees by some 70 circles: one expectation for them all, not one per pair.
+      const tooClose = forest.trees.filter((tree) =>
+        forest.turningCircles.some((circle) => Math.hypot(tree.x - circle.x, tree.z - circle.z) <= circle.radiusMeters + 3),
+      );
+      expect(tooClose).toEqual([]);
     });
 
     it('keep clear of depot yards, so trucks can manoeuvre there', () => {
-      for (const tree of forest.trees) {
-        for (const depot of forest.depots) {
-          expect(rectangleContains(depot.yard, tree.x, tree.z, 5.9)).toBe(false);
-        }
-      }
+      const inYards = forest.trees.filter((tree) => forest.depots.some((depot) => rectangleContains(depot.yard, tree.x, tree.z, 5.9)));
+      expect(inYards).toEqual([]);
     });
 
     it('are solid', () => {

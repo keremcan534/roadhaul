@@ -56,6 +56,7 @@ import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
+import { FarCulling, TileParts, tileRuns } from './worldTiles';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
 import { createChannelMask } from './riverChannel';
@@ -144,7 +145,13 @@ export function groundTint(x: number, z: number, target: Color): Color {
   return target.copy(LUSH_GROUND).lerp(DRY_GROUND, Math.max(0, Math.min(1, (patch - 0.35) * 1.8)));
 }
 /** Side of the square tiles the forest is cut into, so trees out of view are not drawn. */
-const TREE_TILE_METERS = 600;
+const TREE_TILE_METERS = 500;
+/**
+ * Past this far from the camera, meters, a forest tile leaves out the soft
+ * shadows under its trees and its inner trees' trunks: a pixel or two
+ * across, deep in the haze.
+ */
+const TREE_DETAIL_METERS = 450;
 
 const UP = new Vector3(0, 1, 0);
 
@@ -369,10 +376,11 @@ export interface TrackViewOptions {
  * Draws a DrivingWorld: textured grass, roads with gravel shoulders, lines and
  * dashes, two species of trees, buildings with facades and roofs, and soft
  * shadows baked onto the ground. Everything repeated is instanced or merged:
- * about 15 draw calls for the test track. The ground layers are pre-lit, so
- * the pixels that cover most of the screen skip lighting. It reads the same
- * geometry the simulation collides with, so visuals and physics cannot drift
- * apart.
+ * about 15 draw calls for the test track. On a big map the forest and what
+ * the country grew are cut into tiles, drawn only near the camera
+ * (showAround). The ground layers are pre-lit, so the pixels that cover most
+ * of the screen skip lighting. It reads the same geometry the simulation
+ * collides with, so visuals and physics cannot drift apart.
  */
 export class TrackView {
   private readonly root = new Group();
@@ -400,6 +408,12 @@ export class TrackView {
   };
   /** The wind in the trees' crowns: its clock (seconds) and strength. */
   private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
+  /** The country's tiles (COUNTRY_TILE_METERS), by key: the roads and buildings it grew there, a group each. */
+  private readonly countryTiles = new Map<string, Group>();
+  /** The forest's and the country's tiles, hidden while far from the camera (showAround). */
+  private readonly culling = new FarCulling();
+  /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
+  private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
 
   constructor(
     private readonly scene: Scene,
@@ -423,13 +437,41 @@ export class TrackView {
     if (world.trees.length > 0) {
       const forest = new Group();
       forest.name = 'forest';
-      forest.add(...this.createTrees(world.trees));
+      for (const tile of this.createTrees(world.trees)) {
+        forest.add(tile);
+        this.culling.add(tile);
+        for (const mesh of tile.children) {
+          if (mesh.name === 'forest:shadows' || mesh.name === 'forest:trunks:inner') {
+            this.treeDetail.add(mesh);
+          }
+        }
+      }
       this.root.add(forest);
     }
     if (world.buildings.length > 0) {
       this.root.add(...this.createBuildings(world.buildings));
     }
+    if (this.countryTiles.size > 0) {
+      const country = new Group();
+      country.name = 'country';
+      for (const tile of this.countryTiles.values()) {
+        country.add(tile);
+        this.culling.add(tile);
+      }
+      this.root.add(country);
+    }
     scene.add(this.root);
+  }
+
+  /**
+   * Shows the forest's and the country's tiles near (x, z), the camera, and
+   * hides the ones lost in the haze (FAR_CULL_METERS); the forest's further
+   * than TREE_DETAIL_METERS without their shadows and inner trunks.
+   * Allocation-free: call it every frame once the camera has moved.
+   */
+  showAround(x: number, z: number): void {
+    this.culling.update(x, z);
+    this.treeDetail.update(x, z);
   }
 
   /** How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): lit windows glow. Cheap to call every frame. */
@@ -561,16 +603,26 @@ export class TrackView {
   }
 
   /**
-   * Every road in four draw calls: gravel shoulders, asphalt, painted lines
-   * and instanced dashes. The markings follow each road's kind (see
-   * roadMarkings) and stop short of junctions, where another road crosses,
-   * and of the turning circles at dead ends, which are paved like the road.
+   * Every road: gravel shoulders, asphalt, painted lines and dashes. The
+   * markings follow each road's kind (see roadMarkings) and stop short of
+   * junctions, where another road crosses, and of the turning circles at
+   * dead ends, which are paved like the road. Roads that meet lie on
+   * different layers (roadLevels), so none fights another over the same
+   * depth where they overlap.
+   *
+   * The map's own roads are drawn whole, in four draw calls, with every
+   * road's markings (a few triangles). The asphalt and shoulders of the ones
+   * the country grew (DrivingWorld.mapRoadCount) go into its tiles, two draw
+   * calls a tile: only the tiles near the camera are drawn (showAround).
    */
-  private createRoads(world: DrivingWorld, anisotropy: number): (Mesh | InstancedMesh)[] {
-    const { roads, network, turningCircles } = world;
+  private createRoads(world: DrivingWorld, anisotropy: number): Mesh[] {
+    const { roads, network, turningCircles, mapRoadCount } = world;
     const asphalt = this.texture(toTexture(asphaltImage(), { repeat: true, anisotropy }));
     const gravel = this.texture(toTexture(gravelImage(), { repeat: true, anisotropy }));
-    const markingY = ROAD_Y + roads.length * ROAD_STACK + MARKING_GAP;
+    const levels = roadLevels(world);
+    // The turning circles over every road, the markings over them.
+    const circleY = ROAD_Y + (Math.max(0, ...levels) + 1) * ROAD_STACK;
+    const markingY = circleY + MARKING_GAP;
     const junctionReach = Math.max(...roads.map((road) => road.widthMeters)) / 2 + JUNCTION_MARKING_GAP;
     const clearOfJunctions = (x: number, z: number): boolean =>
       network.junctions.every((junction) => Math.hypot(junction.x - x, junction.z - z) > junctionReach) &&
@@ -582,34 +634,32 @@ export class TrackView {
     const surfaces: BufferGeometry[] = [];
     const lines: BufferGeometry[] = [];
     const dashes: { road: RoadPath; offset: number }[] = [];
+    const country = {
+      shoulders: new TileParts<BufferGeometry>(),
+      surfaces: new TileParts<BufferGeometry>(),
+    };
     roads.forEach((road, index) => {
+      const grown = index >= mapRoadCount;
       const shoulder = road.widthMeters / 2 + SHOULDER_WIDTH / 2 - 0.2;
-      shoulders.push(
-        stripGeometry(
-          road,
-          [
-            { offset: -shoulder, width: SHOULDER_WIDTH },
-            { offset: shoulder, width: SHOULDER_WIDTH },
-          ],
-          SHOULDER_Y,
-          GRAVEL_TILE_METERS,
-        ),
-      );
-      surfaces.push(
-        stripGeometry(road, [{ offset: 0, width: road.widthMeters }], ROAD_Y + index * ROAD_STACK, ASPHALT_TILE_METERS),
-      );
+      const shoulderBands = [
+        { offset: -shoulder, width: SHOULDER_WIDTH },
+        { offset: shoulder, width: SHOULDER_WIDTH },
+      ];
+      const surfaceBands = [{ offset: 0, width: road.widthMeters }];
+      const surfaceY = ROAD_Y + levels[index]! * ROAD_STACK;
+      if (grown) {
+        for (const run of tileRuns(road, ribbonRows(road))) {
+          country.shoulders.add(run.x, run.z, stripGeometry(road, shoulderBands, SHOULDER_Y, GRAVEL_TILE_METERS, undefined, run.rows));
+          country.surfaces.add(run.x, run.z, stripGeometry(road, surfaceBands, surfaceY, ASPHALT_TILE_METERS, undefined, run.rows));
+        }
+      } else {
+        shoulders.push(stripGeometry(road, shoulderBands, SHOULDER_Y, GRAVEL_TILE_METERS));
+        surfaces.push(stripGeometry(road, surfaceBands, surfaceY, ASPHALT_TILE_METERS));
+      }
       const markings = roadMarkings(road);
       if (markings.solid.length > 0) {
         const keep = (i: number): boolean => clearOfJunctions(road.x(i), road.z(i));
-        lines.push(
-          stripGeometry(
-            road,
-            markings.solid.map((offset) => ({ offset, width: LINE_WIDTH })),
-            markingY,
-            1,
-            keep,
-          ),
-        );
+        lines.push(stripGeometry(road, markings.solid.map((offset) => ({ offset, width: LINE_WIDTH })), markingY, 1, keep));
       }
       for (const offset of markings.dashed) {
         dashes.push({ road, offset });
@@ -617,28 +667,41 @@ export class TrackView {
     });
     // Turning circles lie over the end of their road, with a gravel rim like its shoulders.
     for (const circle of turningCircles) {
-      shoulders.push(
-        flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS),
-      );
-      surfaces.push(
-        flatDisc(circle.x, circle.z, circle.radiusMeters, ROAD_Y + roads.length * ROAD_STACK, ASPHALT_TILE_METERS),
-      );
+      const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS);
+      const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY, ASPHALT_TILE_METERS);
+      if (circle.roadIndex >= mapRoadCount) {
+        country.shoulders.add(circle.x, circle.z, rim);
+        country.surfaces.add(circle.x, circle.z, paving);
+      } else {
+        shoulders.push(rim);
+        surfaces.push(paving);
+      }
     }
 
     // Zebra crossings on the city streets' arms of every junction, painted with the lines.
     lines.push(...crosswalkGeometries(world, junctionReach + CROSSWALK_SETBACK_METERS, markingY));
 
-    const meshes: (Mesh | InstancedMesh)[] = [
-      new Mesh(this.merged(shoulders), this.overlayMaterial({ map: gravel }, 1)),
-      new Mesh(this.merged(surfaces), this.wettable(this.overlayMaterial({ map: asphalt }, 2))),
-    ];
-    if (lines.length > 0) {
-      meshes.push(new Mesh(this.merged(lines), this.overlayMaterial({ color: MARKING_COLOR }, 3)));
+    const gravelMaterial = this.overlayMaterial({ map: gravel }, 1);
+    const asphaltMaterial = this.wettable(this.overlayMaterial({ map: asphalt }, 2));
+    const paintMaterial = this.overlayMaterial({ color: MARKING_COLOR }, 3);
+    const meshes: Mesh[] = [];
+    for (const [parts, material, name] of [
+      [shoulders, gravelMaterial, 'roads:shoulders'],
+      [surfaces, asphaltMaterial, 'roads:asphalt'],
+      [lines, paintMaterial, 'roads:lines'],
+    ] as const) {
+      if (parts.length > 0) {
+        const mesh = new Mesh(this.merged(parts), material);
+        mesh.name = name;
+        meshes.push(mesh);
+      }
     }
-    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions);
+    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions, paintMaterial);
     if (dashMesh !== null) {
       meshes.push(dashMesh);
     }
+    this.addToCountry(country.shoulders, gravelMaterial, 'roads:shoulders');
+    this.addToCountry(country.surfaces, asphaltMaterial, 'roads:asphalt');
     return meshes;
   }
 
@@ -647,40 +710,43 @@ export class TrackView {
     lines: readonly { road: RoadPath; offset: number }[],
     y: number,
     clearOfJunctions: (x: number, z: number) => boolean,
+    material: Material,
   ): InstancedMesh | null {
     const position = new Vector3();
     const rotation = new Quaternion();
     const scale = new Vector3(1, 1, 1);
     const matrices: Matrix4[] = [];
     for (const { road, offset } of lines) {
-      const count = Math.floor(road.lengthMeters / DASH_SPACING);
-      for (let i = 0; i < count; i++) {
-        const heading = pointAlong(road, (i + 0.5) * DASH_SPACING, position);
-        // Right of the direction of travel: the tangent turned 90° clockwise seen from above.
-        position.x -= Math.cos(heading) * offset;
-        position.z += Math.sin(heading) * offset;
-        if (!clearOfJunctions(position.x, position.z)) {
-          continue;
-        }
-        position.y = y;
-        rotation.setFromAxisAngle(UP, heading);
+      for (const dash of dashesAlong(road, offset, clearOfJunctions)) {
+        position.set(dash.x, y, dash.z);
+        rotation.setFromAxisAngle(UP, dash.heading);
         matrices.push(new Matrix4().compose(position, rotation, scale));
       }
     }
     if (matrices.length === 0) {
       return null;
     }
-    const dashes = this.track(
-      new InstancedMesh(
-        // A flat quad facing up: only a dash's top shows.
-        this.track(new PlaneGeometry(0.18, DASH_LENGTH).rotateX(-Math.PI / 2)),
-        this.overlayMaterial({ color: MARKING_COLOR }, 3),
-        matrices.length,
-      ),
-    );
+    // A flat quad facing up: only a dash's top shows.
+    const dashes = this.track(new InstancedMesh(this.track(new PlaneGeometry(0.18, DASH_LENGTH).rotateX(-Math.PI / 2)), material, matrices.length));
+    dashes.name = 'roads:dashes';
     matrices.forEach((matrix, index) => dashes.setMatrixAt(index, matrix));
     dashes.instanceMatrix.needsUpdate = true;
     return dashes;
+  }
+
+  /** One mesh of `material` a tile of `parts`, named `name`, in that country tile's group. */
+  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string): void {
+    for (const [key, tile] of parts.tiles) {
+      const mesh = new Mesh(this.merged(tile), material);
+      mesh.name = name;
+      let group = this.countryTiles.get(key);
+      if (group === undefined) {
+        group = new Group();
+        group.name = `country:${key}`;
+        this.countryTiles.set(key, group);
+      }
+      group.add(mesh);
+    }
   }
 
   /** Merges `parts` into one tracked geometry and releases the parts. */
@@ -697,12 +763,12 @@ export class TrackView {
    * is the same every time. Trunks share one instanced mesh; each species has
    * its own crowns, tinted per tree. Shadows are soft decals on the ground.
    *
-   * The forest is cut into square tiles of TREE_TILE_METERS, each with its own
-   * instanced meshes, so tiles out of view (behind the camera or past the far
-   * plane) are culled instead of drawn: on a map kilometres wide, most trees
-   * are out of sight.
+   * The forest is cut into square tiles of TREE_TILE_METERS, a group each of
+   * its own instanced meshes, so tiles out of view (behind the camera, or
+   * far off in the haze: showAround) are culled instead of drawn: on a map
+   * kilometres wide, most trees are out of sight.
    */
-  private createTrees(trees: readonly TreeObstacle[]): InstancedMesh[] {
+  private createTrees(trees: readonly TreeObstacle[]): Group[] {
     const parts: TreeParts = {
       trunk: this.track(new CylinderGeometry(0.2, 0.3, 1, 6).translate(0, 0.5, 0)),
       innerTrunk: this.track(new CylinderGeometry(0.2, 0.28, 1, 4, 1, true).translate(0, 0.5, 0)),
@@ -735,7 +801,12 @@ export class TrackView {
         tile.push(index);
       }
     });
-    return [...tiles.values()].flatMap((indices) => this.createTreeTile(trees, indices, parts));
+    return [...tiles].map(([key, indices]) => {
+      const tile = new Group();
+      tile.name = `forest:${key}`;
+      tile.add(...this.createTreeTile(trees, indices, parts));
+      return tile;
+    });
   }
 
   /**
@@ -771,6 +842,9 @@ export class TrackView {
     const trunks = this.track(new InstancedMesh(parts.trunk, parts.trunkMaterial, indices.length - inner));
     const innerTrunks = this.track(new InstancedMesh(parts.innerTrunk, parts.trunkMaterial, inner));
     const shadows = this.track(new InstancedMesh(parts.shadow, parts.shadowMaterial, indices.length - inner));
+    trunks.name = 'forest:trunks';
+    innerTrunks.name = 'forest:trunks:inner';
+    shadows.name = 'forest:shadows';
     const crowns = new Map<string, InstancedMesh>();
     for (const [key, { kind, inner: simple, count }] of counts) {
       const geometry = simple ? parts.innerCrowns[kind as 'pine' | 'broadleaf'] : parts.crowns[kind];
@@ -831,60 +905,87 @@ export class TrackView {
     return meshes;
   }
 
+  /**
+   * The buildings: walls with facades (offices and houses, or warehouses),
+   * tiled roofs, the rest of their roofs and plinths, and soft shadows, a
+   * draw call each for every building on the map (a few triangles each),
+   * but the rest of the roofs and the plinths of the houses and farms the
+   * country grew (BuildingObstacle.country): those, the most triangles, go
+   * into the country's tiles, drawn only near the camera (showAround).
+   */
   private createBuildings(buildings: readonly BuildingObstacle[]): Mesh[] {
-    const offices: BufferGeometry[] = [];
-    const warehouses: BufferGeometry[] = [];
-    const tiledRoofs: BufferGeometry[] = [];
-    const details: BufferGeometry[] = [];
-    const shadows: BufferGeometry[] = [];
+    /** A layer's parts: the whole map's, and the country's by tile (the details only). */
+    const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry> } => ({ town: [], country: new TileParts() });
+    const offices = layer();
+    const warehouses = layer();
+    const tiledRoofs = layer();
+    const details = layer();
+    const shadows = layer();
     const random = new SeededRandom(311);
     // Solar water heaters face the sun.
     const sunBearing = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
     buildings.forEach((box, index) => {
       const width = box.maxX - box.minX;
       const depth = box.maxZ - box.minZ;
+      const x = box.minX + width / 2;
+      const z = box.minZ + depth / 2;
+      const add = (parts: ReturnType<typeof layer>, part: BufferGeometry): void => {
+        if (box.country === true && parts === details) {
+          parts.country.add(x, z, part);
+        } else {
+          parts.town.push(part);
+        }
+      };
       const tint = new Color(BUILDING_TINTS[index % BUILDING_TINTS.length]!);
-      (width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices).push(wallsGeometry(box, tint, index));
-      details.push(...plinthGeometry(box));
+      add(width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices, wallsGeometry(box, tint, index));
+      for (const part of plinthGeometry(box)) {
+        add(details, part);
+      }
       switch (roofStyleOf(box, random)) {
         case 'hip':
-          tiledRoofs.push(
+          add(
+            tiledRoofs,
             hipRoofGeometry(box, Math.min(width, depth) * random.range(0.2, 0.28), new Color(ROOF_TILE_TINTS[index % ROOF_TILE_TINTS.length]!)),
           );
           break;
         case 'gable':
-          details.push(gableRoofGeometry(box, Math.min(width, depth) * 0.12, tint));
+          add(details, gableRoofGeometry(box, Math.min(width, depth) * 0.12, tint));
           break;
         case 'flat':
-          details.push(...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing));
+          for (const part of [...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing)]) {
+            add(details, part);
+          }
           break;
       }
-      shadows.push(buildingShadowQuad(box.minX + width / 2, box.minZ + depth / 2, width + 3, depth + 3, box.heightMeters));
+      add(shadows, buildingShadowQuad(x, z, width + 3, depth + 3, box.heightMeters));
     });
+    const layers: [ReturnType<typeof layer>, Material, string][] = [
+      [shadows, this.shadowMaterial(softBoxShadowImage(), 0.38, 'building'), 'buildings:shadows'],
+      [offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:offices'],
+      [warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:warehouses'],
+      [
+        tiledRoofs,
+        this.track(
+          new MeshLambertMaterial({
+            map: this.texture(toTexture(roofTilesImage(), { repeat: true })),
+            vertexColors: true,
+            // Seen from under the eaves too.
+            side: DoubleSide,
+          }),
+        ),
+        'buildings:roofs',
+      ],
+      [details, this.track(new MeshLambertMaterial({ vertexColors: true })), 'buildings:details'],
+    ];
     const meshes: Mesh[] = [];
-    const add = (parts: BufferGeometry[], material: Material): void => {
-      if (parts.length > 0) {
-        meshes.push(new Mesh(this.track(mergeGeometries(parts)), material));
+    for (const [parts, material, name] of layers) {
+      if (parts.town.length > 0) {
+        const mesh = new Mesh(this.merged(parts.town), material);
+        mesh.name = name;
+        meshes.push(mesh);
       }
-      for (const part of parts) {
-        part.dispose();
-      }
-    };
-    add(shadows, this.shadowMaterial(softBoxShadowImage(), 0.38, 'building'));
-    add(offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)));
-    add(warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)));
-    add(
-      tiledRoofs,
-      this.track(
-        new MeshLambertMaterial({
-          map: this.texture(toTexture(roofTilesImage(), { repeat: true })),
-          vertexColors: true,
-          // Seen from under the eaves too.
-          side: DoubleSide,
-        }),
-      ),
-    );
-    add(details, this.track(new MeshLambertMaterial({ vertexColors: true })));
+      this.addToCountry(parts.country, material, name);
+    }
     return meshes;
   }
 
@@ -1346,13 +1447,43 @@ function crosswalkGeometries(world: DrivingWorld, setback: number, y: number): B
 }
 
 /**
+ * Each road's layer: its asphalt lies ROAD_STACK above the layer below per
+ * step. Roads that meet at a junction, where their asphalt overlaps, lie on
+ * different layers; the fewest it takes, so the roads stay low however many
+ * there are.
+ */
+export function roadLevels(world: DrivingWorld): Int32Array {
+  const meets = world.roads.map(() => new Set<number>());
+  for (const junction of world.network.junctions) {
+    for (const a of junction.members) {
+      for (const b of junction.members) {
+        if (a.roadIndex !== b.roadIndex) {
+          meets[a.roadIndex]!.add(b.roadIndex);
+        }
+      }
+    }
+  }
+  const levels = new Int32Array(world.roads.length).fill(-1);
+  meets.forEach((others, index) => {
+    const taken = new Set([...others].map((other) => levels[other]!));
+    let level = 0;
+    while (taken.has(level)) {
+      level++;
+    }
+    levels[index] = level;
+  });
+  return levels;
+}
+
+/**
  * Builds flat ribbons that follow the road, one per band. `offset` is the
  * band's centre measured sideways from the centreline (positive to the right
  * of the direction of travel). Texture u runs across each band and v along
  * the road, one unit per `tileMeters`. Pieces between samples that `keep`
  * rejects are left out. A ribbon keeps only the samples it needs to stay
  * within a few centimetres of the road (ribbonRows): long pieces where the
- * road runs straight, short ones round its bends.
+ * road runs straight, short ones round its bends; or those of `keptRows`, a
+ * run of them (tileRuns).
  */
 function stripGeometry(
   road: RoadPath,
@@ -1360,10 +1491,11 @@ function stripGeometry(
   y: number,
   tileMeters: number,
   keep: (sampleIndex: number) => boolean = () => true,
+  keptRows?: readonly number[],
 ): BufferGeometry {
   const count = road.pointCount;
   // A closed road repeats its first point at the end, so v keeps growing across the seam.
-  const kept = ribbonRows(road, RIBBON_TOLERANCE_METERS, RIBBON_MAX_SPAN_METERS, keep);
+  const kept = keptRows ?? ribbonRows(road, RIBBON_TOLERANCE_METERS, RIBBON_MAX_SPAN_METERS, keep);
   const rows = kept.length;
   const positions = new Float32Array(bands.length * rows * 2 * 3);
   const normals = new Float32Array(positions.length);
@@ -1414,7 +1546,8 @@ function stripGeometry(
  * Where a road's lines are painted, meters from its centreline (positive to
  * the right). Streets and the ring road have edge lines and a dashed centre
  * line; the highway has two lanes each way, a double centre line and dashed
- * lane lines; country roads only a dashed centre line.
+ * lane lines; country roads only a dashed centre line; the lanes off them
+ * none.
  */
 function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; readonly dashed: readonly number[] } {
   const edge = road.widthMeters / 2 - EDGE_LINE_INSET;
@@ -1428,7 +1561,33 @@ function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; read
     }
     case 'rural':
       return { solid: [], dashed: [0] };
+    case 'lane':
+      return { solid: [], dashed: [] };
   }
+}
+
+/**
+ * Where a dashed line `offset` meters right of a road's centreline has its
+ * dashes: one every DASH_SPACING meters, those clear of junctions.
+ */
+function dashesAlong(
+  road: RoadPath,
+  offset: number,
+  clearOfJunctions: (x: number, z: number) => boolean,
+): { readonly x: number; readonly z: number; readonly heading: number }[] {
+  const position = new Vector3();
+  const dashes: { x: number; z: number; heading: number }[] = [];
+  const count = Math.floor(road.lengthMeters / DASH_SPACING);
+  for (let i = 0; i < count; i++) {
+    const heading = pointAlong(road, (i + 0.5) * DASH_SPACING, position);
+    // Right of the direction of travel: the tangent turned 90° clockwise seen from above.
+    const x = position.x - Math.cos(heading) * offset;
+    const z = position.z + Math.sin(heading) * offset;
+    if (clearOfJunctions(x, z)) {
+      dashes.push({ x, z, heading });
+    }
+  }
+  return dashes;
 }
 
 /** Writes the centreline point `distance` meters along the road into `out`; returns the heading there. */

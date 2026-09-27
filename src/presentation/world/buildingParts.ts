@@ -38,10 +38,18 @@ export function coloured(geometry: BufferGeometry, hex: number): BufferGeometry 
   return geometry.index === null ? geometry : geometry.toNonIndexed();
 }
 
-/** The style a building gets: small ones mostly tiled hips, large ones flat or, some, a metal gable. Deterministic. */
+/**
+ * The style a building gets: small ones mostly tiled hips, large ones flat
+ * or, some, a metal gable; out in the country, tiled hips and gables only.
+ * Deterministic.
+ */
 export function roofStyleOf(box: BuildingObstacle, random: SeededRandom): RoofStyle {
   const area = (box.maxX - box.minX) * (box.maxZ - box.minZ);
   const roll = random.next();
+  if (box.country === true) {
+    // Out in the country: houses under tiled hips, barns and halls under pitched roofs, and nothing on them.
+    return area < 350 ? 'hip' : 'gable';
+  }
   if (area < 350) {
     return roll < 0.6 ? 'hip' : 'flat';
   }

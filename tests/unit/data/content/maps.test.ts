@@ -172,8 +172,14 @@ describe.each(MAPS)('map $id', (map) => {
         expect(isInSea(shoreline, road.x(i), road.z(i), road.widthMeters / 2 + 10), road.id).toBe(false);
       }
     }
-    for (const building of map.buildings) {
-      expect(world.isWater(building.x - building.widthMeters / 2, building.z, 5)).toBe(false);
+    for (const building of world.buildings) {
+      for (const [x, z] of [
+        [building.minX, building.minZ],
+        [building.maxX, building.maxZ],
+        [(building.minX + building.maxX) / 2, (building.minZ + building.maxZ) / 2],
+      ] as const) {
+        expect(world.isWater(x, z, 5)).toBe(false);
+      }
     }
     for (const rectangle of [...map.depots.map((depot) => depot.yard), ...map.restAreas.map((area) => area.lot)]) {
       for (const [x, z] of rectangleCorners(rectangle)) {
@@ -218,8 +224,10 @@ describe.each(MAPS)('map $id', (map) => {
 
   it('keeps its buildings, yards, lots, fields, turbines and the spawn off the rivers', () => {
     const offRiver = (x: number, z: number, margin: number): boolean => !world.isRiver(x, z, margin);
-    for (const building of map.buildings) {
-      expect(offRiver(building.x, building.z, Math.max(building.widthMeters, building.depthMeters) / 2 + 5)).toBe(true);
+    for (const building of world.buildings) {
+      const x = (building.minX + building.maxX) / 2;
+      const z = (building.minZ + building.maxZ) / 2;
+      expect(offRiver(x, z, Math.max(building.maxX - building.minX, building.maxZ - building.minZ) / 2 + 5)).toBe(true);
     }
     for (const rectangle of [
       ...map.depots.map((depot) => depot.yard),
@@ -257,10 +265,15 @@ describe.each(MAPS)('map $id', (map) => {
           expect(rectangleContains(area, road.x(i), road.z(i), road.widthMeters / 2 + 4), `${park.id}, ${road.id}`).toBe(false);
         }
       }
-      for (const building of map.buildings) {
-        const corners = rectangleCorners({ x: building.x, z: building.z, headingDegrees: 0, lengthMeters: building.depthMeters, widthMeters: building.widthMeters });
+      for (const building of world.buildings) {
+        const corners: [number, number][] = [
+          [building.minX, building.minZ],
+          [building.maxX, building.minZ],
+          [building.maxX, building.maxZ],
+          [building.minX, building.maxZ],
+        ];
         expect(corners.some(([x, z]) => rectangleContains(area, x, z, 2)), park.id).toBe(false);
-        expect(rectangleContains(area, building.x, building.z, 2), park.id).toBe(false);
+        expect(rectangleContains(area, (building.minX + building.maxX) / 2, (building.minZ + building.maxZ) / 2, 2), park.id).toBe(false);
       }
       for (const yard of map.depots.map((depot) => depot.yard)) {
         expect(rectangleCorners(yard).some(([x, z]) => rectangleContains(area, x, z, 2)), park.id).toBe(false);
@@ -276,8 +289,39 @@ describe.each(MAPS)('map $id', (map) => {
     expect(world.parks.length).toBeGreaterThanOrEqual(map.depots.length);
   });
 
-  it('has every kind of road (spec §20)', () => {
-    expect(new Set(map.roads.map((road) => road.kind))).toEqual(new Set(ROAD_KINDS));
+  it('has every kind of road (spec §20), the lanes grown off its country roads', () => {
+    expect(new Set(world.roads.map((road) => road.kind))).toEqual(new Set(ROAD_KINDS));
+    expect(new Set(map.roads.map((road) => road.kind))).not.toContain('lane');
+  });
+
+  it('grows every village it places, each with its street, houses and a road out to the rest', () => {
+    const grown = new Set(world.villages.map((village) => village.id));
+    for (const village of map.villages ?? []) {
+      expect(grown, village.id).toContain(village.id);
+      const street = world.roads.find((road) => road.id === `${village.id}_street`);
+      expect(street, village.id).toBeDefined();
+      expect(world.roads.some((road) => road.id === `${village.id}_road_1`), village.id).toBe(true);
+      const houses = world.buildings.filter(
+        (box) => box.country === true && Math.hypot((box.minX + box.maxX) / 2 - village.x, (box.minZ + box.maxZ) / 2 - village.z) < 250,
+      );
+      expect(houses.length, village.id).toBeGreaterThanOrEqual(village.houses / 2);
+      if (village.green === true) {
+        expect(world.parks.some((park) => park.id === `${village.id}_green`), village.id).toBe(true);
+      }
+    }
+  });
+
+  it('strings its power lines along its own country roads, and bales one in eight of the stubble fields it grew', () => {
+    const ownCountryRoads = world.roads.slice(0, world.mapRoadCount).filter((road) => road.kind === 'rural');
+    for (const pole of world.powerLines.flatMap((line) => line.poles)) {
+      expect(ownCountryRoads.some((road) => road.distanceTo(pole.x, pole.z) < road.widthMeters / 2 + 7)).toBe(true);
+    }
+    const baled = (field: (typeof world.fields)[number]): boolean =>
+      world.hayBales.some((bale) => rectangleContains(field.area, bale.x, bale.z));
+    const ownStubble = world.fields.slice(0, map.fields.length).filter((field) => field.crop === 'stubble');
+    const grownStubble = world.fields.slice(map.fields.length).filter((field) => field.crop === 'stubble');
+    expect(ownStubble.every(baled)).toBe(true);
+    expect(grownStubble.filter(baled)).toHaveLength(Math.ceil(grownStubble.length / 8));
   });
 
   describe.each(map.restAreas)('rest area $id', (restArea) => {

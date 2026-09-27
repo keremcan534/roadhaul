@@ -316,4 +316,22 @@ describe('plantTrees', () => {
   it('plants nothing where nothing may stand', () => {
     expect(plantTrees(ground([east], fields, () => true), new Occupancy(), 5)).toEqual([]);
   });
+
+  it("lines a grown country road with cypresses only where it leaves its village, at its start", () => {
+    const north = road('village_road_1', 'rural', [
+      [0, 100],
+      [0, 700],
+    ]);
+    const cypressesOf = (trees: readonly { species: string; z: number }[]): { z: number }[] =>
+      trees.filter((tree) => tree.species === 'cypress' && tree.z > 50);
+
+    // The map's own road: both ends. Grown (after the map's one road): its start only.
+    const both = cypressesOf(plantTrees(ground([east, north]), new Occupancy(), 5));
+    const start = cypressesOf(plantTrees(ground([east, north]), new Occupancy(), 5, 1));
+    expect(both.some((tree) => tree.z > 500)).toBe(true);
+    expect(start.length).toBeGreaterThan(20);
+    for (const tree of start) {
+      expect(tree.z).toBeLessThan(100 + 191);
+    }
+  });
 });

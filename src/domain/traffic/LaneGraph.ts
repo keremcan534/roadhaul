@@ -36,8 +36,18 @@ const CONFLICT_DISTANCE_METERS = 4.5;
 const TURN_POINT_SPACING_METERS = 1;
 /** Turns that keep to the same road are more likely than turns off it… */
 const SAME_ROAD_WEIGHT = 1.6;
-/** …and turns into a dead-end street are rare. */
+/** …and turns into a dead-end street are rare… */
 const DEAD_END_WEIGHT = 0.3;
+/**
+ * …as are turns off the map's own roads into those the country grew
+ * (DrivingWorld.mapRoadCount: the villages' roads and streets), and more so
+ * into the lanes (sideRoads.ts), from any road. Traffic appears on those
+ * this much less often, for their length, than on the map's own roads: the
+ * traffic keeps to the roads between the towns, and the lanes are quiet.
+ */
+const GROWN_ROAD_WEIGHTS = { turn: 0.35, spawn: 0.2 } as const;
+const LANE_WEIGHTS = { turn: 0.2, spawn: 0.1 } as const;
+const MAP_ROAD_WEIGHTS = { turn: 1, spawn: 1 } as const;
 
 interface NodeBuild {
   readonly x: number;
@@ -149,12 +159,14 @@ export class LaneGraph {
   readonly nodeRadius: Float64Array;
   /** Lanes where traffic may appear: every rightmost lane, by index. */
   readonly spawnLanes: Int32Array;
+  /** How likely traffic appears on each of spawnLanes: its length, less on the country lanes. */
+  readonly spawnWeights: Float64Array;
 
   constructor(world: DrivingWorld, speedLimitsMetersPerSecond: Readonly<Record<RoadKind, number>>) {
     const nodes = buildNodes(world);
     const links: LinkBuild[] = [];
     const laneIds = buildLanes(world, nodes, speedLimitsMetersPerSecond, links);
-    buildTurns(nodes, laneIds, links);
+    buildTurns(nodes, laneIds, links, world);
 
     const count = links.length;
     this.linkCount = count;
@@ -255,6 +267,7 @@ export class LaneGraph {
     this.spawnLanes = Int32Array.from(
       links.flatMap((link, index) => (link.kind === LANE && link.laneIndex === 0 ? [index] : [])),
     );
+    this.spawnWeights = Float64Array.from(this.spawnLanes, (lane) => this.length[lane]! * busyness(world, links[lane]!.road).spawn);
     this.computeAdvisorySpeeds();
   }
 
@@ -600,8 +613,19 @@ function sampleFrame(road: RoadPath, k: number): [number, number, number, number
   return [road.x(i), road.z(i), -tz / length, tx / length];
 }
 
+/** How busy road `road` is (GROWN_ROAD_WEIGHTS): the map's own roads most, the lanes least. */
+function busyness(world: DrivingWorld, road: number): { readonly turn: number; readonly spawn: number } {
+  if (world.roads[road]!.kind === 'lane') {
+    return LANE_WEIGHTS;
+  }
+  return road < world.mapRoadCount ? MAP_ROAD_WEIGHTS : GROWN_ROAD_WEIGHTS;
+}
+
 /** Turns across every junction and U-turns at every dead end. */
-function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], links: LinkBuild[]): void {
+function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], links: LinkBuild[], world: DrivingWorld): void {
+  // A turn onto a quieter road is taken as much less often as it is quieter.
+  const quieter = (into: LinkBuild, out: LinkBuild): number =>
+    Math.min(1, busyness(world, out.road).turn / busyness(world, into.road).turn);
   const lanes = laneIds.map((id) => ({ id, link: links[id]! }));
   nodes.forEach((node, nodeIndex) => {
     const incoming = lanes.filter(({ link }) => link.endNode === nodeIndex);
@@ -629,7 +653,10 @@ function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], lin
           laneOffset: 0,
           from: into.id,
           to: out.id,
-          weight: (into.link.road === out.link.road ? SAME_ROAD_WEIGHT : 1) * (leadsToDeadEnd ? DEAD_END_WEIGHT : 1),
+          weight:
+            (into.link.road === out.link.road ? SAME_ROAD_WEIGHT : 1) *
+            (leadsToDeadEnd ? DEAD_END_WEIGHT : 1) *
+            quieter(into.link, out.link),
         });
       }
     }

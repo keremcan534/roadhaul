@@ -2,12 +2,13 @@ import type { Point2, RoadDefinition, RoadKind } from '../../src/data/definition
 import { LaneGraph } from '../../src/domain/traffic/LaneGraph';
 import { DrivingWorld } from '../../src/domain/world/DrivingWorld';
 
-/** Speed limits for traffic tests, m/s (the defaults, 45 / 60 / 90 / 70 km/h). */
+/** Speed limits for traffic tests, m/s (the defaults, 45 / 60 / 90 / 70 / 40 km/h). */
 export const TEST_SPEED_LIMITS: Readonly<Record<RoadKind, number>> = {
   street: 12.5,
   ringRoad: 60 / 3.6,
   highway: 25,
   rural: 70 / 3.6,
+  lane: 40 / 3.6,
 };
 
 export function roadFixture(

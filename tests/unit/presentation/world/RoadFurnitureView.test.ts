@@ -17,15 +17,28 @@ function placesOf(mesh: InstancedMesh): Vector3[] {
   });
 }
 
-/** How far (x, z) is from the asphalt's edge of the nearest road, and that road. */
+/** Each road's bounds (minX, maxX, minZ, maxZ), to pass over the roads far from a point. */
+const roadBounds = world.roads.map((road) => {
+  const xs = Array.from({ length: road.pointCount }, (_, i) => road.x(i));
+  const zs = Array.from({ length: road.pointCount }, (_, i) => road.z(i));
+  return [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)] as const;
+});
+
+/** Whether road `index` may pass within `meters` of (x, z): its bounds do. */
+function mayReach(index: number, x: number, z: number, meters: number): boolean {
+  const [minX, maxX, minZ, maxZ] = roadBounds[index]!;
+  return x > minX - meters && x < maxX + meters && z > minZ - meters && z < maxZ + meters;
+}
+
+/** How far (x, z) is from the asphalt's edge of the nearest road within 30 m of it, and that road (none: Infinity). */
 function nearestEdge(x: number, z: number): { meters: number; kind: string } {
   let best = { meters: Infinity, kind: '' };
-  for (const road of world.roads) {
-    const meters = road.distanceTo(x, z) - road.widthMeters / 2;
+  world.roads.forEach((road, index) => {
+    const meters = mayReach(index, x, z, 30) ? road.distanceTo(x, z) - road.widthMeters / 2 : Infinity;
     if (meters < best.meters) {
       best = { meters, kind: road.kind };
     }
-  }
+  });
   return best;
 }
 
@@ -61,13 +74,15 @@ describe('RoadFurnitureView', () => {
       expect(nearestJunction(post.x, post.z)).toBeGreaterThan(18);
     }
     // None in town: every city street is left without.
-    const streets = world.roads.filter((road) => road.kind === 'street');
+    const streets = world.roads.flatMap((road, index) => (road.kind === 'street' ? [index] : []));
     expect(streets.length).toBeGreaterThan(0);
-    for (const post of posts) {
-      for (const street of streets) {
-        expect(street.distanceTo(post.x, post.z) - street.widthMeters / 2).toBeGreaterThan(1.5);
-      }
-    }
+    const onStreets = posts.filter((post) =>
+      streets.some((index) => {
+        const street = world.roads[index]!;
+        return mayReach(index, post.x, post.z, 30) && street.distanceTo(post.x, post.z) - street.widthMeters / 2 <= 1.5;
+      }),
+    );
+    expect(onStreets).toEqual([]);
   });
 
   it('puts a reflector on both faces of every post, facing the traffic along the road either way', () => {

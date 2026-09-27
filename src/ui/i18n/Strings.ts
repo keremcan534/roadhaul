@@ -48,6 +48,11 @@ export class Strings {
     return this.t(`city.${cityId}.name`);
   }
 
+  /** A village's name (MapDefinition.villages): the same in every language, like the cities'. */
+  villageName(villageId: string): string {
+    return this.t(`village.${villageId}.name`);
+  }
+
   cargoName(cargoId: string): string {
     return this.t(`cargo.${cargoId}.name`);
   }

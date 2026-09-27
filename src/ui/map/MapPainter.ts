@@ -28,6 +28,7 @@ export interface MapSources {
 
 /** How each kind of road is drawn, bottom to top: at least this wide on screen (px), its colour and its edge's. */
 const ROAD_STYLES: readonly { readonly kind: RoadKind; readonly minPixels: number; readonly fill: string; readonly edge: string }[] = [
+  { kind: 'lane', minPixels: 1.5, fill: '#b9ad8a', edge: '#141b21' },
   { kind: 'street', minPixels: 2, fill: '#a3adb8', edge: '#141b21' },
   { kind: 'rural', minPixels: 2.5, fill: '#d8cca4', edge: '#141b21' },
   { kind: 'ringRoad', minPixels: 3.5, fill: '#eef1f4', edge: '#141b21' },
@@ -60,6 +61,7 @@ const COLORS = {
   truckEdge: '#0d1116',
   fleet: '#ffb020',
   label: '#f4f6f8',
+  villageLabel: '#c3ccd3',
   labelEdge: 'rgb(8 12 16 / 85%)',
   north: '#f0643c',
 } as const;
@@ -106,6 +108,7 @@ export class MapPainter {
   /** A box round one point, for MapViewport.sees without allocating. */
   private readonly pointBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
   private readonly cityNames: readonly string[];
+  private readonly villageNames: readonly string[];
   private readonly pickupText: string;
   private readonly deliveryText: string;
   /** Each driver's initials, for their truck's mark on the full map. */
@@ -172,6 +175,7 @@ export class MapPainter {
       return { color: FIELD_COLORS[crop], path };
     });
     this.cityNames = sketch.cities.map((city) => strings.cityName(city.cityId));
+    this.villageNames = sketch.villages.map((village) => strings.villageName(village.villageId));
     this.pickupText = strings.t('map.pickup');
     this.deliveryText = strings.t('map.delivery');
     this.driverInitials = new Map(
@@ -326,11 +330,24 @@ export class MapPainter {
       }
     }
     if (options.labels) {
-      context.font = LABEL_FONT;
       context.textAlign = 'center';
       context.textBaseline = 'middle';
-      context.lineWidth = 4;
       context.strokeStyle = COLORS.labelEdge;
+      // The villages' names, smaller and dimmer than the cities'.
+      context.font = SMALL_FONT;
+      context.lineWidth = 3;
+      context.fillStyle = COLORS.villageLabel;
+      for (let i = 0; i < sketch.villages.length; i++) {
+        const village = sketch.villages[i]!;
+        if (view.sees(this.around(village.x, village.z), 60)) {
+          const x = view.screenX(village.x, village.z);
+          const y = view.screenY(village.x, village.z);
+          context.strokeText(this.villageNames[i]!, x, y);
+          context.fillText(this.villageNames[i]!, x, y);
+        }
+      }
+      context.font = LABEL_FONT;
+      context.lineWidth = 4;
       context.fillStyle = COLORS.label;
       for (let i = 0; i < sketch.cities.length; i++) {
         const city = sketch.cities[i]!;

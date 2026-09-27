@@ -17,8 +17,9 @@ jobs:
   verify:
     name: Typecheck, test, build, e2e
     runs-on: ubuntu-latest
-    # The e2e suite draws in software: about 13 minutes on a quick runner, over 15 on a slow one.
-    timeout-minutes: 25
+    # The e2e suite draws in software: about 24 minutes on a runner since the country grows round the
+    # towns (more to draw, fewer frames a second in software), longer on a slow one.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 

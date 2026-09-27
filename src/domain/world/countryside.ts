@@ -155,10 +155,43 @@ const OLIVE_SPACING_METERS = 7;
 const CYPRESS_SPACING_METERS = 8;
 const PLANTED_TRUNK_RADIUS: Readonly<Record<TreeSpecies, number>> = { poplar: 0.3, cypress: 0.35, olive: 0.4 };
 
-/** The distance from (x, z) to the nearest road's edge (negative on a road). */
-function roadEdgeDistance(roads: readonly RoadPath[], x: number, z: number): number {
+/** Each road's bounds, grown by half its width: minX, maxX, minZ, maxZ. */
+function roadBounds(roads: readonly RoadPath[]): Float64Array {
+  const bounds = new Float64Array(roads.length * 4);
+  roads.forEach((road, index) => {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i < road.pointCount; i++) {
+      minX = Math.min(minX, road.x(i));
+      maxX = Math.max(maxX, road.x(i));
+      minZ = Math.min(minZ, road.z(i));
+      maxZ = Math.max(maxZ, road.z(i));
+    }
+    const half = road.widthMeters / 2;
+    bounds.set([minX - half, maxX + half, minZ - half, maxZ + half], index * 4);
+  });
+  return bounds;
+}
+
+/**
+ * The distance from (x, z) to the nearest road's edge (negative on a road).
+ * The roads are looked along nearest bounds (`roadBounds`) first, and none
+ * whose bounds lie further than the nearest edge found so far.
+ */
+function roadEdgeDistance(roads: readonly RoadPath[], bounds: Float64Array, x: number, z: number): number {
+  const order = roads.map((_, r) => ({
+    r,
+    outside: Math.hypot(Math.max(bounds[r * 4]! - x, 0, x - bounds[r * 4 + 1]!), Math.max(bounds[r * 4 + 2]! - z, 0, z - bounds[r * 4 + 3]!)),
+  }));
+  order.sort((a, b) => a.outside - b.outside);
   let nearest = Infinity;
-  for (const road of roads) {
+  for (const { r, outside } of order) {
+    if (outside >= nearest) {
+      break;
+    }
+    const road = roads[r]!;
     nearest = Math.min(nearest, road.distanceTo(x, z) - road.widthMeters / 2);
   }
   return nearest;
@@ -217,11 +250,16 @@ function fieldFrame(area: RectangleDefinition): { alongX: number; alongZ: number
   return { alongX: Math.sin(heading), alongZ: Math.cos(heading), acrossX: Math.cos(heading), acrossZ: -Math.sin(heading) };
 }
 
-/** Which long side of `area` (+1 or -1 across it) is nearer a road: the one the field faces. */
-function roadSideOf(ground: SceneryGround, area: RectangleDefinition): 1 | -1 {
+/** Which long side of `area` (+1 or -1 across it) is nearer a road (`bounds`: roadBounds): the one the field faces. */
+function roadSideOf(ground: SceneryGround, bounds: Float64Array, area: RectangleDefinition): 1 | -1 {
   const { acrossX, acrossZ } = fieldFrame(area);
   const distance = (side: number): number =>
-    roadEdgeDistance(ground.roads, area.x + acrossX * side * (area.widthMeters / 2), area.z + acrossZ * side * (area.widthMeters / 2));
+    roadEdgeDistance(
+      ground.roads,
+      bounds,
+      area.x + acrossX * side * (area.widthMeters / 2),
+      area.z + acrossZ * side * (area.widthMeters / 2),
+    );
   return distance(1) <= distance(-1) ? 1 : -1;
 }
 
@@ -232,10 +270,11 @@ function roadSideOf(ground: SceneryGround, area: RectangleDefinition): 1 | -1 {
  */
 export function placeFieldEdges(ground: SceneryGround): FieldEdge[] {
   const edges: FieldEdge[] = [];
+  const bounds = roadBounds(ground.roads);
   for (const field of ground.fields) {
     const { area } = field;
     const { alongX, alongZ, acrossX, acrossZ } = fieldFrame(area);
-    const side = roadSideOf(ground, area);
+    const side = roadSideOf(ground, bounds, area);
     const middleX = area.x + acrossX * side * (area.widthMeters / 2);
     const middleZ = area.z + acrossZ * side * (area.widthMeters / 2);
     const half = area.lengthMeters / 2;
@@ -333,10 +372,17 @@ export function placeGrazers(ground: SceneryGround, occupancy: Occupancy, seed: 
 /**
  * Trees people planted: a windbreak of poplars behind every third field
  * (along its far side), two olive groves beside the first country road, and
- * rows of cypresses along the country roads where they reach a village.
- * Solid, like the wild trees.
+ * rows of cypresses along the country roads where they reach a village: at
+ * both ends of the map's own (the first `mapRoadCount` roads), at the start
+ * of those the country grew, which run out of their village. Solid, like the
+ * wild trees.
  */
-export function plantTrees(ground: SceneryGround, occupancy: Occupancy, seed: number): PlantedTree[] {
+export function plantTrees(
+  ground: SceneryGround,
+  occupancy: Occupancy,
+  seed: number,
+  mapRoadCount = ground.roads.length,
+): PlantedTree[] {
   const random = new SeededRandom(seed ^ 0x7ee5);
   const trees: PlantedTree[] = [];
   const plant = (x: number, z: number, species: TreeSpecies, scale: number): void => {
@@ -348,6 +394,7 @@ export function plantTrees(ground: SceneryGround, occupancy: Occupancy, seed: nu
   };
 
   // Windbreaks: poplars along the far side of every third field.
+  const bounds = roadBounds(ground.roads);
   ground.fields.forEach((field, index) => {
     const scales = Array.from({ length: Math.ceil(field.area.lengthMeters / POPLAR_SPACING_METERS) + 1 }, () => random.range(0.85, 1.15));
     if (index % 3 !== 0) {
@@ -355,7 +402,7 @@ export function plantTrees(ground: SceneryGround, occupancy: Occupancy, seed: nu
     }
     const { area } = field;
     const { alongX, alongZ, acrossX, acrossZ } = fieldFrame(area);
-    const far = -roadSideOf(ground, area) * (area.widthMeters / 2 + WINDBREAK_BEHIND_METERS);
+    const far = -roadSideOf(ground, bounds, area) * (area.widthMeters / 2 + WINDBREAK_BEHIND_METERS);
     scales.forEach((scale, i) => {
       const along = -area.lengthMeters / 2 + i * POPLAR_SPACING_METERS;
       if (along <= area.lengthMeters / 2) {
@@ -365,6 +412,7 @@ export function plantTrees(ground: SceneryGround, occupancy: Occupancy, seed: nu
   });
 
   const rural = ground.roads.filter((road) => road.kind === 'rural');
+  const grown = new Set(ground.roads.slice(mapRoadCount));
   const point = createRoadPoint();
   // Olive groves: rows on a grid beside the first country road, the rows along it.
   const first = rural[0];
@@ -387,10 +435,11 @@ export function plantTrees(ground: SceneryGround, occupancy: Occupancy, seed: nu
   }
   // Cypresses along the last stretch of each country road into a village, and the first stretch out of one.
   for (const road of rural) {
-    for (const [from, to] of [
-      [40, 190],
-      [road.lengthMeters - 190, road.lengthMeters - 40],
-    ] as const) {
+    const ends: (readonly [number, number])[] = [[40, 190]];
+    if (!grown.has(road)) {
+      ends.push([road.lengthMeters - 190, road.lengthMeters - 40]);
+    }
+    for (const [from, to] of ends) {
       for (let along = from; along <= to; along += CYPRESS_SPACING_METERS) {
         road.pointAt(along, point);
         const scale = random.range(0.85, 1.2);

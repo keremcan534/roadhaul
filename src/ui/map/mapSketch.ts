@@ -60,6 +60,13 @@ export interface MapCircle {
   readonly radiusMeters: number;
 }
 
+/** Where a village's name goes: the middle of its street. */
+export interface MapVillageLabel {
+  readonly villageId: string;
+  readonly x: number;
+  readonly z: number;
+}
+
 /** Where a city's name goes: the middle of its depot and the buildings nearer it than any other depot. */
 export interface MapCityLabel {
   readonly cityId: string;
@@ -95,6 +102,7 @@ export interface MapSketch {
   readonly depots: readonly MapDepot[];
   readonly restAreas: readonly MapRestArea[];
   readonly cities: readonly MapCityLabel[];
+  readonly villages: readonly MapVillageLabel[];
 }
 
 export function sketchWorld(world: DrivingWorld): MapSketch {
@@ -158,7 +166,12 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     buildings,
     depots,
     restAreas,
-    cities: cityLabels(depots, buildings),
+    // The towns' own buildings place their names: not the farms and villages round them.
+    cities: cityLabels(
+      depots,
+      world.buildings.filter((building) => building.country !== true),
+    ),
+    villages: world.villages.map(({ id, x, z }) => ({ villageId: id, x, z })),
   };
 }
 

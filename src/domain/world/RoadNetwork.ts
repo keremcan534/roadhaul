@@ -8,6 +8,12 @@ import { ROUTE_LOOK_AHEAD_METERS, type RouteGuidance } from './roadRoute';
  * exact, and roads that merely pass near each other stay apart.
  */
 export const JUNCTION_RADIUS_METERS = 0.5;
+/** linkJunctions numbers its cells from here: keys stay exact for maps up to ±500 km. */
+const JUNCTION_CELL_OFFSET = 1 << 20;
+
+/** The paved turning circles at the dead ends (DrivingWorld) are this big, their centre this far past the road's end. */
+export const TURNING_CIRCLE_RADIUS_METERS = 11;
+export const TURNING_CIRCLE_OFFSET_METERS = 2;
 
 /** One road's centreline sample, e.g. where the road meets another. */
 export interface RoadSampleRef {
@@ -292,9 +298,11 @@ export class RoadNetwork {
   /** Joins samples of different roads that share a position (see JUNCTION_RADIUS_METERS). */
   private linkJunctions(link: (a: number, b: number) => void): void {
     const cellOf = (value: number): number => Math.floor(value / JUNCTION_RADIUS_METERS);
-    const cells = new Map<string, number[]>();
+    // One number per cell (a string key per sample made this the slowest part of building a big map's network).
+    const keyOf = (cx: number, cz: number): number => (cx + JUNCTION_CELL_OFFSET) * JUNCTION_CELL_OFFSET * 2 + (cz + JUNCTION_CELL_OFFSET);
+    const cells = new Map<number, number[]>();
     for (let i = 0; i < this.nodeCount; i++) {
-      const key = `${cellOf(this.nodeX[i]!)},${cellOf(this.nodeZ[i]!)}`;
+      const key = keyOf(cellOf(this.nodeX[i]!), cellOf(this.nodeZ[i]!));
       const cell = cells.get(key);
       if (cell === undefined) {
         cells.set(key, [i]);
@@ -307,7 +315,11 @@ export class RoadNetwork {
       const cz = cellOf(this.nodeZ[i]!);
       for (let dx = -1; dx <= 1; dx++) {
         for (let dz = -1; dz <= 1; dz++) {
-          for (const j of cells.get(`${cx + dx},${cz + dz}`) ?? []) {
+          const cell = cells.get(keyOf(cx + dx, cz + dz));
+          if (cell === undefined) {
+            continue;
+          }
+          for (const j of cell) {
             const close =
               Math.hypot(this.nodeX[j]! - this.nodeX[i]!, this.nodeZ[j]! - this.nodeZ[i]!) <= JUNCTION_RADIUS_METERS;
             if (j > i && close && this.roadOf[j] !== this.roadOf[i]) {

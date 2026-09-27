@@ -202,6 +202,7 @@ describe('GameConfig', () => {
       'traffic.radiusMeters',
       'traffic.speedLimitsKmh.ringRoad',
       'traffic.speedLimitsKmh.rural',
+      'traffic.speedLimitsKmh.lane',
     ]);
     expect(
       validateGameConfig({ ...DEFAULT_GAME_CONFIG, traffic: { ...DEFAULT_GAME_CONFIG.traffic, maxVehicles: 0 } }, catalog),

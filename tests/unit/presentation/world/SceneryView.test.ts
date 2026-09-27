@@ -6,6 +6,7 @@ import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { KERB_HEIGHT_METERS } from '../../../../src/domain/world/townscape';
 import { SceneryView } from '../../../../src/presentation/world/SceneryView';
+import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
 import { mapFixture } from '../../../support/contentFixtures';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
@@ -117,6 +118,25 @@ describe('SceneryView', () => {
     view.update(0.8);
     expect(matricesOf(heads)).not.toEqual(still.heads);
     expect(matricesOf(bodies)).toEqual(still.bodies);
+  });
+
+  it('draws the tiles near the camera only', () => {
+    const scene = new Scene();
+    const view = new SceneryView(scene, world);
+    const tiles = meshes(scene, 'scenery:').filter((mesh) => /^scenery:(pavement:)?-?\d+,-?\d+$/.test(mesh.name));
+    const { x, z } = world.spawn;
+    view.showAround(x, z);
+
+    const shown = tiles.filter((mesh) => mesh.visible);
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.length).toBeLessThan(tiles.length / 3);
+    for (const mesh of tiles) {
+      const box = new Box3().setFromObject(mesh);
+      const distance = Math.hypot(Math.max(box.min.x - x, 0, x - box.max.x), Math.max(box.min.z - z, 0, z - box.max.z));
+      expect(mesh.visible, mesh.name).toBe(distance <= FAR_CULL_METERS);
+    }
+    // The wires and the animals go on as they are.
+    expect(meshes(scene, 'scenery:wires').every((mesh) => mesh.visible)).toBe(true);
   });
 
   it('costs a draw a tile, one for the wires and two a kind of animal, and casts shadows only when asked', () => {
