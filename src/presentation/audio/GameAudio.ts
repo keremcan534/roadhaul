@@ -257,6 +257,7 @@ export class GameAudio {
         this.noiseBurst('highpass', 2500, 0.12, 0.3 * level);
         break;
       case 'bin':
+      case 'mailbox':
         this.note(330, 0, 0.25, 0.14 * level, 'triangle');
         this.noiseBurst('bandpass', 1200, 0.15, 0.3 * level);
         break;

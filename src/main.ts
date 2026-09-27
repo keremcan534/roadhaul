@@ -172,6 +172,7 @@ const KNOCK_SHAKE: Readonly<Record<KnockableKind, number>> = {
   busStop: 0.4,
   speedSign: 0.08,
   roadSign: 0.08,
+  mailbox: 0.05,
 };
 const WRECK_SHAKE = 0.8;
 const FULL_SHAKE_SPEED = 15;

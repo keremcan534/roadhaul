@@ -60,6 +60,7 @@ import { RiverPath } from './RiverPath';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork, TURNING_CIRCLE_OFFSET_METERS, TURNING_CIRCLE_RADIUS_METERS } from './RoadNetwork';
 import { createRoadPoint, RoadPath } from './RoadPath';
+import { placeFarmGates, placeHedgerows, placeRoadFences, type FarmGate, type Hedgerow, type RoadFence } from './roadsides';
 import {
   directionBoardLegs,
   placeDirectionBoards,
@@ -462,6 +463,10 @@ export class DrivingWorld implements DebrisSolids {
   readonly fieldEdges: readonly FieldEdge[];
   readonly rocks: readonly Rock[];
   readonly grazers: readonly Grazer[];
+  /** The country roads' edges (roadsides.ts): hedgerows, the farm lanes' gates with their mailboxes, the highway's fence. */
+  readonly hedgerows: readonly Hedgerow[];
+  readonly farmGates: readonly FarmGate[];
+  readonly roadFences: readonly RoadFence[];
   /** The towns (townscape.ts): pavements along the streets, what stands on them, billboards and speed limits. */
   readonly sidewalks: readonly Sidewalk[];
   readonly streetFurniture: readonly StreetFurniture[];
@@ -773,6 +778,11 @@ export class DrivingWorld implements DebrisSolids {
     const plantedTrees = countryside ? plantTrees(ground, occupancy, seed, this.mapRoadCount) : [];
     this.rocks = countryside ? placeRocks(ground, occupancy, map.halfSizeMeters, seed) : [];
     this.grazers = countryside ? placeGrazers(ground, occupancy, seed) : [];
+    // Last, the roads' edges, round everything that stands: the gates first (they are solid), then the hedges and fences.
+    const edges = { ...ground, network: this.network, isClearBeside: (x: number, z: number) => this.isClearForRoadSign(x, z) };
+    this.farmGates = countryside ? placeFarmGates(edges, occupancy) : [];
+    this.hedgerows = countryside ? placeHedgerows(edges, occupancy, seed) : [];
+    this.roadFences = countryside ? placeRoadFences(edges, occupancy) : [];
     this.trees = [...wildTrees, ...forestTrees, ...parkTrees, ...plantedTrees];
     // The solid circles, each with what it is: the lamps, bales, street furniture and speed signs give way to a hard hit.
     const circles: CircleThing[] = [];
@@ -802,6 +812,11 @@ export class DrivingWorld implements DebrisSolids {
     add(this.speedSigns, () => 'speedSign');
     add(this.roadSigns, () => 'roadSign');
     add(this.directionBoards.flatMap(directionBoardLegs));
+    add(this.farmGates.flatMap((gate) => gate.pillars));
+    add(
+      this.farmGates.map((gate) => gate.mailbox),
+      () => 'mailbox',
+    );
     this.circleThings = circles;
     this.circleKind = Uint8Array.from(kinds);
     this.knocked = new Uint8Array(circles.length);

@@ -9,6 +9,7 @@ import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { input, STEP_SECONDS } from '../../../support/driving';
 import { billboardLegs } from '../../../../src/domain/world/townscape';
 import { directionBoardLegs } from '../../../../src/domain/world/roadSigns';
+import { HEDGE_STEP_METERS } from '../../../../src/domain/world/roadsides';
 import { knockableCode } from '../../../../src/domain/crash/knockables';
 import { mapFixture, seaFixture, vehicleFixture } from '../../../support/contentFixtures';
 
@@ -776,7 +777,7 @@ describe('DrivingWorld', () => {
     };
 
     it('only comes where the map asks for it', () => {
-      for (const key of ['sidewalks', 'streetFurniture', 'billboards', 'speedSigns', 'powerLines', 'fieldEdges', 'rocks', 'grazers'] as const) {
+      for (const key of ['sidewalks', 'streetFurniture', 'billboards', 'speedSigns', 'powerLines', 'fieldEdges', 'rocks', 'grazers', 'hedgerows', 'farmGates', 'roadFences'] as const) {
         expect(plain[key], key).toEqual([]);
       }
       expect(plain.trees.every((tree) => tree.species === undefined)).toBe(true);
@@ -787,6 +788,7 @@ describe('DrivingWorld', () => {
       expect(scenic.fieldEdges).toHaveLength(2);
       expect(scenic.rocks.length).toBeGreaterThan(0);
       expect(scenic.grazers.length).toBeGreaterThan(0);
+      expect(scenic.hedgerows.length).toBeGreaterThan(0);
       expect(scenic.trees.some((tree) => tree.species === 'cypress')).toBe(true);
     });
 
@@ -859,6 +861,10 @@ describe('DrivingWorld', () => {
       }
       expect(region.directionBoards.length).toBeGreaterThan(30);
       expect(region.directionBoards.every((board) => board.rows.length >= 1 && board.rows.length <= 3)).toBe(true);
+      const hedged = region.hedgerows.reduce((sum, hedge) => sum + (hedge.points.length - 1) * HEDGE_STEP_METERS, 0);
+      expect(hedged).toBeGreaterThan(15_000);
+      expect(region.farmGates.length).toBeGreaterThan(20);
+      expect(region.roadFences.length).toBeGreaterThan(1);
       expect(region.sidewalks.length).toBeGreaterThan(6);
       expect(region.streetFurniture.filter((item) => item.kind === 'busStop').length).toBeGreaterThanOrEqual(2);
       expect(region.billboards.length).toBeGreaterThanOrEqual(4);
@@ -872,6 +878,52 @@ describe('DrivingWorld', () => {
       }
     });
   });
+  describe("the country roads' edges", () => {
+    /** A country road along z = 0, a farm lane north off its middle to a dead end. */
+    const map = mapFixture({
+      halfSizeMeters: 600,
+      roads: [
+        { id: 'main_road', kind: 'rural', widthMeters: 8, closed: false, controlPoints: [[-560, 0], [0, 0], [560, 0]] },
+        { id: 'farm_lane', kind: 'lane', widthMeters: 5.5, closed: false, controlPoints: [[0, 0], [0, 300]] },
+      ],
+      buildings: [],
+      depots: [],
+      spawn: { x: 0, z: -300, headingDegrees: 90 },
+      scenery: { seed: 3, treesPerKilometer: 0, countryside: true },
+    });
+    const edged = new DrivingWorld(map);
+
+    it('stands a gate at the farm lane, its pillars solid and its mailbox giving way', () => {
+      expect(edged.farmGates).toHaveLength(1);
+      const [gate] = edged.farmGates;
+      const mailbox = gate!.mailbox;
+      const circle = edged.circleIndexOf(mailbox);
+      expect(edged.circleKind[circle]).toBe(knockableCode('mailbox'));
+      // Driven into from the lane's side, heading -x at walking pace and more: the mailbox goes.
+      const reach = front + footprint.radius + mailbox.radius - 0.2;
+      const state = truckAt(mailbox.x + reach, mailbox.z, -90, 6);
+      expect(edged.resolveCollisions(state, footprint, null, true)).toBe(0);
+      expect(edged.knocked[circle]).toBe(1);
+
+      // A pillar stands: the truck takes the blow and slows hard.
+      const pillar = gate!.pillars[1];
+      const into = truckAt(pillar.x + front + footprint.radius + pillar.radius - 0.2, pillar.z, -90, 6);
+      expect(edged.resolveCollisions(into, footprint, null, true)).toBeGreaterThan(3);
+      expect(Math.abs(into.speed)).toBeLessThan(3);
+    });
+
+    it('grows hedgerows along the roads, out of the way', () => {
+      expect(edged.hedgerows.length).toBeGreaterThan(2);
+      for (const { points } of edged.hedgerows) {
+        for (const [x, z] of points) {
+          expect(edged.roads.every((road) => road.distanceTo(x, z) > road.widthMeters / 2 + 4)).toBe(true);
+          expect(edged.surfaceAt(x, z)).toBe(GRASS);
+        }
+      }
+      expect(edged.roadFences).toEqual([]);
+    });
+  });
+
   describe('the road signs', () => {
     /** A country road along z = 0 from one town to another, a road north off its middle to a village. */
     const main = {

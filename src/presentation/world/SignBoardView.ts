@@ -3,6 +3,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  CylinderGeometry,
   Group,
   Matrix4,
   Mesh,
@@ -158,7 +159,10 @@ function frameGeometry(rows: number): BufferGeometry {
   const [left, right] = directionBoardLegs({ x: 0, z: 0, heading: 0, tone: 'blue', rows: [] });
   const parts: [BufferGeometry, number][] = [
     ...[left!, right!].map((leg): [BufferGeometry, number] => [
-      new BoxGeometry(LEG_SIZE, top, LEG_SIZE).translate(leg.x, top / 2, -BOARD_DEPTH - LEG_SIZE / 2),
+      // Square and open at the ends: eight triangles, its foot in the ground and its top behind the board.
+      new CylinderGeometry(LEG_SIZE / Math.SQRT2, LEG_SIZE / Math.SQRT2, top, 4, 1, true)
+        .rotateY(Math.PI / 4)
+        .translate(leg.x, top / 2, -BOARD_DEPTH - LEG_SIZE / 2),
       LEG_COLOR,
     ]),
     [new BoxGeometry(DIRECTION_BOARD_WIDTH_METERS, height, BOARD_DEPTH).translate(0, BOARD_BOTTOM + height / 2, -BOARD_DEPTH / 2), BACK_COLOR],
