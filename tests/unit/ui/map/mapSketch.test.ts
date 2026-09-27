@@ -115,6 +115,17 @@ describe('sketchWorld', () => {
     expect(sketch.turningCircles).toHaveLength(world.turningCircles.length);
   });
 
+  it('names each village in the middle of its street, and each city by its own town, not the country round it', () => {
+    expect(sketch.villages).toEqual(world.villages.map(({ id, x, z }) => ({ villageId: id, x, z })));
+    expect(sketch.villages.length).toBeGreaterThan(0);
+    // The farms and villages about do not pull a city's name out into the country.
+    expect(world.buildings.some((building) => building.country === true)).toBe(true);
+    sketch.cities.forEach((city, index) => {
+      const depot = sketch.depots[index]!;
+      expect(Math.hypot(city.x - depot.x, city.z - depot.z), city.cityId).toBeLessThan(300);
+    });
+  });
+
   it('draws the sea west of the shore, reaching past the map, and the quay in the drawn area', () => {
     const sea = sketch.sea!;
     const shoreline = world.sea!.shoreline;
