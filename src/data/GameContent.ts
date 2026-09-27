@@ -3,6 +3,7 @@ import type { CityDefinition } from './definitions/CityDefinition';
 import type { DaylightDefinition } from './definitions/DaylightDefinition';
 import type { DriverDefinition } from './definitions/DriverDefinition';
 import type { EventDefinition } from './definitions/EventDefinition';
+import type { FacilityDefinition } from './definitions/FacilityDefinition';
 import type { MapDefinition } from './definitions/MapDefinition';
 import type { MissionDefinition } from './definitions/MissionDefinition';
 import type { PaintDefinition } from './definitions/PaintDefinition';
@@ -34,4 +35,6 @@ export interface GameContent {
   readonly drivers: readonly DriverDefinition[];
   /** The region's other haulage companies, the player's rivals. */
   readonly rivals: readonly RivalCompanyDefinition[];
+  /** What the company can build for itself at the head office, a level at a time. */
+  readonly facilities: readonly FacilityDefinition[];
 }

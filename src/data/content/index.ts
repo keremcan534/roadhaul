@@ -5,6 +5,7 @@ import { DAYLIGHT } from './daylight';
 import { DRIVERS } from './drivers';
 import { MAPS } from './maps';
 import { EVENTS } from './events';
+import { FACILITIES } from './facilities';
 import { MISSIONS } from './missions';
 import { PAINTS } from './paints';
 import { RIVALS } from './rivals';
@@ -28,4 +29,5 @@ export const GAME_CONTENT: GameContent = {
   paints: PAINTS,
   drivers: DRIVERS,
   rivals: RIVALS,
+  facilities: FACILITIES,
 };

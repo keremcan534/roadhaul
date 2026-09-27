@@ -78,7 +78,7 @@ describe('GameConfig', () => {
     ]);
   });
 
-  it('reports contracts, trucks, upgrades and drivers locked behind a company level that does not exist', () => {
+  it('reports contracts, trucks, upgrades, drivers and facilities locked behind a company level that does not exist', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
       company: { levelXp: [0, 1000] },
@@ -102,6 +102,13 @@ describe('GameConfig', () => {
       ),
       ...GAME_CONTENT.drivers.flatMap((driver, index) =>
         beyondLevel2(driver.requiredCompanyLevel) ? [`content.drivers[${index}].requiredCompanyLevel`] : [],
+      ),
+      ...GAME_CONTENT.facilities.flatMap((facility, facilityIndex) =>
+        facility.levels.flatMap((level, index) =>
+          beyondLevel2(level.requiredCompanyLevel)
+            ? [`content.facilities[${facilityIndex}].levels[${index}].requiredCompanyLevel`]
+            : [],
+        ),
       ),
     ]);
     expect(validateGameConfig(config, catalog).length).toBeGreaterThan(10);
