@@ -27,6 +27,7 @@ import { KNOCKABLES, knockableCode, type KnockableKind } from '../../domain/cras
 import type { Grazer, GrazerKind, PowerLine } from '../../domain/world/countryside';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import type { RoadPath } from '../../domain/world/RoadPath';
+import type { RoadSignKind } from '../../domain/world/roadSigns';
 import {
   KERB_HEIGHT_METERS,
   OUTLINE_ROW,
@@ -36,7 +37,15 @@ import {
   type StreetFurnitureKind,
 } from '../../domain/world/townscape';
 import type { PixelRect } from '../textures/drawing';
-import { PROP_ATLAS, PROP_ATLAS_HEIGHT, PROP_ATLAS_WIDTH, SPEED_LIMIT_FACES, pavingImage, propAtlasImage } from '../textures/propImages';
+import {
+  PROP_ATLAS,
+  PROP_ATLAS_HEIGHT,
+  PROP_ATLAS_WIDTH,
+  SPEED_LIMIT_FACES,
+  TRIANGLE_CORNERS,
+  pavingImage,
+  propAtlasImage,
+} from '../textures/propImages';
 import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
 import { FarCulling } from './worldTiles';
@@ -62,6 +71,17 @@ const PAVING_TILE_METERS = 2.2;
 const SIDEWALK_PIECE_ROWS = 40;
 /** The road surface is this high (TrackView), the pavement's top a kerb above it. */
 const ROAD_TOP_Y = 0.03;
+/**
+ * Road signs (roadSigns.ts): a warning triangle's side (give way's too), a
+ * stop sign's reach to its corners, a chevron board's size, meters; their
+ * faces' middles stand this high (a chevron's lower, on a shorter post).
+ */
+const TRIANGLE_SIDE = 0.9;
+const STOP_RADIUS = 0.34;
+const CHEVRON_WIDTH = 0.45;
+const CHEVRON_HEIGHT = 0.6;
+const SIGN_MIDDLE_Y = 2.05;
+const CHEVRON_MIDDLE_Y = 1.2;
 /** Grazing: a head goes down and up this often (seconds), and now and then lifts to look round. */
 const GRAZE_PERIOD_SECONDS = 3.4;
 const LOOK_ROUND_EVERY_SECONDS = 23;
@@ -78,6 +98,7 @@ const SHELTER_FRAME = 0x3a3f45;
 const SHELTER_ROOF = 0x9aa3ab;
 const SHELTER_PANEL = 0x86a7bb;
 const WIRE_COLOR = 0x26292d;
+const SIGN_BACK = 0x8a9097;
 const ROCK_TINTS = [0x8d8a82, 0x98948b, 0x7f7d78, 0xa29d92] as const;
 /** Boulders come in this many shapes, each sized, squashed and turned its own way where it lies (half sunk). */
 const ROCK_SHAPES = 9;
@@ -99,11 +120,13 @@ export interface SceneryViewOptions {
 
 /**
  * The world's generated scenery (DrivingWorld: countryside.ts,
- * townscape.ts), drawn: wooden power poles with their insulators and the
- * wires sagging between them; post-and-rail fences and dry-stone walls
- * along the fields; boulders; the towns' pavements with their kerbs,
- * benches, litter bins and bus shelters; billboards and speed limit signs;
- * and the flocks and herds grazing, heads down, now and then looking round.
+ * townscape.ts, roadSigns.ts), drawn: wooden power poles with their
+ * insulators and the wires sagging between them; post-and-rail fences and
+ * dry-stone walls along the fields; boulders; the towns' pavements with
+ * their kerbs, benches, litter bins and bus shelters; billboards and speed
+ * limit signs; the country roads' warning triangles, give way, stop and
+ * chevron boards; and the flocks and herds grazing, heads down, now and
+ * then looking round.
  *
  * Everything that keeps still is stamped from parts built once (Parts) and
  * merged, per 600 m tile, into one mesh of one material over a procedural
@@ -145,8 +168,8 @@ export class SceneryView {
   private shownKnocks = -1;
   /**
    * The props knocked over, tumbling about: one set of copies per look (a
-   * kind of furniture, a speed sign's limit); the furniture's by its
-   * knockable code, each speed sign's by its circle.
+   * kind of furniture, a speed sign's limit, a road sign's kind); the
+   * furniture's by its knockable code, each sign's by its circle.
    */
   private readonly fallen: DebrisInstances[] = [];
   private readonly fallenByCode: (DebrisInstances | undefined)[] = [];
@@ -201,6 +224,12 @@ export class SceneryView {
       tiles.add(sign.x, sign.z, parts.place(`speed:${limit}`, () => speedSignGeometry(limit), sign.x, sign.z, sign.heading), circle);
       this.signLimits.set(circle, limit);
     }
+    const signKinds = new Map<number, RoadSignKind>();
+    for (const sign of world.roadSigns) {
+      const circle = world.circleIndexOf(sign);
+      tiles.add(sign.x, sign.z, parts.place(`sign:${sign.kind}`, () => roadSignGeometry(sign.kind), sign.x, sign.z, sign.heading), circle);
+      signKinds.set(circle, sign.kind);
+    }
     parts.dispose();
     const paving: Tiles = new Tiles();
     for (const sidewalk of world.sidewalks) {
@@ -247,6 +276,15 @@ export class SceneryView {
         if (fallen === undefined) {
           fallen = fallenOf('speedSign', speedSignGeometry(limit), `scenery:fallen:speed:${limit}`);
           signs.set(limit, fallen);
+        }
+        this.fallenSigns.set(circle, fallen);
+      }
+      const roadSigns = new Map<RoadSignKind, DebrisInstances>();
+      for (const [circle, kind] of signKinds) {
+        let fallen = roadSigns.get(kind);
+        if (fallen === undefined) {
+          fallen = fallenOf('roadSign', roadSignGeometry(kind), `scenery:fallen:sign:${kind}`);
+          roadSigns.set(kind, fallen);
         }
         this.fallenSigns.set(circle, fallen);
       }
@@ -343,7 +381,7 @@ export class SceneryView {
     }
   }
 
-  /** Draws the benches, bins, shelters and speed signs knocked over among `debris`, `alpha` of the way through the fixed step. */
+  /** Draws the benches, bins, shelters and signs knocked over among `debris`, `alpha` of the way through the fixed step. */
   drawDebris(debris: DebrisSimulation | null, alpha: number): void {
     const fallen = this.fallen;
     if (fallen.length === 0) {
@@ -358,7 +396,7 @@ export class SceneryView {
           continue;
         }
         const code = debris.kind[slot]!;
-        const look = code === SPEED_SIGN_CODE ? this.fallenSigns.get(debris.ref[slot]!) : this.fallenByCode[code];
+        const look = code === SPEED_SIGN_CODE || code === ROAD_SIGN_CODE ? this.fallenSigns.get(debris.ref[slot]!) : this.fallenByCode[code];
         look?.add(debris, slot, alpha);
       }
     }
@@ -440,6 +478,7 @@ export class SceneryView {
 
 const UP = new Vector3(0, 1, 0);
 const SPEED_SIGN_CODE = knockableCode('speedSign');
+const ROAD_SIGN_CODE = knockableCode('roadSign');
 /** Where a sheep's and a cow's neck is on its body (the head turns there), meters up and forward. */
 const SHEEP_NECK = { y: 0.78, z: 0.55 } as const;
 const COW_NECK = { y: 1.32, z: 1.0 } as const;
@@ -856,6 +895,99 @@ function speedSignGeometry(limitKmh: number): BufferGeometry {
     dress(new CircleGeometry(0.4, 24).translate(0, 2.25, 0), 0xffffff, face),
     dress(new CircleGeometry(0.4, 24).rotateY(Math.PI).translate(0, 2.25, -0.012), 0xffffff, PROP_ATLAS.signBack),
   ]);
+}
+
+/**
+ * A road sign of `kind` on its post, its face toward the traffic it is for
+ * (+z), its back plain; a chevron board shows its arrow on its back too,
+ * pointing the same way across the road, to the other way's traffic.
+ */
+function roadSignGeometry(kind: RoadSignKind): BufferGeometry {
+  switch (kind) {
+    case 'bendLeft':
+      return triangleSign(PROP_ATLAS.bend, false, false);
+    case 'bendRight':
+      return triangleSign(PROP_ATLAS.bend, false, true);
+    case 'sideRoadLeft':
+      return triangleSign(PROP_ATLAS.sideRoad, false, false);
+    case 'sideRoadRight':
+      return triangleSign(PROP_ATLAS.sideRoad, false, true);
+    case 'crossroads':
+      return triangleSign(PROP_ATLAS.crossroads, false, false);
+    case 'giveWay':
+      return triangleSign(PROP_ATLAS.giveWay, true, false);
+    case 'stop':
+      return mergeParts([
+        signPost(SIGN_MIDDLE_Y + 0.1),
+        dress(new CircleGeometry(STOP_RADIUS, 8, Math.PI / 8).translate(0, SIGN_MIDDLE_Y, 0), 0xffffff, PROP_ATLAS.stop),
+        dress(new CircleGeometry(STOP_RADIUS, 8, Math.PI / 8).rotateY(Math.PI).translate(0, SIGN_MIDDLE_Y, -0.012), SIGN_BACK),
+      ]);
+    case 'chevron':
+      return mergeParts([
+        signPost(CHEVRON_MIDDLE_Y + CHEVRON_HEIGHT / 2),
+        dress(new PlaneGeometry(CHEVRON_WIDTH, CHEVRON_HEIGHT).translate(0, CHEVRON_MIDDLE_Y, 0), 0xffffff, PROP_ATLAS.chevron),
+        // Turned round, its picture mirrored: the arrow points the same way across the road.
+        dress(
+          mirrorU(new PlaneGeometry(CHEVRON_WIDTH, CHEVRON_HEIGHT)).rotateY(Math.PI).translate(0, CHEVRON_MIDDLE_Y, -0.012),
+          0xffffff,
+          PROP_ATLAS.chevron,
+        ),
+      ]);
+  }
+}
+
+/** A sign's grey post from the ground to `top`, behind its face and back. */
+function signPost(top: number): BufferGeometry {
+  return dress(new CylinderGeometry(0.03, 0.03, top, 6).translate(0, top / 2, -0.05), STEEL);
+}
+
+/** A warning triangle (upside down: give way) on its post: `face` toward +z (mirrored across for the right-hand ones), its back plain. */
+function triangleSign(face: PixelRect, upsideDown: boolean, mirrored: boolean): BufferGeometry {
+  return mergeParts([
+    signPost(SIGN_MIDDLE_Y + 0.1),
+    dress(triangle(upsideDown, mirrored).translate(0, SIGN_MIDDLE_Y, 0), 0xffffff, face),
+    dress(triangle(upsideDown, false).rotateY(Math.PI).translate(0, SIGN_MIDDLE_Y, -0.012), SIGN_BACK),
+  ]);
+}
+
+/**
+ * A triangle TRIANGLE_SIDE across, its middle at the origin, facing +z,
+ * point up (or down), its corners' uv those of its picture
+ * (TRIANGLE_CORNERS: mirrored across when `mirrored`, top to bottom when
+ * upside down, as give way's is drawn).
+ */
+function triangle(upsideDown: boolean, mirrored: boolean): BufferGeometry {
+  const height = (TRIANGLE_SIDE * Math.sqrt(3)) / 2;
+  const flip = upsideDown ? -1 : 1;
+  // The foot's left and right ends, then the top: as TRIANGLE_CORNERS runs.
+  const corners: readonly (readonly [number, number])[] = [
+    [-TRIANGLE_SIDE / 2, (-flip * height) / 3],
+    [TRIANGLE_SIDE / 2, (-flip * height) / 3],
+    [0, (flip * 2 * height) / 3],
+  ];
+  const positions = new Float32Array(9);
+  const uvs = new Float32Array(6);
+  corners.forEach(([x, y], i) => {
+    const [u, v] = TRIANGLE_CORNERS[i]!;
+    positions.set([x, y, 0], i * 3);
+    uvs.set([mirrored ? 1 - u : u, upsideDown ? 1 - v : v], i * 2);
+  });
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), 3));
+  geometry.setAttribute('uv', new BufferAttribute(uvs, 2));
+  // Counter-clockwise seen from +z: point up the corners run that way, point down the other.
+  geometry.setIndex(upsideDown ? [0, 2, 1] : [0, 1, 2]);
+  return geometry;
+}
+
+/** `geometry` with its pictures mirrored across (u to 1 - u). */
+function mirrorU(geometry: BufferGeometry): BufferGeometry {
+  const uv = geometry.getAttribute('uv');
+  for (let i = 0; i < uv.count; i++) {
+    uv.setX(i, 1 - uv.getX(i));
+  }
+  return geometry;
 }
 
 /**

@@ -1,13 +1,15 @@
-import { arcBand, centredText, disc, fillRect, line, paint, roundedBox, shadeRect, type PixelRect } from './drawing';
+import { arcBand, centredText, disc, fillRect, line, paint, polygon, roundedBox, shadeRect, type PixelRect } from './drawing';
 import { grain } from './noise';
 import { createImage, type PixelImage, type Rgb } from './pixelImage';
 
 /**
  * The scenery's pictures in one atlas, so the countryside's and the towns'
  * props draw with one material (SceneryView): four billboard posters for
- * original local businesses, the speed limit signs and their backs, the bus
- * stop's sign, a dry-stone wall's face, and a white swatch for everything
- * painted by its vertex colours. Row 0 is the bottom (pixelImage.ts).
+ * original local businesses, the speed limit signs and their backs, the
+ * country roads' warning triangles, give way, stop and chevron boards, the
+ * bus stop's sign, a dry-stone wall's face, and a white swatch for
+ * everything painted by its vertex colours. Row 0 is the bottom
+ * (pixelImage.ts).
  */
 export const PROP_ATLAS_WIDTH = 1024;
 export const PROP_ATLAS_HEIGHT = 512;
@@ -28,6 +30,14 @@ export const PROP_ATLAS = {
   signBack: { x: 384, y: 256, width: 128, height: 128 },
   /** The bus stop's sign: a bus on blue. */
   busStop: { x: 512, y: 256, width: 128, height: 128 },
+  /** Warning triangles: a bend and a side road, both to the left (mirrored, to the right), and a crossroads. */
+  bend: { x: 640, y: 256, width: 128, height: 128 },
+  sideRoad: { x: 768, y: 256, width: 128, height: 128 },
+  crossroads: { x: 896, y: 256, width: 128, height: 128 },
+  /** Give way (a triangle upside down), stop (an octagon) and a chevron board pointing left (mirrored, right). */
+  giveWay: { x: 512, y: 128, width: 128, height: 128 },
+  stop: { x: 640, y: 128, width: 128, height: 128 },
+  chevron: { x: 768, y: 128, width: 128, height: 128 },
   /** A dry-stone wall's face, a few meters of it across the picture. */
   stones: { x: 0, y: 128, width: 512, height: 128 },
   /** White, painted by the vertex colours. */
@@ -41,8 +51,23 @@ export const SPEED_LIMIT_FACES: Readonly<Record<number, PixelRect>> = {
   90: PROP_ATLAS.speed90,
 };
 
+/**
+ * A warning triangle's corners in its picture, 0..1 across and up it: the
+ * foot's left and right ends and the top. Give way's lie upside down: its
+ * top edge where these have their foot, mirrored top to bottom.
+ */
+export const TRIANGLE_CORNERS: readonly (readonly [u: number, v: number])[] = [
+  [0.03, 0.07],
+  [0.97, 0.07],
+  [0.5, 0.07 + (0.94 * Math.sqrt(3)) / 2],
+];
+
 const OPAQUE = 255;
 const WHITE: Rgb = [246, 246, 242];
+const SIGN_RED: Rgb = [200, 32, 36];
+const SIGN_INK: Rgb = [24, 24, 26];
+/** A warning triangle's red rim is this share of the way in from its edges to its middle. */
+const TRIANGLE_RIM = 0.25;
 
 /** The whole atlas. Deterministic. */
 export function propAtlasImage(): PixelImage {
@@ -57,6 +82,12 @@ export function propAtlasImage(): PixelImage {
   drawSpeedLimit(image, PROP_ATLAS.speed90, '90');
   drawSignBack(image, PROP_ATLAS.signBack);
   drawBusStop(image, PROP_ATLAS.busStop);
+  drawWarning(image, PROP_ATLAS.bend, drawBendSymbol);
+  drawWarning(image, PROP_ATLAS.sideRoad, drawSideRoadSymbol);
+  drawWarning(image, PROP_ATLAS.crossroads, drawCrossroadsSymbol);
+  drawGiveWay(image, PROP_ATLAS.giveWay);
+  drawStop(image, PROP_ATLAS.stop);
+  drawChevron(image, PROP_ATLAS.chevron);
   drawStones(image, PROP_ATLAS.stones);
   fillRect(image, PROP_ATLAS.plain, [255, 255, 255], OPAQUE);
   return image;
@@ -177,6 +208,115 @@ function drawSignBack(image: PixelImage, rect: PixelRect): void {
   fillRect(image, rect, [150, 150, 150], OPAQUE);
   disc(image, cx, cy, 62, [120, 126, 132], OPAQUE, 'lit', [176, 182, 188]);
   roundedBox(image, cx - 7, cy - 40, cx + 7, cy + 40, 3, [96, 100, 106], OPAQUE);
+}
+
+/** `corners` (0..1 of `rect`) in pixels. */
+function cornersIn(rect: PixelRect, corners: readonly (readonly [number, number])[]): [number, number][] {
+  return corners.map(([u, v]) => [rect.x + u * rect.width, rect.y + v * rect.height]);
+}
+
+/** `corners` drawn in toward their middle by `share` of the way. */
+function shrink(corners: readonly (readonly [number, number])[], share: number): [number, number][] {
+  const middleX = corners.reduce((sum, [x]) => sum + x, 0) / corners.length;
+  const middleY = corners.reduce((sum, [, y]) => sum + y, 0) / corners.length;
+  return corners.map(([x, y]) => [middleX + (x - middleX) * (1 - share), middleY + (y - middleY) * (1 - share)]);
+}
+
+/**
+ * A warning triangle: white inside a red rim, its symbol in black (drawn by
+ * `symbol` round the triangle's middle). The red runs past its edges, so
+ * nothing else bleeds into them far off.
+ */
+function drawWarning(image: PixelImage, rect: PixelRect, symbol: (image: PixelImage, cx: number, cy: number) => void): void {
+  fillRect(image, rect, SIGN_RED, OPAQUE);
+  const corners = cornersIn(rect, TRIANGLE_CORNERS);
+  polygon(image, shrink(corners, TRIANGLE_RIM), WHITE, OPAQUE);
+  const [middleX, middleY] = shrink(corners, 1)[0]!;
+  symbol(image, middleX, middleY);
+}
+
+/** A bend to the left: the road coming up from the foot, curving away left, an arrowhead at its end. */
+function drawBendSymbol(image: PixelImage, cx: number, cy: number): void {
+  const width = 8;
+  const radius = 17;
+  // Up from below the middle, then round a curve whose centre lies to the left.
+  const startX = cx + 6;
+  line(image, startX, cy - 20, startX, cy - 2, width, SIGN_INK, OPAQUE);
+  const centreX = startX - radius;
+  let lastX = startX;
+  let lastY = cy - 2;
+  const sweep = (65 * Math.PI) / 180;
+  for (let step = 1; step <= 8; step++) {
+    const angle = (sweep * step) / 8;
+    const x = centreX + radius * Math.cos(angle);
+    const y = cy - 2 + radius * Math.sin(angle);
+    line(image, lastX, lastY, x, y, width, SIGN_INK, OPAQUE);
+    lastX = x;
+    lastY = y;
+  }
+  // The arrowhead along the curve's last direction.
+  const tangentX = -Math.sin(sweep);
+  const tangentY = Math.cos(sweep);
+  polygon(
+    image,
+    [
+      [lastX + tangentX * 13, lastY + tangentY * 13],
+      [lastX + tangentY * 9, lastY - tangentX * 9],
+      [lastX - tangentY * 9, lastY + tangentX * 9],
+    ],
+    SIGN_INK,
+    OPAQUE,
+  );
+}
+
+/** A side road on the left: the road up the middle, a narrower one off it to the left. */
+function drawSideRoadSymbol(image: PixelImage, cx: number, cy: number): void {
+  line(image, cx + 3, cy - 21, cx + 3, cy + 24, 9, SIGN_INK, OPAQUE);
+  line(image, cx + 3, cy + 3, cx - 18, cy + 3, 7, SIGN_INK, OPAQUE);
+}
+
+/** A crossroads: the road up the middle, a narrower one across it. */
+function drawCrossroadsSymbol(image: PixelImage, cx: number, cy: number): void {
+  line(image, cx, cy - 21, cx, cy + 24, 9, SIGN_INK, OPAQUE);
+  line(image, cx - 18, cy + 1, cx + 18, cy + 1, 7, SIGN_INK, OPAQUE);
+}
+
+/** Give way: a triangle upside down, white inside a red rim. */
+function drawGiveWay(image: PixelImage, rect: PixelRect): void {
+  fillRect(image, rect, SIGN_RED, OPAQUE);
+  const corners = cornersIn(
+    rect,
+    TRIANGLE_CORNERS.map(([u, v]) => [u, 1 - v] as const),
+  );
+  polygon(image, shrink(corners, TRIANGLE_RIM), WHITE, OPAQUE);
+}
+
+/**
+ * Stop: a red octagon (its corners where CircleGeometry's eight lie, flats
+ * at the top and bottom) inside a thin white rim, STOP across it.
+ */
+function drawStop(image: PixelImage, rect: PixelRect): void {
+  fillRect(image, rect, WHITE, OPAQUE);
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const corners: [number, number][] = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = Math.PI / 8 + (i * Math.PI) / 4;
+    corners.push([cx + Math.cos(angle) * rect.width * 0.455, cy + Math.sin(angle) * rect.height * 0.455]);
+  }
+  polygon(image, corners, SIGN_RED, OPAQUE);
+  centredText(image, 'STOP', cx, cy, 30, WHITE, OPAQUE, 0.2);
+}
+
+/** A chevron board: a white arrowhead pointing left on red, its edges white. */
+function drawChevron(image: PixelImage, rect: PixelRect): void {
+  const { x, y, width, height } = rect;
+  fillRect(image, rect, WHITE, OPAQUE);
+  fillRect(image, { x: x + 6, y: y + 6, width: width - 12, height: height - 12 }, SIGN_RED, OPAQUE);
+  const tipX = x + width * 0.3;
+  const backX = x + width * 0.68;
+  line(image, backX, y + height * 0.84, tipX, y + height / 2, 20, WHITE, OPAQUE);
+  line(image, tipX, y + height / 2, backX, y + height * 0.16, 20, WHITE, OPAQUE);
 }
 
 /** The bus stop's sign: a white bus on blue, and "DURAK". */

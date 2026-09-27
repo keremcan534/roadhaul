@@ -6,6 +6,7 @@ import {
   PROP_ATLAS_HEIGHT,
   PROP_ATLAS_WIDTH,
   SPEED_LIMIT_FACES,
+  TRIANGLE_CORNERS,
   pavingImage,
   propAtlasImage,
 } from '../../../../src/presentation/textures/propImages';
@@ -71,6 +72,46 @@ describe('propImages', () => {
     const { plain } = PROP_ATLAS;
     expect(colours(image, plain)).toBe(1);
     expect(pixel(image, plain.x + 5, plain.y + 5)).toEqual([255, 255, 255, 255]);
+  });
+
+  it('draws the road signs: warning triangles white in a red rim, give way upside down, stop and the chevron', () => {
+    const isRed = ([r, g, b]: number[]): boolean => r! > 180 && g! < 60 && b! < 60;
+    const isWhite = ([r, g, b]: number[]): boolean => r! > 230 && g! > 230 && b! > 230;
+    const isInk = ([r, g, b]: number[]): boolean => r! < 60 && g! < 60 && b! < 60;
+    // A triangle's corners, and a point a fifth of the way in from each toward its middle (the rim) and halfway (white).
+    const at = (rect: PixelRect, corners: readonly (readonly [number, number])[], toward: number): [number, number][] => {
+      const points = corners.map(([u, v]) => [rect.x + u * rect.width, rect.y + v * rect.height] as const);
+      const middleX = points.reduce((sum, [x]) => sum + x, 0) / 3;
+      const middleY = points.reduce((sum, [, y]) => sum + y, 0) / 3;
+      return points.map(([x, y]) => [x + (middleX - x) * toward, y + (middleY - y) * toward]);
+    };
+    for (const name of ['bend', 'sideRoad', 'crossroads'] as const) {
+      const rect = PROP_ATLAS[name];
+      for (const [x, y] of at(rect, TRIANGLE_CORNERS, 0.12)) {
+        expect(isRed(pixel(image, x, y)), `${name}: rim`).toBe(true);
+      }
+      for (const [x, y] of at(rect, TRIANGLE_CORNERS, 0.45)) {
+        expect(isWhite(pixel(image, x, y)), `${name}: inside`).toBe(true);
+      }
+      // A black symbol in the middle.
+      let ink = 0;
+      for (let dy = -20; dy <= 20; dy += 2) {
+        for (let dx = -20; dx <= 20; dx += 2) {
+          ink += isInk(pixel(image, rect.x + rect.width / 2 + dx, rect.y + rect.height * 0.35 + dy)) ? 1 : 0;
+        }
+      }
+      expect(ink, `${name}: symbol`).toBeGreaterThan(20);
+    }
+    const upsideDown = TRIANGLE_CORNERS.map(([u, v]) => [u, 1 - v] as const);
+    for (const [x, y] of at(PROP_ATLAS.giveWay, upsideDown, 0.45)) {
+      expect(isWhite(pixel(image, x, y))).toBe(true);
+    }
+    const { stop, chevron } = PROP_ATLAS;
+    expect(isRed(pixel(image, stop.x + 20, stop.y + stop.height / 2))).toBe(true);
+    expect(isWhite(pixel(image, stop.x + 2, stop.y + 2))).toBe(true);
+    expect(isRed(pixel(image, chevron.x + 20, chevron.y + 20))).toBe(true);
+    // The arrow's tip on the left, halfway up.
+    expect(isWhite(pixel(image, chevron.x + chevron.width * 0.3, chevron.y + chevron.height / 2))).toBe(true);
   });
 
   it('draws the same atlas every time', () => {

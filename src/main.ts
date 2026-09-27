@@ -62,6 +62,7 @@ import { PedestrianView, type TruckNearby } from './presentation/world/Pedestria
 import { WetReflections, type MirroredLamps } from './presentation/world/WetReflections';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
+import { SignBoardView } from './presentation/world/SignBoardView';
 import { BirdsView } from './presentation/world/BirdsView';
 import { CloudShadows } from './presentation/world/cloudShadows';
 import { SeasonShading } from './presentation/world/SeasonShading';
@@ -410,6 +411,12 @@ async function start(): Promise<void> {
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
     anisotropy: renderHost.anisotropy,
   });
+  const signBoards = new SignBoardView(
+    renderHost.scene,
+    driving.world.directionBoards,
+    (row) => (row.placeKind === 'city' ? strings.cityName(row.placeId) : strings.villageName(row.placeId)),
+    { anisotropy: renderHost.anisotropy },
+  );
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
     castShadows,
@@ -1620,6 +1627,7 @@ async function start(): Promise<void> {
         roadFurniture.setLamps(lamps);
         streetLamps.setLamps(lamps);
         citySigns.setLamps(lamps);
+        signBoards.setLamps(lamps);
         windTurbines.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
         // The towns' people: fewer out at night and in the rain, their umbrellas up when it rains.

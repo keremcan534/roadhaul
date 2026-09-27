@@ -217,6 +217,37 @@ describe('SceneryView', () => {
     expect(meshes(scene, 'scenery:fallen:').some((mesh) => mesh.visible)).toBe(false);
   });
 
+  it('stands the country roads\' signs in the tiles, and draws one knocked over in its own look', () => {
+    const roads = [
+      { id: 'main_road', kind: 'rural', widthMeters: 8, closed: false, controlPoints: [[-560, 0], [0, 0], [560, 0]] },
+      { id: 'north_road', kind: 'rural', widthMeters: 8, closed: false, controlPoints: [[0, 0], [0, 500]] },
+    ] as const;
+    const signed = new DrivingWorld(
+      mapFixture({
+        halfSizeMeters: 600,
+        roads: roads.map((road) => ({ ...road, controlPoints: road.controlPoints.map(([x, z]) => [x, z] as const) })),
+        buildings: [],
+        depots: [],
+        scenery: { seed: 3, treesPerKilometer: 0, roadSigns: true },
+      }),
+    );
+    const scene = new Scene();
+    const view = new SceneryView(scene, signed, { debrisCapacity: 2 });
+    const kinds = [...new Set(signed.roadSigns.map((sign) => sign.kind))].sort();
+    expect(kinds).toEqual(['sideRoadLeft', 'sideRoadRight', 'stop']);
+    // Merged into the tiles: a look for each kind to fall in, none drawn while they stand.
+    expect(meshes(scene, 'scenery:fallen:sign:').map((mesh) => mesh.name).sort()).toEqual(kinds.map((kind) => `scenery:fallen:sign:${kind}`));
+    expect(meshes(scene, 'scenery:fallen:').some((mesh) => mesh.visible)).toBe(false);
+
+    const stop = signed.roadSigns.find((sign) => sign.kind === 'stop')!;
+    const debris = new DebrisSimulation(2);
+    const shape = KNOCKABLES.roadSign.shape;
+    debris.launch({ kind: knockableCode('roadSign'), ref: signed.circleIndexOf(stop), shape, x: 0, y: 2, z: 0, heading: 0, vx: 0, vy: 0, vz: 0, spinX: 0, spinY: 0, spinZ: 0 });
+    view.drawDebris(debris, 1);
+
+    expect(meshes(scene, 'scenery:fallen:').filter((mesh) => mesh.visible).map((mesh) => mesh.name)).toEqual(['scenery:fallen:sign:stop']);
+  });
+
   it('frees everything it made', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, world);

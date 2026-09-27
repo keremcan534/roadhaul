@@ -162,6 +162,34 @@ export function line(image: PixelImage, ax: number, ay: number, bx: number, by: 
   }
 }
 
+/** A convex polygon through `points` (x, y in pixels, wound either way), filled, its edges anti-aliased. */
+export function polygon(image: PixelImage, points: readonly (readonly [number, number])[], color: Rgb, alpha: number): void {
+  let area = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [ax, ay] = points[i]!;
+    const [bx, by] = points[(i + 1) % points.length]!;
+    area += ax * by - bx * ay;
+  }
+  // Inside lies left of each edge when the points run counter-clockwise, right of it otherwise.
+  const winding = area >= 0 ? 1 : -1;
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  for (let y = Math.floor(Math.min(...ys)) - 1; y <= Math.ceil(Math.max(...ys)); y++) {
+    for (let x = Math.floor(Math.min(...xs)) - 1; x <= Math.ceil(Math.max(...xs)); x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      let inside = Infinity;
+      for (let i = 0; i < points.length; i++) {
+        const [ax, ay] = points[i]!;
+        const [bx, by] = points[(i + 1) % points.length]!;
+        const length = Math.hypot(bx - ax, by - ay) || 1;
+        inside = Math.min(inside, (winding * ((bx - ax) * (py - ay) - (by - ay) * (px - ax))) / length);
+      }
+      blendPixel(image, x, y, color, clamp(inside + 0.5, 0, 1), alpha);
+    }
+  }
+}
+
 /** `text` centred on (cx, cy), capitals `height` pixels tall. */
 export function centredText(image: PixelImage, text: string, cx: number, cy: number, height: number, color: Rgb, alpha: number, weight = 0.14): void {
   const style = { height, weight, spacing: 0.1, slant: 0, color, alpha };
