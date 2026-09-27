@@ -1,6 +1,8 @@
 import { Box3, Color, InstancedMesh, Matrix4, Points, Quaternion, Scene, Vector3, type BufferAttribute, type MeshBasicMaterial } from 'three';
 import { describe, expect, it } from 'vitest';
 import { TRAFFIC_VEHICLES } from '../../../../src/data/content/trafficVehicles';
+import { DebrisSimulation } from '../../../../src/domain/crash/DebrisSimulation';
+import { WRECK_DEBRIS_KIND, WRECKABLES, wreckShape } from '../../../../src/domain/crash/wrecks';
 import { TrafficSimulation } from '../../../../src/domain/traffic/TrafficSimulation';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import { TrafficView, vehicleGeometry, vehicleLamps } from '../../../../src/presentation/traffic/TrafficView';
@@ -194,6 +196,38 @@ describe('TrafficView', () => {
     expect(others.every((mesh) => mesh.count === 0)).toBe(true);
     view.update(null, 1);
     expect(cars.count).toBe(0);
+  });
+
+  it('draws the wrecks among the debris with the traffic\'s own models, battered, darker and on their shadows', () => {
+    const scene = new Scene();
+    const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8, { wrecks: 4 });
+    const sim = traffic();
+    sim.addVehicle(0, north, 50, 10);
+    sim.update(1 / 60, truck, footprint);
+    const debris = new DebrisSimulation(4);
+    const car = TRAFFIC_VEHICLES[0]!;
+    const shape = wreckShape(car, WRECKABLES[car.kind]!);
+    debris.launch({ kind: WRECK_DEBRIS_KIND, ref: 0, shape, x: 20, y: shape.halfY, z: 30, heading: 1, vx: 0, vy: 0, vz: 0, spinX: 0, spinY: 0, spinZ: 0 });
+
+    view.update(sim, 1, debris, { paintOf: () => 0xc7372f });
+
+    const cars = meshesOf(scene).find((mesh) => mesh.name === `traffic:${car.id}`)!;
+    // The car on the road, then the wreck.
+    expect(cars.count).toBe(2);
+    const matrix = new Matrix4();
+    cars.getMatrixAt(1, matrix);
+    const position = new Vector3().setFromMatrixPosition(matrix);
+    expect([position.x, position.z]).toEqual([expect.closeTo(20, 3), expect.closeTo(30, 3)]);
+    expect(position.y).toBeCloseTo(shape.halfY - shape.halfY * 0.84, 3);
+    const paint = new Color();
+    cars.getColorAt(1, paint);
+    const own = new Color(0xc7372f);
+    expect(paint.r).toBeLessThan(own.r);
+    expect(paint.r).toBeGreaterThan(own.r * 0.5);
+    expect(shadowsOf(scene).count).toBe(2);
+    // Without the debris the traffic alone, and the car that takes the wreck's copy is repainted.
+    view.update(sim, 1);
+    expect(cars.count).toBe(1);
   });
 
   it('lights every vehicle\'s lamps, and makes them glow at night', () => {

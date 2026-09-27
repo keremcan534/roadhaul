@@ -1,6 +1,8 @@
 import { Color, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
+import { DebrisSimulation } from '../../../../src/domain/crash/DebrisSimulation';
+import { KNOCKABLES, knockableCode } from '../../../../src/domain/crash/knockables';
 import type { Field, HayBale } from '../../../../src/domain/world/DrivingWorld';
 import { FarmlandView } from '../../../../src/presentation/world/FarmlandView';
 import { PrelitMaterials } from '../../../../src/presentation/world/lighting';
@@ -78,6 +80,32 @@ describe('FarmlandView', () => {
       expect(at.y).toBe(0);
       expect(at.z).toBeCloseTo(bale.z, 6);
     });
+  });
+
+  it('takes a bale knocked over out of its place, draws it tumbling with the debris, and puts it back once it stands', () => {
+    const scene = new Scene();
+    const view = new FarmlandView(scene, FIELDS, BALES, { baleCircles: [3, 4], debrisCapacity: 2 });
+    const bales = scene.getObjectByName('hay-bales') as InstancedMesh;
+    const fallen = scene.getObjectByName('hay-bales:fallen') as InstancedMesh;
+    const knocked = new Uint8Array(5);
+    const matrix = new Matrix4();
+    const lying = new Matrix4();
+    bales.getMatrixAt(0, lying);
+
+    knocked[3] = 1;
+    view.showKnocked(knocked, 1);
+    bales.getMatrixAt(0, matrix);
+    expect(new Vector3().setFromMatrixScale(matrix).length()).toBe(0);
+    const debris = new DebrisSimulation(2);
+    const shape = KNOCKABLES.hayBale.shape;
+    debris.launch({ kind: knockableCode('hayBale'), ref: 3, shape, x: 5, y: 2, z: 6, heading: 0.2, vx: 3, vy: 0, vz: 0, spinX: 0, spinY: 0, spinZ: 0 });
+    view.drawDebris(debris, 1);
+    expect([fallen.visible, fallen.count]).toEqual([true, 1]);
+
+    knocked[3] = 0;
+    view.showKnocked(knocked, 2);
+    bales.getMatrixAt(0, matrix);
+    expect(matrix.equals(lying)).toBe(true);
   });
 
   it('releases every GPU resource on dispose', () => {
