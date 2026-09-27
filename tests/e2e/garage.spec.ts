@@ -165,6 +165,7 @@ test('shows a heavy flatbed with its load', async ({ page }, testInfo) => {
 });
 
 test('paints the truck at the garage for the colour\'s price, after the player confirms, and keeps it', async ({ page }) => {
+  test.slow(); // The game starts twice: before and after the reload.
   const problems = watchForProblems(page);
   await openGame(page, '?lang=en');
   await openPanel(page, 'garage');
