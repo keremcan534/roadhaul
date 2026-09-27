@@ -128,7 +128,9 @@ describe('a river under a road', () => {
     const state = truckAt(40, 0, 0, 8);
     state.z = bridge.halfWidthMeters - (front + footprint.radius + 0.2 - 0.3);
     expect(world.resolveCollisions(state, footprint)).toBeCloseTo(8, 6);
-    expect(Math.abs(state.speed)).toBeLessThan(1e-6);
+    // Stopped, bounced back no more than a tenth of the way.
+    expect(state.speed).toBeLessThanOrEqual(0);
+    expect(state.speed).toBeGreaterThan(-0.8 - 1e-6);
     expect(state.z + front + footprint.radius).toBeLessThanOrEqual(bridge.halfWidthMeters + 1e-6);
   });
 

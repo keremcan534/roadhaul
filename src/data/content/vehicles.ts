@@ -47,7 +47,7 @@ export const VEHICLES: readonly VehicleDefinition[] = [
       maxSteerAngleDegrees: 38,
       steerSpeedDegreesPerSecond: 90,
       brakeForceNewtons: 38000,
-      tireGrip: 0.7,
+      tireGrip: 0.76,
       maxLateralAccelerationG: 0.62,
       maxReverseSpeedKmh: 15,
     },

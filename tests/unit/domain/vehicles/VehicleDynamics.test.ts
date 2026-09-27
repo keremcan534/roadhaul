@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_PERFORMANCE } from '../../../../src/domain/vehicles/performance';
-import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
+import { ROLLOVER_HEADROOM } from '../../../../src/domain/vehicles/bodyMotion';
+import { RECKLESS_CORNERING, VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { vehicleFixture } from '../../../support/contentFixtures';
 import { drive, input, kmh, STEP_SECONDS } from '../../../support/driving';
@@ -183,37 +184,67 @@ describe('VehicleDynamics', () => {
     expect((maxX - minX) / 2).toBeCloseTo(expectedRadius, 1);
   });
 
-  it('caps the lateral acceleration at the stability limit at speed', () => {
+  it('corners in town no harder than its limit, on its wheels; at speed up to its rollover threshold, and held there it goes over', () => {
+    const limit = truck.handling.maxLateralAccelerationG * 9.81;
+    // A junction taken on full lock at 30 km/h, held: it leans hard, and stays on its wheels.
+    const town = setup();
+    let townPeak = 0;
+    for (let i = 0; i < 300; i++) {
+      town.state.speed = 30 / 3.6;
+      town.dynamics.step(town.state, input({ steer: 1 }), ASPHALT, STEP_SECONDS);
+      townPeak = Math.max(townPeak, Math.abs(town.state.lateralAcceleration));
+    }
+    expect(townPeak).toBeLessThanOrEqual(limit + 1e-9);
+    expect(townPeak).toBeGreaterThan(limit * 0.98);
+    expect(town.state.attitude).not.toBe('overturned');
+    expect(Math.abs(town.state.bank)).toBeLessThan(0.05);
+
+    // Flat out on the open road, the wheel held over.
     const { dynamics, state } = setup();
     drive(dynamics, state, input({ throttle: 1 }), 60);
     let peak = 0;
-
-    for (let i = 0; i < 180; i++) {
+    let lifted = -1;
+    let over = -1;
+    for (let i = 0; i < 480 && over < 0; i++) {
       dynamics.step(state, input({ throttle: 1, steer: 1 }), ASPHALT, STEP_SECONDS);
-      peak = Math.max(peak, Math.abs(state.lateralAcceleration));
+      if (state.attitude !== 'overturned') {
+        peak = Math.max(peak, Math.abs(state.lateralAcceleration));
+      }
+      if (lifted < 0 && state.attitude === 'tipping') lifted = i;
+      if (over < 0 && state.attitude === 'overturned') over = i;
     }
 
-    expect(peak).toBeLessThanOrEqual(truck.handling.maxLateralAccelerationG * 9.81 + 1e-9);
-    expect(peak).toBeGreaterThan(truck.handling.maxLateralAccelerationG * 9.81 * 0.95);
+    // Its tyres (0.85 g) hold it up to its reckless limit, past its rollover threshold.
+    expect(peak).toBeLessThanOrEqual(RECKLESS_CORNERING * limit + 1e-9);
+    expect(peak).toBeGreaterThan(ROLLOVER_HEADROOM * limit);
+    // The inside wheels lift within a second and a half of full steering, and it takes over a second more to go over.
+    expect(lifted).toBeGreaterThan(0);
+    expect(lifted).toBeLessThan(90);
+    expect(over - lifted).toBeGreaterThan(60);
+    // Turning right, it goes over onto its left side.
+    expect(state.bank).toBeLessThan(0);
   });
 
   it('spreads the steering over its whole travel at speed: a light touch turns gently, a full turn at the limit', () => {
     const lateralG = (steer: number): number => {
       const { dynamics, state } = setup();
-      for (let i = 0; i < 180; i++) {
+      // The wheel already turned: a second for the truck to turn in, before a full turn could lift its wheels.
+      state.steerPosition = steer;
+      for (let i = 0; i < 60; i++) {
         state.speed = 80 / 3.6;
         dynamics.step(state, input({ steer }), ASPHALT, STEP_SECONDS);
       }
       return Math.abs(state.lateralAcceleration) / 9.81;
     };
-    const limit = truck.handling.maxLateralAccelerationG;
+    // At 80 km/h the truck's wheel turns it up to where its tyres hold, past its cornering limit.
+    const limit = truck.handling.maxLateralAccelerationG * RECKLESS_CORNERING;
 
     // No hair trigger on the open road: a tenth of the travel turns a little, half about half as hard.
     expect(lateralG(0.1)).toBeGreaterThan(limit * 0.05);
     expect(lateralG(0.1)).toBeLessThan(limit * 0.15);
     expect(lateralG(0.5)).toBeGreaterThan(lateralG(0.25) * 1.8);
     expect(lateralG(0.5)).toBeLessThan(limit * 0.7);
-    expect(lateralG(1)).toBeCloseTo(limit, 3);
+    expect(lateralG(1)).toBeCloseTo(limit, 2);
   });
 
   it('sweeps the steering slower at speed, and back to straight faster than it turns', () => {
@@ -369,13 +400,16 @@ describe('VehicleDynamics', () => {
       const { dynamics, state } = setup();
       dynamics.setPerformance({ ...BASE_PERFORMANCE, stabilityFactor });
       state.speed = 60 / 3.6;
-      // Long enough for the steering to sweep over at speed and the truck to turn in.
-      drive(dynamics, state, input({ steer: 1 }), 2);
+      // The wheel already turned: long enough for the truck to turn in, not to go over.
+      state.steerPosition = 1;
+      drive(dynamics, state, input({ steer: 1 }), 1);
       return Math.abs(state.lateralAcceleration) / 9.81;
     };
-    // The fixture corners at 0.4 g at most: its tyres (0.85) hold more, so the body sets the limit.
-    expect(lateralAt60(1)).toBeCloseTo(truck.handling.maxLateralAccelerationG, 2);
-    expect(lateralAt60(1.15)).toBeCloseTo(truck.handling.maxLateralAccelerationG * 1.15, 2);
+    // The fixture's limit is 0.4 g and its tyres (0.85) hold more: at 60 km/h it corners past that limit, on its
+    // way to its reckless one, and a stiffer body raises both.
+    expect(lateralAt60(1)).toBeGreaterThan(truck.handling.maxLateralAccelerationG);
+    expect(lateralAt60(1)).toBeLessThan(truck.handling.maxLateralAccelerationG * RECKLESS_CORNERING);
+    expect(lateralAt60(1.15)).toBeCloseTo(lateralAt60(1) * 1.15, 2);
 
     // On grass the tyres, not the 70 kN brakes, set how hard the truck can stop.
     const stopFrom15 = (gripFactor: number): number => {

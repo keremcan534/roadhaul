@@ -4,6 +4,7 @@ import { wreckableOf } from '../crash/wrecks';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { MovingObstacles } from '../world/DrivingWorld';
 import { COMFORTABLE_DECELERATION, type LaneGraph, type LanePosition } from './LaneGraph';
+import { TRAFFIC_MASS_KG } from './trafficMass';
 import type { LaneRoute } from './laneRoutes';
 
 /** What a vehicle is doing (spec §19's traffic behaviours). */
@@ -176,6 +177,7 @@ export class TrafficSimulation implements MovingObstacles {
   readonly circleRadius: Float64Array;
   readonly circleVelocityX: Float64Array;
   readonly circleVelocityZ: Float64Array;
+  readonly circleMassKg: Float64Array;
   /** The vehicle slot each circle belongs to. */
   readonly circleOwner: Int32Array;
   /** Vehicles brought in from outside the traffic (addGuest): the caller's id for each; -1 for the traffic's own. */
@@ -254,6 +256,8 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly typeCumulative: Float64Array;
   /** How fast the truck must drive into each kind (by type index) to wreck it, m/s; Infinity: never. */
   private readonly wreckSpeed: Float64Array;
+  /** How heavy each type is (TRAFFIC_MASS_KG). */
+  private readonly typeMassKg: Float64Array;
 
   private readonly truckCircleX = new Float64Array(MAX_TRUCK_CIRCLES);
   private readonly truckCircleZ = new Float64Array(MAX_TRUCK_CIRCLES);
@@ -328,6 +332,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.circleRadius = new Float64Array(circles);
     this.circleVelocityX = new Float64Array(circles);
     this.circleVelocityZ = new Float64Array(circles);
+    this.circleMassKg = new Float64Array(circles);
     this.circleOwner = new Int32Array(circles);
     this.holders = new Int32Array(graph.linkCount);
     this.claims = new Float64Array(graph.linkCount);
@@ -358,6 +363,7 @@ export class TrafficSimulation implements MovingObstacles {
     });
     this.nearLanes = new Int32Array(spawnLanes);
     this.nearCumulative = new Float64Array(spawnLanes);
+    this.typeMassKg = Float64Array.from(types, (type) => TRAFFIC_MASS_KG[type.kind]);
     this.wreckSpeed = Float64Array.from(types, (type) =>
       settings.wrecks === true ? (wreckableOf(type)?.wreckSpeed ?? Infinity) : Infinity,
     );
@@ -1397,6 +1403,7 @@ export class TrafficSimulation implements MovingObstacles {
         this.circleRadius[count] = radius;
         this.circleVelocityX[count] = sin * speed;
         this.circleVelocityZ[count] = cos * speed;
+        this.circleMassKg[count] = this.typeMassKg[this.type[i]!]!;
         this.circleOwner[count] = i;
         count++;
       }

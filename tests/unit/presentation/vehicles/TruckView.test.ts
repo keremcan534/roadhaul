@@ -16,6 +16,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
+import { ASPHALT } from '../../../../src/domain/world/Surface';
 import { CameraRig } from '../../../../src/presentation/cameras/CameraRig';
 import { cabGeometry } from '../../../../src/presentation/vehicles/cabGeometry';
 import { TruckView, truckViewKey } from '../../../../src/presentation/vehicles/TruckView';
@@ -319,10 +320,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
       return new Box3().setFromObject(scene.getObjectByName('windscreen-inside')!).getCenter(new Vector3());
     };
     const brake = (): void => {
-      state.longitudinalAcceleration = -6;
-      for (let frame = 0; frame < 120; frame++) {
-        view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
-      }
+      view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, { bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0.025 });
     };
     view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
     const atRest = glassAt();
@@ -353,39 +351,57 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     };
   }
 
-  it('rocks the body on its springs: braking nods it forward, and letting go it swings back once and settles', () => {
-    const pitchWhileBraking = (framesPerSecond: number): { braking: number; overshoot: number; settled: number } => {
-      const scene = new Scene();
-      const view = new TruckView(scene, truck);
-      const body = scene.getObjectByName('truck-body')!;
-      const pose = { x: 0, z: 0, heading: 0 };
-      const state = new VehicleDynamics(truck).createState(0, 0, 0);
-      state.longitudinalAcceleration = -6;
-      for (let frame = 0; frame < 2 * framesPerSecond; frame++) {
-        view.update(pose, state, 1 / framesPerSecond);
-      }
-      const braking = body.rotation.x;
-      state.longitudinalAcceleration = 0;
-      let overshoot = 0;
-      for (let frame = 0; frame < 2 * framesPerSecond; frame++) {
-        view.update(pose, state, 1 / framesPerSecond);
-        overshoot = Math.min(overshoot, body.rotation.x);
-      }
-      return { braking, overshoot, settled: body.rotation.x };
-    };
-    const smooth = pitchWhileBraking(60);
+  it('leans and pitches the body on its springs as the truck\'s body stands, over wheels that stay on the ground', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const body = scene.getObjectByName('truck-body')!;
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
 
-    // The nose dips a couple of degrees, not more.
-    expect(smooth.braking).toBeGreaterThan(0.02);
-    expect(smooth.braking).toBeLessThan(0.06);
-    // It rocks back past level a little, once, and comes to rest.
-    expect(smooth.overshoot).toBeLessThan(-smooth.braking * 0.03);
-    expect(smooth.overshoot).toBeGreaterThan(-smooth.braking * 0.5);
-    expect(Math.abs(smooth.settled)).toBeLessThan(smooth.braking * 0.05);
-    // The same at 30 frames a second.
-    const choppy = pitchWhileBraking(30);
-    expect(choppy.braking).toBeCloseTo(smooth.braking, 3);
-    expect(choppy.overshoot).toBeCloseTo(smooth.overshoot, 2);
+    view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, { bank: 0, tilt: 0, rise: 0, lean: -0.06, dip: 0.02 });
+
+    // Its nose down braking, leaning left out of a right turn.
+    expect(body.rotation.x).toBeCloseTo(0.02, 9);
+    expect(body.rotation.z).toBeCloseTo(-0.06, 9);
+    scene.updateMatrixWorld(true);
+    const wheels = wheelsOf(scene);
+    const matrix = new Matrix4();
+    const position = new Vector3();
+    for (let i = 0; i < wheels.count; i++) {
+      position.setFromMatrixPosition(matrix.multiplyMatrices(wheels.matrixWorld, wheels.getMatrixAt(i, matrix)));
+      expect(position.y).toBeCloseTo(truck.body.wheelRadiusMeters, 5);
+    }
+  });
+
+  it('turns the whole truck about its centre of mass up on two wheels: the others lift, those it stands on stay down', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const dynamics = new VehicleDynamics(truck);
+    const state = dynamics.createState(0, 0, 0);
+    // Hard over at speed until it is well up on its left wheels (turning right, it leans out to the left).
+    for (let step = 0; step < 600 && !(state.attitude === 'tipping' && state.bank < -0.15); step++) {
+      state.speed = 60 / 3.6;
+      dynamics.step(state, { steer: 1, throttle: 0, brake: 0 }, ASPHALT, 1 / 60);
+    }
+    expect(state.attitude).toBe('tipping');
+    view.setBuild(dynamics.build);
+
+    view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, state);
+
+    scene.updateMatrixWorld(true);
+    const wheels = wheelsOf(scene);
+    const matrix = new Matrix4();
+    const position = new Vector3();
+    for (let i = 0; i < wheels.count; i++) {
+      position.setFromMatrixPosition(matrix.multiplyMatrices(wheels.matrixWorld, wheels.getMatrixAt(i, matrix)));
+      if (position.x > 0) {
+        // The left wheels, the outside of the turn, where it stands: their hubs a wheel's radius up, give or take
+        // the tyre's width tipped.
+        expect(position.y, `left wheel ${i}`).toBeGreaterThan(truck.body.wheelRadiusMeters - 0.1);
+        expect(position.y, `left wheel ${i}`).toBeLessThan(truck.body.wheelRadiusMeters + 0.15);
+      } else {
+        expect(position.y, `right wheel ${i}`).toBeGreaterThan(truck.body.wheelRadiusMeters + 0.3);
+      }
+    }
   });
 
   it('keeps the cabin dashboard steady in front of the driver while the body leans', () => {

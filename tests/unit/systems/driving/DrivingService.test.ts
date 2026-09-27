@@ -4,8 +4,11 @@ import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { BASE_PERFORMANCE } from '../../../../src/domain/vehicles/performance';
 import {
   COLLISION_EVENT_MIN_SPEED,
+  createTruckPose,
   DrivingService,
+  interpolateBodyPose,
   interpolatePose,
+  OVERTURN_BLOW_SPEED,
 } from '../../../../src/systems/driving/DrivingService';
 import type { MapDefinition } from '../../../../src/data/definitions/MapDefinition';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
@@ -23,13 +26,15 @@ function setup(mapOverrides: Partial<MapDefinition> = {}) {
   const events = new EventBus<GameEvents>(logger);
   const collisions: number[] = [];
   events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => collisions.push(impactSpeedMetersPerSecond));
+  const overturned: number[] = [];
+  events.on('TruckOverturned', ({ speedMetersPerSecond }) => overturned.push(speedMetersPerSecond));
   const map = mapFixture(mapOverrides);
   const bigTruck = vehicleFixture({ id: 'big_truck', maxPayloadTons: 20 });
   const content = ContentCatalog.create(
     contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }] }),
   );
   const driving = new DrivingService(content, events, logger);
-  return { driving, collisions };
+  return { driving, collisions, overturned };
 }
 
 /** Steps at 60 Hz for `seconds`, or until `until` returns true. */
@@ -57,7 +62,7 @@ describe('DrivingService', () => {
     expect(driving.definition.id).toBe('test_truck');
     expect(driving.vehicle).toMatchObject({ x: 0, z: 0, speed: 0, gear: 1 });
     expect(driving.vehicle.heading).toBeCloseTo(Math.PI / 2, 12);
-    expect(driving.previousPose).toEqual({ x: 0, z: 0, heading: driving.vehicle.heading });
+    expect(driving.previousPose).toEqual({ x: 0, z: 0, heading: driving.vehicle.heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
   });
 
   it('drives the truck along the road and remembers the previous pose', () => {
@@ -104,13 +109,19 @@ describe('DrivingService', () => {
       spawn: { x: 184, z: -190, headingDegrees: angleDegrees },
     });
     driving.start('test_truck', 'test_map');
+    let largestTurn = 0;
 
-    stepFor(driving, 40, input({ throttle: 1 }), () => driving.vehicle.z > 150);
+    stepFor(driving, 40, input({ throttle: 1 }), () => {
+      largestTurn = Math.max(largestTurn, Math.abs(driving.vehicle.heading - driving.previousPose.heading));
+      return driving.vehicle.z > 150;
+    });
 
     expect(collisions).toHaveLength(1);
-    // It slid along the wall instead of sticking to it, and kept accelerating.
+    // It slid along the wall instead of sticking to it, turned along it (within a degree and a half: the blow's spin
+    // may carry it a hair past) over many steps (never in a jump), and kept accelerating.
     expect(driving.vehicle.z).toBeGreaterThan(150);
-    expect(driving.vehicle.heading).toBeCloseTo(0, 6);
+    expect(largestTurn).toBeLessThan((1 * Math.PI) / 180);
+    expect(Math.abs(driving.vehicle.heading)).toBeLessThan((1.5 * Math.PI) / 180);
     expect(driving.vehicle.speed * 3.6).toBeGreaterThan(60);
   });
 
@@ -162,7 +173,7 @@ describe('DrivingService', () => {
     expect(driving.world).toBe(world);
     expect(driving.vehicle).toBe(state); // Presentation may hold on to the state.
     expect(driving.vehicle).toMatchObject({ x, z, heading, odometerMeters, speed: 0, gear: 1 });
-    expect(driving.previousPose).toEqual({ x, z, heading });
+    expect(driving.previousPose).toEqual({ x, z, heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
     expect(driving.cargoMassKg).toBe(2000);
     expect(driving.totalMassKg).toBe(14000);
     expect(() => driving.switchVehicle('ghost_truck')).toThrow('Unknown vehicle "ghost_truck".');
@@ -236,7 +247,7 @@ describe('DrivingService', () => {
 
     expect(driving.vehicle).toMatchObject({ x: -100, z: -20, heading: Math.PI, speed: 0, steerAngle: 0, gear: 1 });
     expect(driving.vehicle.odometerMeters).toBe(odometer);
-    expect(driving.previousPose).toEqual({ x: -100, z: -20, heading: Math.PI });
+    expect(driving.previousPose).toEqual({ x: -100, z: -20, heading: Math.PI, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
   });
 
   it('recovers a stuck truck onto the nearest road, facing along it the way it was heading, in the right-hand lane', () => {
@@ -270,6 +281,56 @@ describe('DrivingService', () => {
 
     expect(result).toBe(out);
     expect(out).toEqual({ x: 1, z: 12.5, heading: 1.25 });
+  });
+
+  it('interpolates the body between fixed steps, its roll and pitch the short way round', () => {
+    const out = createTruckPose();
+    const before = { bank: 3.1, tilt: 0, rise: 0.2, lean: 0.02, dip: -0.01 };
+    // Landed a turn round, the roll was taken back by 2π: in between it still turns on the short way.
+    const after = { bank: 3.2 - 2 * Math.PI, tilt: 0.1, rise: 0.4, lean: 0.06, dip: 0.03 };
+
+    expect(interpolateBodyPose(out, before, after, 0.5)).toBe(out);
+
+    expect(out.bank).toBeCloseTo(3.15, 9);
+    expect(out.tilt).toBeCloseTo(0.05, 12);
+    expect(out.rise).toBeCloseTo(0.3, 12);
+    expect(out.lean).toBeCloseTo(0.04, 12);
+    expect(out.dip).toBeCloseTo(0.01, 12);
+  });
+
+  it('reports going over once, and the blows of its fall as collisions, then recovers it onto its wheels', () => {
+    const { driving, collisions, overturned } = setup();
+    driving.start('test_truck', 'test_map');
+    // Up to speed along the road, then the wheel hard over and held: over it goes.
+    stepFor(driving, 8, input({ throttle: 1 }));
+    stepFor(driving, 6, input({ throttle: 1, steer: 1 }));
+
+    expect(driving.vehicle.attitude).toBe('overturned');
+    expect(overturned).toHaveLength(1);
+    expect(overturned[0]).toBeGreaterThan(5);
+    // Going over is a blow of its own, and it slammed onto its side: another.
+    expect(collisions).toContain(OVERTURN_BLOW_SPEED);
+    expect(collisions.filter((impact) => impact !== OVERTURN_BLOW_SPEED).length).toBeGreaterThan(0);
+
+    stepFor(driving, 5, input({ throttle: 1 }));
+    expect(overturned).toHaveLength(1);
+
+    driving.recover();
+    expect(driving.vehicle).toMatchObject({ attitude: 'wheels', bank: 0, tilt: 0, rise: 0, speed: 0 });
+    expect(driving.previousPose).toMatchObject({ bank: 0, rise: 0 });
+    stepFor(driving, 3, input({ throttle: 1 }));
+    expect(driving.vehicle.speed).toBeGreaterThan(1);
+    expect(overturned).toHaveLength(1);
+  });
+
+  it('gives the views the truck\'s build, its weight higher with a load', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    const empty = driving.build.cogHeight;
+
+    driving.setCargoMass(5000);
+
+    expect(driving.build.cogHeight).toBeGreaterThan(empty);
   });
 
   it('stops driving on stop() and on dispose()', () => {

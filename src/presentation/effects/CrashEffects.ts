@@ -49,6 +49,10 @@ const WRECK_TRIM = 0x222326;
 const DUST = 0xb9a88a;
 const STRAW_DUST = 0xd9c48a;
 const SPARK = [0xffd27a, 0xffb347, 0xfff1c2] as const;
+/** The truck sliding on its body faster than this (m/s) scrapes: this many bursts of sparks per meter on a road, of dust off it. */
+const SCRAPE_FROM_SPEED = 0.8;
+const SCRAPE_SPARKS_PER_METER = 3;
+const SCRAPE_DUST_PER_METER = 0.6;
 
 /**
  * What flies off in a crash (CrashService's events): a burst of bits —
@@ -73,6 +77,8 @@ export class CrashEffects {
   private readonly capacity: number;
   private next = 0;
   private live = 0;
+  /** Scrape bursts owed (scrape): a share of one carries over to the next frame. */
+  private scrapeDue = 0;
   private readonly matrix = new Matrix4();
   private readonly position = new Vector3();
   private readonly axis = new Vector3();
@@ -137,6 +143,33 @@ export class CrashEffects {
     }
     this.sparkle(x, 0.5, z, speed, heading, Math.round(Math.min(40, 10 + speed * 2) * this.share()));
     this.raiseDust(x, z, DUST, 7);
+  }
+
+  /**
+   * The truck slides on its body along the ground over `deltaSeconds`,
+   * `speed` m/s the way `heading` points (radians, 0 toward +z), about
+   * (x, z) and `halfLength` either way along `along` (its heading): steel on
+   * a road strikes a stream of sparks, off it the body ploughs up dust. More
+   * the faster it slides.
+   */
+  scrape(x: number, z: number, along: number, halfLength: number, speed: number, heading: number, onRoad: boolean, deltaSeconds: number): void {
+    if (!(speed > SCRAPE_FROM_SPEED) || !(deltaSeconds > 0)) {
+      return;
+    }
+    const random = this.random;
+    this.scrapeDue += (onRoad ? SCRAPE_SPARKS_PER_METER : SCRAPE_DUST_PER_METER) * speed * deltaSeconds * this.share();
+    while (this.scrapeDue >= 1) {
+      this.scrapeDue -= 1;
+      const reach = random.range(-halfLength, halfLength);
+      const at = x + Math.sin(along) * reach;
+      const atZ = z + Math.cos(along) * reach;
+      if (onRoad) {
+        // Thrown back off the steel dragging along the road.
+        this.sparkle(at, 0.1, atZ, speed * 0.6, heading + Math.PI, 2);
+      } else {
+        this.raiseDust(at, atZ, DUST, 1);
+      }
+    }
   }
 
   /** Moves the bits, dust and sparks on by `deltaSeconds` (0 holds them still), the puffs turned to face `camera`. */

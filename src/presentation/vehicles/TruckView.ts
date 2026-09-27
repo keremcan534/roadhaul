@@ -21,12 +21,12 @@ import {
   type Texture,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { clamp } from '../../core/math/scalar';
 import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import { createBodyBuild, type BodyBuild } from '../../domain/vehicles/bodyMotion';
 import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
-import type { VehiclePose } from '../../systems/driving/DrivingService';
+import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
 import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
@@ -35,6 +35,7 @@ import type { LampMirror } from '../world/WetReflections';
 import { reflectSky, type SkyReflectionOptions } from '../world/skyReflection';
 import { CabInterior, type DashboardReadings } from './CabInterior';
 import { cabGeometry, type CabGeometry } from './cabGeometry';
+import { LEVEL, standingPoint } from './standing';
 import { LampGlows } from './LampGlows';
 import {
   archedSkirt,
@@ -80,20 +81,6 @@ const STACK_OVER_ROOF = 0.42;
 const PALLET_COLOR = 0x9c7a4f;
 const BRICK_COLOR = 0xa94f35;
 const STRAP_COLOR = 0xffa21c;
-
-/**
- * Body lean per m/s² of acceleration (radians), capped: about 3° in the
- * hardest turn, 2½° braking hard. The body rocks on its springs toward it,
- * this stiff (rad/s) and damped (a share of critical), so a stop nods it
- * once and it settles; stepped this often, whatever the frame rate.
- */
-const PITCH_PER_ACCELERATION = 0.006;
-const ROLL_PER_ACCELERATION = 0.009;
-const MAX_LEAN = 0.06;
-const BODY_SPRING_RATE = 7;
-const BODY_DAMPING = 0.55;
-const BODY_STEP_SECONDS = 1 / 60;
-const MAX_BODY_CATCH_UP_SECONDS = 0.25;
 
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
@@ -182,6 +169,17 @@ export interface TruckViewOptions {
  */
 export class TruckView {
   private readonly root = new Group();
+  /**
+   * The whole truck as its body stands (BodyPose): turned about its centre
+   * of mass off its wheels, raised as it rises; the model inside it (`frame`)
+   * sits so that its centre of mass is the chassis' origin.
+   */
+  private readonly chassis = new Group();
+  private readonly frame = new Group();
+  /** Where the truck's weight sits (the driven truck's build, which loading moves; setBuild). */
+  private build: Readonly<BodyBuild>;
+  /** How the body stood at the last update(): what toWorld() turns points by. */
+  private readonly stood: BodyPose = { bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 };
   private readonly body = new Group();
   private readonly windshield: Mesh;
   /** The cab's inside: only shown from the driver's seat. */
@@ -216,10 +214,6 @@ export class TruckView {
   private readonly exhaustAt: readonly [number, number, number];
   private readonly behindRearWheelAt: readonly [number, number, number];
   private wheelSpin = 0;
-  private pitch = 0;
-  private roll = 0;
-  private pitchRate = 0;
-  private rollRate = 0;
   // Scratch objects reused every frame.
   private readonly matrix = new Matrix4();
   private readonly position = new Vector3();
@@ -691,10 +685,15 @@ export class TruckView {
     this.body.position.y = -drop;
     this.cabin.position.y = -drop;
     this.body.name = 'truck-body';
-    this.root.add(shadow, this.body, this.cabin, this.wheels);
+    // The shadow stays on the ground; the rest turns as the body stands.
+    this.frame.add(this.body, this.cabin, this.wheels);
     if (this.calipers !== null) {
-      this.root.add(this.calipers);
+      this.frame.add(this.calipers);
     }
+    this.chassis.add(this.frame);
+    this.root.add(shadow, this.chassis);
+    this.build = createBodyBuild(definition);
+    this.placeChassis();
     if (options.castShadows === true) {
       // The truck itself, not its soft shadow, the light on the road, the glows, the glass seen from inside or the
       // cab's inside (which shades nothing outside).
@@ -709,44 +708,59 @@ export class TruckView {
     scene.add(this.root);
   }
 
-  /** Places the truck at `pose` (interpolated between fixed steps) and animates wheels and body lean. */
-  update(pose: Readonly<VehiclePose>, state: Readonly<VehicleRuntimeState>, deltaSeconds: number): void {
+  /**
+   * Places the truck at `pose` (interpolated between fixed steps), its body
+   * standing as `body` says (the truck's: bodyMotion), and animates the
+   * wheels. Off its wheels the whole truck turns about its centre of mass;
+   * on them its body leans out of turns and pitches under braking on its
+   * springs. From the driver's seat the body keeps still round the cab's
+   * inside and the eye, which do not lean on the springs (the head sways
+   * instead: CameraRig).
+   */
+  update(
+    pose: Readonly<VehiclePose>,
+    state: Readonly<VehicleRuntimeState>,
+    deltaSeconds: number,
+    body: Readonly<BodyPose> = LEVEL,
+  ): void {
     this.root.position.set(pose.x, 0, pose.z);
     this.root.rotation.y = pose.heading;
+    const stood = this.stood;
+    stood.bank = body.bank;
+    stood.tilt = body.tilt;
+    stood.rise = body.rise;
+    stood.lean = body.lean;
+    stood.dip = body.dip;
+    this.placeChassis();
 
     this.wheelSpin += (state.speed * deltaSeconds) / this.definition.body.wheelRadiusMeters;
     this.updateWheels(state.steerAngle);
     this.wipers.update(deltaSeconds, this.rain);
 
-    // Nose dips when braking and lifts when accelerating; the body leans out of turns, rocking on its springs.
-    // From the driver's seat it keeps still round the cab's inside and the eye, which do not lean (the head
-    // sways instead: CameraRig).
-    this.rockBody(
-      clamp(-state.longitudinalAcceleration * PITCH_PER_ACCELERATION, -MAX_LEAN, MAX_LEAN),
-      clamp(state.lateralAcceleration * ROLL_PER_ACCELERATION, -MAX_LEAN, MAX_LEAN),
-      deltaSeconds,
-    );
     if (this.interior !== null && this.cabin.visible) {
       this.body.rotation.set(0, 0, 0);
       this.interior.update(state, deltaSeconds, pose.heading, this.options.light);
     } else {
-      this.body.rotation.set(this.pitch, 0, this.roll);
+      this.body.rotation.set(body.dip, 0, body.lean);
     }
   }
 
-  /** Moves the body's pitch and roll toward the lean the truck's motion asks for, as a damped spring. Allocation-free. */
-  private rockBody(targetPitch: number, targetRoll: number, deltaSeconds: number): void {
-    const stiffness = BODY_SPRING_RATE * BODY_SPRING_RATE;
-    const damping = 2 * BODY_DAMPING * BODY_SPRING_RATE;
-    let remaining = Math.min(Math.max(deltaSeconds, 0), MAX_BODY_CATCH_UP_SECONDS);
-    while (remaining > 1e-6) {
-      const step = Math.min(remaining, BODY_STEP_SECONDS);
-      this.pitchRate += (stiffness * (targetPitch - this.pitch) - damping * this.pitchRate) * step;
-      this.rollRate += (stiffness * (targetRoll - this.roll) - damping * this.rollRate) * step;
-      this.pitch = clamp(this.pitch + this.pitchRate * step, -MAX_LEAN, MAX_LEAN);
-      this.roll = clamp(this.roll + this.rollRate * step, -MAX_LEAN, MAX_LEAN);
-      remaining -= step;
-    }
+  /**
+   * Where the truck's weight sits: the driven truck's build (DrivingService),
+   * kept and read at every update(), so loading moves it. The body turns
+   * about it. Cheap: call it every frame.
+   */
+  setBuild(build: Readonly<BodyBuild>): void {
+    this.build = build;
+  }
+
+  /** Turns the chassis as the body last stood, about the centre of mass. */
+  private placeChassis(): void {
+    const stood = this.stood;
+    const { cogHeight, cogAhead } = this.build;
+    this.chassis.position.set(0, cogHeight + stood.rise, cogAhead);
+    this.chassis.rotation.set(stood.tilt, 0, stood.bank);
+    this.frame.position.set(0, -cogHeight, -cogAhead);
   }
 
   /** How hard it rains, 0..1 (the weather's): the wipers sweep, pausing in light rain. Cheap every frame. */
@@ -946,12 +960,18 @@ export class TruckView {
     return this.track(texture);
   }
 
-  /** A point in the model to the world, by the pose of the last update() (the body's lean left out). */
+  /**
+   * A point in the model to the world, by the pose of the last update(): the
+   * whole truck turned as it stood (its body's lean on the springs left out).
+   */
   private toWorld(x: number, y: number, z: number, out: Vector3): Vector3 {
+    standingPoint(out, this.stood, this.build.cogHeight, this.build.cogAhead, x, y, z);
     const heading = this.root.rotation.y;
     const cos = Math.cos(heading);
     const sin = Math.sin(heading);
-    return out.set(this.root.position.x + x * cos + z * sin, y, this.root.position.z - x * sin + z * cos);
+    const along = out.z;
+    const across = out.x;
+    return out.set(this.root.position.x + across * cos + along * sin, out.y, this.root.position.z - across * sin + along * cos);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {

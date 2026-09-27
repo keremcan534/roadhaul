@@ -2862,6 +2862,100 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   }
 }
 
+/* ---- The truck in trouble (src/ui/hud/RolloverPanel.ts): a warning up on two wheels, a way back once over ---- */
+
+.rollover-warning {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 92px);
+  left: 50%;
+  /* Over the tutorial's hint: the truck going over matters more now. */
+  z-index: 15;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgb(214 48 38 / 88%);
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 25%), 0 6px 20px rgb(0 0 0 / 35%);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: rollover-pulse 0.5s ease-in-out infinite alternate;
+}
+
+.rollover-warning[hidden],
+.rollover-panel[hidden] {
+  display: none;
+}
+
+@keyframes rollover-pulse {
+  from {
+    transform: translateX(-50%) scale(1);
+  }
+
+  to {
+    transform: translateX(-50%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rollover-warning {
+    animation: none;
+  }
+}
+
+.rollover-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 84px);
+  left: 50%;
+  /* Under the dock, over the tutorial's hint, clear of the truck lying below it in the view. */
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(88vw, 420px);
+  padding: 12px 18px 14px;
+  box-sizing: border-box;
+  border-radius: 24px;
+  background: var(--rh-glass-fill-strong);
+  box-shadow: var(--rh-glass-rim), var(--rh-glass-drop);
+  -webkit-backdrop-filter: var(--rh-glass-filter);
+  backdrop-filter: var(--rh-glass-filter);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.rollover-panel__title {
+  margin: 0;
+  color: #f08a7c;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rollover-panel__note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.rollover-panel__action {
+  min-height: 44px;
+  padding: 10px 20px;
+  font-size: 16px;
+}
+
+/* Upright phones: below the mission HUD. */
+@media (orientation: portrait) {
+  .rollover-warning,
+  .rollover-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 170px);
+  }
+}
+
 /* ---- Mission HUD (src/ui/hud/MissionHud.ts) ---- */
 
 .mission-hud {

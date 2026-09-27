@@ -26,6 +26,16 @@ export interface GameEvents {
     readonly impactSpeedMetersPerSecond: number;
   };
   /**
+   * The truck went over (bodyMotion): on its side or roof, or past the
+   * point of coming back onto its wheels, out of the driver's hands until
+   * it is recovered. Once each time; the blows of its fall come as
+   * VehicleCollided.
+   */
+  TruckOverturned: {
+    /** How fast it was going as it went over, m/s. */
+    readonly speedMetersPerSecond: number;
+  };
+  /**
    * Something standing about gave way (CrashService): the truck, or debris
    * flying into it, knocked it over, and it goes flying.
    */

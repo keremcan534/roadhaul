@@ -2,6 +2,7 @@ import { PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { CAMERA_MODES } from '../../../../src/data/config/controls';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
+import { createBodyBuild } from '../../../../src/domain/vehicles/bodyMotion';
 import { CameraRig, SHOWCASE_PART_ANGLES, type CameraMotion } from '../../../../src/presentation/cameras/CameraRig';
 import { cabGeometry } from '../../../../src/presentation/vehicles/cabGeometry';
 
@@ -130,6 +131,54 @@ describe('CameraRig', () => {
     expect(local.z).toBeLessThan(cab.frontZ);
     expect(camera.fov).toBeGreaterThan(65);
     expect(viewInTruckFrame(camera, pose.heading).z).toBeGreaterThan(0.99);
+  });
+
+  it('rides with the truck up on two wheels: the cabin camera rises with the cab, its view rolled with it', () => {
+    const { camera, rig } = rigIn('cabin');
+    const build = { cogHeight: 2, cogAhead: body.wheelbaseMeters / 2 };
+    rig.setBuild({ ...createBodyBuild(VEHICLES[0]!), ...build });
+    const pose = { x: 0, z: 0, heading: 0 };
+    rig.update(pose, AT_REST, 1 / 60);
+    const level = camera.position.clone();
+
+    // Up on its right wheels (its left side up), raised as it rolls about them.
+    rig.update(pose, AT_REST, 1 / 60, { bank: 0.3, tilt: 0, rise: 0.25, lean: 0, dip: 0 });
+
+    // The driver sits on the left: up and over toward the right, the horizon rolled (the view's up tips right).
+    expect(camera.position.y).toBeGreaterThan(level.y + 0.3);
+    expect(camera.position.x).toBeLessThan(level.x);
+    expect(camera.up.x).toBeCloseTo(-Math.sin(0.3), 9);
+    expect(camera.up.y).toBeCloseTo(Math.cos(0.3), 9);
+
+    // Following cameras stay level.
+    rig.currentMode = 'chase';
+    rig.update(pose, AT_REST, 1 / 60, { bank: 0.3, tilt: 0, rise: 0.25, lean: 0, dip: 0 });
+    expect(camera.up.toArray()).toEqual([0, 1, 0]);
+  });
+
+  it('gives way to the chase camera while the truck is over, and brings the one picked back after', () => {
+    for (const mode of ['cabin', 'hood', 'rear'] as const) {
+      const { camera, rig } = rigIn(mode);
+      const pose = { x: 0, z: 0, heading: 0 };
+
+      rig.setOverturned(true);
+      expect(rig.shownMode).toBe('chase');
+      expect(rig.currentMode).toBe(mode);
+      for (let frame = 0; frame < 120; frame++) {
+        rig.update(pose, AT_REST, 1 / 60, { bank: Math.PI / 2, tilt: 0, rise: -0.7, lean: 0, dip: 0 });
+      }
+      // Behind and above, level, like the chase camera.
+      expect(inTruckFrame(camera, pose).z).toBeLessThan(-5);
+      expect(camera.position.y).toBeGreaterThan(body.heightMeters);
+      expect(camera.up.toArray()).toEqual([0, 1, 0]);
+
+      rig.setOverturned(false);
+      expect(rig.shownMode).toBe(mode);
+    }
+    // The following cameras stay as they are.
+    const { rig } = rigIn('top');
+    rig.setOverturned(true);
+    expect(rig.shownMode).toBe('top');
   });
 
   it('has the cabin camera look into bends, and the head sway with braking and cornering', () => {

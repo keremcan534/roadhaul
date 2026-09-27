@@ -1,4 +1,4 @@
-import { clamp, clamp01, degreesToRadians } from '../../core/math/scalar';
+import { clamp, clamp01, degreesToRadians, smoothstep } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import {
   isInSea,
@@ -18,6 +18,7 @@ import {
   type RestAreaDefinition,
   type SeaDefinition,
 } from '../../data/definitions/MapDefinition';
+import { footprintBuild, kickBody, rideUp, type BodyBuild } from '../vehicles/bodyMotion';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { VehicleRuntimeState } from '../vehicles/VehicleRuntimeState';
 import {
@@ -218,6 +219,8 @@ export interface MovingObstacles {
   /** Velocity of the circle's vehicle, m/s. */
   readonly circleVelocityX: Float64Array;
   readonly circleVelocityZ: Float64Array;
+  /** How heavy the circle's vehicle is, kg: what a blow from the truck moves (the truck feels a light car less). */
+  readonly circleMassKg: Float64Array;
   /**
    * The truck touched circle `index` this step. `impactSpeed` is how hard
    * the truck drove into it (m/s), 0 when it was not driving into it.
@@ -255,6 +258,12 @@ export interface CircleThing {
   readonly z: number;
   readonly radius: number;
   readonly heading?: number;
+}
+
+/** What the collision response needs of the truck: where its weight sits and how it turns (bodyMotion), and its mass. */
+export interface CollisionBody {
+  readonly build: Readonly<BodyBuild>;
+  readonly totalMassKg: number;
 }
 
 export interface BuildingObstacle {
@@ -353,13 +362,22 @@ const CRANE_LEG_RADIUS = 0.5;
 const SHORE_ROCK_SPACING_METERS = 6;
 const SHORE_ROCK_SCATTER_METERS = 1.4;
 /**
- * Contact angles (between the direction of travel and the obstacle's surface)
- * up to this one turn the truck fully along the obstacle: it glances off and
- * carries on…
+ * How the truck bounces off what it strikes: this share of the speed into
+ * a solid thing (a wall, a tree, a post) and into a vehicle, once it strikes
+ * this fast (m/s); a scrape does not bounce. Steel crumples: not much.
  */
-const FULL_DEFLECTION_ANGLE = degreesToRadians(20);
-/** …from this one on it is stopped like in a head-on crash. In between, the two blend. */
-const NO_DEFLECTION_ANGLE = degreesToRadians(45);
+const SOLID_RESTITUTION = 0.1;
+const VEHICLE_RESTITUTION = 0.15;
+const BOUNCE_FROM_SPEED = 1;
+const FULL_BOUNCE_SPEED = 4;
+/** Friction between the truck and what it scrapes along (steel on concrete, bark, another car). */
+const CONTACT_FRICTION = 0.4;
+/** Up to this many contacts are worked out in one step; the truck is pushed out of any more, but not struck. */
+const MAX_CONTACTS = 32;
+/** The contacts are struck this many times over, so blows at several places settle together. */
+const CONTACT_PASSES = 3;
+/** Without its build, the truck is taken as this heavy (kg) against moving things. */
+const FALLBACK_MASS_KG = 10_000;
 /**
  * The buildings, fields and turning circles are filed by where they are in
  * cells this big, for asking how near something is to them from at most
@@ -492,17 +510,25 @@ export class DrivingWorld implements DebrisSolids {
   private readonly buildingBuckets: Buckets;
   private readonly fieldBuckets: Buckets;
   private readonly circleBuckets: Buckets;
-  /**
-   * Hardest contact of the current resolveCollisions() call: impact speed,
-   * contact normal and which footprint circle touched (scratch fields, so
-   * nothing allocates).
-   */
+  /** Hardest impact of the current resolveCollisions() call, m/s into the thing struck. */
   private worstImpact = 0;
-  private worstNormalX = 0;
-  private worstNormalZ = 0;
-  private worstOffset = 0;
-  /** Speed along the truck's heading that the hardest contact carries the truck at (a vehicle it follows into). */
-  private worstCarriedSpeed = 0;
+  /**
+   * The contacts of the current resolveCollisions() call (scratch, so
+   * nothing allocates): which footprint circle, the normal from the thing
+   * to the truck, the thing's velocity and its inverse mass (0: it does
+   * not move) and how bouncy it is.
+   */
+  private contactCount = 0;
+  private readonly contactOffset = new Float64Array(MAX_CONTACTS);
+  private readonly contactNormalX = new Float64Array(MAX_CONTACTS);
+  private readonly contactNormalZ = new Float64Array(MAX_CONTACTS);
+  private readonly contactVelocityX = new Float64Array(MAX_CONTACTS);
+  private readonly contactVelocityZ = new Float64Array(MAX_CONTACTS);
+  private readonly contactInverseMass = new Float64Array(MAX_CONTACTS);
+  private readonly contactRestitution = new Float64Array(MAX_CONTACTS);
+  /** The build taken for a truck given without one, and the footprint it was made for. */
+  private fallbackBuild: BodyBuild | null = null;
+  private fallbackFootprint: VehicleFootprint | null = null;
 
   constructor(map: MapDefinition) {
     this.id = map.id;
@@ -878,16 +904,23 @@ export class DrivingWorld implements DebrisSolids {
   }
 
   /**
-   * Pushes the truck out of trees and posts, guard rails, buildings, the map boundary and moving
-   * `obstacles` (traffic), then responds to the hardest contact: a head-on
-   * hit stops the truck, a glancing one turns it along the obstacle and it
-   * carries on with the speed it had along the surface. Driving into a
-   * vehicle that is moving away, the truck keeps that vehicle's speed.
-   * Returns the hardest impact speed (m/s into the obstacle), or 0. With
-   * `knockOvers`, what gives way (crash/knockables.ts: lamps, bins, benches,
-   * bus stops, speed signs, hay bales) struck hard enough is knocked over
-   * instead, noted in `knocks`, and the truck drives on through it; so are
-   * vehicles the obstacles let give way (wrecked).
+   * Pushes the truck out of trees and posts, guard rails, buildings, the map
+   * boundary and moving `obstacles` (traffic), and strikes it off what it
+   * drove into: at every contact an impulse stops the point of the truck
+   * that touched from going on into the thing (a hard blow bounces it back
+   * a little) and drags it along the thing's surface, changing the truck's
+   * speed, its sideways slide and its spin as a rigid body would, and
+   * rocking its body (kickBody). So a head-on blow stops it, a glancing one
+   * turns it along the thing over a few steps and it scrapes on, and a
+   * blow near one end spins it. Against a vehicle the blow is shared by
+   * their masses (`body`'s and the vehicle's); a vehicle driving into the
+   * truck, which is not moving into it, only shoves it. Returns the
+   * hardest impact speed (m/s into the thing), or 0. With `knockOvers`,
+   * what gives way (crash/knockables.ts: lamps, bins, benches, bus stops,
+   * speed signs, hay bales) struck hard enough is knocked over instead,
+   * noted in `knocks`, and the truck drives on through it; so are vehicles
+   * the obstacles let give way (wrecked), which the truck rides up over
+   * (rideUp). Without `body`, a typical build for the footprint is taken.
    * Allocation-free: it runs every fixed step.
    */
   resolveCollisions(
@@ -895,24 +928,132 @@ export class DrivingWorld implements DebrisSolids {
     footprint: VehicleFootprint,
     obstacles: MovingObstacles | null = null,
     knockOvers = false,
+    body: CollisionBody | null = null,
   ): number {
     this.worstImpact = 0;
-    this.worstCarriedSpeed = 0;
+    this.contactCount = 0;
     this.knocks.count = 0;
     this.knockingOver = knockOvers;
     this.collisionSteps++;
+    const build = body?.build ?? this.buildFor(footprint);
+    const massKg = body?.totalMassKg ?? FALLBACK_MASS_KG;
     for (let i = 0; i < footprint.offsets.length; i++) {
-      this.collideCircle(state, footprint.offsets[i]!, footprint.radius);
+      this.collideCircle(state, footprint.offsets[i]!, footprint.radius, build);
       if (obstacles !== null) {
-        this.collideMoving(state, footprint.offsets[i]!, footprint.radius, obstacles);
+        this.collideMoving(state, footprint.offsets[i]!, footprint.radius, obstacles, build);
       }
     }
-    // One response per step, from the hardest contact. Several circles touching
-    // the same wall must not brake the truck several times over.
-    if (this.worstImpact > 0) {
-      this.deflect(state, this.worstNormalX, this.worstNormalZ, this.worstOffset, this.worstCarriedSpeed);
+    // The blows, from every contact, several times over: several circles touching the same wall share one blow.
+    for (let pass = 0; pass < CONTACT_PASSES; pass++) {
+      for (let k = 0; k < this.contactCount; k++) {
+        this.strike(state, build, massKg, footprint.radius, k);
+      }
     }
     return this.worstImpact;
+  }
+
+  /** A typical build for a truck of `footprint`'s size, made once per footprint. */
+  private buildFor(footprint: VehicleFootprint): BodyBuild {
+    if (this.fallbackBuild === null || this.fallbackFootprint !== footprint) {
+      this.fallbackBuild = footprintBuild(footprint.offsets, footprint.radius);
+      this.fallbackFootprint = footprint;
+    }
+    return this.fallbackBuild;
+  }
+
+  /**
+   * How fast the point of the truck `offset` ahead of its rear axle, on
+   * the edge of its footprint circle facing along −(nx, nz), moves into a
+   * thing whose surface faces (nx, nz), m/s (negative moving away): the
+   * truck's speed, slide and turn all count.
+   */
+  private approachSpeed(state: VehicleRuntimeState, build: Readonly<BodyBuild>, offset: number, radius: number, nx: number, nz: number): number {
+    const sin = Math.sin(state.heading);
+    const cos = Math.cos(state.heading);
+    const ahead = offset - build.cogAhead;
+    const rx = ahead * sin - radius * nx;
+    const rz = ahead * cos - radius * nz;
+    const yaw = -state.speed * state.pathCurvature + state.spinRate;
+    const side = state.slipSpeed + yaw * build.cogAhead;
+    const vx = state.speed * sin + side * cos + yaw * rz;
+    const vz = state.speed * cos - side * sin - yaw * rx;
+    return -(vx * nx + vz * nz);
+  }
+
+  /** Notes a contact for the blows (up to MAX_CONTACTS; past them the truck is only pushed out). */
+  private addContact(offset: number, nx: number, nz: number, vx: number, vz: number, inverseMass: number, restitution: number): void {
+    const k = this.contactCount;
+    if (k >= MAX_CONTACTS) {
+      return;
+    }
+    this.contactOffset[k] = offset;
+    this.contactNormalX[k] = nx;
+    this.contactNormalZ[k] = nz;
+    this.contactVelocityX[k] = vx;
+    this.contactVelocityZ[k] = vz;
+    this.contactInverseMass[k] = inverseMass;
+    this.contactRestitution[k] = restitution;
+    this.contactCount = k + 1;
+  }
+
+  /**
+   * The blow at contact `k`: if the truck's point there still moves into
+   * the thing, an impulse (per kg of the truck: the change of its
+   * velocity) stops it, bounces it back a little from a hard blow, and
+   * drags it along the surface as far as friction allows. It changes the
+   * truck's speed, slide and spin (about its centre of mass, `build`'s),
+   * and rocks its body.
+   */
+  private strike(state: VehicleRuntimeState, build: Readonly<BodyBuild>, massKg: number, radius: number, k: number): void {
+    const nx = this.contactNormalX[k]!;
+    const nz = this.contactNormalZ[k]!;
+    const sin = Math.sin(state.heading);
+    const cos = Math.cos(state.heading);
+    const cogAhead = build.cogAhead;
+    const ahead = this.contactOffset[k]! - cogAhead;
+    // The point struck, from the centre of mass.
+    const rx = ahead * sin - radius * nx;
+    const rz = ahead * cos - radius * nz;
+    const yaw = -state.speed * state.pathCurvature + state.spinRate;
+    const side = state.slipSpeed + yaw * cogAhead;
+    // Its velocity relative to the thing: the centre of mass's, plus the turn's (yaw × r), less the thing's.
+    const vx = state.speed * sin + side * cos + yaw * rz - this.contactVelocityX[k]!;
+    const vz = state.speed * cos - side * sin - yaw * rx - this.contactVelocityZ[k]!;
+    const into = vx * nx + vz * nz;
+    if (into >= 0) {
+      return;
+    }
+    const gyration = build.yawGyration;
+    // The thing's share of the blow: the truck's mass over its own (0 for what does not move).
+    const share = massKg * this.contactInverseMass[k]!;
+    const armN = rz * nx - rx * nz;
+    const bounce = this.contactRestitution[k]! * smoothstep(BOUNCE_FROM_SPEED, FULL_BOUNCE_SPEED, -into);
+    const normal = (-(1 + bounce) * into) / (1 + (armN * armN) / gyration + share);
+    let px = normal * nx;
+    let pz = normal * nz;
+    // Friction drags the point along the surface, never further than to a standstill along it.
+    const tx = vx - into * nx;
+    const tz = vz - into * nz;
+    const along = Math.hypot(tx, tz);
+    if (along > 1e-9) {
+      const ux = tx / along;
+      const uz = tz / along;
+      const armT = rz * ux - rx * uz;
+      const drag = Math.min(CONTACT_FRICTION * normal, along / (1 + (armT * armT) / gyration + share));
+      px -= drag * ux;
+      pz -= drag * uz;
+    }
+    // The thing takes the blow back, shared by the masses: a vehicle struck again this step is already moving off.
+    this.contactVelocityX[k] = this.contactVelocityX[k]! - px * share;
+    this.contactVelocityZ[k] = this.contactVelocityZ[k]! - pz * share;
+    const forward = px * sin + pz * cos;
+    const left = px * cos - pz * sin;
+    const turn = (rz * px - rx * pz) / gyration;
+    state.speed += forward;
+    state.slipSpeed += left - turn * cogAhead;
+    // The path's yaw follows the new speed; the spin makes up the rest of the turn.
+    state.spinRate += turn + forward * state.pathCurvature;
+    kickBody(state, build, forward, left);
   }
 
   /**
@@ -920,7 +1061,13 @@ export class DrivingWorld implements DebrisSolids {
    * takes an impact when it drives into the obstacle; one driving into a
    * standing truck just shoves it. Every touched obstacle is told.
    */
-  private collideMoving(state: VehicleRuntimeState, offset: number, radius: number, obstacles: MovingObstacles): void {
+  private collideMoving(
+    state: VehicleRuntimeState,
+    offset: number,
+    radius: number,
+    obstacles: MovingObstacles,
+    build: Readonly<BodyBuild>,
+  ): void {
     let cx = state.x + Math.sin(state.heading) * offset;
     let cz = state.z + Math.cos(state.heading) * offset;
     for (let k = 0; k < obstacles.circleCount; k++) {
@@ -934,29 +1081,29 @@ export class DrivingWorld implements DebrisSolids {
       const distance = Math.sqrt(distanceSquared);
       const nx = dx / distance;
       const nz = dz / distance;
-      // The normal points from the obstacle to the truck: negative truck speed along it is driving in.
-      const truckInto = -state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
-      const obstacleInto = obstacles.circleVelocityX[k]! * nx + obstacles.circleVelocityZ[k]! * nz;
-      const impact = truckInto > AT_FAULT_SPEED ? Math.max(0, truckInto + obstacleInto) : 0;
+      // The normal points from the obstacle to the truck: the truck's point there moving along −n is driving in.
+      const truckInto = this.approachSpeed(state, build, offset, radius, nx, nz);
+      const vx = obstacles.circleVelocityX[k]!;
+      const vz = obstacles.circleVelocityZ[k]!;
+      const obstacleInto = vx * nx + vz * nz;
+      const atFault = truckInto > AT_FAULT_SPEED;
+      const impact = atFault ? Math.max(0, truckInto + obstacleInto) : 0;
       if (obstacles.hit(k, impact)) {
-        // Wrecked, it gives way: the truck goes on through it.
+        // Wrecked, it gives way: the truck goes on through it, riding up over it.
         this.recordKnock(-1, k, impact, nx, nz);
+        const sin = Math.sin(state.heading);
+        const cos = Math.cos(state.heading);
+        rideUp(state, impact * Math.abs(nx * sin + nz * cos), -(nx * cos - nz * sin));
         continue;
       }
       state.x += nx * (minDistance - distance);
       state.z += nz * (minDistance - distance);
       cx = state.x + Math.sin(state.heading) * offset;
       cz = state.z + Math.cos(state.heading) * offset;
-      if (impact > 0 && impact >= this.worstImpact) {
-        this.worstImpact = impact;
-        this.worstNormalX = nx;
-        this.worstNormalZ = nz;
-        this.worstOffset = offset;
-        // A vehicle moving away carries the truck along; one coming at it stops dead in the crash.
-        this.worstCarriedSpeed =
-          obstacleInto < 0
-            ? obstacles.circleVelocityX[k]! * Math.sin(state.heading) + obstacles.circleVelocityZ[k]! * Math.cos(state.heading)
-            : 0;
+      if (atFault) {
+        const massKg = obstacles.circleMassKg[k]!;
+        this.addContact(offset, nx, nz, vx, vz, massKg > 0 ? 1 / massKg : 0, VEHICLE_RESTITUTION);
+        this.worstImpact = Math.max(this.worstImpact, impact);
       }
     }
   }
@@ -966,9 +1113,16 @@ export class DrivingWorld implements DebrisSolids {
    * normal points from it to the truck) at least as fast as its kind gives
    * way; records it. False when it stands, like anything solid.
    */
-  private knockOver(state: VehicleRuntimeState, index: number, nx: number, nz: number): boolean {
-    const into = -state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
-    return this.knockAt(index, into, nx, nz, 0);
+  private knockOver(
+    state: VehicleRuntimeState,
+    build: Readonly<BodyBuild>,
+    offset: number,
+    radius: number,
+    index: number,
+    nx: number,
+    nz: number,
+  ): boolean {
+    return this.knockAt(index, this.approachSpeed(state, build, offset, radius, nx, nz), nx, nz, 0);
   }
 
   /** Knocks circle `index`'s thing over if struck `into` m/s hard enough for its kind; records it. */
@@ -1121,7 +1275,7 @@ export class DrivingWorld implements DebrisSolids {
     }
   }
 
-  private collideCircle(state: VehicleRuntimeState, offset: number, radius: number): void {
+  private collideCircle(state: VehicleRuntimeState, offset: number, radius: number, build: Readonly<BodyBuild>): void {
     const reach = radius + this.maxCircleRadius;
     let cx = state.x + Math.sin(state.heading) * offset;
     let cz = state.z + Math.cos(state.heading) * offset;
@@ -1148,10 +1302,14 @@ export class DrivingWorld implements DebrisSolids {
             continue;
           }
           const distance = Math.sqrt(distanceSquared);
-          if (this.knockingOver && this.circleKind[index]! > 0 && this.knockOver(state, index, dx / distance, dz / distance)) {
+          if (
+            this.knockingOver &&
+            this.circleKind[index]! > 0 &&
+            this.knockOver(state, build, offset, radius, index, dx / distance, dz / distance)
+          ) {
             continue;
           }
-          this.pushOut(state, offset, dx / distance, dz / distance, minDistance - distance);
+          this.pushOut(state, build, offset, radius, dx / distance, dz / distance, minDistance - distance);
           cx = state.x + Math.sin(state.heading) * offset;
           cz = state.z + Math.cos(state.heading) * offset;
         }
@@ -1181,9 +1339,9 @@ export class DrivingWorld implements DebrisSolids {
           }
           if (distanceSquared > 1e-12) {
             const distance = Math.sqrt(distanceSquared);
-            this.pushOut(state, offset, offX / distance, offZ / distance, railReach - distance);
+            this.pushOut(state, build, offset, radius, offX / distance, offZ / distance, railReach - distance);
           } else {
-            this.pushOut(state, offset, this.railRoadwardX[index]!, this.railRoadwardZ[index]!, railReach);
+            this.pushOut(state, build, offset, radius, this.railRoadwardX[index]!, this.railRoadwardZ[index]!, railReach);
           }
           cx = state.x + Math.sin(state.heading) * offset;
           cz = state.z + Math.cos(state.heading) * offset;
@@ -1203,7 +1361,7 @@ export class DrivingWorld implements DebrisSolids {
       }
       if (distanceSquared > 1e-12) {
         const distance = Math.sqrt(distanceSquared);
-        this.pushOut(state, offset, dx / distance, dz / distance, radius - distance);
+        this.pushOut(state, build, offset, radius, dx / distance, dz / distance, radius - distance);
       } else {
         // The circle's centre is inside the box: leave through the closest side.
         const toLeft = cx - box.minX;
@@ -1213,23 +1371,23 @@ export class DrivingWorld implements DebrisSolids {
         const closest = Math.min(toLeft, toRight, toBottom, toTop);
         const nx = closest === toLeft ? -1 : closest === toRight ? 1 : 0;
         const nz = nx !== 0 ? 0 : closest === toBottom ? -1 : 1;
-        this.pushOut(state, offset, nx, nz, closest + radius);
+        this.pushOut(state, build, offset, radius, nx, nz, closest + radius);
       }
       cx = state.x + Math.sin(state.heading) * offset;
       cz = state.z + Math.cos(state.heading) * offset;
     }
 
     if (this.sea !== null) {
-      this.collideShore(state, offset, radius, this.sea.shoreline);
+      this.collideShore(state, offset, radius, this.sea.shoreline, build);
       cx = state.x + Math.sin(state.heading) * offset;
       cz = state.z + Math.cos(state.heading) * offset;
     }
 
     const edge = this.halfSizeMeters - radius;
-    if (cx < -edge) this.pushOut(state, offset, 1, 0, -edge - cx);
-    if (cx > edge) this.pushOut(state, offset, -1, 0, cx - edge);
-    if (cz < -edge) this.pushOut(state, offset, 0, 1, -edge - cz);
-    if (cz > edge) this.pushOut(state, offset, 0, -1, cz - edge);
+    if (cx < -edge) this.pushOut(state, build, offset, radius, 1, 0, -edge - cx);
+    if (cx > edge) this.pushOut(state, build, offset, radius, -1, 0, cx - edge);
+    if (cz < -edge) this.pushOut(state, build, offset, radius, 0, 1, -edge - cz);
+    if (cz > edge) this.pushOut(state, build, offset, radius, 0, -1, cz - edge);
   }
 
   /**
@@ -1237,7 +1395,13 @@ export class DrivingWorld implements DebrisSolids {
    * stretch of shoreline within its reach, SHORE_WALL_MARGIN short of the
    * water. Allocation-free.
    */
-  private collideShore(state: VehicleRuntimeState, offset: number, radius: number, shoreline: readonly Point2[]): void {
+  private collideShore(
+    state: VehicleRuntimeState,
+    offset: number,
+    radius: number,
+    shoreline: readonly Point2[],
+    build: Readonly<BodyBuild>,
+  ): void {
     const reach = radius + SHORE_WALL_MARGIN;
     for (let i = 0; i < shoreline.length - 1; i++) {
       const cx = state.x + Math.sin(state.heading) * offset;
@@ -1257,62 +1421,29 @@ export class DrivingWorld implements DebrisSolids {
       const t = clamp01(((cx - x0) * dx + (cz - z0) * dz) / lengthSquared);
       const landward = (cx - (x0 + dx * t)) * nx + (cz - (z0 + dz * t)) * nz;
       if (landward < reach) {
-        this.pushOut(state, offset, nx, nz, reach - landward);
+        this.pushOut(state, build, offset, radius, nx, nz, reach - landward);
       }
     }
   }
 
   /**
-   * Moves the truck out of an obstacle along the contact normal (nx, nz) and
-   * remembers the contact if it is the hardest so far this step (the truck
-   * moving into the obstacle, not away from it). `offset` says which
-   * footprint circle touched.
+   * Moves the truck out of an obstacle along the contact normal (nx, nz)
+   * and notes the contact for the blows, with the impact if the truck's
+   * point there moves into it. `offset` says which footprint circle touched.
    */
-  private pushOut(state: VehicleRuntimeState, offset: number, nx: number, nz: number, depth: number): void {
+  private pushOut(
+    state: VehicleRuntimeState,
+    build: Readonly<BodyBuild>,
+    offset: number,
+    radius: number,
+    nx: number,
+    nz: number,
+    depth: number,
+  ): void {
     state.x += nx * depth;
     state.z += nz * depth;
-    const normalSpeed = state.speed * (Math.sin(state.heading) * nx + Math.cos(state.heading) * nz);
-    // Ties are circles on the same surface. A later push-out there means that circle was still inside
-    // after the earlier ones were resolved, so it was the deepest: it is the one left touching.
-    if (-normalSpeed >= this.worstImpact) {
-      this.worstImpact = -normalSpeed;
-      this.worstNormalX = nx;
-      this.worstNormalZ = nz;
-      this.worstOffset = offset;
-      this.worstCarriedSpeed = 0;
-    }
-  }
-
-  /**
-   * The truck can only move where it points (no sideways sliding), so it keeps
-   * the part of its velocity along the obstacle's surface only if it also
-   * turns that way. Without the turn, the next step would drive it into the
-   * obstacle again and a light scrape would pin it to the wall. It turns
-   * about the touching circle (`pivotOffset` ahead of the rear axle), so it
-   * stays against the obstacle and slides along it. Steep hits turn less and
-   * lose the rest of their speed. Against a vehicle moving away, all of this
-   * applies to the speed relative to `carriedSpeed`, the vehicle's speed
-   * along the truck's heading.
-   */
-  private deflect(state: VehicleRuntimeState, nx: number, nz: number, pivotOffset: number, carriedSpeed: number): void {
-    const sin = Math.sin(state.heading);
-    const cos = Math.cos(state.heading);
-    // Heading · normal: the sine of the angle between the truck and the surface
-    // (negative when driving forwards into it, positive when reversing into it).
-    const alignment = sin * nx + cos * nz;
-    const angle = Math.asin(Math.min(1, Math.abs(alignment)));
-    const turn = clamp01((NO_DEFLECTION_ANGLE - angle) / (NO_DEFLECTION_ANGLE - FULL_DEFLECTION_ANGLE));
-    // Speed along the surface, projected onto the new heading (a head-on hit keeps nothing).
-    state.speed = carriedSpeed + (state.speed - carriedSpeed) * Math.cos(angle) * Math.cos(angle * (1 - turn));
-    if (turn === 0) {
-      return;
-    }
-    // Turning the heading by +1 rad moves it along (cos, -sin); pick the direction that brings alignment to 0.
-    const sideways = cos * nx - sin * nz;
-    state.heading += Math.sign(-alignment * sideways) * angle * turn;
-    // Keep the touching circle where it is: the rear of the truck swings in instead of the nose bouncing off.
-    state.x += pivotOffset * (sin - Math.sin(state.heading));
-    state.z += pivotOffset * (cos - Math.cos(state.heading));
+    this.worstImpact = Math.max(this.worstImpact, this.approachSpeed(state, build, offset, radius, nx, nz));
+    this.addContact(offset, nx, nz, 0, 0, 0, SOLID_RESTITUTION);
   }
 
   /** Scatters trees beside the roads, the grown ones' fewer (GROWN_ROAD_TREE_SHARE). The same seed always gives the same forest. */

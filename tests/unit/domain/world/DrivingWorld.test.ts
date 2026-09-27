@@ -6,11 +6,14 @@ import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleF
 import { RoadGrid } from '../../../../src/domain/world/RoadGrid';
 import { DrivingWorld, type MovingObstacles } from '../../../../src/domain/world/DrivingWorld';
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
+import { input, STEP_SECONDS } from '../../../support/driving';
 import { billboardLegs } from '../../../../src/domain/world/townscape';
 import { mapFixture, seaFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const truck = vehicleFixture();
 const footprint = createVehicleFootprint(truck.body);
+/** The fixture truck's dynamics: its build and mass for the blows, and its steps for the slides. */
+const dynamics = new VehicleDynamics(truck);
 /** Centres of the front and rear footprint circles, meters ahead of the rear axle. */
 const front = Math.max(...footprint.offsets);
 const rear = Math.min(...footprint.offsets);
@@ -35,6 +38,8 @@ interface MovingCircle {
   readonly radius: number;
   readonly vx: number;
   readonly vz: number;
+  /** How heavy its vehicle is: a car's unless given. */
+  readonly massKg?: number;
 }
 
 /** Traffic as the truck meets it: circles that move, and a record of every touch. */
@@ -47,6 +52,7 @@ function movingObstacles(circles: readonly MovingCircle[]): MovingObstacles & { 
     circleRadius: Float64Array.from(circles, (circle) => circle.radius),
     circleVelocityX: Float64Array.from(circles, (circle) => circle.vx),
     circleVelocityZ: Float64Array.from(circles, (circle) => circle.vz),
+    circleMassKg: Float64Array.from(circles, (circle) => circle.massKg ?? 1250),
     hit: (index, impact) => {
       hits.push([index, impact]);
       return false;
@@ -83,54 +89,67 @@ describe('DrivingWorld', () => {
     expect(world.spawn.heading).toBeCloseTo(Math.PI / 2, 12);
   });
 
-  it('stops a truck that drives head-on into a building', () => {
+  it('stops a truck that drives head-on into a building, bouncing it back a little', () => {
     // The building spans z 35..45; the fixture truck's nose (7 m ahead of the rear axle) is 1 m inside it.
     const state = truckAt(0, 29, 0, 10);
 
-    const impact = world.resolveCollisions(state, footprint);
+    const impact = world.resolveCollisions(state, footprint, null, false, dynamics);
 
     expect(impact).toBeCloseTo(10, 6);
-    expect(state.speed).toBeCloseTo(0, 9);
+    // A tenth of the blow comes back; a blow through the middle neither turns nor shoves it sideways.
+    expect(state.speed).toBeCloseTo(-1, 6);
+    expect(state.spinRate).toBeCloseTo(0, 9);
+    expect(state.slipSpeed).toBeCloseTo(0, 9);
     const noseZ = state.z + Math.cos(state.heading) * Math.max(...footprint.offsets) + footprint.radius;
     expect(noseZ).toBeLessThanOrEqual(35 + 1e-9);
   });
 
-  it('turns a truck that glances off a wall along it, keeping its speed along the wall', () => {
-    // Driving east, 15° toward the building's south wall (z = 35); two circles touch it.
-    const state = truckAt(-5, 33, 75, 10);
+  it('turns a truck that glances off a wall along it a little at a time, and it scrapes on along the wall', () => {
+    const walled = new DrivingWorld(mapFixture({ buildings: [{ x: 0, z: 40, widthMeters: 300, depthMeters: 10, heightMeters: 5 }] }));
+    // Driving east at 15 m/s, 15° toward the long wall's south face (z = 35), its nose 0.5 m short of it.
+    const state = truckAt(-60, 0, 75, 15);
+    state.z = 35 - 0.5 - footprint.radius - Math.cos(degrees(75)) * front - Math.sin(degrees(75)) * footprint.radius;
+    let impact = 0;
+    let largestTurn = 0;
 
-    const impact = world.resolveCollisions(state, footprint);
-
-    expect(impact).toBeCloseTo(10 * Math.sin(degrees(15)), 6);
-    expect(state.heading).toBeCloseTo(degrees(90), 9);
-    expect(state.speed).toBeCloseTo(10 * Math.cos(degrees(15)), 6);
-    // Flush against the wall, not bounced off it: every circle touches, none is inside.
-    for (const z of circleZs(state)) {
-      expect(z + footprint.radius).toBeCloseTo(35, 6);
+    for (let step = 0; step < 90; step++) {
+      const heading = state.heading;
+      dynamics.step(state, input({ throttle: 0.4 }), ASPHALT, STEP_SECONDS);
+      impact = Math.max(impact, walled.resolveCollisions(state, footprint, null, false, dynamics));
+      largestTurn = Math.max(largestTurn, Math.abs(state.heading - heading));
+      for (const z of circleZs(state)) {
+        expect(z + footprint.radius).toBeLessThanOrEqual(35 + 1e-6);
+      }
     }
+
+    expect(impact).toBeGreaterThan(15 * Math.sin(degrees(15)) * 0.9);
+    // No jump round: it turns over many steps, a degree or so at a time, and ends along the wall…
+    expect(largestTurn).toBeLessThan(degrees(1.5));
+    expect(Math.abs(state.heading - degrees(90))).toBeLessThan(degrees(2));
+    // …having kept most of its speed.
+    expect(state.speed).toBeGreaterThan(15 * Math.cos(degrees(15)) * 0.75);
   });
 
-  it('turns a truck part of the way when it hits a wall at a medium angle', () => {
+  it('spins a truck that hits a wall at a medium angle toward the wall, taking some of its speed', () => {
     // 30° to the south wall; only the front circle is 0.3 m inside it.
     const state = truckAt(-front * Math.sin(degrees(60)), 34.05 - front * Math.cos(degrees(60)), 60, 10);
 
-    world.resolveCollisions(state, footprint);
+    expect(world.resolveCollisions(state, footprint, null, false, dynamics)).toBeCloseTo(10 * Math.sin(degrees(30)), 6);
 
-    const turned = state.heading - degrees(60);
-    expect(turned).toBeGreaterThan(degrees(5));
-    expect(turned).toBeLessThan(degrees(30));
+    // Turning toward east (a greater heading), along the wall; slowed, but still going.
+    expect(state.spinRate).toBeGreaterThan(0.2);
     expect(state.speed).toBeLessThan(10 * Math.cos(degrees(30)));
-    expect(state.speed).toBeGreaterThan(10 * Math.cos(degrees(30)) ** 2);
+    expect(state.speed).toBeGreaterThan(5);
   });
 
-  it('stops without turning when it hits a wall at a steep angle', () => {
+  it('takes most of a steep blow off the truck, and swings it round', () => {
     // 60° to the south wall; only the front circle is 0.3 m inside it.
     const state = truckAt(-front * Math.sin(degrees(30)), 34.05 - front * Math.cos(degrees(30)), 30, 10);
 
-    world.resolveCollisions(state, footprint);
+    expect(world.resolveCollisions(state, footprint, null, false, dynamics)).toBeCloseTo(10 * Math.sin(degrees(60)), 6);
 
-    expect(state.heading).toBe(degrees(30));
-    expect(state.speed).toBeCloseTo(10 * Math.cos(degrees(60)) ** 2, 6);
+    expect(state.speed).toBeLessThan(10 * Math.cos(degrees(60)));
+    expect(state.spinRate).toBeGreaterThan(0.2);
   });
 
   it('turns a truck that reverses into a wall at a shallow angle along it', () => {
@@ -138,20 +157,22 @@ describe('DrivingWorld', () => {
     // only the rear circle is 0.3 m inside it.
     const state = truckAt(-rear * Math.sin(degrees(75)), 45.95 - rear * Math.cos(degrees(75)), 75, -3);
 
-    const impact = world.resolveCollisions(state, footprint);
+    const impact = world.resolveCollisions(state, footprint, null, false, dynamics);
 
     expect(impact).toBeCloseTo(3 * Math.sin(degrees(15)), 6);
-    expect(state.heading).toBeCloseTo(degrees(90), 9);
-    expect(state.speed).toBeCloseTo(-3 * Math.cos(degrees(15)), 6);
+    // The tail is pushed north: the truck turns toward east, along the wall, backing on.
+    expect(state.spinRate).toBeGreaterThan(0);
+    expect(state.speed).toBeLessThan(-3 * Math.cos(degrees(15)) * 0.8);
   });
 
   it('ignores obstacles the truck is already moving away from', () => {
     // Facing the building with the nose 0.1 m inside it, but reversing away.
     const state = truckAt(0, 28.1, 0, -3);
 
-    expect(world.resolveCollisions(state, footprint)).toBe(0);
+    expect(world.resolveCollisions(state, footprint, null, false, dynamics)).toBe(0);
     expect(state.speed).toBe(-3);
     expect(state.heading).toBe(0);
+    expect(state.spinRate).toBe(0);
     expect(Math.max(...circleZs(state)) + footprint.radius).toBeCloseTo(35, 9);
   });
 
@@ -159,21 +180,30 @@ describe('DrivingWorld', () => {
     // Facing north just past the building (z ≤ 45); the tail is 0.5 m inside it.
     const state = truckAt(0, 46.5, 0, -3);
 
-    const impact = world.resolveCollisions(state, footprint);
+    const impact = world.resolveCollisions(state, footprint, null, false, dynamics);
 
     expect(impact).toBeCloseTo(3, 6);
-    expect(state.speed).toBeCloseTo(0, 9);
+    expect(state.speed).toBeGreaterThanOrEqual(0);
+    expect(state.speed).toBeLessThan(0.3);
   });
 
   it('keeps the truck inside the map boundary', () => {
     const state = truckAt(0, 195, 0, 20);
 
-    world.resolveCollisions(state, footprint);
+    world.resolveCollisions(state, footprint, null, false, dynamics);
 
-    expect(state.speed).toBeCloseTo(0, 9);
+    expect(state.speed).toBeLessThanOrEqual(0);
+    expect(state.speed).toBeGreaterThan(-2.5);
     for (const offset of footprint.offsets) {
       expect(state.z + offset + footprint.radius).toBeLessThanOrEqual(200 + 1e-9);
     }
+  });
+
+  it('works out a blow without the truck\'s build, for a truck of its footprint', () => {
+    const state = truckAt(0, 29, 0, 10);
+
+    expect(world.resolveCollisions(state, footprint)).toBeCloseTo(10, 6);
+    expect(state.speed).toBeCloseTo(-1, 6);
   });
 
   it('does nothing when there is nothing to hit', () => {
@@ -197,23 +227,32 @@ describe('DrivingWorld', () => {
     // Heading +X, the front circle's centre is `front` meters ahead of the rear axle at x = 0.
     const touching = front + footprint.radius + 0.9 - 0.2;
 
-    it('carries a truck that runs into the back of a slower vehicle along at its speed', () => {
-      const state = truckAt(0, 0, 90, 20);
+    it('slows a truck that runs into the back of a slower vehicle toward its speed, the more the heavier it is', () => {
+      const intoCar = truckAt(0, 0, 90, 20);
       const car = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: 15, vz: 0 }]);
+      const intoLorry = truckAt(0, 0, 90, 20);
+      const lorry = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: 15, vz: 0, massKg: 9000 }]);
 
-      const impact = world.resolveCollisions(state, footprint, car);
+      const impact = world.resolveCollisions(intoCar, footprint, car, false, dynamics);
+      world.resolveCollisions(intoLorry, footprint, lorry, false, dynamics);
 
       expect(impact).toBeCloseTo(5, 6); // How much faster the truck was going.
-      expect(state.speed).toBeCloseTo(15, 6);
       expect(car.hits).toEqual([[0, impact]]);
+      // The blow is shared by the masses: a car barely slows the 8 t truck, a lorry nearly to its own speed.
+      expect(intoCar.speed).toBeLessThan(20);
+      expect(intoCar.speed).toBeGreaterThan(19);
+      expect(intoLorry.speed).toBeLessThan(17.5);
+      expect(intoLorry.speed).toBeGreaterThan(15);
     });
 
-    it('stops a truck that drives head-on into an oncoming vehicle, with both speeds in the impact', () => {
+    it('stops a truck that drives head-on into an oncoming bus, with both speeds in the impact', () => {
       const state = truckAt(0, 0, 90, 10);
-      const car = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: -8, vz: 0 }]);
+      const bus = movingObstacles([{ x: touching, z: 0, radius: 0.9, vx: -8, vz: 0, massKg: 11_000 }]);
 
-      expect(world.resolveCollisions(state, footprint, car)).toBeCloseTo(18, 6);
-      expect(state.speed).toBeCloseTo(0, 6);
+      expect(world.resolveCollisions(state, footprint, bus, false, dynamics)).toBeCloseTo(18, 6);
+      // Heavier than the truck, the bus throws it back.
+      expect(state.speed).toBeLessThan(0);
+      expect(state.speed).toBeGreaterThan(-4);
     });
 
     it('takes no impact when a vehicle drives into the truck standing still: it only shoves it', () => {
@@ -511,8 +550,9 @@ describe('DrivingWorld', () => {
       state.x = midX - Math.sin(heading) * back;
       state.z = midZ - Math.cos(heading) * back;
 
-      expect(region.resolveCollisions(state, footprint)).toBeCloseTo(12, 6);
-      expect(Math.abs(state.speed)).toBeLessThan(1e-6);
+      expect(region.resolveCollisions(state, footprint, null, false, dynamics)).toBeCloseTo(12, 6);
+      // Stopped, bounced back a tenth of the way.
+      expect(state.speed).toBeCloseTo(-1.2, 6);
       expect(frontClearance(state)).toBeGreaterThanOrEqual(footprint.radius + 0.2 - 1e-9);
     });
 
@@ -528,10 +568,21 @@ describe('DrivingWorld', () => {
       state.x = midX + roadward.x * reach - aimed.x * front;
       state.z = midZ + roadward.z * reach - aimed.z * front;
 
-      expect(region.resolveCollisions(state, footprint)).toBeGreaterThan(0);
-      // Along the rail, most of the speed kept.
-      expect(Math.abs(Math.sin(state.heading) * roadward.x + Math.cos(state.heading) * roadward.z)).toBeLessThan(0.02);
-      expect(state.speed).toBeGreaterThan(14);
+      expect(region.resolveCollisions(state, footprint, null, false, dynamics)).toBeGreaterThan(0);
+      // It turns toward the rail's way (not all at once) and keeps most of its speed; the steps that follow turn it on.
+      expect(state.heading).toBe(heading);
+      expect(state.spinRate * (Math.atan2(along.x, along.z) - heading)).toBeGreaterThan(0);
+      expect(state.speed).toBeGreaterThan(13.5);
+      let largestTurn = 0;
+      for (let step = 0; step < 30; step++) {
+        const before = state.heading;
+        dynamics.step(state, input({ throttle: 0.3 }), ASPHALT, STEP_SECONDS);
+        region.resolveCollisions(state, footprint, null, false, dynamics);
+        largestTurn = Math.max(largestTurn, Math.abs(state.heading - before));
+      }
+      expect(largestTurn).toBeLessThan(degrees(1.5));
+      expect(Math.abs(state.heading - Math.atan2(along.x, along.z))).toBeLessThan(degrees(4));
+      expect(state.speed).toBeGreaterThan(12);
     });
 
     it('never let a fast truck through', () => {
@@ -628,10 +679,10 @@ describe('DrivingWorld', () => {
       // Driving west, its front circle already past the shore.
       const state = truckAt(-181 + front, 100, -90, 10);
 
-      const impact = coast.resolveCollisions(state, footprint);
+      const impact = coast.resolveCollisions(state, footprint, null, false, dynamics);
 
       expect(impact).toBeCloseTo(10, 6);
-      expect(state.speed).toBeCloseTo(0, 9);
+      expect(state.speed).toBeCloseTo(-1, 6);
       // Every footprint circle is back on land, a kerb's width short of the water.
       for (const offset of footprint.offsets) {
         const centreX = state.x + Math.sin(state.heading) * offset;

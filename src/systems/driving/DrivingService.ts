@@ -3,6 +3,7 @@ import type { Logger } from '../../core/logging/Logger';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { PerformanceFactors } from '../../domain/vehicles/performance';
+import type { BodyBuild } from '../../domain/vehicles/bodyMotion';
 import { VehicleDynamics } from '../../domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint, type VehicleFootprint } from '../../domain/vehicles/VehicleFootprint';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
@@ -17,6 +18,28 @@ export interface VehiclePose {
   x: number;
   z: number;
   heading: number;
+}
+
+/**
+ * How the truck's body stands (bodyMotion): the whole truck's roll and
+ * pitch off its wheels and how high its centre of mass is above where it
+ * rests on them, and the body's lean and pitch on its springs. All 0 for a
+ * truck standing level.
+ */
+export interface BodyPose {
+  bank: number;
+  tilt: number;
+  rise: number;
+  lean: number;
+  dip: number;
+}
+
+/** Where the truck is and how its body stands. */
+export type TruckPose = VehiclePose & BodyPose;
+
+/** A level truck at the origin, to write poses into. */
+export function createTruckPose(): TruckPose {
+  return { x: 0, z: 0, heading: 0, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 };
 }
 
 /**
@@ -37,6 +60,42 @@ export function interpolatePose(
 }
 
 /**
+ * The body's pose `alpha` of the way from `previous` to `current`, into
+ * `out`, like interpolatePose. Its roll and pitch are taken round a turn at
+ * a time as it lands (bodyMotion), so they go the short way. Allocation-free.
+ */
+export function interpolateBodyPose(
+  out: BodyPose,
+  previous: Readonly<BodyPose>,
+  current: Readonly<BodyPose>,
+  alpha: number,
+): BodyPose {
+  out.bank = previous.bank + shortWay(current.bank - previous.bank) * alpha;
+  out.tilt = previous.tilt + shortWay(current.tilt - previous.tilt) * alpha;
+  out.rise = previous.rise + (current.rise - previous.rise) * alpha;
+  out.lean = previous.lean + (current.lean - previous.lean) * alpha;
+  out.dip = previous.dip + (current.dip - previous.dip) * alpha;
+  return out;
+}
+
+/** A turn of `radians` taken the short way round: −π…π. */
+function shortWay(radians: number): number {
+  return radians - 2 * Math.PI * Math.round(radians / (2 * Math.PI));
+}
+
+/** Copies where the truck is and how its body stands from `state` into `out`. */
+function keepPose(out: TruckPose, state: Readonly<VehicleRuntimeState>): void {
+  out.x = state.x;
+  out.z = state.z;
+  out.heading = state.heading;
+  out.bank = state.bank;
+  out.tilt = state.tilt;
+  out.rise = state.rise;
+  out.lean = state.lean;
+  out.dip = state.dip;
+}
+
+/**
  * Impacts slower than this (m/s into the obstacle, about 5 km/h) are scrapes,
  * not collisions. While the truck is still touching what it hit, only an
  * impact this much harder than the previous step's counts, so one crash is
@@ -44,15 +103,27 @@ export function interpolatePose(
  */
 export const COLLISION_EVENT_MIN_SPEED = 1.5;
 
+/**
+ * Going over is a blow this hard (m/s, about 40 km/h into a wall) besides
+ * the slams of the fall: the truck and its load take it (DamageService,
+ * MissionService, through VehicleCollided).
+ */
+export const OVERTURN_BLOW_SPEED = 11;
+
 interface DrivingSession {
   readonly definition: VehicleDefinition;
   readonly dynamics: VehicleDynamics;
   readonly footprint: VehicleFootprint;
   readonly world: DrivingWorld;
   readonly state: VehicleRuntimeState;
-  readonly previousPose: VehiclePose;
+  readonly previousPose: TruckPose;
   /** Impact speed of the previous step, 0 when the truck was not driving into anything. */
   lastImpactSpeed: number;
+  /**
+   * Whether the truck has gone over and not yet come back onto its wheels
+   * (bouncing and rocking in between): going over is one event.
+   */
+  over: boolean;
   cargoMassKg: number;
   /** The ground under the middle of the truck at the last step. */
   surface: Surface;
@@ -95,8 +166,8 @@ export class DrivingService {
     return this.requireSession().state;
   }
 
-  /** Where the truck was before the last fixed step, so rendering can interpolate. */
-  get previousPose(): Readonly<VehiclePose> {
+  /** Where the truck was and how its body stood before the last fixed step, so rendering can interpolate. */
+  get previousPose(): Readonly<TruckPose> {
     return this.requireSession().previousPose;
   }
 
@@ -111,6 +182,11 @@ export class DrivingService {
   /** The truck's collision shape. */
   get footprint(): VehicleFootprint {
     return this.requireSession().footprint;
+  }
+
+  /** Where the truck's weight sits and how it turns, with its cargo (bodyMotion): the views place its body by it. */
+  get build(): Readonly<BodyBuild> {
+    return this.requireSession().dynamics.build;
   }
 
   /** Cargo on board, kg. */
@@ -156,14 +232,17 @@ export class DrivingService {
     const world = new DrivingWorld(this.content.maps.get(mapId));
     const dynamics = new VehicleDynamics(definition, cargoMassKg);
     const state = dynamics.createState(world.spawn.x, world.spawn.z, world.spawn.heading);
+    const previousPose = createTruckPose();
+    keepPose(previousPose, state);
     this.session = {
       definition,
       dynamics,
       footprint: createVehicleFootprint(definition.body),
       world,
       state,
-      previousPose: { x: state.x, z: state.z, heading: state.heading },
+      previousPose,
       lastImpactSpeed: 0,
+      over: false,
       cargoMassKg: Math.max(0, cargoMassKg),
       surface: world.surfaceAt(state.x, state.z),
     };
@@ -184,15 +263,14 @@ export class DrivingService {
     Object.assign(state, dynamics.createState(state.x, state.z, state.heading), {
       odometerMeters: state.odometerMeters,
     });
-    session.previousPose.x = state.x;
-    session.previousPose.z = state.z;
-    session.previousPose.heading = state.heading;
+    keepPose(session.previousPose, state);
     this.session = {
       ...session,
       definition,
       dynamics,
       footprint: createVehicleFootprint(definition.body),
       lastImpactSpeed: 0,
+      over: false,
     };
     this.applyPerformance();
     this.logger.info(`Switched to ${vehicleId}.`);
@@ -240,10 +318,9 @@ export class DrivingService {
     const session = this.requireSession();
     const odometerMeters = session.state.odometerMeters;
     Object.assign(session.state, session.dynamics.createState(x, z, heading), { odometerMeters });
-    session.previousPose.x = x;
-    session.previousPose.z = z;
-    session.previousPose.heading = heading;
+    keepPose(session.previousPose, session.state);
     session.lastImpactSpeed = 0;
+    session.over = false;
   }
 
   /**
@@ -258,8 +335,9 @@ export class DrivingService {
   }
 
   /**
-   * Gets a stuck truck going again: puts it at rest on the nearest road, in
-   * the right-hand lane for the way along the road closest to its heading.
+   * Gets a stuck or overturned truck going again: puts it at rest on its
+   * wheels on the nearest road, in the right-hand lane for the way along
+   * the road closest to its heading.
    */
   recover(): void {
     const { state, world } = this.requireSession();
@@ -285,16 +363,21 @@ export class DrivingService {
     this.logger.info(`Recovered the truck onto ${road.id}.`);
   }
 
-  /** Advances the truck by one fixed step. Allocation-free unless it emits a collision event. */
+  /**
+   * Advances the truck by one fixed step: it drives, its body moves, and it
+   * strikes what it runs into. A blow, or its body slamming down on the
+   * ground (its lifted wheels, its side, a landing), at least
+   * COLLISION_EVENT_MIN_SPEED hard is a collision; going over is
+   * TruckOverturned, and a blow of its own (OVERTURN_BLOW_SPEED).
+   * Allocation-free unless it emits an event.
+   */
   step(dt: number, input: Readonly<VehicleInput>): void {
     const session = this.session;
     if (session === null) {
       return;
     }
     const { state, previousPose, world } = session;
-    previousPose.x = state.x;
-    previousPose.z = state.z;
-    previousPose.heading = state.heading;
+    keepPose(previousPose, state);
 
     // The ground under the middle of the truck decides grip and rolling resistance.
     const centreAhead = session.definition.body.wheelbaseMeters / 2;
@@ -305,11 +388,22 @@ export class DrivingService {
     session.surface = surface;
     session.dynamics.step(state, input, surface, dt);
 
-    const impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers);
+    const impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers, session.dynamics);
     if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }
     session.lastImpactSpeed = impact;
+    // The body slamming down is a blow too: each is a step's, so each counts once.
+    if (state.groundImpact >= COLLISION_EVENT_MIN_SPEED) {
+      this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: state.groundImpact });
+    }
+    if (session.over) {
+      session.over = state.attitude !== 'wheels';
+    } else if (state.attitude === 'overturned') {
+      session.over = true;
+      this.events.emit('TruckOverturned', { speedMetersPerSecond: Math.hypot(state.speed, state.slipSpeed) });
+      this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: OVERTURN_BLOW_SPEED });
+    }
   }
 
   dispose(): void {

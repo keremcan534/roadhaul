@@ -64,7 +64,9 @@ describe('knocking things over', () => {
 
     const fast = drivingInto(lamp, 12);
     expect(world.resolveCollisions(fast, footprint)).toBeGreaterThan(11);
-    expect(Math.abs(fast.speed)).toBeLessThan(1);
+    // Stopped dead, bounced back no more than a tenth of the way.
+    expect(fast.speed).toBeLessThanOrEqual(0);
+    expect(fast.speed).toBeGreaterThan(-1.3);
     expect(world.knocked.includes(1)).toBe(false);
     expect(world.knocks.count).toBe(0);
   });

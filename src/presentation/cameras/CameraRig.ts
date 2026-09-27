@@ -4,8 +4,10 @@ import { CAMERA_MODES, type CameraMode } from '../../data/config/controls';
 import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
 import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
-import type { VehiclePose } from '../../systems/driving/DrivingService';
+import type { BodyBuild } from '../../domain/vehicles/bodyMotion';
+import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
 import { cabGeometry, type CabGeometry } from '../vehicles/cabGeometry';
+import { LEVEL, standingPoint } from '../vehicles/standing';
 
 export type { CameraMode } from '../../data/config/controls';
 
@@ -118,8 +120,14 @@ const SHOWCASE_FOV = 60;
 export class CameraRig {
   private mode: CameraMode = 'chase';
   private cab: CabGeometry;
+  /** Over on its side or roof (setOverturned): the cameras on the truck give way to the chase camera. */
+  private over = false;
+  /** Where the truck's weight sits (setBuild): the cameras on it turn with it about there. */
+  private build: Pick<BodyBuild, 'cogHeight' | 'cogAhead'>;
   private readonly position = new Vector3();
   private readonly target = new Vector3();
+  /** Scratch: a point on the truck as it stands, in its own frame. */
+  private readonly onTruck = new Vector3();
   private snapNextFrame = true;
   private showcaseEnabled = false;
   /** Radians around the truck, measured like headings (0 = in front of it along +Z). */
@@ -147,7 +155,35 @@ export class CameraRig {
     private body: VehicleBody,
   ) {
     this.cab = cabGeometry(body);
+    this.build = { cogHeight: body.heightMeters * 0.55, cogAhead: body.wheelbaseMeters / 2 };
     this.applyFieldOfView();
+  }
+
+  /**
+   * Where the truck's weight sits: the driven truck's build, kept and read
+   * at every update() (loading moves it). The cameras on the truck turn
+   * about it as the truck rolls or pitches. Cheap: call it every frame.
+   */
+  setBuild(build: Readonly<BodyBuild>): void {
+    this.build = build;
+  }
+
+  /**
+   * Whether the truck is over (on its side, its roof, or going there): the
+   * cameras on it (cabin, hood, rear) give way to the chase camera, which
+   * swings out from where they were; the mode picked comes back with the
+   * truck on its wheels.
+   */
+  setOverturned(over: boolean): void {
+    if (over !== this.over) {
+      this.over = over;
+      this.applyFieldOfView();
+    }
+  }
+
+  /** The camera shown now: the one picked, or the chase camera while the truck is over. */
+  get shownMode(): CameraMode {
+    return this.over && (this.mode === 'cabin' || this.mode === 'hood' || this.mode === 'rear') ? 'chase' : this.mode;
   }
 
   /**
@@ -242,11 +278,17 @@ export class CameraRig {
     this.showcaseSwing = Number.isFinite(angle) ? angle : null;
   }
 
-  /** Follows the (interpolated) truck pose. */
-  update(pose: Readonly<VehiclePose>, motion: Readonly<CameraMotion>, deltaSeconds: number): void {
+  /**
+   * Follows the (interpolated) truck pose. The cameras on the truck turn
+   * with it as its body stands (`body`: up on two wheels, in the air); the
+   * ones following it stay level.
+   */
+  update(pose: Readonly<VehiclePose>, motion: Readonly<CameraMotion>, deltaSeconds: number, body: Readonly<BodyPose> = LEVEL): void {
     const sin = Math.sin(pose.heading);
     const cos = Math.cos(pose.heading);
     const cab = this.cab;
+    const mode = this.shownMode;
+    this.camera.up.set(0, 1, 0);
     const centreX = pose.x + sin * cab.centreZ;
     const centreZ = pose.z + cos * cab.centreZ;
     // The heading the camera looks along: the truck's, turned right by the drag.
@@ -274,13 +316,13 @@ export class CameraRig {
         centreZ + Math.cos(around) * distance,
       );
       this.target.set(centreX, SHOWCASE_LOOK_HEIGHT_METERS, centreZ);
-    } else if (this.mode === 'chase' || this.mode === 'top') {
+    } else if (mode === 'chase' || mode === 'top') {
       // Both trail the truck, round which the drag swings them.
       let back: number;
       let height: number;
       let ahead: number;
       let lookHeight: number;
-      if (this.mode === 'chase') {
+      if (mode === 'chase') {
         back = this.body.lengthMeters / 2 + CHASE_GAP_METERS + Math.abs(motion.speed) * CHASE_DISTANCE_PER_SPEED;
         height = Math.max(2, this.body.heightMeters + CHASE_HEIGHT_ABOVE_ROOF_METERS - this.lookPitch * CHASE_HEIGHT_PER_PITCH);
         ahead = CHASE_LOOK_AHEAD_METERS;
@@ -295,7 +337,7 @@ export class CameraRig {
       const desiredZ = centreZ - viewCos * back;
       // Along the bend the truck is taking: its path runs this far aside `ahead` meters on (to the right is +).
       const intoTurn =
-        this.mode === 'chase'
+        mode === 'chase'
           ? clamp((motion.pathCurvature * ahead * ahead) / 2, -CHASE_MAX_LOOK_INTO_TURN_METERS, CHASE_MAX_LOOK_INTO_TURN_METERS)
           : 0;
       const lookX = centreX + viewSin * ahead - viewCos * intoTurn;
@@ -312,32 +354,53 @@ export class CameraRig {
         this.target.y += (lookHeight - this.target.y) * follow;
         this.target.z += (lookZ - this.target.z) * follow;
       }
-    } else if (this.mode === 'cabin') {
+    } else if (mode === 'cabin') {
       // The head leans against the truck's acceleration, and the eyes go into the bend.
       const ease = this.snapNextFrame ? 1 : dampFactor(CABIN_SWAY_RATE, deltaSeconds);
       this.swayLeft += (-motion.lateralAcceleration * CABIN_SWAY_PER_ACCELERATION - this.swayLeft) * ease;
       this.swayAhead += (-motion.longitudinalAcceleration * CABIN_SWAY_PER_ACCELERATION - this.swayAhead) * ease;
       this.turnLook += (motion.steerAngle * CABIN_TURN_LOOK - this.turnLook) * ease;
-      const left = cab.eyeX + this.swayLeft;
-      const ahead = cab.eyeZ + this.swayAhead;
-      this.position.set(pose.x + cos * left + sin * ahead, cab.eyeY, pose.z - sin * left + cos * ahead);
-      this.lookAlong(view - this.turnLook, this.lookPitch - CABIN_LOOK_DOWN);
-    } else if (this.mode === 'hood') {
-      const ahead = cab.frontZ - HOOD_BEHIND_FRONT_METERS;
-      this.position.set(pose.x + sin * ahead, cab.cabTop + HOOD_ABOVE_ROOF_METERS, pose.z + cos * ahead);
-      this.lookAlong(view, this.lookPitch - CABIN_LOOK_DOWN);
+      this.placeOnTruck(pose, body, cab.eyeX + this.swayLeft, cab.eyeY, cab.eyeZ + this.swayAhead);
+      this.lookAlong(view - this.turnLook, this.lookPitch - CABIN_LOOK_DOWN - body.tilt);
+      this.turnWithTruck(pose, body);
+    } else if (mode === 'hood') {
+      this.placeOnTruck(pose, body, 0, cab.cabTop + HOOD_ABOVE_ROOF_METERS, cab.frontZ - HOOD_BEHIND_FRONT_METERS);
+      this.lookAlong(view, this.lookPitch - CABIN_LOOK_DOWN - body.tilt);
+      this.turnWithTruck(pose, body);
     } else {
-      const behind = cab.rearZ - REAR_BEHIND_METERS;
-      this.position.set(pose.x + sin * behind, this.body.heightMeters - REAR_BELOW_TOP_METERS, pose.z + cos * behind);
+      this.placeOnTruck(pose, body, 0, this.body.heightMeters - REAR_BELOW_TOP_METERS, cab.rearZ - REAR_BEHIND_METERS);
       // Backwards. Its picture is shown mirrored, like a reversing camera's (RenderHost.mirrored): the truck's
       // right is on the screen's right, so a drag to the right turns it toward the truck's right.
-      this.lookAlong(pose.heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN);
+      this.lookAlong(pose.heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN + body.tilt);
+      this.turnWithTruck(pose, body);
     }
     this.widenForSpeed(motion.speed, deltaSeconds);
     this.snapNextFrame = false;
     this.camera.position.copy(this.position);
     this.addShake(deltaSeconds);
     this.camera.lookAt(this.target);
+  }
+
+  /** Puts the camera at the point (x left, y up, z ahead) of the truck's model as the truck stands. */
+  private placeOnTruck(pose: Readonly<VehiclePose>, body: Readonly<BodyPose>, x: number, y: number, z: number): void {
+    const local = standingPoint(this.onTruck, body, this.build.cogHeight, this.build.cogAhead, x, y, z);
+    const sin = Math.sin(pose.heading);
+    const cos = Math.cos(pose.heading);
+    this.position.set(pose.x + cos * local.x + sin * local.z, local.y, pose.z - sin * local.x + cos * local.z);
+  }
+
+  /** Tips the camera's up the way the truck's roll and pitch tip it, for a camera riding on it. */
+  private turnWithTruck(pose: Readonly<VehiclePose>, body: Readonly<BodyPose>): void {
+    // The truck's up, turned by its roll then its pitch (standingPoint's turn), in its frame…
+    const bankSin = Math.sin(body.bank);
+    const bankCos = Math.cos(body.bank);
+    const x = -bankSin;
+    const y = bankCos * Math.cos(body.tilt);
+    const z = bankCos * Math.sin(body.tilt);
+    // …and in the world.
+    const sin = Math.sin(pose.heading);
+    const cos = Math.cos(pose.heading);
+    this.camera.up.set(cos * x + sin * z, y, -sin * x + cos * z);
   }
 
   /** Trembles the camera (not its aim) by the jolt still shaking, and lets it die away. Allocation-free. */
@@ -347,7 +410,8 @@ export class CameraRig {
       return;
     }
     this.shakeTime += deltaSeconds;
-    const reach = this.shakeLevel * SHAKE_METERS * (this.mode === 'cabin' || this.mode === 'hood' ? 0.2 : 1);
+    const mode = this.shownMode;
+    const reach = this.shakeLevel * SHAKE_METERS * (mode === 'cabin' || mode === 'hood' ? 0.2 : 1);
     const t = this.shakeTime;
     this.camera.position.x += Math.sin(t * SHAKE_RATES[0]) * reach;
     this.camera.position.y += Math.sin(t * SHAKE_RATES[1] + 1.3) * reach * 0.7;
@@ -357,7 +421,8 @@ export class CameraRig {
 
   /** Eases the view wider with speed, for the cameras looking ahead. Allocation-free. */
   private widenForSpeed(speed: number, deltaSeconds: number): void {
-    const ahead = !this.showcaseEnabled && (this.mode === 'chase' || this.mode === 'cabin' || this.mode === 'hood');
+    const mode = this.shownMode;
+    const ahead = !this.showcaseEnabled && (mode === 'chase' || mode === 'cabin' || mode === 'hood');
     const share = clamp01((Math.abs(speed) - SPEED_WIDENING_FROM) / (SPEED_WIDENING_TO - SPEED_WIDENING_FROM));
     const widening = ahead ? SPEED_WIDENING_DEGREES * share * share * (3 - 2 * share) : 0;
     this.speedWidening = this.snapNextFrame
@@ -381,7 +446,7 @@ export class CameraRig {
   }
 
   private baseFieldOfView(): number {
-    return this.showcaseEnabled ? SHOWCASE_FOV : FIELD_OF_VIEW[this.mode];
+    return this.showcaseEnabled ? SHOWCASE_FOV : FIELD_OF_VIEW[this.shownMode];
   }
 
   private applyFieldOfView(): void {
