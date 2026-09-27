@@ -22,7 +22,10 @@ import {
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { TrafficCarBody, TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
+import type { DebrisSimulation } from '../../domain/crash/DebrisSimulation';
+import { WRECK_DEBRIS_KIND } from '../../domain/crash/wrecks';
 import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
+import { DebrisPose } from '../effects/DebrisInstances';
 import { softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
@@ -86,6 +89,9 @@ const HEADLAMP_FADE_METERS = 20;
 /** The soft shadow under a vehicle reaches this much past its sides and ends, meters, and is this dark in its middle. */
 const SHADOW_MARGIN_METERS = 0.7;
 const SHADOW_OPACITY = 0.5;
+/** A wreck is battered: its paint this much darker, its body squashed this much (across, down, along). */
+const WRECK_PAINT = 0.62;
+const WRECK_SQUASH = [0.96, 0.84, 0.93] as const;
 
 export interface TrafficViewOptions {
   /** False leaves the lamps without their glow at night (weaker devices). Default: true. */
@@ -94,6 +100,13 @@ export interface TrafficViewOptions {
   readonly castShadows?: boolean;
   /** The sky their paint and glass mirror (EnvironmentView.sky); without it they mirror nothing. */
   readonly sky?: SkyUniforms;
+  /** Room for this many wrecks tumbling about besides the traffic (CrashService's debris). Default: none. */
+  readonly wrecks?: number;
+}
+
+/** The paint of each wreck among the debris (CrashService). */
+export interface WreckPaints {
+  paintOf(slot: number): number;
 }
 
 /** How much each part mirrors the sky (skyReflection's per-vertex shine): glossy paint, glass, dull trim, no tyres. */
@@ -171,6 +184,7 @@ export class TrafficView implements TrafficHeadlamps {
   private readonly lampMatrix = new Matrix4();
   private readonly shadowMatrix = new Matrix4();
   private readonly paint = new Color();
+  private readonly wreckPose = new DebrisPose();
   /** The vehicles drawn last (update): where each stands, the way it faces and its kind (headlampsNear). */
   private readonly placedX: Float32Array;
   private readonly placedZ: Float32Array;
@@ -188,6 +202,8 @@ export class TrafficView implements TrafficHeadlamps {
     private readonly options: TrafficViewOptions = {},
   ) {
     const instances = Math.max(1, capacity);
+    // Wrecks are drawn with the traffic: room for them in the bodies and their shadows, none for lamps.
+    const drawn = instances + Math.max(0, options.wrecks ?? 0);
     const shapes = types.map(shapeOf);
     this.material = new MeshLambertMaterial({ vertexColors: true });
     if (options.sky !== undefined) {
@@ -195,7 +211,7 @@ export class TrafficView implements TrafficHeadlamps {
     }
     this.lightOwn(this.material);
     this.meshes = types.map((type, index) => {
-      const mesh = new InstancedMesh(merged(shapes[index]!.parts), this.material, instances);
+      const mesh = new InstancedMesh(merged(shapes[index]!.parts), this.material, drawn);
       mesh.name = `traffic:${type.id}`;
       mesh.count = 0;
       // Instances roam the whole map: the mesh's own bounds would cull them wrongly. Few vertices, cheap to draw.
@@ -215,14 +231,14 @@ export class TrafficView implements TrafficHeadlamps {
         opacity: SHADOW_OPACITY,
         depthWrite: false,
       }),
-      instances,
+      drawn,
     );
     this.shadows.name = 'traffic:shadows';
     this.shadows.count = 0;
     this.shadows.frustumCulled = false;
     this.shadowSizes = types.map((type) => [type.widthMeters + SHADOW_MARGIN_METERS * 2, type.lengthMeters + SHADOW_MARGIN_METERS * 2]);
     this.root.add(this.shadows);
-    this.shown = types.map(() => new Int32Array(instances));
+    this.shown = types.map(() => new Int32Array(drawn));
     this.counts = new Int32Array(types.length);
     const placed = instances * Math.max(1, types.length);
     this.placedX = new Float32Array(placed);
@@ -259,9 +275,10 @@ export class TrafficView implements TrafficHeadlamps {
   /**
    * Shows `traffic`'s vehicles `alpha` (0..1) of the way from their pose
    * before the last fixed step to their current one; nothing when null.
-   * Allocation-free.
+   * The wrecks among `debris` tumble about with them, battered, in their
+   * `paints`. Allocation-free.
    */
-  update(traffic: TrafficSimulation | null, alpha: number): void {
+  update(traffic: TrafficSimulation | null, alpha: number, debris: DebrisSimulation | null = null, paints: WreckPaints | null = null): void {
     const counts = this.counts;
     counts.fill(0);
     const glowing = this.glows.visible;
@@ -299,6 +316,9 @@ export class TrafficView implements TrafficHeadlamps {
         this.placedType[placed] = type;
       }
     }
+    if (debris !== null && paints !== null) {
+      shadows = this.placeWrecks(debris, paints, alpha, shadows);
+    }
     for (let type = 0; type < this.meshes.length; type++) {
       const mesh = this.meshes[type]!;
       if (mesh.count !== counts[type] || counts[type]! > 0) {
@@ -315,6 +335,39 @@ export class TrafficView implements TrafficHeadlamps {
       this.shadows.instanceMatrix.needsUpdate = true;
     }
     this.glows.setCount(glowing ? lamps : 0);
+  }
+
+  /**
+   * The wrecks among `debris`, after the traffic in each kind's mesh: their
+   * bodies turned as they tumble, battered, each on its soft shadow on the
+   * ground under it. Returns the shadows placed so far.
+   */
+  private placeWrecks(debris: DebrisSimulation, paints: WreckPaints, alpha: number, shadows: number): number {
+    const counts = this.counts;
+    for (let slot = 0; slot < debris.capacity; slot++) {
+      if (debris.active[slot] !== 1 || debris.kind[slot] !== WRECK_DEBRIS_KIND) {
+        continue;
+      }
+      const type = debris.ref[slot]!;
+      const mesh = this.meshes[type];
+      if (mesh === undefined || counts[type]! >= mesh.instanceMatrix.count) {
+        continue;
+      }
+      const instance = counts[type]!++;
+      const matrix = this.wreckPose.matrixOf(debris, slot, alpha, debris.halfY[slot]!, 0, WRECK_SQUASH[0], WRECK_SQUASH[1], WRECK_SQUASH[2]);
+      mesh.setMatrixAt(instance, matrix);
+      mesh.setColorAt(instance, this.paint.setHex(paints.paintOf(slot)).multiplyScalar(WRECK_PAINT));
+      mesh.instanceColor!.needsUpdate = true;
+      // A vehicle taking this instance after it repaints itself.
+      this.shown[type]![instance] = -1;
+      // Its shadow lies on the ground under its middle, turned its way round.
+      const turn = this.wreckPose.turn;
+      const yaw = Math.atan2(2 * (turn.x * turn.z + turn.w * turn.y), 1 - 2 * (turn.x * turn.x + turn.y * turn.y));
+      const shadowSize = this.shadowSizes[type]!;
+      this.matrix.makeRotationY(yaw).setPosition(matrix.elements[12]!, 0, matrix.elements[14]!);
+      this.shadows.setMatrixAt(shadows++, this.shadowMatrix.makeScale(shadowSize[0], 1, shadowSize[1]).premultiply(this.matrix));
+    }
+    return shadows;
   }
 
   /**
