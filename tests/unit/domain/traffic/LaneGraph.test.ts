@@ -56,13 +56,20 @@ describe('LaneGraph', () => {
     };
     const onwards = laneAt(graph, 0, 100, 0);
     const intoLane = laneAt(graph, 100, 0, 90);
-    // Straight on along the street, weighed as a turn that keeps to its road; into the lane, a quarter of a plain turn.
+    // Straight on along the street, weighed as a turn that keeps to its road; into the lane (a dead end), a fifth of
+    // a plain turn there.
     expect(turnWeight(onwards)).toBeGreaterThan(turnWeight(intoLane) * 4);
-    expect(turnWeight(intoLane)).toBeCloseTo(0.25 * 0.3, 9);
+    expect(turnWeight(intoLane)).toBeCloseTo(0.2 * 0.3, 9);
 
     const weightOf = (lane: number): number => graph.spawnWeights[graph.spawnLanes.indexOf(lane)]!;
     expect(weightOf(onwards)).toBeCloseTo(graph.length[onwards]!, 9);
-    expect(weightOf(intoLane)).toBeCloseTo(graph.length[intoLane]! * 0.15, 9);
+    expect(weightOf(intoLane)).toBeCloseTo(graph.length[intoLane]! * 0.1, 9);
+  });
+
+  it('keeps the traffic on the map\'s own roads: the ones the country grew draw a fifth as much, the lanes a tenth', () => {
+    const graph = laneGraphOf(new DrivingWorld(GAME_CONTENT.maps[0]!));
+    const shares = new Set(Array.from(graph.spawnLanes, (lane, index) => Math.round((graph.spawnWeights[index]! / graph.length[lane]!) * 100) / 100));
+    expect(shares).toEqual(new Set([1, 0.2, 0.1]));
   });
 
   it('turns traffic round in the turning circle at each dead end, inside the paved circle', () => {
