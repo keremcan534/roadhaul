@@ -1,6 +1,6 @@
 import { iconMarkup, type IconName } from './iconShapes';
 
-export { cargoIcon, upgradeIcon, type IconName } from './iconShapes';
+export { cargoIcon, facilityIcon, upgradeIcon, type IconName } from './iconShapes';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 

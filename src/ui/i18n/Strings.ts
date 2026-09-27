@@ -79,6 +79,10 @@ export class Strings {
     return this.t(`rival.${rivalId}.name`);
   }
 
+  facilityName(facilityId: string): string {
+    return this.t(`facility.${facilityId}.name`);
+  }
+
   /** A whole number with the language's grouping: "12.000", "12,000". */
   number(value: number): string {
     return this.integer.format(value);

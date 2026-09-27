@@ -1,4 +1,5 @@
 import type { CargoCategory } from '../data/definitions/CargoDefinition';
+import type { FacilityEffect } from '../data/definitions/FacilityDefinition';
 import type { UpgradeLook } from '../data/definitions/UpgradeDefinition';
 
 /**
@@ -33,6 +34,12 @@ const ICONS = {
   fleet: `<circle cx="12" cy="6.4" r="3.4"/><path d="M5.6 20.5v-2.3a4.6 4.6 0 0 1 4.6-4.6h3.6a4.6 4.6 0 0 1 4.6 4.6v2.3a.8.8 0 0 1-.8.8H6.4a.8.8 0 0 1-.8-.8z"/><circle cx="4.6" cy="9.2" r="2.4"/><path d="M.8 18.6v-1.4a3.4 3.4 0 0 1 3.4-3.4h1.9a6.6 6.6 0 0 0-1.9 4.6v.9H1.5a.7.7 0 0 1-.7-.7z"/><circle cx="19.4" cy="9.2" r="2.4"/><path d="M23.2 18.6v-1.4a3.4 3.4 0 0 0-3.4-3.4h-1.9a6.6 6.6 0 0 1 1.9 4.6v.9h2.7a.7.7 0 0 0 .7-.7z"/>`,
   // A cup: the league of the region's companies.
   rivals: `<path d="M6.5 2.5h11V9a5.5 5.5 0 0 1-11 0z"/><path d="M6.4 4.4H3.2a.8.8 0 0 0-.8.8v1.3a4.4 4.4 0 0 0 4.7 4.4M17.6 4.4h3.2a.8.8 0 0 1 .8.8v1.3a4.4 4.4 0 0 1-4.7 4.4" ${line(1.9)}/><path d="M10.6 14.2h2.8v3.6h-2.8z"/><path ${ACCENT} d="M7 18.6h10a.8.8 0 0 1 .8.8v1.8a.8.8 0 0 1-.8.8H7a.8.8 0 0 1-.8-.8v-1.8a.8.8 0 0 1 .8-.8z"/>`,
+  // The head office, where the company builds its facilities: a block of offices, its door lit.
+  office: `<path ${HOLES} d="M4 3.2A1.2 1.2 0 0 1 5.2 2h9.6A1.2 1.2 0 0 1 16 3.2V22H4zM6.6 4.8v2.4h2.2V4.8zm4.6 0v2.4h2.2V4.8zM6.6 9.2v2.4h2.2V9.2zm4.6 0v2.4h2.2V9.2zm-4.6 4.4V16h2.2v-2.4zm4.6 0V16h2.2v-2.4z"/><path d="M17.4 8.4h2.4a1.2 1.2 0 0 1 1.2 1.2V22h-3.6z"/><path ${ACCENT} d="M8.4 18h3.2v4H8.4z"/>`,
+  // A loudhailer: the company making itself known (the marketing office).
+  megaphone: `<path d="M3 9.4A1.4 1.4 0 0 1 4.4 8H7l8.6-4.6a.8.8 0 0 1 1.2.7v15.8a.8.8 0 0 1-1.2.7L7 16H4.4A1.4 1.4 0 0 1 3 14.6z"/><path d="M7.4 16.6l1.4 4.2a1 1 0 0 0 1 .7h1.4a.7.7 0 0 0 .7-.9l-1.2-4z"/><path d="M19.4 8.6a4.6 4.6 0 0 1 0 6.8" ${accentLine(2)}/>`,
+  // A mortarboard: learning the trade (the training centre).
+  school: `<path d="M12 3.4l10.4 5-10.4 5-10.4-5z"/><path d="M6 11.6v4.6c0 1.6 2.7 3.2 6 3.2s6-1.6 6-3.2v-4.6l-6 2.9z"/><path d="M20.6 9.4v6.2" ${accentLine(1.6)}/><circle ${ACCENT} cx="20.6" cy="16.6" r="1.4"/>`,
   // A pennant: a tender, raced for.
   flag: `<rect x="3.6" y="2" width="2.3" height="20" rx="1.1"/><path ${ACCENT} d="M7.4 3.4h12.3a.6.6 0 0 1 .5.9l-2.6 4.2 2.6 4.2a.6.6 0 0 1-.5.9H7.4z"/>`,
   map: `<path d="M2 6.3a.8.8 0 0 1 .5-.7l5.6-2.4v15.4l-5 2.1a.8.8 0 0 1-1.1-.7z"/><path d="M9.6 3.2l4.8 2.4v15.2l-4.8-2.4z"/><path ${ACCENT} d="M15.9 5.6l5-2.1a.8.8 0 0 1 1.1.7v13.5a.8.8 0 0 1-.5.7l-5.6 2.4z"/>`,
@@ -102,4 +109,20 @@ const UPGRADE_ICONS: Readonly<Record<UpgradeLook, IconName>> = {
 /** The icon of a truck part an upgrade improves. */
 export function upgradeIcon(look: UpgradeLook): IconName {
   return UPGRADE_ICONS[look];
+}
+
+/** Each facility's icon, by what it does for the company (one facility per effect). */
+const FACILITY_ICONS: Readonly<Record<FacilityEffect, IconName>> = {
+  repairDiscount: 'wrench',
+  fuelDiscount: 'fuel',
+  garageSlots: 'garage',
+  fleetPayBonus: 'route',
+  marketShareBonus: 'megaphone',
+  xpBonus: 'school',
+  extraContracts: 'jobs',
+};
+
+/** The icon of a facility at the head office, by its effect. */
+export function facilityIcon(effect: FacilityEffect): IconName {
+  return FACILITY_ICONS[effect];
 }

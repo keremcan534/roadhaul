@@ -2,6 +2,7 @@ import type { Clock } from '../../core/time/Clock';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import { generateContracts, type ContractMarket } from '../../domain/missions/contractGenerator';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import { createRouteGuidance } from '../../domain/world/roadRoute';
@@ -24,6 +25,7 @@ export interface ContractSource {
 export class DailyContracts implements ContractSource {
   private batch = Number.NaN;
   private world: DrivingWorld | null = null;
+  private count = Number.NaN;
   private contracts: readonly MissionDefinition[] = [];
 
   constructor(
@@ -31,6 +33,8 @@ export class DailyContracts implements ContractSource {
     private readonly driving: DrivingService,
     private readonly clock: Clock,
     private readonly config: GameConfig['missions']['dailyContracts'],
+    /** The company's facilities: a logistics office brings more contracts of the day. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {}
 
   current(): readonly MissionDefinition[] {
@@ -39,10 +43,13 @@ export class DailyContracts implements ContractSource {
     }
     const batch = this.batchAt(this.clock.now());
     const world = this.driving.world;
-    if (batch !== this.batch || world !== this.world) {
+    // More contracts come on top of the same ones: the generator deals them in the same order.
+    const count = this.config.count + this.perks.perks.extraContracts;
+    if (batch !== this.batch || world !== this.world || count !== this.count) {
       this.batch = batch;
       this.world = world;
-      this.contracts = generateContracts(this.marketOn(world), batch, this.config.count);
+      this.count = count;
+      this.contracts = generateContracts(this.marketOn(world), batch, count);
     }
     return this.contracts;
   }

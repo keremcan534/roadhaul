@@ -24,8 +24,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   contracts under way).
  * - v10: adds the rivals (the rival companies and their trucks, everyone's
  *   standing in the cities, campaigns, and tenders).
+ * - v11: adds the facilities (what the company has built for itself, and
+ *   how far).
  */
-export const CURRENT_SAVE_VERSION = 10;
+export const CURRENT_SAVE_VERSION = 11;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -49,6 +51,13 @@ export interface SaveGameData {
   readonly tutorial: TutorialSaveData;
   readonly fleet: FleetSaveData;
   readonly rivals: RivalsSaveData;
+  readonly facilities: FacilitiesSaveData;
+}
+
+/** What the company has built for itself (FacilityService). */
+export interface FacilitiesSaveData {
+  /** Each facility's level by FacilityDefinition id; one not listed is not built. */
+  readonly levels: Readonly<Record<string, number>>;
 }
 
 export interface ProfileSaveData {

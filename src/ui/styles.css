@@ -1181,15 +1181,31 @@ body {
   color: var(--rh-accent);
 }
 
-/* Narrow: the picture over its name, so every name fits; six of them, a little smaller. */
+/*
+ * Narrow: the picture over its name, so every name fits; seven of them, a little smaller, each as wide as
+ * its name needs (a short one leaves the room to a long one) rather than all alike.
+ */
 @media (max-width: 520px) {
   .hq__tab {
+    flex: 1 1 auto;
     flex-direction: column;
     gap: 2px;
     min-height: 50px;
     padding: 5px 2px;
     font-size: 11px;
     letter-spacing: -0.01em;
+  }
+}
+
+/* The narrowest phones: seven names only just fit in a row, a size smaller and closer together. */
+@media (max-width: 380px) {
+  .hq__tabs {
+    gap: 2px;
+  }
+
+  .hq__tab {
+    padding-inline: 1px;
+    font-size: 10px;
   }
 }
 
@@ -1229,7 +1245,8 @@ body {
   .hq__tabs {
     flex-direction: column;
     grid-area: tabs;
-    /* Six pages on a short phone: the rail scrolls rather than squeezing them. */
+    gap: 2px;
+    /* Seven pages fit a phone's height on its side; a shorter screen's rail scrolls rather than squeezing them. */
     overflow-y: auto;
     border-radius: 24px;
     scrollbar-width: none;
@@ -1238,9 +1255,9 @@ body {
   .hq__tab {
     flex: none;
     flex-direction: column;
-    gap: 3px;
-    min-height: 52px;
-    padding: 5px 2px;
+    gap: 2px;
+    min-height: 44px;
+    padding: 3px 2px;
     font-size: 12px;
   }
 
@@ -2160,6 +2177,37 @@ body {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* ---- The company's facilities (src/ui/hq/companyPage.ts): cards like the upgrades', and what they give ---- */
+
+.facility-card__about {
+  margin: 0 0 2px;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.hq__perks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hq__perk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px 5px 8px;
+  border-radius: 999px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.hq__perk .icon {
+  width: 18px;
+  height: 18px;
 }
 
 .upgrade-card__next {

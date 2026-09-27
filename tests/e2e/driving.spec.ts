@@ -183,6 +183,7 @@ test('steps through the cameras with the button, names each, and keeps the last 
 });
 
 test('looks round by dragging across the road', async ({ page }) => {
+  test.slow(); // Two views of the grown country, drawn in software: a few frames a second.
   const problems = watchForProblems(page);
   await openGame(page, '?traffic=0');
   await waitForFrames(page, 5);

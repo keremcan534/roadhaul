@@ -74,7 +74,21 @@ describe('validateSaveGameData', () => {
       'tutorial',
       'fleet',
       'rivals',
+      'facilities',
     ]);
+  });
+
+  it('checks the facilities: known ones, each built to a level it has', () => {
+    // The fixture's one facility, test_workshop, has two levels.
+    const levels = (value: unknown): string[] => paths(withPart('facilities.levels', value));
+
+    expect(levels({ test_workshop: 2 })).toEqual([]);
+    expect(levels({ casino: 1 })).toEqual(['facilities.levels.casino']);
+    expect(levels({ test_workshop: 0 })).toEqual(['facilities.levels.test_workshop']);
+    expect(levels({ test_workshop: 3 })).toEqual(['facilities.levels.test_workshop']);
+    expect(levels({ test_workshop: 1.5 })).toEqual(['facilities.levels.test_workshop']);
+    expect(levels([1])).toEqual(['facilities.levels']);
+    expect(paths(withPart('facilities', null))).toEqual(['facilities']);
   });
 
   it.each([

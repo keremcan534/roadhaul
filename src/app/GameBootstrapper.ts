@@ -8,6 +8,8 @@ import { validateGameConfig, type GameConfig } from '../data/config/GameConfig';
 import { ContentCatalog } from '../data/ContentCatalog';
 import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
+import { CompanyPerks } from '../systems/company/CompanyPerks';
+import { FacilityService } from '../systems/company/FacilityService';
 import { CrashService } from '../systems/crash/CrashService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
@@ -130,17 +132,23 @@ export class GameBootstrapper {
       );
       // Subscription order matters: the economy and the company apply a delivery before the session saves it,
       // and the garage must be created after the services it drives (missions, damage, fuel).
+      // The company's facilities change what the services below charge, pay and hold: they read its perks as they go.
+      const perks = new CompanyPerks();
       const economy = container.register(
         ServiceKeys.economy,
-        new EconomyService(events, config.economy, logger.withCategory('Economy')),
+        new EconomyService(events, config.economy, logger.withCategory('Economy'), perks),
       );
       const company = container.register(
         ServiceKeys.company,
         new CompanyService(events, config.company, logger.withCategory('Company')),
       );
+      const facilities = container.register(
+        ServiceKeys.facilities,
+        new FacilityService(catalog, economy, company, perks, events, logger.withCategory('Facilities')),
+      );
       const dailyContracts = container.register(
         ServiceKeys.dailyContracts,
-        new DailyContracts(catalog, driving, clock, config.missions.dailyContracts),
+        new DailyContracts(catalog, driving, clock, config.missions.dailyContracts, perks),
       );
       // The tenders go up on the job board beside the contracts of the day (RivalService puts them there).
       const tenders = new TenderBoard();
@@ -154,6 +162,7 @@ export class GameBootstrapper {
           config.missions,
           logger.withCategory('Missions'),
           new CombinedContracts([dailyContracts, tenders]),
+          perks,
         ),
       );
       container.register(
@@ -187,6 +196,7 @@ export class GameBootstrapper {
           events,
           logger.withCategory('Garage'),
           config.fleet.garageSlots,
+          perks,
         ),
       );
       container.register(
@@ -207,6 +217,7 @@ export class GameBootstrapper {
           config.economy,
           config.fuel,
           logger.withCategory('Fleet'),
+          perks,
         ),
       );
       // After the economy and the company: a delivery is paid and scored before its event bonus.
@@ -233,6 +244,7 @@ export class GameBootstrapper {
           config.fuel,
           config.missions.loadingSeconds,
           logger.withCategory('Rivals'),
+          perks,
         ),
       );
       container.register(
@@ -267,6 +279,7 @@ export class GameBootstrapper {
           garage,
           fleet,
           rivals,
+          facilities,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),
@@ -306,5 +319,6 @@ function describeContent(catalog: ContentCatalog): string {
     `events ${catalog.events.size}`,
     `drivers ${catalog.drivers.size}`,
     `rivals ${catalog.rivals.size}`,
+    `facilities ${catalog.facilities.size}`,
   ].join(', ');
 }

@@ -141,7 +141,27 @@ export function validateSaveGameData(
   section('tutorial', (tutorial) => validator.oneOf(tutorial['step'], TUTORIAL_STEPS, 'tutorial.step'));
   section('fleet', (fleet) => validateFleet(fleet, data['garage'], content, validator));
   section('rivals', (rivals) => validateRivals(rivals, content, validator));
+  section('facilities', (facilities) => validateFacilities(facilities, content, validator));
   return validator.issues;
+}
+
+/** The facilities built: known ones, each to a level it has. */
+function validateFacilities(facilities: Json, content: ContentCatalog, validator: Validator): void {
+  const levels = facilities['levels'];
+  if (!validator.check(typeof levels === 'object' && levels !== null && !Array.isArray(levels), 'facilities.levels', 'must be an object')) {
+    return;
+  }
+  for (const [facilityId, level] of Object.entries(levels as Json)) {
+    const path = `facilities.levels.${facilityId}`;
+    const facility = content.facilities.find(facilityId);
+    if (validator.check(facility !== undefined, path, 'is not a known facility')) {
+      validator.check(
+        Number.isInteger(level) && (level as number) >= 1 && (level as number) <= facility!.levels.length,
+        path,
+        `must be a level it has, 1 to ${facility!.levels.length}`,
+      );
+    }
+  }
 }
 
 /** A generated contract, kept whole: its fields, and what it names in the content. */

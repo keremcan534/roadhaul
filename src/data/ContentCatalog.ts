@@ -4,6 +4,7 @@ import { validateCargoDefinition, type CargoDefinition } from './definitions/Car
 import { validateCityDefinition, type CityDefinition } from './definitions/CityDefinition';
 import { validateDriverDefinition, type DriverDefinition } from './definitions/DriverDefinition';
 import { validateEventDefinition, type EventDefinition } from './definitions/EventDefinition';
+import { validateFacilityDefinition, type FacilityDefinition } from './definitions/FacilityDefinition';
 import { validateMapDefinition, type MapDefinition } from './definitions/MapDefinition';
 import {
   GENERATED_MISSION_ID_PREFIX,
@@ -82,6 +83,7 @@ export class ContentCatalog {
   readonly paints: DefinitionTable<PaintDefinition>;
   readonly drivers: DefinitionTable<DriverDefinition>;
   readonly rivals: DefinitionTable<RivalCompanyDefinition>;
+  readonly facilities: DefinitionTable<FacilityDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -97,6 +99,7 @@ export class ContentCatalog {
     this.paints = new DefinitionTable('paint', content.paints);
     this.drivers = new DefinitionTable('driver', content.drivers);
     this.rivals = new DefinitionTable('rival company', content.rivals);
+    this.facilities = new DefinitionTable('facility', content.facilities);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -125,13 +128,30 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'paints', content.paints, validatePaintDefinition);
   validateTable(validator, 'drivers', content.drivers, validateDriverDefinition);
   validateTable(validator, 'rivals', content.rivals, validateRivalCompanyDefinition);
+  validateTable(validator, 'facilities', content.facilities, validateFacilityDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);
   validateWeatherSeasons(validator, content);
   validateDaylightPhases(validator, content);
   validateRivalReferences(validator, content);
+  validateFacilityEffects(validator, content);
   return validator.issues;
+}
+
+/** No two facilities do the same thing: the company's perks add up one of each. */
+function validateFacilityEffects(validator: Validator, content: GameContent): void {
+  if (!Array.isArray(content.facilities)) {
+    return; // Already reported by validateTable.
+  }
+  const seen = new Set<string>();
+  content.facilities.forEach((facility, index) => {
+    if (typeof facility !== 'object' || facility === null) {
+      return;
+    }
+    validator.check(!seen.has(facility.effect), `facilities[${index}].effect`, `"${facility.effect}" is another facility's too`);
+    seen.add(facility.effect);
+  });
 }
 
 /** Every weather a weather may turn into exists. */

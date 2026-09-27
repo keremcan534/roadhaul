@@ -3,6 +3,7 @@ import type { CityDefinition } from '../../src/data/definitions/CityDefinition';
 import type { DaylightDefinition } from '../../src/data/definitions/DaylightDefinition';
 import type { DriverDefinition } from '../../src/data/definitions/DriverDefinition';
 import type { EventDefinition } from '../../src/data/definitions/EventDefinition';
+import type { FacilityDefinition } from '../../src/data/definitions/FacilityDefinition';
 import type { MapDefinition, SeaDefinition } from '../../src/data/definitions/MapDefinition';
 import type { MissionDefinition } from '../../src/data/definitions/MissionDefinition';
 import type { PaintDefinition } from '../../src/data/definitions/PaintDefinition';
@@ -178,6 +179,20 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     paints: [paintFixture(), paintFixture({ id: 'test_gold', color: 0xd4af37, price: 3000, requiredCompanyLevel: 2 })],
     drivers: [driverFixture(), driverFixture({ id: 'test_veteran', skill: 4, speedFactor: 1.1, incidentChance: 0.05, payShare: 0.3, hiringFee: 5000, requiredCompanyLevel: 2 })],
     rivals: [rivalFixture()],
+    facilities: [facilityFixture()],
+    ...overrides,
+  };
+}
+
+/** A facility taking 20 % and then 40 % off repairs, its second level at company level 2. */
+export function facilityFixture(overrides: Partial<FacilityDefinition> = {}): FacilityDefinition {
+  return {
+    id: 'test_workshop',
+    effect: 'repairDiscount',
+    levels: [
+      { cost: 1000, value: 0.2 },
+      { cost: 3000, requiredCompanyLevel: 2, value: 0.4 },
+    ],
     ...overrides,
   };
 }

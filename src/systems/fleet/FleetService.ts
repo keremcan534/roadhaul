@@ -5,6 +5,7 @@ import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { DriverDefinition } from '../../data/definitions/DriverDefinition';
 import type { Credits, Fraction } from '../../data/units';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
 import { fleetJobProfit, fleetJobSeed, planFleetJob, type FleetJob, type FleetJobRules } from '../../domain/fleet/fleetJobs';
 import type { FleetSaveData, HiredDriverSaveData } from '../../domain/save/SaveGameData';
@@ -111,6 +112,8 @@ export class FleetService {
     economyConfig: GameConfig['economy'],
     fuelConfig: GameConfig['fuel'],
     private readonly logger: Logger,
+    /** The company's facilities: a dispatch office raises the fleet's pay, a fuel depot cuts its diesel. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {
     this.rules = {
       averageSpeedKmh: config.averageSpeedKmh,
@@ -414,7 +417,7 @@ export class FleetService {
       truck: truck.definition,
       truckDamage: truck.damage,
       driver: driver.definition,
-      rules: this.rules,
+      rules: this.jobRules(),
       seed: fleetJobSeed(this.jobsPlanned),
     });
     if (job === null) {
@@ -425,6 +428,16 @@ export class FleetService {
     driver.elapsedSeconds = 0;
     driver.route = null;
     return job;
+  }
+
+  /** The rules a new contract is planned by: the company's facilities raise its pay and cut its diesel. */
+  private jobRules(): FleetJobRules {
+    const { fleetPayBonus, fuelDiscount } = this.perks.perks;
+    return {
+      ...this.rules,
+      payFactor: this.rules.payFactor * (1 + fleetPayBonus),
+      fuelPricePerLiter: this.rules.fuelPricePerLiter * (1 - fuelDiscount),
+    };
   }
 
   /** Delivers `job`: the company is paid, the truck may come back damaged and go to the workshop. */

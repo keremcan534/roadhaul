@@ -2,6 +2,7 @@ import type { Clock } from '../../core/time/Clock';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
+import type { FacilityService } from '../../systems/company/FacilityService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
@@ -16,6 +17,7 @@ import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
+import { companyPage } from './companyPage';
 import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
 import { FleetPage } from './fleetPage';
@@ -43,6 +45,7 @@ export interface CompanyHqServices {
   readonly dailyContracts: DailyContracts;
   readonly fleet: FleetService;
   readonly rivals: RivalService;
+  readonly facilities: FacilityService;
   readonly clock: Clock;
 }
 
@@ -72,6 +75,8 @@ export interface CompanyHqActions {
   readonly onCampaign: (cityId: string) => void;
   /** Buys a rival company out. */
   readonly onBuyOut: (rivalId: string) => void;
+  /** Builds a facility's next level at the head office. */
+  readonly onBuildFacility: (facilityId: string) => void;
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
@@ -83,6 +88,7 @@ const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
   truck: 'truck',
   garage: 'garage',
   fleet: 'fleet',
+  company: 'office',
   rivals: 'rivals',
   events: 'events',
 };
@@ -92,13 +98,14 @@ const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
  * truck stay in sight beside it (on a phone held upright, above it), and
  * the garage shows the truck in its showroom light. At the top: the
  * company's name, level, XP, reputation and credits, the map and the way
- * back to the road. Four pages: the job board (spec §28), where each blocked
- * contract says what unlocks it and each one an event rewards says so; the
- * truck being driven, with its fuel, damage, cargo and parts, refuelling and
- * repairs; the garage (spec §15, §16): paint and upgrades for the truck,
- * each shown on it before it is bought, and the trucks to buy or switch to;
- * and the special events (spec §22) with their progress. Everything below
- * the tabs scrolls as one list.
+ * back to the road. The pages (HQ_TABS): the job board (spec §28), where
+ * each blocked contract says what unlocks it and each one an event rewards
+ * says so; the truck being driven, with its fuel, damage, cargo and parts,
+ * refuelling and repairs; the garage (spec §15, §16): paint and upgrades
+ * for the truck, each shown on it before it is bought, and the trucks to
+ * buy or switch to; the fleet; the company's facilities at the head
+ * office; the rivals; and the special events (spec §22) with their
+ * progress. Everything below the tabs scrolls as one list.
  */
 export class CompanyHq {
   private readonly root: HTMLDivElement;
@@ -343,6 +350,17 @@ export class CompanyHq {
         return this.garagePage();
       case 'fleet':
         return this.fleetPage.render();
+      case 'company':
+        return companyPage(
+          this.root.ownerDocument,
+          this.strings,
+          {
+            offers: this.services.facilities.offers(),
+            perks: this.services.facilities.perks,
+            canAfford: (price) => this.services.economy.canAfford(price),
+          },
+          this.actions.onBuildFacility,
+        );
       case 'rivals':
         return this.rivalsPage.render();
       case 'events':

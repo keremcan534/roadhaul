@@ -655,6 +655,24 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   content.drivers.all.forEach((driver, index) => {
     checkReachable(driver.id, driver.requiredCompanyLevel, `content.drivers[${index}].requiredCompanyLevel`);
   });
+  content.facilities.all.forEach((facility, facilityIndex) => {
+    facility.levels.forEach((level, index) => {
+      checkReachable(
+        facility.id,
+        level.requiredCompanyLevel,
+        `content.facilities[${facilityIndex}].levels[${index}].requiredCompanyLevel`,
+      );
+    });
+    // The job board holds at most a dozen contracts of the day, the facilities' extra ones included.
+    if (facility.effect === 'extraContracts') {
+      const most = Math.max(...facility.levels.map((level) => level.value));
+      validator.check(
+        missions.dailyContracts.count + most <= 12,
+        `content.facilities[${facilityIndex}].levels`,
+        `"${facility.id}" adds up to ${most} contracts to the ${missions.dailyContracts.count} of the day: more than 12`,
+      );
+    }
+  });
   const slots = fleet.garageSlots;
   validator.check(
     Array.isArray(slots) &&
