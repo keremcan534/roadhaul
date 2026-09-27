@@ -7,7 +7,7 @@ import type { DebrisShape } from './DebrisSimulation';
  * falls. Trees, walls, posts that carry wires, boulders and animals stay
  * solid.
  */
-export const KNOCKABLE_KINDS = ['lamp', 'hayBale', 'bench', 'bin', 'busStop', 'speedSign', 'roadSign'] as const;
+export const KNOCKABLE_KINDS = ['lamp', 'hayBale', 'bench', 'bin', 'busStop', 'speedSign', 'roadSign', 'mailbox'] as const;
 export type KnockableKind = (typeof KNOCKABLE_KINDS)[number];
 
 export interface Knockable {
@@ -103,6 +103,17 @@ export const KNOCKABLES: Readonly<Record<KnockableKind, Knockable>> = {
     topple: 0.3,
     tumble: 0.4,
     damageShare: 0.05,
+  },
+  // A farm's mailbox on its wooden post: it goes flying like a bin.
+  mailbox: {
+    knockSpeed: 1.5,
+    shape: { halfX: 0.2, halfY: 0.62, halfZ: 0.25, massKg: 12, restitution: 0.35, friction: 0.55 },
+    centreZ: 0,
+    throwShare: 1.1,
+    popShare: 0.4,
+    topple: 0.35,
+    tumble: 0.5,
+    damageShare: 0,
   },
 };
 

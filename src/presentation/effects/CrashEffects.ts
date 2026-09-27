@@ -36,6 +36,8 @@ const CHIP_COLORS: Readonly<Record<KnockableKind, readonly number[]>> = {
   busStop: [0x86a7bb, 0xcfe0ea, 0x3a3f45, 0x9aa3ab],
   speedSign: [0xf2f2ee, 0xc7372f, 0x6e757d],
   roadSign: [0xf2f2ee, 0xc7372f, 0xe0b235, 0x6e757d],
+  // The letters in it too.
+  mailbox: [0x2f5d8a, 0x6b5a45, 0xf2f2ee, 0xe8e4da],
 };
 const METAL: Readonly<Record<KnockableKind, boolean>> = {
   lamp: true,
@@ -45,6 +47,7 @@ const METAL: Readonly<Record<KnockableKind, boolean>> = {
   busStop: true,
   speedSign: true,
   roadSign: true,
+  mailbox: true,
 };
 const WRECK_GLASS = [0xcfe3ef, 0xe6f1f7, 0x9fb8c6] as const;
 const WRECK_TRIM = 0x222326;
