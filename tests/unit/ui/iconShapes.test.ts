@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { CARGO_CATEGORIES } from '../../../src/data/definitions/CargoDefinition';
+import { FACILITY_EFFECTS } from '../../../src/data/definitions/FacilityDefinition';
 import { UPGRADE_LOOKS } from '../../../src/data/definitions/UpgradeDefinition';
-import { cargoIcon, iconMarkup, upgradeIcon, type IconName } from '../../../src/ui/iconShapes';
+import { cargoIcon, facilityIcon, iconMarkup, upgradeIcon, type IconName } from '../../../src/ui/iconShapes';
 
 const PAGES_FIGURES_AND_MENUS = [
   'jobs',
@@ -10,6 +11,7 @@ const PAGES_FIGURES_AND_MENUS = [
   'events',
   'fleet',
   'rivals',
+  'office',
   'flag',
   'map',
   'close',
@@ -36,13 +38,14 @@ const ALL: readonly IconName[] = [
   ...PAGES_FIGURES_AND_MENUS,
   ...CARGO_CATEGORIES.map(cargoIcon),
   ...UPGRADE_LOOKS.map(upgradeIcon),
+  ...FACILITY_EFFECTS.map(facilityIcon),
 ];
 
 /** One shape element, self-closed, with attributes in quotes. */
 const SHAPE = /<(path|rect|circle|ellipse)((?: [a-z-]+="[^"<>]*")+)\/>/g;
 
 describe('iconShapes', () => {
-  it('has a glyph for every page, figure, menu, cargo and truck part, made of well-formed shapes', () => {
+  it('has a glyph for every page, figure, menu, cargo, truck part and facility, made of well-formed shapes', () => {
     for (const name of ALL) {
       const markup = iconMarkup(name);
       expect(markup, name).not.toBe('');

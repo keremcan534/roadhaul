@@ -260,6 +260,7 @@ async function start(): Promise<void> {
   const upgrades = services.resolve(ServiceKeys.upgrades);
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
+  const facilities = services.resolve(ServiceKeys.facilities);
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
@@ -815,7 +816,7 @@ async function start(): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, clock },
+    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, facilities, clock },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -933,6 +934,16 @@ async function start(): Promise<void> {
           toasts.show(strings.t('toast.rivalTooStrong'), 'warning');
         } else {
           logger.warn(`Could not buy ${rivalId} out: ${bought.error}.`);
+        }
+      },
+      onBuildFacility: (facilityId) => {
+        const built = facilities.build(facilityId);
+        if (built.ok) {
+          toasts.show(strings.t('toast.facilityBuilt', { facility: strings.facilityName(facilityId), level: built.value }), 'success');
+        } else if (built.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not build ${facilityId}: ${built.error}.`);
         }
       },
       onBuyUpgrade: (upgradeId) => {
@@ -1163,6 +1174,8 @@ async function start(): Promise<void> {
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
+  // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
+  events.on('FacilityBuilt', refreshHq);
   for (const name of ['DriverHired', 'DriverDismissed', 'FleetTruckAssigned', 'FleetTruckRepaired'] as const) {
     events.on(name, refreshHq);
   }
