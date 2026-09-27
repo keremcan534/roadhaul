@@ -7,6 +7,11 @@ import type { Strings } from '../i18n';
  * sliding) offers to be put back on its wheels.
  */
 export const RECOVER_OFFER_SPEED_METERS_PER_SECOND = 2;
+/**
+ * Up on two wheels this far (radians, about 1.7°) the warning shows: a hard
+ * turn in town only lightens the inside wheels a moment, which is no alarm.
+ */
+export const TIPPING_WARNING_BANK = 0.03;
 
 export interface RolloverPanelActions {
   /** Put the truck back on its wheels, on the road (DrivingService.recover). */
@@ -56,13 +61,17 @@ export class RolloverPanel {
     this.show(false, false);
   }
 
-  /** Shows what the truck's `attitude` and `speed` (m/s, its slide included) call for. Call every frame while driving. */
-  update(attitude: BodyAttitude, speed: number): void {
+  /**
+   * Shows what the truck's `attitude`, `speed` (m/s, its slide included)
+   * and `bank` (its roll off its wheels, radians) call for. Call every frame
+   * while driving.
+   */
+  update(attitude: BodyAttitude, speed: number, bank: number): void {
     if (!this.enabled) {
       return;
     }
     this.show(
-      attitude === 'tipping',
+      attitude === 'tipping' && Math.abs(bank) >= TIPPING_WARNING_BANK,
       attitude === 'overturned' && Math.abs(speed) < RECOVER_OFFER_SPEED_METERS_PER_SECOND,
     );
   }

@@ -8,9 +8,10 @@ test('rolls the truck over in a turn held too fast, and puts it back on its whee
   const html = page.locator('html');
   await expect(html).toHaveAttribute('data-attitude', 'wheels');
 
-  // Flat out to about 50 km/h, then the wheel hard over and held: up on two wheels, then over.
+  // Flat out to highway speed (in town the truck corners well inside its rollover threshold), then the wheel hard
+  // over and held: up on two wheels, then over.
   await page.keyboard.down('ArrowUp');
-  await expect.poll(() => shownSpeed(page), { timeout: 60_000 }).toBeGreaterThan(50);
+  await expect.poll(() => shownSpeed(page), { timeout: 90_000 }).toBeGreaterThan(65);
   await page.keyboard.down('ArrowRight');
   await expect(html).toHaveAttribute('data-attitude', 'tipping', { timeout: 20_000 });
   await expect(html).toHaveAttribute('data-attitude', 'overturned', { timeout: 20_000 });

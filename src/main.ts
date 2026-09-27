@@ -1684,7 +1684,7 @@ async function start(): Promise<void> {
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);
         rollover.visible = simulating;
-        rollover.update(vehicle.attitude, sliding);
+        rollover.update(vehicle.attitude, sliding, vehicle.bank);
         const tutorialStep = tutorial.step;
         const tutorialAt = hintPlace();
         tutorialHint.show(tutorialAt !== null && tutorialShows(tutorialStep, tutorialAt) ? tutorialStep : null, tutorialAt);

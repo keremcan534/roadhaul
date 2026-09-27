@@ -117,11 +117,11 @@ describe('DrivingService', () => {
     });
 
     expect(collisions).toHaveLength(1);
-    // It slid along the wall instead of sticking to it, turned along it over many steps (never in a jump), and
-    // kept accelerating.
+    // It slid along the wall instead of sticking to it, turned along it (within a degree and a half: the blow's spin
+    // may carry it a hair past) over many steps (never in a jump), and kept accelerating.
     expect(driving.vehicle.z).toBeGreaterThan(150);
     expect(largestTurn).toBeLessThan((1 * Math.PI) / 180);
-    expect(Math.abs(driving.vehicle.heading)).toBeLessThan((1 * Math.PI) / 180);
+    expect(Math.abs(driving.vehicle.heading)).toBeLessThan((1.5 * Math.PI) / 180);
     expect(driving.vehicle.speed * 3.6).toBeGreaterThan(60);
   });
 

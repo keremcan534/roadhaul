@@ -31,7 +31,7 @@ export const DIP_AT_LIFT = 0.035;
 const TYRE_DIP_SHARE = 0.75;
 /** The springs in roll and in pitch: natural frequency (rad/s) and damping ratio. Under-damped, so the body rocks. */
 const ROLL_FREQUENCY = 5.5;
-const ROLL_DAMPING = 0.2;
+const ROLL_DAMPING = 0.3;
 const PITCH_FREQUENCY = 7;
 const PITCH_DAMPING = 0.45;
 /** The body leans and pitches on its springs about a line this high above the ground, m. */
@@ -40,8 +40,15 @@ const SPRING_CENTRE_HEIGHT = 0.6;
 export const CONTACT_HEIGHT = 0.7;
 /** The underside of the bumpers, m above the ground: the side view's lowest corners front and back. */
 const BUMPER_HEIGHT = 0.5;
+/**
+ * An empty truck tips at this much more than its cornering limit (the
+ * definition's `maxLateralAccelerationG`, which VehicleDynamics holds it
+ * to): a turn held at the limit leans it hard, but only a swerve's lean
+ * swinging through, a blow or a load lifts its wheels.
+ */
+export const ROLLOVER_HEADROOM = 1.12;
 /** A full payload lowers the rollover threshold by this share: the load sits high. */
-export const CARGO_ROLLOVER_LOSS = 0.1;
+export const CARGO_ROLLOVER_LOSS = 0.03;
 /** The ground's grip on the truck's body sliding on it; the surface's rolling resistance adds to it (grass drags). */
 const BODY_SLIDE_FRICTION = 0.45;
 /** Air and crumpling steel: a tumbling truck's roll and pitch lose this share of their rate per second. */
@@ -128,7 +135,10 @@ export function fillBodyBuild(
   const payloadKg = definition.maxPayloadTons * 1000;
   const loaded = payloadKg > 0 ? clamp01(Math.max(0, finiteOr(cargoMassKg, 0)) / payloadKg) : 0;
   const thresholdG =
-    handling.maxLateralAccelerationG * Math.max(0.05, finiteOr(stabilityFactor, 1)) * (1 - CARGO_ROLLOVER_LOSS * loaded);
+    handling.maxLateralAccelerationG *
+    Math.max(0.05, finiteOr(stabilityFactor, 1)) *
+    ROLLOVER_HEADROOM *
+    (1 - CARGO_ROLLOVER_LOSS * loaded);
   const width = body.widthMeters;
   const length = body.lengthMeters;
   const height = body.heightMeters;

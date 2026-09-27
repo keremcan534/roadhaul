@@ -53,11 +53,15 @@ const STEER_PACE_EASES_TO = 22;
 /** Letting go, the steering comes back to straight this much faster than it turns: the tyres pull it back. */
 const STEER_RETURN_SPEEDUP = 1.6;
 /**
- * The truck corners up to this much harder than its rollover threshold
- * (bodyMotion) where the tyres hold it: a turn held there lifts the inside
- * wheels and, held on, rolls the truck over; let go, it comes back down.
+ * Up to this speed (m/s, about 36 km/h) the truck corners no harder than
+ * its cornering limit, well inside its rollover threshold (bodyMotion's
+ * ROLLOVER_HEADROOM); from this one (about 72 km/h) its wheel turns it up
+ * to RECKLESS_CORNERING times that limit, where the tyres hold, past the
+ * threshold: a turn taken too fast rolls it over. Eased between.
  */
-export const ROLLOVER_MARGIN = 1.15;
+const SAFE_TURN_SPEED = 10;
+const RECKLESS_TURN_SPEED = 20;
+export const RECKLESS_CORNERING = 1.25;
 /**
  * The tyres pull a sideways slide (a crash's shove) back to nothing over
  * about this long (seconds), and a spin beyond the path's over about this
@@ -406,6 +410,11 @@ export class VehicleDynamics {
     state.longitudinalAcceleration = (state.speed - previousSpeed) / dt;
   }
 
+  /** The wheel angle that turns the truck at `lateral` m/s² at a speed of √`speedSquared`; the lock at a standstill. */
+  private angleFor(lateral: number, speedSquared: number): number {
+    return speedSquared > 1e-6 ? Math.atan((lateral * this.wheelbase) / speedSquared) : this.maxSteerAngle;
+  }
+
   private updateSteeringAndPosition(state: VehicleRuntimeState, steerInput: number, surface: Surface, dt: number): void {
     // The steering follows the driver: slower at speed, and back toward straight faster than it turns.
     const pace =
@@ -414,15 +423,20 @@ export class VehicleDynamics {
     const returning = Math.abs(steerInput) < Math.abs(state.steerPosition) || steerInput * state.steerPosition < 0;
     state.steerPosition = approach(state.steerPosition, steerInput, (returning ? pace * STEER_RETURN_SPEEDUP : pace) * dt);
 
-    // The sharpest the truck may turn: no tighter than the tyres hold, or a little past what lifts its inside
-    // wheels (lateral acceleration v² · tan(angle) / wheelbase ≤ limit).
-    const grip = this.definition.handling.tireGrip * this.gripFactor * surface.gripFactor * GRAVITY;
-    const lateralLimit = Math.min(grip, ROLLOVER_MARGIN * this.body.build.rolloverAcceleration);
+    // The sharpest the truck may turn (lateral acceleration v² · tan(angle) / wheelbase ≤ limit): no tighter than
+    // the tyres hold, nor at town speeds past its cornering limit, well inside its rollover threshold (bodyMotion),
+    // so a junction taken on full lock leans it hard but keeps it on its wheels. Faster, the tyres hold it up to the
+    // threshold: a turn taken too fast, or a swerve, lifts its inside wheels and can roll it over.
     const speedSquared = state.speed * state.speed;
-    const limitedAngle =
-      speedSquared > 1e-6 ? Math.atan((lateralLimit * this.wheelbase) / speedSquared) : this.maxSteerAngle;
-    // Speed-sensitive: the steering's whole travel spans the lock at walking pace, the limit (and a little) at speed.
-    state.steerAngle = state.steerPosition * Math.min(this.maxSteerAngle, limitedAngle * STEER_RANGE_MARGIN);
+    const grip = this.definition.handling.tireGrip * this.gripFactor * surface.gripFactor * GRAVITY;
+    const corner = this.definition.handling.maxLateralAccelerationG * this.stabilityFactor * GRAVITY;
+    const reckless = smoothstep(SAFE_TURN_SPEED, RECKLESS_TURN_SPEED, Math.abs(state.speed));
+    const lateralLimit = Math.min(grip, corner * (1 + (RECKLESS_CORNERING - 1) * reckless));
+    const limitedAngle = this.angleFor(lateralLimit, speedSquared);
+    // Speed-sensitive: the steering's whole travel spans the lock at walking pace, the cornering limit (and a
+    // little) in town, and on the open road as hard as the tyres may turn the truck.
+    const travel = Math.min(grip, corner * (1 + (RECKLESS_CORNERING / STEER_RANGE_MARGIN - 1) * reckless));
+    state.steerAngle = state.steerPosition * Math.min(this.maxSteerAngle, this.angleFor(travel, speedSquared) * STEER_RANGE_MARGIN);
     // Understeer: past the limit the wheels turn but the truck does not turn tighter.
     const effectiveAngle = clamp(state.steerAngle, -limitedAngle, limitedAngle);
 

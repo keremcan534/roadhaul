@@ -7,11 +7,12 @@ import {
   kickBody,
   LEAN_AT_LIFT,
   rideUp,
+  ROLLOVER_HEADROOM,
 } from '../../../../src/domain/vehicles/bodyMotion';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import type { VehicleInput } from '../../../../src/domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../../../src/domain/vehicles/VehicleRuntimeState';
-import { ROLLOVER_MARGIN, VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
+import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { ASPHALT } from '../../../../src/domain/world/Surface';
 import { vehicleFixture } from '../../../support/contentFixtures';
 import { input, STEP_SECONDS } from '../../../support/driving';
@@ -55,7 +56,8 @@ function run(
 describe('the body in motion', () => {
   it('sits the weight as high as makes a rigid truck tip at its threshold: higher loaded, lower with a stiffer body', () => {
     const empty = createBodyBuild(truck);
-    const threshold = truck.handling.maxLateralAccelerationG;
+    // An empty truck tips a little past its cornering limit.
+    const threshold = truck.handling.maxLateralAccelerationG * ROLLOVER_HEADROOM;
     expect(empty.rolloverAcceleration).toBeCloseTo(threshold * G, 9);
     expect(empty.cogHeight).toBeCloseTo(truck.body.widthMeters / 2 / threshold, 9);
     expect(empty.cogAhead).toBe(truck.body.wheelbaseMeters / 2);
@@ -64,14 +66,15 @@ describe('the body in motion', () => {
     const steady = vehicleFixture({ handling: { ...truck.handling, maxLateralAccelerationG: 0.55 } });
     const unloaded = createBodyBuild(steady);
     const loaded = createBodyBuild(steady, steady.maxPayloadTons * 1000);
-    expect(loaded.rolloverAcceleration).toBeCloseTo(0.55 * (1 - CARGO_ROLLOVER_LOSS) * G, 9);
+    expect(loaded.rolloverAcceleration).toBeCloseTo(0.55 * ROLLOVER_HEADROOM * (1 - CARGO_ROLLOVER_LOSS) * G, 9);
     expect(loaded.cogHeight).toBeGreaterThan(unloaded.cogHeight);
     // Past the payload counts as the payload; nonsense as none.
     expect(createBodyBuild(steady, 1e9).cogHeight).toBeCloseTo(loaded.cogHeight, 9);
     expect(createBodyBuild(steady, Number.NaN).cogHeight).toBe(unloaded.cogHeight);
     // The weight never sits above nine tenths of the body: a truck that tall tips a little later than it says.
-    const top = createBodyBuild(truck, truck.maxPayloadTons * 1000);
-    expect(top.cogHeight).toBeCloseTo(truck.body.heightMeters * 0.9, 9);
+    const tippy = vehicleFixture({ handling: { ...truck.handling, maxLateralAccelerationG: 0.3 } });
+    const top = createBodyBuild(tippy, tippy.maxPayloadTons * 1000);
+    expect(top.cogHeight).toBeCloseTo(tippy.body.heightMeters * 0.9, 9);
     expect(top.rolloverAcceleration).toBeCloseTo((G * top.halfWidth) / top.cogHeight, 9);
 
     const stiff = createBodyBuild(truck, 0, 1.15);
@@ -103,8 +106,8 @@ describe('the body in motion', () => {
     run(dynamics, state, 4, () => ({ steer: 0.3 }), { holdSpeed: 60 / 3.6, watch: (now) => (lifted ||= now.attitude !== 'wheels') });
 
     // Turning right, it leans left (its left side down): the lean at lift, times the share of the threshold.
-    const share = state.lateralAcceleration / (truck.handling.maxLateralAccelerationG * G);
-    expect(share).toBeLessThan(-0.3);
+    const share = state.lateralAcceleration / dynamics.build.rolloverAcceleration;
+    expect(share).toBeLessThan(-0.25);
     expect(share).toBeGreaterThan(-0.7);
     expect(state.lean).toBeCloseTo(LEAN_AT_LIFT * share, 3);
     expect(lifted).toBe(false);
@@ -151,11 +154,9 @@ describe('the body in motion', () => {
     expect(state).toMatchObject({ x, z, heading, speed: 0, attitude: 'overturned' });
   });
 
-  it('rolls over in a hard swerve that a gentle lane change only leans through', () => {
+  it('rolls over in a hard swerve held the other way (a fishhook) that a gentle lane change only leans through', () => {
     const swerve = rolling(70);
-    const fishhook = run(swerve.dynamics, swerve.state, 5, (t) => ({ steer: t < 1 ? 1 : t < 2.3 ? -1 : 0 }), {
-      holdSpeed: 70 / 3.6,
-    });
+    const fishhook = run(swerve.dynamics, swerve.state, 7, (t) => ({ steer: t < 1 ? 1 : -1 }), { holdSpeed: 70 / 3.6 });
     expect(fishhook).toContain('overturned');
     // It went over the way the second turn threw it: right, onto its right side.
     expect(swerve.state.bank).toBeGreaterThan(0);
@@ -281,7 +282,7 @@ describe('the body in motion', () => {
       return lateral;
     };
     expect(liftSpeed(1.15)).toBeGreaterThan(liftSpeed(1) * 1.1);
-    expect(liftSpeed(1)).toBeLessThanOrEqual(truck.handling.maxLateralAccelerationG * ROLLOVER_MARGIN * G + 1e-9);
+    expect(liftSpeed(1)).toBeLessThanOrEqual(truck.handling.maxLateralAccelerationG * ROLLOVER_HEADROOM * G + 1e-9);
   });
 
   it('is deterministic', () => {
