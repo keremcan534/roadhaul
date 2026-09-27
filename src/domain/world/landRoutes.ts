@@ -269,7 +269,9 @@ export function isClearRun(ax: number, az: number, bx: number, bz: number, isCle
 /**
  * The line's points where it turns, the ones between skipped wherever the
  * straight run past them is clear: from each point kept, as far along as a
- * clear run reaches, found by doubling the reach and then halving back.
+ * clear run reaches, found by doubling the step (no further than the end,
+ * or the first point found out of reach) and starting over from a step of
+ * one where it overshoots.
  */
 function pullStraight(line: readonly Point2[], isClear: (x: number, z: number) => boolean): Point2[] {
   const pulled: Point2[] = [line[0]!];
@@ -277,21 +279,18 @@ function pullStraight(line: readonly Point2[], isClear: (x: number, z: number) =
   let at = 0;
   while (at < last) {
     const [ax, az] = line[at]!;
-    const clearTo = (index: number): boolean => isClearRun(ax, az, line[index]![0], line[index]![1], isClear);
     // The next point is always reachable: the cells between neighbours are open.
     let reach = at + 1;
     let step = 1;
     let blocked = last + 1;
-    while (reach + step <= last && reach + step < blocked) {
-      if (clearTo(reach + step)) {
-        reach += step;
+    while (reach + 1 < blocked) {
+      const probe = Math.min(reach + step, blocked - 1);
+      if (isClearRun(ax, az, line[probe]![0], line[probe]![1], isClear)) {
+        reach = probe;
         step *= 2;
       } else {
-        blocked = reach + step;
-        step = Math.max(1, step >> 1);
-        if (step === 1 && !clearTo(reach + 1)) {
-          break;
-        }
+        blocked = probe;
+        step = 1;
       }
     }
     pulled.push(line[reach]!);

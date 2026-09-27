@@ -56,17 +56,18 @@ interface Keep {
 
 /**
  * A new road's centreline: clear of the water (the rivers' as far as their
- * channels are looked up), the woods, the parks, the fields (its edge 8 m
- * and more off theirs), the yards and lots, the buildings, the turbines
- * (60 m and more from its edge) and the name boards. Not of where the truck
- * starts: that moves (?spawn), and what grows must not move with it.
+ * channels are looked up), the woods, the parks, the fields (the edge of the
+ * widest, a village's street, 8 m and more off theirs), the yards and lots,
+ * the buildings, the turbines (60 m and more from its edge) and the name
+ * boards. Not of where the truck starts: that moves (?spawn), and what grows
+ * must not move with it.
  */
 const ROAD: Keep = {
   shore: 50,
   river: 28,
   forest: 12,
   park: 40,
-  field: 12,
+  field: 12.5,
   yard: 40,
   building: 18,
   turbine: 75,

@@ -11,7 +11,7 @@ import { Buckets } from './buckets';
 import { cellKey, cellOf } from './gridCells';
 import { LandRouter } from './landRoutes';
 import { RoadGrid } from './RoadGrid';
-import { TURNING_CIRCLE_OFFSET_METERS, TURNING_CIRCLE_RADIUS_METERS } from './RoadNetwork';
+import { RoadNetwork, TURNING_CIRCLE_OFFSET_METERS, TURNING_CIRCLE_RADIUS_METERS } from './RoadNetwork';
 import type { RoadPath } from './RoadPath';
 
 /** What the land holds before anything grows on it, as the new roads, buildings and fields ask it (OpenLand answers). */
@@ -75,6 +75,8 @@ export class CountryPlan {
   readonly parks: ParkDefinition[] = [];
   /** The middles of the turning circles at the new roads' dead ends. */
   readonly circles: Point2[] = [];
+  /** …and at the map's own roads' (DrivingWorld paves those too): what grows keeps clear of all of them. */
+  private readonly mapCircles: Point2[];
   /** Finds ways across the land for new roads. */
   readonly router: LandRouter;
   private readonly fieldAreas: RectangleDefinition[] = [];
@@ -115,6 +117,9 @@ export class CountryPlan {
       this.mapRoadBounds.set([minX - half, maxX + half, minZ - half, maxZ + half], index * 4);
     });
     this.router = new LandRouter({ halfSizeMeters: land.halfSizeMeters, isLandOpen: (x, z) => land.isOpenForRoad(x, z) });
+    this.mapCircles = new RoadNetwork(mapRoads).deadEnds.map(({ roadIndex, sampleIndex }) =>
+      circleAt(mapRoads[roadIndex]!, sampleIndex === 0),
+    );
   }
 
   /** The new roads, in the order they were added. */
@@ -220,15 +225,12 @@ export class CountryPlan {
 
   /** Notes the turning circle where `path` ends joining nothing: at its last sample, or its first where `atStart`. */
   addTurningCircle(path: RoadPath, atStart: boolean): void {
-    const end = atStart ? 0 : path.pointCount - 1;
-    const inward = atStart ? 1 : end - 1;
-    const dx = path.x(end) - path.x(inward);
-    const dz = path.z(end) - path.z(inward);
-    const length = Math.hypot(dx, dz) || 1;
-    this.circles.push([
-      path.x(end) + (dx / length) * TURNING_CIRCLE_OFFSET_METERS,
-      path.z(end) + (dz / length) * TURNING_CIRCLE_OFFSET_METERS,
-    ]);
+    this.circles.push(circleAt(path, atStart));
+  }
+
+  /** Whether any turning circle's middle, the map's or a new one's, passes `test`. */
+  private someCircle(test: (x: number, z: number) => boolean): boolean {
+    return this.mapCircles.some(([x, z]) => test(x, z)) || this.circles.some(([x, z]) => test(x, z));
   }
 
   /**
@@ -244,7 +246,7 @@ export class CountryPlan {
     const maxZ = z + sizeZ / 2;
     const boxDistance = (px: number, pz: number): number =>
       Math.hypot(px - Math.max(minX, Math.min(px, maxX)), pz - Math.max(minZ, Math.min(pz, maxZ)));
-    if (this.circles.some(([cx, cz]) => boxDistance(cx, cz) < TURNING_CIRCLE_RADIUS_METERS + BUILDING_CIRCLE_CLEARANCE_METERS)) {
+    if (this.someCircle((cx, cz) => boxDistance(cx, cz) < TURNING_CIRCLE_RADIUS_METERS + BUILDING_CIRCLE_CLEARANCE_METERS)) {
       return false;
     }
     if (
@@ -279,7 +281,7 @@ export class CountryPlan {
   tryField(field: FieldDefinition, area: RectangleDefinition): boolean {
     const inside = (x: number, z: number, margin: number): boolean => rectangleContains(area, x, z, margin);
     if (
-      this.circles.some(([x, z]) => inside(x, z, TURNING_CIRCLE_RADIUS_METERS + FIELD_ROAD_CLEARANCE_METERS)) ||
+      this.someCircle((x, z) => inside(x, z, TURNING_CIRCLE_RADIUS_METERS + FIELD_ROAD_CLEARANCE_METERS)) ||
       this.buildings.some((box) => inside(box.x, box.z, FIELD_BUILDING_CLEARANCE_METERS + Math.max(box.widthMeters, box.depthMeters) / 2)) ||
       this.overlapsField(area, FIELD_GAP_METERS) ||
       this.parks.some((park) => overlaps(park.area, area, FIELD_GAP_METERS))
@@ -306,7 +308,7 @@ export class CountryPlan {
   tryPark(park: ParkDefinition): boolean {
     const area = park.area;
     if (
-      this.circles.some(([x, z]) => rectangleContains(area, x, z, TURNING_CIRCLE_RADIUS_METERS + PARK_ROAD_CLEARANCE_METERS)) ||
+      this.someCircle((x, z) => rectangleContains(area, x, z, TURNING_CIRCLE_RADIUS_METERS + PARK_ROAD_CLEARANCE_METERS)) ||
       this.buildings.some((box) =>
         overlaps({ x: box.x, z: box.z, headingDegrees: 0, lengthMeters: box.depthMeters, widthMeters: box.widthMeters }, area, PARK_BUILDING_CLEARANCE_METERS),
       ) ||
@@ -434,4 +436,14 @@ function overlaps(a: RectangleDefinition, b: RectangleDefinition, gap: number): 
     rectangleCorners(b).some(([x, z]) => rectangleContains(a, x, z, gap)) ||
     !alongRim(a, (x, z) => !rectangleContains(b, x, z, gap))
   );
+}
+
+/** The middle of the turning circle where `path` ends: past its last sample, or its first where `atStart` (DrivingWorld's). */
+function circleAt(path: RoadPath, atStart: boolean): Point2 {
+  const end = atStart ? 0 : path.pointCount - 1;
+  const inward = atStart ? 1 : end - 1;
+  const dx = path.x(end) - path.x(inward);
+  const dz = path.z(end) - path.z(inward);
+  const length = Math.hypot(dx, dz) || 1;
+  return [path.x(end) + (dx / length) * TURNING_CIRCLE_OFFSET_METERS, path.z(end) + (dz / length) * TURNING_CIRCLE_OFFSET_METERS];
 }
