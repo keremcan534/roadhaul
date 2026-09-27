@@ -245,6 +245,64 @@ describe('TrafficSimulation', () => {
     expect(sim.speed[car]).toBeGreaterThan(1); // …and off again.
   });
 
+  describe('wrecked by the truck', () => {
+    /** A car 20 m along the street's eastbound lane at 10 m/s, and the first of its circles, after half a second. */
+    const carOnStreet = (settings: TrafficSettings): { sim: TrafficSimulation; car: number; circle: number } => {
+      const graph = laneGraphOf(straightStreet());
+      const sim = scene(graph, settings);
+      const car = sim.addVehicle(CAR_TYPE, laneAt(graph, 0, 0, 0), 20, 10);
+      run(sim, parkedAway(), 0.5);
+      let circle = -1;
+      for (let c = 0; c < sim.circleCount && circle < 0; c++) {
+        if (sim.circleOwner[c] === car) circle = c;
+      }
+      return { sim, car, circle };
+    };
+
+    it('is noted with its kind, paint and pose, and gone from the road: the truck goes on through', () => {
+      const { sim, car, circle } = carOnStreet({ ...SCENE, wrecks: true });
+      const pose = [sim.x[car], sim.z[car], sim.heading[car], sim.speed[car]];
+
+      expect(sim.hit(circle, 9)).toBe(true);
+      expect(sim.active[car]).toBe(0);
+      expect(sim.vehicleCount).toBe(0);
+      const { wrecks } = sim;
+      expect(wrecks.count).toBe(1);
+      expect([wrecks.circle[0], wrecks.type[0], wrecks.color[0]]).toEqual([circle, CAR_TYPE, CAR.colors[0]]);
+      expect([wrecks.x[0], wrecks.z[0], wrecks.heading[0], wrecks.speed[0]]).toEqual(pose);
+      // Its other circles give way too, noted once.
+      expect(sim.hit(circle + 1, 9)).toBe(true);
+      expect(wrecks.count).toBe(1);
+      // The next update starts a new record, without it.
+      run(sim, parkedAway(), STEP);
+      expect(wrecks.count).toBe(0);
+      expect(sim.circleCount).toBe(0);
+    });
+
+    it('only when struck hard enough: slower, it stops as before', () => {
+      const { sim, car, circle } = carOnStreet({ ...SCENE, wrecks: true });
+
+      expect(sim.hit(circle, 7)).toBe(false);
+      expect(sim.active[car]).toBe(1);
+      expect(sim.wrecks.count).toBe(0);
+      run(sim, parkedAway(), 0.1);
+      expect(sim.behaviourOf(car)).toBe('emergencyStop');
+    });
+
+    it('never, unless the traffic wrecks at all; and never a bus', () => {
+      const plain = carOnStreet(SCENE);
+      expect(plain.sim.hit(plain.circle, 30)).toBe(false);
+      expect(plain.sim.active[plain.car]).toBe(1);
+
+      const graph = laneGraphOf(straightStreet());
+      const sim = scene(graph, { ...SCENE, wrecks: true });
+      const bus = sim.addVehicle(BUS_TYPE, laneAt(graph, 0, 0, 0), 30, 10);
+      run(sim, parkedAway(), 0.5);
+      expect(sim.hit(sim.circleOwner.indexOf(bus), 30)).toBe(false);
+      expect(sim.active[bus]).toBe(1);
+    });
+  });
+
   it('takes turns at a busy crossing one conflicting turn at a time, so vehicles never run into each other', () => {
     const graph = laneGraphOf(crossingStreets());
     const sim = scene(graph, { maxVehicles: 14, radiusMeters: 5000, minSpawnDistanceMeters: 100 });

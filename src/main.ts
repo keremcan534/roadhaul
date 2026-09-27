@@ -10,6 +10,7 @@ import { weatherChoiceFor, type SteeringMode, type TiltStatus } from './data/con
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
+import type { KnockableKind } from './domain/crash/knockables';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
@@ -43,6 +44,8 @@ import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView, truckViewKey } from './presentation/vehicles/TruckView';
+import { CrashEffects } from './presentation/effects/CrashEffects';
+import { SlowMotion } from './presentation/effects/SlowMotion';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
@@ -53,7 +56,7 @@ import { RainView } from './presentation/weather/RainView';
 import { SnowView } from './presentation/weather/SnowView';
 import { Thunderstorm } from './presentation/weather/Thunderstorm';
 import { LampLighting, type LampLightingOptions } from './presentation/world/LampLighting';
-import { PedestrianView } from './presentation/world/PedestrianView';
+import { PedestrianView, type TruckNearby } from './presentation/world/PedestrianView';
 import { WetReflections, type MirroredLamps } from './presentation/world/WetReflections';
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
@@ -150,6 +153,23 @@ const MIRRORED_LAMPS: Readonly<Record<QualityLevel, number>> = { low: 0, medium:
 /** How many people walk the towns' pavements near the camera at most (PedestrianView), per graphics preset. */
 const PEDESTRIANS: Readonly<Record<QualityLevel, number>> = { low: 40, medium: 80, high: 140 };
 const SOFTWARE_LAMP_LIGHTS: LampLightingOptions = { streetLamps: 3, trafficVehicles: 0 };
+/**
+ * How hard a crash jolts the view (CameraRig.shake): each thing knocked over
+ * and a wreck, struck FULL_SHAKE_SPEED m/s hard (about 55 km/h); harder
+ * shakes more, softer less.
+ */
+const KNOCK_SHAKE: Readonly<Record<KnockableKind, number>> = {
+  lamp: 0.35,
+  hayBale: 0.3,
+  bench: 0.12,
+  bin: 0.06,
+  busStop: 0.4,
+  speedSign: 0.08,
+};
+const WRECK_SHAKE = 0.8;
+const FULL_SHAKE_SPEED = 15;
+/** A car wrecked at least this fast (m/s, about 45 km/h) is worth a moment of slow motion. */
+const SLOW_MOTION_SPEED = 12.5;
 /** The clock's time is kept in the settings this often (seconds), so a closed tab loses little of the day. */
 const CLOCK_KEEP_SECONDS = 30;
 /** The company panel's fleet page moves its progress bars on this often, seconds. */
@@ -241,6 +261,7 @@ async function start(): Promise<void> {
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
+  const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
 
   // Older WebViews may only have navigator.language.
@@ -293,17 +314,30 @@ async function start(): Promise<void> {
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
-  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, { lampGlows, castShadows });
+  // What the truck knocks over leaves its place and tumbles about with the debris (CrashService): the views know
+  // each thing's circle in the world (the same in every drive of the map) and draw it lying about.
+  const debrisCapacity = config.crashes.enabled ? config.crashes.maxDebris : 0;
+  const circlesOf = (things: readonly object[]): number[] => things.map((thing) => driving.world.circleIndexOf(thing));
+  const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, {
+    lampGlows,
+    castShadows,
+    circles: circlesOf(driving.world.streetLamps),
+    debrisCapacity,
+  });
   lampLighting.setStreetLamps(streetLamps.lampLights());
+  lampLighting.setStreetLampsDark(streetLamps.dark);
   // Wet roads mirror the lamps: a streak of light under each, as far as the eye sees them. Not where they light
   // nothing (?lamps=0, software), nor on the low preset.
   const mirroredLamps = lampLight ? MIRRORED_LAMPS[config.rendering.quality] : 0;
   const wetReflections = mirroredLamps > 0 ? new WetReflections(renderHost.scene, mirroredLamps) : null;
   wetReflections?.setStreetLamps(streetLamps.lampLights());
-  new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
+  wetReflections?.setStreetLampsDark(streetLamps.dark);
+  const farmland = new FarmlandView(renderHost.scene, driving.world.fields, driving.world.hayBales, {
     anisotropy: renderHost.anisotropy,
     prelit,
     seasons: seasonShading,
+    baleCircles: circlesOf(driving.world.hayBales),
+    debrisCapacity,
   });
   const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
   const pedestrians = new PedestrianView(
@@ -322,7 +356,11 @@ async function start(): Promise<void> {
   // At night the towns glow on the horizon, over their depots.
   environment.setTowns(driving.world.depots.map((depot) => depot.yard));
   // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
-  const scenery = new SceneryView(renderHost.scene, driving.world, { castShadows, anisotropy: renderHost.anisotropy });
+  const scenery = new SceneryView(renderHost.scene, driving.world, {
+    castShadows,
+    anisotropy: renderHost.anisotropy,
+    debrisCapacity,
+  });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;
   const seaView =
@@ -365,6 +403,7 @@ async function start(): Promise<void> {
     lampGlows,
     castShadows,
     sky: environment.sky,
+    wrecks: debrisCapacity,
   });
   /** What carries lamps for a wet road to mirror: the truck (set every frame: it changes in the garage) and the traffic. */
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
@@ -375,6 +414,9 @@ async function start(): Promise<void> {
   const storm = new Thunderstorm();
   const lightning = new LightningView(renderHost.scene);
   const truckEffects = new TruckEffects(renderHost.scene, config.rendering.particleDensity, prelit);
+  // What flies off in a crash: bits, sparks and dust; a big one is seen in slow motion.
+  const crashEffects = new CrashEffects(renderHost.scene, config.rendering.particleDensity, prelit);
+  const slowMotion = new SlowMotion();
   const effectsState = createTruckEffectsState();
   const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
@@ -1023,6 +1065,26 @@ async function start(): Promise<void> {
     }
   };
   events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => audio.crash(impactSpeedMetersPerSecond));
+  // Crashes: bits, sparks and dust fly, it sounds, and the view jolts as hard as the truck struck.
+  let knockedOver = 0;
+  let wrecked = 0;
+  events.on('PropKnockedOver', ({ kind, x, z, speedMetersPerSecond, byTruck }) => {
+    crashEffects.knock(kind, x, z, speedMetersPerSecond, driving.vehicle.heading);
+    audio.knock(kind, speedMetersPerSecond);
+    if (byTruck) {
+      cameraRig.shake(KNOCK_SHAKE[kind] * Math.min(1.5, speedMetersPerSecond / FULL_SHAKE_SPEED));
+    }
+    root.dataset.knockedOver = String(++knockedOver);
+  });
+  events.on('VehicleWrecked', ({ x, z, speedMetersPerSecond, color }) => {
+    crashEffects.wreck(x, z, speedMetersPerSecond, driving.vehicle.heading, color);
+    audio.wreck(speedMetersPerSecond);
+    if (speedMetersPerSecond >= SLOW_MOTION_SPEED) {
+      slowMotion.trigger();
+    }
+    cameraRig.shake(WRECK_SHAKE * Math.min(1.5, speedMetersPerSecond / FULL_SHAKE_SPEED));
+    root.dataset.wrecked = String(++wrecked);
+  });
   events.on('MissionStateChanged', ({ current }) => {
     if (current === 'loaded') {
       audio.clunk();
@@ -1349,6 +1411,8 @@ async function start(): Promise<void> {
   const dashboard = { fuelFraction: 1, clockMinutes: 0, drivePedal: 0, brakePedal: 0 };
   let menuFrames = 0;
   const pose = { x: 0, z: 0, heading: 0 };
+  /** The truck as the towns' people see it coming, refreshed every frame (no allocation). */
+  const truckNearby: TruckNearby = { x: 0, z: 0, heading: 0, speed: 0, rear: 0, front: 0, halfWidth: 0 };
   const loop = new GameLoop(
     animationFrameScheduler,
     new FixedTimestep(
@@ -1377,12 +1441,16 @@ async function start(): Promise<void> {
         combineVehicleInputs(controlsInput, keyboard.state, touch.state);
         combineVehicleInputs(driverInput, controlsInput, tilt.state);
         driving.step(stepSeconds, driverInput);
+        // What the truck knocked over goes flying, and the debris tumbles on.
+        crashes.update(stepSeconds);
         missions.update(stepSeconds);
         navigation.update(stepSeconds);
         fuel.update();
         session.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
+        // After a big crash, game time runs slow a moment (the frame's time is game time: back to real time here).
+        loop.timeScale = slowMotion.active ? slowMotion.update(deltaSeconds / Math.max(0.05, loop.timeScale)) : 1;
         const simulating = onRoad() && !paused;
         const worldStill = paused || (hq.isOpen && worldHeld);
         touch.update(deltaSeconds);
@@ -1418,11 +1486,21 @@ async function start(): Promise<void> {
         windTurbines.update(paused ? 0 : deltaSeconds);
         // The towns' people: fewer out at night and in the rain, their umbrellas up when it rains.
         const night = timeOfDay.weights.night + 0.4 * timeOfDay.weights.twilight;
+        // They jump out of the truck's way.
+        const footprint = driving.footprint;
+        truckNearby.x = pose.x;
+        truckNearby.z = pose.z;
+        truckNearby.heading = pose.heading;
+        truckNearby.speed = vehicle.speed;
+        truckNearby.rear = footprint.offsets[0]! - footprint.radius;
+        truckNearby.front = footprint.offsets[footprint.offsets.length - 1]! + footprint.radius;
+        truckNearby.halfWidth = footprint.radius;
         pedestrians.update(
           paused ? 0 : deltaSeconds,
           renderHost.camera.position,
           (1 - 0.7 * night) * (1 - 0.45 * weather.rain),
           Math.min(1, Math.max(0, (weather.rain - 0.1) / 0.3)),
+          truckNearby,
         );
         scenery.update(paused ? 0 : deltaSeconds);
         cloudShadows.drift(paused ? 0 : deltaSeconds);
@@ -1445,7 +1523,17 @@ async function start(): Promise<void> {
         truck.setDashboard(dashboard);
         truck.setNavigation(minimap.picture, minimap.paintCount);
         truck.update(pose, vehicle, simulating ? deltaSeconds : 0);
-        trafficView.update(traffic.simulation, worldStill ? 1 : alpha);
+        // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
+        const world = driving.world;
+        streetLamps.showKnocked(world.knocked, world.knockVersion);
+        farmland.showKnocked(world.knocked, world.knockVersion);
+        scenery.showKnocked(world.knocked, world.knockVersion);
+        const debris = crashes.simulation;
+        const debrisAlpha = simulating ? alpha : 1;
+        streetLamps.drawDebris(debris, debrisAlpha);
+        farmland.drawDebris(debris, debrisAlpha);
+        scenery.drawDebris(debris, debrisAlpha);
+        trafficView.update(traffic.simulation, worldStill ? 1 : alpha, debris, crashes);
         gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
         const vehicles = traffic.simulation?.vehicleCount ?? 0;
         if (vehicles !== shownTraffic) {
@@ -1504,6 +1592,7 @@ async function start(): Promise<void> {
         effectsState.offRoad = driving.surface.name === 'grass';
         effectsState.wetness = wetness;
         truckEffects.update(paused ? 0 : deltaSeconds, truck, effectsState, renderHost.camera);
+        crashEffects.update(paused ? 0 : deltaSeconds, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);

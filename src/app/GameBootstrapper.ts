@@ -8,6 +8,7 @@ import { validateGameConfig, type GameConfig } from '../data/config/GameConfig';
 import { ContentCatalog } from '../data/ContentCatalog';
 import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
+import { CrashService } from '../systems/crash/CrashService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
 import { EventService } from '../systems/events/EventService';
@@ -108,11 +109,15 @@ export class GameBootstrapper {
       );
       const driving = container.register(
         ServiceKeys.driving,
-        new DrivingService(catalog, events, logger.withCategory('Driving')),
+        new DrivingService(catalog, events, logger.withCategory('Driving'), config.crashes.enabled),
       );
       const traffic = container.register(
         ServiceKeys.traffic,
-        new TrafficService(driving, catalog, config.traffic, logger.withCategory('Traffic')),
+        new TrafficService(driving, catalog, config.traffic, logger.withCategory('Traffic'), config.crashes.enabled),
+      );
+      container.register(
+        ServiceKeys.crashes,
+        new CrashService(driving, traffic, config.crashes, events, logger.withCategory('Crashes')),
       );
       const timeOfDay = container.register(
         ServiceKeys.timeOfDay,

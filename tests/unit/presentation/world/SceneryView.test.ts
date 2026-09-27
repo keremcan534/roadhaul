@@ -1,4 +1,6 @@
 import { Box3, DoubleSide, InstancedMesh, Matrix4, Mesh, Scene, ShaderMaterial, type BufferAttribute } from 'three';
+import { DebrisSimulation } from '../../../../src/domain/crash/DebrisSimulation';
+import { KNOCKABLES, knockableCode } from '../../../../src/domain/crash/knockables';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
@@ -137,6 +139,62 @@ describe('SceneryView', () => {
     expect(drawCallCount(scene)).toBe(0);
     view.update(1);
     view.dispose();
+  });
+
+  it("empties the place of what is knocked over, uploading only its vertices, and fills it again once it stands", () => {
+    const street = new DrivingWorld(mapFixture({ scenery: { seed: 1, treesPerKilometer: 0, streetscape: true } }));
+    const scene = new Scene();
+    const view = new SceneryView(scene, street, { debrisCapacity: 4 });
+    const bin = street.streetFurniture.find((item) => item.kind === 'bin')!;
+    const circle = street.circleIndexOf(bin);
+    const tile = meshes(scene, `scenery:${Math.floor(bin.x / 600)},${Math.floor(bin.z / 600)}`)[0]!;
+    const position = tile.geometry.getAttribute('position') as BufferAttribute;
+    const standing = Float32Array.from(position.array as Float32Array);
+    const knocked = new Uint8Array(street.knocked.length);
+
+    knocked[circle] = 1;
+    view.showKnocked(knocked, 1);
+
+    expect(position.updateRanges).toHaveLength(1);
+    const { start, count } = position.updateRanges[0]!;
+    expect(count).toBeGreaterThan(30);
+    const array = position.array as Float32Array;
+    // All of it squeezed to one point, where the bin stood; nothing else moved.
+    expect(Math.hypot(array[start]! - bin.x, array[start + 2]! - bin.z)).toBeLessThan(0.6);
+    for (let k = start; k < start + count; k += 3) {
+      expect([array[k], array[k + 1], array[k + 2]]).toEqual([array[start], array[start + 1], array[start + 2]]);
+    }
+    const outside = (values: ArrayLike<number>): number[] => [...Array.from(values).slice(0, start), ...Array.from(values).slice(start + count)];
+    expect(outside(array)).toEqual(outside(standing));
+
+    knocked[circle] = 0;
+    view.showKnocked(knocked, 2);
+    expect(Array.from(array)).toEqual(Array.from(standing));
+  });
+
+  it('draws the furniture and the speed signs knocked over tumbling about, each in its own look', () => {
+    const street = new DrivingWorld(
+      mapFixture({ halfSizeMeters: 600, scenery: { seed: 1, treesPerKilometer: 0, streetscape: true } }),
+    );
+    const scene = new Scene();
+    const view = new SceneryView(scene, street, { debrisCapacity: 4 });
+    const debris = new DebrisSimulation(4);
+    const drop = (kind: 'bin' | 'speedSign', ref: number): void => {
+      const shape = KNOCKABLES[kind].shape;
+      debris.launch({ kind: knockableCode(kind), ref, shape, x: 0, y: 2, z: 0, heading: 0, vx: 0, vy: 0, vz: 0, spinX: 0, spinY: 0, spinZ: 0 });
+    };
+    drop('bin', street.circleIndexOf(street.streetFurniture.find((item) => item.kind === 'bin')!));
+    const sign = street.speedSigns[0];
+    if (sign !== undefined) drop('speedSign', street.circleIndexOf(sign));
+
+    view.drawDebris(debris, 1);
+
+    const shown = meshes(scene, 'scenery:fallen:').filter((mesh) => mesh.visible);
+    expect(shown.map((mesh) => mesh.name).sort()).toEqual(
+      ['scenery:fallen:bin', ...(sign === undefined ? [] : [`scenery:fallen:speed:${sign.limitKmh}`])].sort(),
+    );
+    view.drawDebris(null, 1);
+    expect(meshes(scene, 'scenery:fallen:').some((mesh) => mesh.visible)).toBe(false);
   });
 
   it('frees everything it made', () => {

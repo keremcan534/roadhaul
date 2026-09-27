@@ -80,6 +80,33 @@ describe('CameraRig', () => {
     expect(lookAside(1)).toBeGreaterThan(-0.4);
   });
 
+  it('jolts the view in a crash, a strong jolt more than a weak one, and settles within a second', () => {
+    const pose = { x: 0, z: 0, heading: 0 };
+    const settled = (): Vector3 => {
+      const { camera, rig } = rigIn('chase');
+      for (let i = 0; i < 60; i++) rig.update(pose, AT_REST, 1 / 60);
+      return camera.position.clone();
+    };
+    const still = settled();
+    const jolted = (strength: number): number => {
+      const { camera, rig } = rigIn('chase');
+      for (let i = 0; i < 60; i++) rig.update(pose, AT_REST, 1 / 60);
+      rig.shake(strength);
+      let furthest = 0;
+      for (let i = 0; i < 12; i++) {
+        rig.update(pose, AT_REST, 1 / 60);
+        furthest = Math.max(furthest, camera.position.distanceTo(still));
+      }
+      for (let i = 0; i < 60; i++) rig.update(pose, AT_REST, 1 / 60);
+      expect(camera.position.distanceTo(still)).toBeLessThan(0.01);
+      return furthest;
+    };
+    const weak = jolted(0.1);
+    const strong = jolted(1);
+    expect(strong).toBeGreaterThan(0.1);
+    expect(strong).toBeGreaterThan(weak * 3);
+  });
+
   it('steps through every camera with the button, round to the chase camera', () => {
     const camera = new PerspectiveCamera();
     const rig = new CameraRig(camera, body);

@@ -51,6 +51,16 @@ function addWestbound(sim: TrafficSimulation, route: LaneRoute): number {
 }
 
 describe('TrafficSimulation guests', () => {
+  it('are never wrecked, however hard the truck drives into one', () => {
+    const { graph, sim } = crossing({ ...SCENE, wrecks: true });
+    const slot = sim.addGuest(GUEST_ID, CAR_TYPE, RED, 150, 1, -Math.PI / 2, laneRouteTo(graph, -150, 12, 10));
+    run(sim, lookingAway(), 0.1);
+
+    expect(sim.hit(sim.circleOwner.indexOf(slot), 30)).toBe(false);
+    expect(sim.active[slot]).toBe(1);
+    expect(sim.wrecks.count).toBe(0);
+  });
+
   it('brings a company truck into the traffic out of sight, in its own colour, on the lane it drives', () => {
     const { graph, sim } = crossing();
     const slot = addWestbound(sim, laneRouteTo(graph, -150, 12, 10));

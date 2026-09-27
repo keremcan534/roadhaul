@@ -1,4 +1,5 @@
 import type { EventReward } from '../data/definitions/EventDefinition';
+import type { KnockableKind } from '../domain/crash/knockables';
 import type { MissionDefinition } from '../data/definitions/MissionDefinition';
 import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
@@ -23,6 +24,30 @@ export interface GameEvents {
   VehicleCollided: {
     /** Speed into the obstacle, m/s. */
     readonly impactSpeedMetersPerSecond: number;
+  };
+  /**
+   * Something standing about gave way (CrashService): the truck, or debris
+   * flying into it, knocked it over, and it goes flying.
+   */
+  PropKnockedOver: {
+    readonly kind: KnockableKind;
+    /** Where it stood. */
+    readonly x: number;
+    readonly z: number;
+    /** How fast it was struck, m/s. */
+    readonly speedMetersPerSecond: number;
+    /** False when flying debris knocked it over. */
+    readonly byTruck: boolean;
+  };
+  /** The truck wrecked a car or minibus (CrashService): it goes flying off the road. */
+  VehicleWrecked: {
+    /** Where it was. */
+    readonly x: number;
+    readonly z: number;
+    /** How fast the truck drove into it, m/s. */
+    readonly speedMetersPerSecond: number;
+    /** Its paint, 0xRRGGBB. */
+    readonly color: number;
   };
   /** The active mission moved to another stage, including accepting it (previous: null). */
   MissionStateChanged: {

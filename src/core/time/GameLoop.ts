@@ -39,6 +39,12 @@ export interface GameLoopOptions {
  * The per-frame path does not allocate.
  */
 export class GameLoop {
+  /**
+   * How fast the game's time runs against real time: 1 normally, less for a
+   * moment of slow motion. The fixed step stays the same length; fewer of
+   * them run each frame, and frames pass less time.
+   */
+  timeScale = 1;
   private handle: number | null = null;
   private previousTimestampMs: number | null = null;
 
@@ -90,8 +96,9 @@ export class GameLoop {
   };
 
   private tick(timestampMs: number, frameHandle: number): void {
+    const scale = Number.isFinite(this.timeScale) ? Math.max(0, this.timeScale) : 1;
     const elapsedSeconds =
-      this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0);
+      this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0) * scale;
     this.previousTimestampMs = timestampMs;
     const deltaSeconds = Math.min(elapsedSeconds, this.options.maxFrameDeltaSeconds);
 

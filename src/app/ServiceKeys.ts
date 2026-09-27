@@ -5,6 +5,7 @@ import type { Clock } from '../core/time/Clock';
 import type { GameConfig } from '../data/config/GameConfig';
 import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
+import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
 import type { EventService } from '../systems/events/EventService';
@@ -39,6 +40,8 @@ export const ServiceKeys = Object.freeze({
   gameState: serviceKey<GameStateService>('GameStateService'),
   driving: serviceKey<DrivingService>('DrivingService'),
   traffic: serviceKey<TrafficService>('TrafficService'),
+  /** What the truck's crashes leave about: things knocked over, wrecks. */
+  crashes: serviceKey<CrashService>('CrashService'),
   weather: serviceKey<WeatherService>('WeatherService'),
   /** The game's clock, and the sun, the moon and the stars it turns (spec §39). */
   timeOfDay: serviceKey<TimeOfDayService>('TimeOfDayService'),

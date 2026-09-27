@@ -74,10 +74,16 @@ export class DrivingService {
   /** Vehicles the truck can hit besides the world's static obstacles (TrafficService). */
   private obstacles: MovingObstacles | null = null;
 
+  /**
+   * @param knockOvers Whether what gives way (lamps, bins, benches, bus
+   *   shelters, speed signs, hay bales) is knocked over by a truck driving
+   *   into it hard enough, instead of stopping it (CrashService picks it up).
+   */
   constructor(
     private readonly content: ContentCatalog,
     private readonly events: EventBus<GameEvents>,
     private readonly logger: Logger,
+    private readonly knockOvers = false,
   ) {}
 
   get isDriving(): boolean {
@@ -241,6 +247,17 @@ export class DrivingService {
   }
 
   /**
+   * Takes `speedLossMetersPerSecond` off the truck's speed, forwards or in
+   * reverse, never past a standstill: the momentum it gave to what it
+   * knocked out of its way (CrashService).
+   */
+  knockBack(speedLossMetersPerSecond: number): void {
+    const { state } = this.requireSession();
+    const loss = Math.max(0, speedLossMetersPerSecond);
+    state.speed = state.speed > 0 ? Math.max(0, state.speed - loss) : Math.min(0, state.speed + loss);
+  }
+
+  /**
    * Gets a stuck truck going again: puts it at rest on the nearest road, in
    * the right-hand lane for the way along the road closest to its heading.
    */
@@ -288,7 +305,7 @@ export class DrivingService {
     session.surface = surface;
     session.dynamics.step(state, input, surface, dt);
 
-    const impact = world.resolveCollisions(state, session.footprint, this.obstacles);
+    const impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers);
     if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }

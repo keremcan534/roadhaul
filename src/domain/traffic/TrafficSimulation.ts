@@ -1,5 +1,6 @@
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
+import { wreckableOf } from '../crash/wrecks';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
 import type { MovingObstacles } from '../world/DrivingWorld';
 import { COMFORTABLE_DECELERATION, type LaneGraph, type LanePosition } from './LaneGraph';
@@ -25,6 +26,31 @@ export interface TrafficSettings {
   readonly minSpawnDistanceMeters: number;
   /** False: no vehicles appear by themselves, only those added with addVehicle(). */
   readonly autoSpawn?: boolean;
+  /**
+   * True: a car or minibus the truck drives into hard enough is wrecked
+   * (crash/wrecks.ts) and leaves the road, noted in `wrecks`. Otherwise
+   * every vehicle the truck hits stops.
+   */
+  readonly wrecks?: boolean;
+}
+
+/** Up to this many vehicles are wrecked between two updates. */
+export const MAX_WRECKS = 4;
+
+/**
+ * The vehicles the truck wrecked since the last update(): for each, the
+ * circle the truck struck, its kind (index into `types`), its paint, and
+ * its middle, heading and speed as it gave way. Read up to `count`.
+ */
+export interface WreckRecord {
+  count: number;
+  readonly circle: Int32Array;
+  readonly type: Int32Array;
+  readonly color: Int32Array;
+  readonly x: Float64Array;
+  readonly z: Float64Array;
+  readonly heading: Float64Array;
+  readonly speed: Float64Array;
 }
 
 /** The player's truck, as traffic sees it: its rear axle, heading (radians) and speed (m/s). */
@@ -108,7 +134,8 @@ const STOP_LINE_LEADER = 3;
  * Driver Model), stop behind the truck and where a turn would cross another
  * vehicle's, overtake on the highway, go round a truck standing in their
  * lane, turn at junctions, U-turn at dead ends, and brake hard when
- * something appears close ahead. A vehicle the truck hits stops.
+ * something appears close ahead. A vehicle the truck hits stops, or, driven
+ * into hard enough, is wrecked and leaves the road (`settings.wrecks`).
  *
  * Kinematic: vehicles move along their paths and are never pushed. Only
  * `maxVehicles` exist, all within `radiusMeters` of the truck: new ones
@@ -146,6 +173,17 @@ export class TrafficSimulation implements MovingObstacles {
   readonly circleOwner: Int32Array;
   /** Vehicles brought in from outside the traffic (addGuest): the caller's id for each; -1 for the traffic's own. */
   readonly guest: Int32Array;
+  /** What the truck wrecked since the last update(). */
+  readonly wrecks: WreckRecord = {
+    count: 0,
+    circle: new Int32Array(MAX_WRECKS),
+    type: new Int32Array(MAX_WRECKS),
+    color: new Int32Array(MAX_WRECKS),
+    x: new Float64Array(MAX_WRECKS),
+    z: new Float64Array(MAX_WRECKS),
+    heading: new Float64Array(MAX_WRECKS),
+    speed: new Float64Array(MAX_WRECKS),
+  };
   private circles = 0;
   private serials = 0;
 
@@ -199,6 +237,8 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly nodeHasConflicts: Uint8Array;
   private readonly spawnCumulative: Float64Array;
   private readonly typeCumulative: Float64Array;
+  /** How fast the truck must drive into each kind (by type index) to wreck it, m/s; Infinity: never. */
+  private readonly wreckSpeed: Float64Array;
 
   private readonly truckCircleX = new Float64Array(MAX_TRUCK_CIRCLES);
   private readonly truckCircleZ = new Float64Array(MAX_TRUCK_CIRCLES);
@@ -292,6 +332,9 @@ export class TrafficSimulation implements MovingObstacles {
       total += graph.length[lane]!;
       this.spawnCumulative[index] = total;
     });
+    this.wreckSpeed = Float64Array.from(types, (type) =>
+      settings.wrecks === true ? (wreckableOf(type)?.wreckSpeed ?? Infinity) : Infinity,
+    );
     this.typeCumulative = new Float64Array(types.length);
     let weights = 0;
     types.forEach((type, index) => {
@@ -330,10 +373,24 @@ export class TrafficSimulation implements MovingObstacles {
     this.truckKnown = false;
   }
 
-  /** MovingObstacles: the truck touched circle `index`. The vehicle stops (see CRASH_WAIT_SECONDS). */
-  hit(index: number, impactSpeed: number): void {
+  /**
+   * MovingObstacles: the truck touched circle `index`, driving into it
+   * `impactSpeed` m/s fast. The vehicle stops (see CRASH_WAIT_SECONDS), or,
+   * a car or minibus of the traffic's own struck hard enough, is wrecked:
+   * noted in `wrecks` and gone, and the truck goes on through (true).
+   */
+  hit(index: number, impactSpeed: number): boolean {
     const owner = this.circleOwner[index]!;
+    if (this.active[owner] !== 1) {
+      // Wrecked through another of its circles this step.
+      return true;
+    }
+    if (impactSpeed >= this.wreckSpeed[this.type[owner]!]! && this.guest[owner]! < 0 && this.wrecks.count < MAX_WRECKS) {
+      this.wreck(owner, index);
+      return true;
+    }
     this.bumped[owner] = Math.max(this.bumped[owner]!, impactSpeed);
+    return false;
   }
 
   /**
@@ -342,6 +399,7 @@ export class TrafficSimulation implements MovingObstacles {
    * the truck moves. Allocation-free.
    */
   update(dt: number, truck: TrafficTruck, footprint: VehicleFootprint): void {
+    this.wrecks.count = 0;
     this.readTruck(truck, footprint);
     if (this.capacity === 0) {
       return;
@@ -657,6 +715,20 @@ export class TrafficSimulation implements MovingObstacles {
     this.release(i);
     this.active[i] = 0;
     this.activeCount--;
+  }
+
+  /** The truck wrecked vehicle `i` through its circle `circle`: noted in `wrecks`, and gone from the road. */
+  private wreck(i: number, circle: number): void {
+    const wrecks = this.wrecks;
+    const k = wrecks.count++;
+    wrecks.circle[k] = circle;
+    wrecks.type[k] = this.type[i]!;
+    wrecks.color[k] = this.color[i]!;
+    wrecks.x[k] = this.x[i]!;
+    wrecks.z[k] = this.z[i]!;
+    wrecks.heading[k] = this.heading[i]!;
+    wrecks.speed[k] = this.speed[i]!;
+    this.despawn(i);
   }
 
   private release(i: number): void {

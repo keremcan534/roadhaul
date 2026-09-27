@@ -99,6 +99,7 @@ Only composition code (`src/app`, `src/main.ts`) calls `resolve`. Everything els
 `EventBus<GameEvents>` (`src/core/events`) is a synchronous, typed publish/subscribe channel (spec §57). All cross-system events are declared in one map, `src/systems/GameEvents.ts`. Today it holds:
 
 - game flow and driving: `GameStateChanged`, `VehicleCollided`;
+- crashes: `PropKnockedOver`, `VehicleWrecked`;
 - missions: `MissionStateChanged`, `CargoDamaged`, `MissionCompleted`, `MissionFailed`;
 - money and the truck: `MoneyChanged`, `FuelChanged`, `Refuelled`, `VehicleDamaged`, `VehicleRepaired`;
 - the garage: `VehiclePurchased`, `ActiveVehicleChanged`, `UpgradePurchased`;
@@ -122,6 +123,7 @@ Events join as their systems arrive.
 - `fixedUpdate(step)` runs at a fixed **60 Hz** (`FixedTimestep`), 0 to 5 times per frame. Physics and game rules go here, so they behave the same at any frame rate.
 - `frameUpdate(delta, alpha)` runs once per frame. Animation and rendering go here. `alpha` interpolates visuals between fixed steps.
 - Frames longer than 0.25 s (tab switches, hitches) are clamped. At most 5 catch-up steps run per frame, so a slow phone slows the simulation down instead of spiralling. Drawn in software, the simulation may catch up further than the animation (`maxSimulationDeltaSeconds`, section 11).
+- `timeScale` runs game time slower than real time (fewer steps a frame, shorter frames): a moment of slow motion after a big crash.
 - The browser stops animation frames in background tabs, so the game pauses automatically.
 - A handler that throws stops the loop and shows the fatal error screen.
 
@@ -179,8 +181,8 @@ tilt (platform/input) ─────┘                              │
 
   Tree trunks, lamp posts, the boards' posts, hay bales, turbine towers, the cranes' legs, power poles, boulders, the grazing animals, benches, bins, shelters, billboard legs and speed signs are solid circles, filed by 20 m grid cell like the road pieces. Guard rails are walls: each piece between two posts is a line 0.2 m thick either side with rounded ends, filed by grid cell too. At the fixed step the truck moves at most about half a meter, less than a footprint circle's radius, so it cannot pass through one. Fields drive like grass.
 
-  Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two. Traffic counts too (moving obstacles): the truck takes an impact only when it drives into a vehicle, and one it rear-ends carries it along at its speed.
-- **`DrivingService`** (`src/systems/driving`) owns the truck being driven. It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. It also sets the cargo mass (a loaded truck is slower), parks the truck at a pose, and recovers a stuck truck into the right-hand lane of the nearest road. Presentation reads its state and never writes it.
+  Collisions correct the position per contact, then respond once per step to the hardest contact. A head-on hit stops the truck. A glancing one (under 20°) turns it along the obstacle, so it slides on with the speed it had along the surface instead of sticking. Angles up to 45° blend the two. Traffic counts too (moving obstacles): the truck takes an impact only when it drives into a vehicle, and one it rear-ends carries it along at its speed. Some of it gives way instead (see Crashes below).
+- **`DrivingService`** (`src/systems/driving`) owns the truck being driven, and resolves its collisions with knock-overs on when crashes are (`GameConfig.crashes.enabled`). It emits one `VehicleCollided` per crash: impacts of 1.5 m/s or more into an obstacle, not repeated while the truck stays in contact. It also sets the cargo mass (a loaded truck is slower), parks the truck at a pose, and recovers a stuck truck into the right-hand lane of the nearest road. Presentation reads its state and never writes it.
 - **Input** is device-independent (`VehicleInput`). Keyboard (arrows/WASD, Space, C), touch controls (gas, brake, the D/R gear button, camera button, and the steering wheel, which reaches full lock at a quarter turn, or left/right buttons) and tilt steering are merged every fixed step: steering adds up, pedals take the stronger press, and the gear lever is the one of the device being pressed (`combineVehicleInputs`). A drive starts in D.
 - **Tilt steering** turns the phone into the steering wheel. `TiltSteering` (pure, unit-tested) measures how far the phone has turned about the screen's axis since it was calibrated, from the accelerometer's gravity: straight ahead is how the phone is held at the start of a drive, when the screen turns and when the tilt button is tapped. Only the angle between two readings counts, so it works in any screen orientation and with browsers that report gravity with the opposite sign. Tipped back far, the angle is read against half of gravity, so it stays steady down to a phone held flat. `TiltInput` (platform) feeds it from `devicemotion` only while tilt is the picked way of steering, and asks iOS for the sensor from a tap. The way of steering, tilt sensitivity and control size are device settings, like the graphics preset.
 
@@ -206,6 +208,31 @@ NPC traffic (roadmap step 22, spec §19) is waypoint-based and kinematic: vehicl
   - `TrafficSimulation.addGuest` brings a vehicle in as traffic appears: out of sight, within the traffic's reach, and with room on the lane. It comes in as a lorry in its own colour; with every slot taken, a vehicle of the traffic's own out of sight makes room. At each junction the guest takes the way with the least left to go. Once there it drives on, and leaves the road out of sight.
   - `CompanyTraffic` (`src/systems/traffic`) looks four times a second for company trucks the maps put within the traffic's reach (`CompanyTruckMarker`, from `FleetService` and `RivalService`). A fleet truck comes in its paint, a rival's in the company's colour. While one drives in the traffic, the maps show it where it is (`placeInTraffic`). One that has left comes back only once it has been out of reach, so it never shows twice.
   - The rival racing the company for a tender stays on the maps: its pace is the race's.
+
+### Crashes
+
+What stands about gives way to a truck driven into it hard enough, and so do the cars it runs down; they go flying, tumble and lie about a while (the player asked for funny, satisfying crashes).
+
+```text
+DrivingService.step ─► DrivingWorld.resolveCollisions(…, knockOvers)
+                         ├─ a lamp, bale, bench, bin, shelter or speed sign struck hard enough: knocked over, noted in `knocks`
+                         └─ a traffic circle: TrafficSimulation.hit ─► a car or minibus wrecked: gone, noted in `wrecks`
+CrashService.update ─► launches each into DebrisSimulation (throws.ts), slows the truck (knockBack), VehicleCollided
+                    ─► steps the debris: bounces off trees and buildings, knocks over what it flies into
+                    ─► the truck shoves the debris; what has lain long enough out of sight stands again
+views ─► knocked things leave their places; debris and wrecks drawn tumbling; bits, sparks, dust, shake, sound
+```
+
+- **What gives way** (`src/domain/crash/knockables.ts`, `wrecks.ts`) is data per kind: the knock it takes (a bin 1.5 m/s, a lamp post 5), its box and mass as debris, how it flies, topples and tumbles, and the share of a crash the truck takes (none for a bin, 0.3 for a lamp post, 0.45 for a car). Trees, walls, posts carrying wires, boulders and animals stay solid, and so do lorries, buses and the company trucks in the traffic.
+- **`DrivingWorld`** files each solid circle's kind (`circleKind`). Struck hard enough with knock-overs on, a circle is knocked over (`knocked`, `knockVersion`) and the truck drives on through it. `MovingObstacles.hit` returns whether a vehicle gave way; `TrafficSimulation` wrecks a car or minibus of its own struck at 8 m/s or more (9 for a minibus). A wreck leaves the road at once, noted with its kind, paint and pose.
+- **`DebrisSimulation`** is a small rigid-body simulation of boxes, deterministic and allocation-free, at the fixed step. The ground pushes back at the middle of the corners that dig in (bouncing some), friction acts at each of them, so a box lands on a corner and tips, rolls onto a face and sleeps. Over the water there is no ground: it sinks (`DrivingWorld.hasGround`, bridges being ground). Low down, three circles along a body's longest axis strike the solid things (`DrivingWorld.collideDebris`) and the body spins off where it strikes; what gives way is knocked over by debris as hard, so a wreck skidding into a shelter takes it with it. No body strikes another. The truck shoves what it drives into. When full, the oldest body makes room, a resting one first.
+- **`CrashService`** (`src/systems/crash`) runs after the truck each fixed step. It sends off each thing and wreck (`throws.ts`: away from what struck it, dragged along by a glancing blow, popped up and toppling, `crashes.throwFactor` harder than physics for fun), slows the truck by the momentum it gave, and makes it take a crash of the thing's share (`VehicleCollided`: damage to the truck and the cargo, the crash sound). It emits `PropKnockedOver` and `VehicleWrecked`. What was knocked over stands again, and wrecks are cleared away, once they have lain `crashes.restoreAfterSeconds` and are out of sight (220 m). Nothing of it is saved: a new drive starts whole.
+- **The views** hide what was knocked over and draw the debris:
+  - lamps and bales are instanced: their copies shrink to nothing. A lamp knocked over lights nothing (`StreetLampView.dark`, read by `LampLighting` and `WetReflections`);
+  - the benches, bins, shelters and speed signs are merged into the scenery's tiles: their vertices are squeezed to a point, and only those are uploaded (`addUpdateRange`), then put back;
+  - each view draws its own things among the debris (`DebrisInstances`, a draw call per look while any lies about), and `TrafficView` the wrecks with the traffic's own models, squashed and darkened;
+  - `CrashEffects` throws bits of what was struck, sparks off metal and a puff of dust; the camera jolts (`CameraRig.shake`), each kind sounds its own (`GameAudio.knock`, `wreck`), and a car wrecked at 45 km/h or more is seen in a moment of slow motion (`SlowMotion` sets `GameLoop.timeScale`);
+  - the towns' people hop out of the truck's way (`PedestrianView`): nothing collides with them.
 
 ### Navigation
 

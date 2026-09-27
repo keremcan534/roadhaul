@@ -58,6 +58,15 @@ const SPEED_WIDENING_DEGREES = 6;
 const SPEED_WIDENING_FROM = 8.3;
 const SPEED_WIDENING_TO = 25;
 const SPEED_WIDENING_RATE = 1.5;
+/**
+ * A crash jolts the view (shake): the camera trembles this far at a jolt of
+ * 1 (meters; inside the cab a fifth of it), at these rates (rad/s), dying
+ * away at this rate (1/s). Jolts never add up past SHAKE_MAX.
+ */
+const SHAKE_METERS = 0.35;
+const SHAKE_RATES = [37, 43, 31] as const;
+const SHAKE_DECAY = 5;
+const SHAKE_MAX = 1.5;
 /** How far each camera can be turned by dragging, radians either way (yaw, pitch). */
 const LOOK_LIMITS: Readonly<Record<CameraMode, readonly [number, number]>> = {
   chase: [Math.PI, 0.35],
@@ -129,6 +138,9 @@ export class CameraRig {
   /** The share of the screen a panel covers at the right and at the bottom (frameBeside). */
   private coveredRight = 0;
   private coveredBottom = 0;
+  /** How hard the view shakes now (shake), and the shake's clock. */
+  private shakeLevel = 0;
+  private shakeTime = 0;
 
   constructor(
     private readonly camera: PerspectiveCamera,
@@ -136,6 +148,15 @@ export class CameraRig {
   ) {
     this.cab = cabGeometry(body);
     this.applyFieldOfView();
+  }
+
+  /**
+   * Jolts the view `strength` hard (1: a car wrecked at speed; a bin is a
+   * nudge): the camera trembles and settles within half a second. Stronger
+   * jolts take over weaker ones still shaking. Not behind the menus.
+   */
+  shake(strength: number): void {
+    this.shakeLevel = Math.min(SHAKE_MAX, Math.max(this.shakeLevel, Number.isFinite(strength) ? strength : 0));
   }
 
   /** Follows another truck (the garage swapped it): a bigger one is watched from further back. */
@@ -315,7 +336,23 @@ export class CameraRig {
     this.widenForSpeed(motion.speed, deltaSeconds);
     this.snapNextFrame = false;
     this.camera.position.copy(this.position);
+    this.addShake(deltaSeconds);
     this.camera.lookAt(this.target);
+  }
+
+  /** Trembles the camera (not its aim) by the jolt still shaking, and lets it die away. Allocation-free. */
+  private addShake(deltaSeconds: number): void {
+    if (this.shakeLevel < 0.002 || this.showcaseEnabled) {
+      this.shakeLevel = 0;
+      return;
+    }
+    this.shakeTime += deltaSeconds;
+    const reach = this.shakeLevel * SHAKE_METERS * (this.mode === 'cabin' || this.mode === 'hood' ? 0.2 : 1);
+    const t = this.shakeTime;
+    this.camera.position.x += Math.sin(t * SHAKE_RATES[0]) * reach;
+    this.camera.position.y += Math.sin(t * SHAKE_RATES[1] + 1.3) * reach * 0.7;
+    this.camera.position.z += Math.sin(t * SHAKE_RATES[2] + 2.1) * reach;
+    this.shakeLevel *= Math.exp(-SHAKE_DECAY * deltaSeconds);
   }
 
   /** Eases the view wider with speed, for the cameras looking ahead. Allocation-free. */
