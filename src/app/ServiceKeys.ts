@@ -5,6 +5,7 @@ import type { Clock } from '../core/time/Clock';
 import type { GameConfig } from '../data/config/GameConfig';
 import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
+import type { FacilityService } from '../systems/company/FacilityService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
@@ -55,6 +56,8 @@ export const ServiceKeys = Object.freeze({
   navigation: serviceKey<NavigationService>('NavigationService'),
   economy: serviceKey<EconomyService>('EconomyService'),
   company: serviceKey<CompanyService>('CompanyService'),
+  /** What the company builds for itself: a workshop, a fuel depot, a truck yard… */
+  facilities: serviceKey<FacilityService>('FacilityService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),

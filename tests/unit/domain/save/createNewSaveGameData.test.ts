@@ -50,6 +50,7 @@ describe('createNewSaveGameData', () => {
         tendersPosted: 0,
         jobsPlanned: 0,
       },
+      facilities: { levels: {} },
     });
   });
 

@@ -3,6 +3,7 @@ import type { Logger } from '../../core/logging/Logger';
 import { err, ok, type Result } from '../../core/Result';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { Credits, Fraction } from '../../data/units';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import { fuelCost, repairCost } from '../../domain/economy/costs';
 import { CurrencyWallet, type SpendError } from '../../domain/economy/CurrencyWallet';
 import type { GameEvents } from '../GameEvents';
@@ -22,6 +23,7 @@ export const MONEY_REASONS = [
   'tender',
   'campaign',
   'buyout',
+  'facility',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 
@@ -38,6 +40,8 @@ export class EconomyService {
     private readonly events: EventBus<GameEvents>,
     private readonly config: GameConfig['economy'],
     private readonly logger: Logger,
+    /** The company's facilities: a fuel depot and a workshop take a share off diesel and repairs. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {
     this.unsubscribe = events.on('MissionCompleted', ({ reward }) => this.earn(reward.total, 'delivery'));
   }
@@ -76,20 +80,28 @@ export class EconomyService {
     return ok(this.wallet.balance);
   }
 
+  /** Price of a litre of diesel for the company, at the pump or brought out to the road (a fuel depot takes a share off). */
+  fuelPricePerLiter(roadside = false): number {
+    return (
+      this.config.fuelPricePerLiter *
+      (roadside ? this.config.roadsideFuelPriceFactor : 1) *
+      (1 - this.perks.perks.fuelDiscount)
+    );
+  }
+
   /** Price of `liters` of fuel, at the pump or brought out to the road. */
   fuelCost(liters: number, roadside = false): Credits {
-    const price = this.config.fuelPricePerLiter * (roadside ? this.config.roadsideFuelPriceFactor : 1);
-    return fuelCost(liters, price);
+    return fuelCost(liters, this.fuelPricePerLiter(roadside));
   }
 
   /** Litres a budget buys, at the pump or on the road (whole litres of change never exist: rounded down). */
   litersAffordable(budget: Credits, roadside = false): number {
-    const price = this.config.fuelPricePerLiter * (roadside ? this.config.roadsideFuelPriceFactor : 1);
-    return Math.max(0, Math.floor(budget / price));
+    return Math.max(0, Math.floor(budget / this.fuelPricePerLiter(roadside) + 1e-9));
   }
 
+  /** What repairing `damage` (0..1) costs the company (a workshop takes a share off). */
   repairCost(damage: Fraction): Credits {
-    return repairCost(damage, this.config.fullRepairCost);
+    return repairCost(damage, this.config.fullRepairCost * (1 - this.perks.perks.repairDiscount));
   }
 
   dispose(): void {

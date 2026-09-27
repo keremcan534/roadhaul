@@ -21,6 +21,7 @@ import {
   type MissionInstance,
   type MissionState,
 } from '../../domain/missions/MissionInstance';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import { deliveryReputation, deliveryXp, FAILURE_REPUTATION_LOSS } from '../../domain/missions/missionProgress';
 import { calculateMissionReward, missionBasePay } from '../../domain/missions/missionReward';
 import type { ActiveMissionSaveData } from '../../domain/save/SaveGameData';
@@ -98,6 +99,8 @@ export class MissionService {
     private readonly logger: Logger,
     /** The contracts of the day, besides the game's own; none without it. */
     private readonly daily: ContractSource | null = null,
+    /** The company's facilities: a training centre brings more experience from a delivery. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {
     this.unsubscribeCollisions = events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) =>
       this.damageCargo(impactSpeedMetersPerSecond),
@@ -364,7 +367,7 @@ export class MissionService {
       cargoDamage: mission.cargoDamage,
       damageTolerance: definition.damageTolerance,
     });
-    const xp = deliveryXp(reward, definition.difficulty);
+    const xp = Math.round(deliveryXp(reward, definition.difficulty) * (1 + this.perks.perks.xpBonus));
     const reputation = deliveryReputation(reward, mission.cargoDamage, definition.damageTolerance);
     const previous = mission.state;
     transitionMission(mission, 'completed');

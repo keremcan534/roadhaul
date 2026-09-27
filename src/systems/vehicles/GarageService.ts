@@ -5,6 +5,7 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { PaintDefinition } from '../../data/definitions/PaintDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
 import { formatVehicleInstanceId } from '../../domain/save/createNewSaveGameData';
 import type { GarageSaveData } from '../../domain/save/SaveGameData';
@@ -105,12 +106,14 @@ export class GarageService {
     private readonly logger: Logger,
     /** GameConfig.fleet.garageSlots: how many trucks the company may own at each level, level 1 first. */
     private readonly garageSlots: readonly number[],
+    /** The company's facilities: a truck yard holds more. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {}
 
-  /** How many trucks the garage holds at the company's level. */
+  /** How many trucks the garage holds at the company's level, and in the yard it has built. */
   get capacity(): number {
     const slots = this.garageSlots;
-    return slots[Math.min(slots.length, Math.max(1, this.company.level)) - 1] ?? 1;
+    return (slots[Math.min(slots.length, Math.max(1, this.company.level)) - 1] ?? 1) + this.perks.perks.garageSlots;
   }
 
   /** The garage has room for another truck. */

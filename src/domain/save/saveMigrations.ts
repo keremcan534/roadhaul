@@ -120,6 +120,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       },
     }),
   },
+  {
+    // v11 adds the facilities: companies from older builds have built none yet.
+    from: 10,
+    migrate: (save) => ({ ...save, version: 11, facilities: { levels: {} } }),
+  },
 ];
 
 function isJsonObject(value: unknown): value is SaveJson {

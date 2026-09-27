@@ -59,6 +59,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     tutorial: { step: 'takeContract' },
     fleet: { drivers: [], jobsPlanned: 0 },
     rivals: newRivalsSaveData(),
+    facilities: { levels: {} },
   };
 }
 

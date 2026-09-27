@@ -9,6 +9,7 @@ import { vehicleCanHaul, type MissionDefinition } from '../../data/definitions/M
 import { PLAYER_COMPANY_ID, type RivalCompanyDefinition } from '../../data/definitions/RivalCompanyDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
 import { fleetJobProfit, fleetJobSeed, planFleetJob, type FleetDriver, type FleetJob, type FleetJobRules } from '../../domain/fleet/fleetJobs';
 import { campaignTarget, nextLeader, rivalDestination } from '../../domain/rivals/rivalMoves';
@@ -186,6 +187,8 @@ export class RivalService {
     fuelConfig: GameConfig['fuel'],
     loadingSeconds: number,
     private readonly logger: Logger,
+    /** The company's facilities: a marketing office wins its deliveries more standing. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {
     this.board = new StandingBoard(
       content.cities.all.map((city) => city.id),
@@ -216,7 +219,7 @@ export class RivalService {
       events.on('MissionCompleted', (delivery) => this.countDelivery(delivery)),
       events.on('MissionFailed', ({ missionId }) => this.decideRace(missionId, false)),
       events.on('FleetJobCompleted', ({ originCityId, destinationCityId, away }) =>
-        this.win(PLAYER_COMPANY_ID, originCityId, destinationCityId, this.config.fleetJobPoints, away),
+        this.win(PLAYER_COMPANY_ID, originCityId, destinationCityId, this.companyPoints(this.config.fleetJobPoints), away),
       ),
     ];
   }
@@ -755,7 +758,7 @@ export class RivalService {
         this.events.emit('LeaderBonusPaid', { missionId, cityId: mission.originCityId, bonus });
       }
     }
-    this.win(PLAYER_COMPANY_ID, mission.originCityId, mission.destinationCityId, this.config.deliveryPoints, false);
+    this.win(PLAYER_COMPANY_ID, mission.originCityId, mission.destinationCityId, this.companyPoints(this.config.deliveryPoints), false);
     const race = this.race;
     if (race !== null && race.contract.id === missionId) {
       this.decideRace(missionId, delivery.deliverySeconds <= race.rivalSeconds);
@@ -783,6 +786,11 @@ export class RivalService {
     this.addNews({ kind: 'tender', companyId: race.rivalId, won, atMs: this.clock.now() });
     this.events.emit('TenderDecided', { missionId, rivalId: race.rivalId, won, prize: race.prize });
     this.win(won ? PLAYER_COMPANY_ID : race.rivalId, originCityId, destinationCityId, this.config.tenderPoints, false);
+  }
+
+  /** The standing a delivery of the company's own wins, `points` for anyone's: more with a marketing office. */
+  private companyPoints(points: number): number {
+    return points * (1 + this.perks.perks.marketShareBonus);
   }
 
   /** `companyId` wins `points` of standing in both cities of a delivery. */

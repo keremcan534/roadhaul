@@ -130,6 +130,12 @@ export interface GameEvents {
     readonly level: number;
     readonly cost: Credits;
   };
+  /** A facility was built to its next level for the whole company (FacilityService). */
+  FacilityBuilt: {
+    readonly facilityId: string;
+    readonly level: number;
+    readonly cost: Credits;
+  };
   /** XP or reputation changed. */
   CompanyProgressed: {
     readonly xp: number;
