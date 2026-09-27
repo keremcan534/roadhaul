@@ -23,5 +23,9 @@ export default defineConfig({
   test: {
     include: ['tests/unit/**/*.test.ts', 'tests/architecture/**/*.test.ts'],
     environment: 'node',
+    // A test that boots the game builds its world, grown country and all: up to a second here, and
+    // over twice that on a busy CI runner, three times in the tests that save and continue. Vitest's
+    // 5 s default leaves those too little room; a test that hangs still fails.
+    testTimeout: 15_000,
   },
 });

@@ -579,19 +579,16 @@ describe('DrivingWorld', () => {
 
     it('keep clear of turning circles', () => {
       expect(forest.turningCircles.length).toBeGreaterThan(0);
-      for (const tree of forest.trees) {
-        for (const circle of forest.turningCircles) {
-          expect(Math.hypot(tree.x - circle.x, tree.z - circle.z)).toBeGreaterThan(circle.radiusMeters + 3);
-        }
-      }
+      // Some 14,000 trees by some 70 circles: one expectation for them all, not one per pair.
+      const tooClose = forest.trees.filter((tree) =>
+        forest.turningCircles.some((circle) => Math.hypot(tree.x - circle.x, tree.z - circle.z) <= circle.radiusMeters + 3),
+      );
+      expect(tooClose).toEqual([]);
     });
 
     it('keep clear of depot yards, so trucks can manoeuvre there', () => {
-      for (const tree of forest.trees) {
-        for (const depot of forest.depots) {
-          expect(rectangleContains(depot.yard, tree.x, tree.z, 5.9)).toBe(false);
-        }
-      }
+      const inYards = forest.trees.filter((tree) => forest.depots.some((depot) => rectangleContains(depot.yard, tree.x, tree.z, 5.9)));
+      expect(inYards).toEqual([]);
     });
 
     it('are solid', () => {
