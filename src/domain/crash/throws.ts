@@ -19,9 +19,9 @@ const KNOCK_RESTITUTION = 0.3;
 /** A thing struck a glancing blow is dragged along at this share of the truck's speed past it. */
 const GLANCE_DRAG = 0.4;
 /** A wreck flies up at this share of the speed it is knocked with… */
-const WRECK_POP = 0.18;
+const WRECK_POP = 0.22;
 /** …topples away at this many rad/s per m/s of it (a car rolls over), and yaws at up to this many. */
-const WRECK_TOPPLE = 0.06;
+const WRECK_TOPPLE = 0.09;
 const WRECK_YAW = 0.08;
 
 /** The truck as it knocks something: its mass, and its velocity (m/s, world). */
