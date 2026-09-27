@@ -81,6 +81,13 @@ const HIDDEN_BEHIND_METERS = 20;
 const GUEST_LOCATE_METERS = 15;
 const SPAWN_SPACING_METERS = 30;
 const SPAWN_ATTEMPTS_PER_STEP = 6;
+/**
+ * Traffic appears on the lanes within the truck's reach, listed again
+ * whenever the truck crosses into another square this big, meters: on a map
+ * of many roads, a place picked at random from them all would seldom be
+ * near it.
+ */
+const NEAR_CELL_METERS = 100;
 /** When traffic starts (or the truck is moved), the roads fill at once, from this close. */
 const FILL_ATTEMPTS = 400;
 const FILL_MIN_DISTANCE_METERS = 60;
@@ -235,7 +242,15 @@ export class TrafficSimulation implements MovingObstacles {
   /** Seconds until the truck reaches each junction; Infinity when it is not heading there. */
   private readonly truckEta: Float64Array;
   private readonly nodeHasConflicts: Uint8Array;
-  private readonly spawnCumulative: Float64Array;
+  /** Each spawn lane's bounds: minX, maxX, minZ, maxZ. */
+  private readonly spawnBounds: Float64Array;
+  /** The spawn lanes near the truck (by index into graph.spawnLanes), their weights summed up to each, nearCount of them. */
+  private readonly nearLanes: Int32Array;
+  private readonly nearCumulative: Float64Array;
+  private nearCount = 0;
+  /** The square (NEAR_CELL_METERS) the truck was in when they were listed. */
+  private nearCellX = Number.NaN;
+  private nearCellZ = Number.NaN;
   private readonly typeCumulative: Float64Array;
   /** How fast the truck must drive into each kind (by type index) to wreck it, m/s; Infinity: never. */
   private readonly wreckSpeed: Float64Array;
@@ -326,12 +341,23 @@ export class TrafficSimulation implements MovingObstacles {
         this.nodeHasConflicts[graph.node[link]!] = 1;
       }
     }
-    this.spawnCumulative = new Float64Array(graph.spawnLanes.length);
-    let total = 0;
+    const spawnLanes = graph.spawnLanes.length;
+    this.spawnBounds = new Float64Array(spawnLanes * 4);
     graph.spawnLanes.forEach((lane, index) => {
-      total += graph.length[lane]!;
-      this.spawnCumulative[index] = total;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      for (let k = graph.pointStart[lane]!; k < graph.pointStart[lane + 1]!; k++) {
+        minX = Math.min(minX, graph.pointX[k]!);
+        maxX = Math.max(maxX, graph.pointX[k]!);
+        minZ = Math.min(minZ, graph.pointZ[k]!);
+        maxZ = Math.max(maxZ, graph.pointZ[k]!);
+      }
+      this.spawnBounds.set([minX, maxX, minZ, maxZ], index * 4);
     });
+    this.nearLanes = new Int32Array(spawnLanes);
+    this.nearCumulative = new Float64Array(spawnLanes);
     this.wreckSpeed = Float64Array.from(types, (type) =>
       settings.wrecks === true ? (wreckableOf(type)?.wreckSpeed ?? Infinity) : Infinity,
     );
@@ -575,13 +601,55 @@ export class TrafficSimulation implements MovingObstacles {
     }
   }
 
+  /** Lists the spawn lanes within reach of the truck, with their weights summed, when it has moved to another square. */
+  private listNearLanes(): void {
+    const cellX = Math.floor(this.truckX / NEAR_CELL_METERS);
+    const cellZ = Math.floor(this.truckZ / NEAR_CELL_METERS);
+    if (cellX === this.nearCellX && cellZ === this.nearCellZ) {
+      return;
+    }
+    this.nearCellX = cellX;
+    this.nearCellZ = cellZ;
+    // Anywhere in the square, the lanes within the spawn radius of the truck are among these.
+    const reach = this.settings.radiusMeters + NEAR_CELL_METERS * Math.SQRT2;
+    const bounds = this.spawnBounds;
+    const weights = this.graph.spawnWeights;
+    let total = 0;
+    let count = 0;
+    for (let n = 0; n < weights.length; n++) {
+      const dx = Math.max(bounds[n * 4]! - this.truckX, 0, this.truckX - bounds[n * 4 + 1]!);
+      const dz = Math.max(bounds[n * 4 + 2]! - this.truckZ, 0, this.truckZ - bounds[n * 4 + 3]!);
+      if (dx * dx + dz * dz <= reach * reach) {
+        total += weights[n]!;
+        this.nearLanes[count] = n;
+        this.nearCumulative[count] = total;
+        count++;
+      }
+    }
+    this.nearCount = count;
+  }
+
   private trySpawn(filling: boolean): boolean {
     const graph = this.graph;
-    const lanes = graph.spawnLanes;
-    const pick = this.random.next() * this.spawnCumulative[lanes.length - 1]!;
-    let index = 0;
-    while (index < lanes.length - 1 && this.spawnCumulative[index]! < pick) index++;
-    const lane = lanes[index]!;
+    this.listNearLanes();
+    const count = this.nearCount;
+    if (count === 0) {
+      return false;
+    }
+    const cumulative = this.nearCumulative;
+    const pick = this.random.next() * cumulative[count - 1]!;
+    // The first lane whose running total reaches the pick.
+    let low = 0;
+    let high = count - 1;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (cumulative[middle]! < pick) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    const lane = graph.spawnLanes[this.nearLanes[low]!]!;
     const length = graph.length[lane]!;
     const s = this.random.range(10, Math.max(10, length - 10));
     const typeIndex = this.pickType();

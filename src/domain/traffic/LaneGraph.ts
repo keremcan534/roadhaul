@@ -36,8 +36,15 @@ const CONFLICT_DISTANCE_METERS = 4.5;
 const TURN_POINT_SPACING_METERS = 1;
 /** Turns that keep to the same road are more likely than turns off it… */
 const SAME_ROAD_WEIGHT = 1.6;
-/** …and turns into a dead-end street are rare. */
+/** …and turns into a dead-end street are rare… */
 const DEAD_END_WEIGHT = 0.3;
+/**
+ * …as are turns off a road into the lanes off it (sideRoads.ts). Traffic
+ * appears on the lanes this much less often, for their length, than on the
+ * roads: quiet country lanes.
+ */
+const LANE_TURN_WEIGHT = 0.25;
+const LANE_SPAWN_WEIGHT = 0.15;
 
 interface NodeBuild {
   readonly x: number;
@@ -149,12 +156,14 @@ export class LaneGraph {
   readonly nodeRadius: Float64Array;
   /** Lanes where traffic may appear: every rightmost lane, by index. */
   readonly spawnLanes: Int32Array;
+  /** How likely traffic appears on each of spawnLanes: its length, less on the country lanes. */
+  readonly spawnWeights: Float64Array;
 
   constructor(world: DrivingWorld, speedLimitsMetersPerSecond: Readonly<Record<RoadKind, number>>) {
     const nodes = buildNodes(world);
     const links: LinkBuild[] = [];
     const laneIds = buildLanes(world, nodes, speedLimitsMetersPerSecond, links);
-    buildTurns(nodes, laneIds, links);
+    buildTurns(nodes, laneIds, links, world);
 
     const count = links.length;
     this.linkCount = count;
@@ -254,6 +263,10 @@ export class LaneGraph {
     this.nodeRadius = Float64Array.from(nodes, (node) => node.radius);
     this.spawnLanes = Int32Array.from(
       links.flatMap((link, index) => (link.kind === LANE && link.laneIndex === 0 ? [index] : [])),
+    );
+    this.spawnWeights = Float64Array.from(
+      this.spawnLanes,
+      (lane) => this.length[lane]! * (world.roads[links[lane]!.road]!.kind === 'lane' ? LANE_SPAWN_WEIGHT : 1),
     );
     this.computeAdvisorySpeeds();
   }
@@ -601,7 +614,8 @@ function sampleFrame(road: RoadPath, k: number): [number, number, number, number
 }
 
 /** Turns across every junction and U-turns at every dead end. */
-function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], links: LinkBuild[]): void {
+function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], links: LinkBuild[], world: DrivingWorld): void {
+  const isCountryLane = (link: LinkBuild): boolean => world.roads[link.road]!.kind === 'lane';
   const lanes = laneIds.map((id) => ({ id, link: links[id]! }));
   nodes.forEach((node, nodeIndex) => {
     const incoming = lanes.filter(({ link }) => link.endNode === nodeIndex);
@@ -629,7 +643,10 @@ function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], lin
           laneOffset: 0,
           from: into.id,
           to: out.id,
-          weight: (into.link.road === out.link.road ? SAME_ROAD_WEIGHT : 1) * (leadsToDeadEnd ? DEAD_END_WEIGHT : 1),
+          weight:
+            (into.link.road === out.link.road ? SAME_ROAD_WEIGHT : 1) *
+            (leadsToDeadEnd ? DEAD_END_WEIGHT : 1) *
+            (isCountryLane(out.link) && !isCountryLane(into.link) ? LANE_TURN_WEIGHT : 1),
         });
       }
     }

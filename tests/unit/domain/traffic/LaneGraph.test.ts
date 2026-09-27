@@ -30,6 +30,41 @@ describe('LaneGraph', () => {
     expect(graph.speedLimit[north]).toBe(TEST_SPEED_LIMITS.street);
   });
 
+  it('sends traffic down the country lanes, and has it appear on them, far less often than on the roads', () => {
+    // A street with a country lane off it at the middle, and the street on past it.
+    const world = roadWorld([
+      roadFixture('main', 'street', 10, [
+        [0, -300],
+        [0, 0],
+        [0, 300],
+      ]),
+      roadFixture('side', 'lane', 5.5, [
+        [0, 0],
+        [150, 0],
+        [300, 0],
+      ]),
+    ]);
+    const graph = laneGraphOf(world);
+    const north = laneAt(graph, 0, -100, 0);
+    const turnWeight = (to: number): number => {
+      for (let k = graph.successorStart[north]!; k < graph.successorStart[north + 1]!; k++) {
+        if (graph.turnTo[graph.successors[k]!] === to) {
+          return graph.successorWeights[k]!;
+        }
+      }
+      return Number.NaN;
+    };
+    const onwards = laneAt(graph, 0, 100, 0);
+    const intoLane = laneAt(graph, 100, 0, 90);
+    // Straight on along the street, weighed as a turn that keeps to its road; into the lane, a quarter of a plain turn.
+    expect(turnWeight(onwards)).toBeGreaterThan(turnWeight(intoLane) * 4);
+    expect(turnWeight(intoLane)).toBeCloseTo(0.25 * 0.3, 9);
+
+    const weightOf = (lane: number): number => graph.spawnWeights[graph.spawnLanes.indexOf(lane)]!;
+    expect(weightOf(onwards)).toBeCloseTo(graph.length[onwards]!, 9);
+    expect(weightOf(intoLane)).toBeCloseTo(graph.length[intoLane]! * 0.15, 9);
+  });
+
   it('turns traffic round in the turning circle at each dead end, inside the paved circle', () => {
     const world = straightStreet();
     const graph = laneGraphOf(world);
@@ -288,9 +323,14 @@ describe('LaneGraph', () => {
       expect(reachableFrom(0, false).size).toBe(graph.linkCount);
     });
 
-    it('has a turning circle at the only dead end, the harbour road\'s at the quay', () => {
-      // The high street goes on south as the country road to Copperdale.
-      expect(world.turningCircles.map((circle) => world.roads[circle.roadIndex]!.id)).toEqual(['a_harbour_road']);
+    it('turns traffic round at the harbour road\'s end at the quay, and at the ends of the country lanes and village streets', () => {
+      const own = new Set(GAME_CONTENT.maps[0]!.roads.map((road) => road.id));
+      const ends = world.turningCircles.map((circle) => world.roads[circle.roadIndex]!);
+      // The high street goes on south as the country road to Copperdale: of the map's own roads, only the harbour road ends.
+      expect(ends.filter((road) => own.has(road.id)).map((road) => road.id)).toEqual(['a_harbour_road']);
+      for (const road of ends.filter((candidate) => !own.has(candidate.id))) {
+        expect(road.kind === 'lane' || road.id.endsWith('_street'), road.id).toBe(true);
+      }
     });
 
     it('keeps lanes and turns joined without gaps', () => {
