@@ -171,12 +171,14 @@ export class CrashService {
     this.events.emit('VehicleWrecked', { x: vehicle.x, z: vehicle.z, speedMetersPerSecond: into, color: wrecks.color[k]! });
   }
 
-  /** The truck, as it strikes: its mass (with its cargo) and velocity, into `striker`. */
+  /** The truck, as it strikes: its mass (with its cargo) and velocity (its slide too), into `striker`. */
   private truckStriker(): void {
     const state = this.driving.vehicle;
+    const sin = Math.sin(state.heading);
+    const cos = Math.cos(state.heading);
     this.striker.massKg = this.driving.totalMassKg;
-    this.striker.vx = Math.sin(state.heading) * state.speed;
-    this.striker.vz = Math.cos(state.heading) * state.speed;
+    this.striker.vx = sin * state.speed + cos * state.slipSpeed;
+    this.striker.vz = cos * state.speed - sin * state.slipSpeed;
   }
 
   /**
@@ -200,8 +202,11 @@ export class CrashService {
     const { offsets, radius } = this.driving.footprint;
     const sin = Math.sin(state.heading);
     const cos = Math.cos(state.heading);
+    // Its velocity, its slide too.
+    const vx = sin * state.speed + cos * state.slipSpeed;
+    const vz = cos * state.speed - sin * state.slipSpeed;
     for (let i = 0; i < offsets.length; i++) {
-      debris.shove(state.x + sin * offsets[i]!, state.z + cos * offsets[i]!, radius, sin * state.speed, cos * state.speed);
+      debris.shove(state.x + sin * offsets[i]!, state.z + cos * offsets[i]!, radius, vx, vz);
     }
   }
 
