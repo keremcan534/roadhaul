@@ -39,6 +39,7 @@ import type { PixelRect } from '../textures/drawing';
 import { PROP_ATLAS, PROP_ATLAS_HEIGHT, PROP_ATLAS_WIDTH, SPEED_LIMIT_FACES, pavingImage, propAtlasImage } from '../textures/propImages';
 import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
+import { FarCulling } from './worldTiles';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
 const TILE_METERS = 600;
@@ -126,6 +127,8 @@ export class SceneryView {
     readonly members: readonly number[];
   }[];
   private readonly tileCount: number;
+  /** The tiles, hidden while far from the camera (showAround). */
+  private readonly culling = new FarCulling();
   private time = 0;
   /**
    * What can be knocked over among the merged props: each one's circle in
@@ -212,6 +215,7 @@ export class SceneryView {
       mesh.name = `scenery:${key}`;
       mesh.castShadow = castShadows;
       this.root.add(mesh);
+      this.culling.add(mesh);
       counts.forEach((count, index) => {
         if (circles[index]! >= 0) {
           this.knockCircles.push(circles[index]!);
@@ -255,6 +259,7 @@ export class SceneryView {
         const mesh = new Mesh(this.track(mergeParts(parts)), pavingMaterial);
         mesh.name = `scenery:pavement:${key}`;
         this.root.add(mesh);
+        this.culling.add(mesh);
       }
     }
     const wires = wireSegments(world.powerLines);
@@ -283,6 +288,11 @@ export class SceneryView {
   /** The drawing buffer's size in pixels, so the wires keep at least a pixel's width. Call on resize. */
   setViewport(widthPixels: number, heightPixels: number): void {
     this.resolution.value.set(Math.max(1, widthPixels), Math.max(1, heightPixels));
+  }
+
+  /** Shows the tiles near (x, z), the camera, and hides the ones lost in the haze (FAR_CULL_METERS). Allocation-free. */
+  showAround(x: number, z: number): void {
+    this.culling.update(x, z);
   }
 
   /** Lets the animals graze on for `deltaSeconds` (0 holds them still). Allocation-free. */

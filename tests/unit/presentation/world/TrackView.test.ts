@@ -1,4 +1,5 @@
 import {
+  Box3,
   Color,
   Frustum,
   InstancedMesh,
@@ -19,6 +20,7 @@ import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { SeasonShading } from '../../../../src/presentation/world/SeasonShading';
 import { TrackView } from '../../../../src/presentation/world/TrackView';
+import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
@@ -34,34 +36,66 @@ function isFacade(object: Object3D): object is Mesh {
 }
 
 describe('TrackView', () => {
-  it('draws the ground, roads and buildings in a handful of draw calls, and the forest in a few per tile', () => {
+  it('draws the ground and the towns in a handful of draw calls, and the forest and the country in a few per tile', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     const forest = scene.getObjectByName('forest')!;
-    const tiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 600)},${Math.floor(tree.z / 600)}`));
+    const country = scene.getObjectByName('country')!;
+    const treeTiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 500)},${Math.floor(tree.z / 500)}`));
 
-    expect(drawCallCount(scene) - drawCallCount(forest)).toBeLessThanOrEqual(12);
+    // The ground, the map's own roads and the towns' buildings.
+    expect(drawCallCount(scene) - drawCallCount(forest) - drawCallCount(country)).toBeLessThanOrEqual(12);
+    // A tile of the country: its roads' shoulders and asphalt, and its houses' plinths and the rest of their roofs.
+    expect(country.children.length).toBeGreaterThan(4);
+    for (const tile of country.children) {
+      expect(drawCallCount(tile), tile.name).toBeLessThanOrEqual(3);
+    }
     // Trunks and shadows per tile, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
     // the planted poplars, olives and cypresses where people planted them, and in the forests their inner trees'
     // simpler crowns and trunks.
-    expect(drawCallCount(forest)).toBeLessThanOrEqual(6 * tiles.size);
+    expect(drawCallCount(forest)).toBeLessThanOrEqual(6 * treeTiles.size);
+  });
+
+  it('draws the forest and the country only near the camera', () => {
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const tiles = [...scene.getObjectByName('forest')!.children, ...scene.getObjectByName('country')!.children];
+    const distanceTo = (tile: Object3D, x: number, z: number): number => {
+      const box = new Box3().setFromObject(tile);
+      return Math.hypot(Math.max(box.min.x - x, 0, x - box.max.x), Math.max(box.min.z - z, 0, z - box.max.z));
+    };
+
+    for (const [x, z] of [
+      [world.spawn.x, world.spawn.z],
+      [0, 0],
+      [world.villages[0]!.x, world.villages[0]!.z],
+    ] as const) {
+      view.showAround(x, z);
+      const shown = tiles.filter((tile) => tile.visible);
+      expect(shown.length).toBeGreaterThan(0);
+      expect(shown.length).toBeLessThan(tiles.length / 3);
+      for (const tile of tiles) {
+        expect(tile.visible, tile.name).toBe(distanceTo(tile, x, z) <= FAR_CULL_METERS);
+      }
+    }
   });
 
   it('keeps what the chase camera sees at the spawn well inside the mobile budget', () => {
     const scene = new Scene();
-    new TrackView(scene, world);
+    const view = new TrackView(scene, world);
     scene.updateMatrixWorld(true);
     const { x, z, heading } = world.spawn;
     const camera = new PerspectiveCamera(60, 2.2, 0.5, 1000);
     camera.position.set(x - Math.sin(heading) * 8, 5, z - Math.cos(heading) * 8);
     camera.lookAt(x + Math.sin(heading) * 30, 2, z + Math.cos(heading) * 30);
     camera.updateMatrixWorld(true);
+    view.showAround(camera.position.x, camera.position.z);
     const frustum = new Frustum().setFromProjectionMatrix(
       new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
     );
     let drawCalls = 0;
     let triangles = 0;
-    scene.traverse((object) => {
+    scene.traverseVisible((object) => {
       if (object instanceof Mesh && frustum.intersectsObject(object)) {
         const geometry = object.geometry;
         const perCopy = (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
@@ -91,13 +125,22 @@ describe('TrackView', () => {
         painted.push(object);
       }
     });
-    expect(painted).toHaveLength(1);
-    const position = painted[0]!.geometry.getAttribute('position');
-    const vertices = Array.from({ length: position.count }, (_, index) => ({ x: position.getX(index), z: position.getZ(index) }));
+    // A mesh a tile, all painted alike.
+    expect(painted.length).toBeGreaterThan(0);
+    expect(new Set(painted.map((mesh) => mesh.material)).size).toBe(1);
+    const vertices = painted.flatMap((mesh) => {
+      const position = mesh.geometry.getAttribute('position');
+      return Array.from({ length: position.count }, (_, index) => ({ x: position.getX(index), z: position.getZ(index) }));
+    });
     const nearestJunction = (x: number, z: number): number =>
       Math.min(...world.network.junctions.map((junction) => Math.hypot(junction.x - x, junction.z - z)));
 
-    // The solid lines keep to a street's edges: paint across its middle is a crossing's stripe.
+    // The solid lines keep to a street's edges and the dashes to its middle (within a dash's length of it round the
+    // tightest bends): paint between them is a crossing's stripe.
+    const besideTheMiddle = (road: (typeof world.roads)[number], vertex: { x: number; z: number }): boolean => {
+      const off = road.distanceTo(vertex.x, vertex.z);
+      return off > 1 && off < road.widthMeters / 2 - 1;
+    };
     let arms = 0;
     for (const junction of world.network.junctions) {
       for (const member of junction.members) {
@@ -108,14 +151,25 @@ describe('TrackView', () => {
         arms++;
         const across = vertices.filter((vertex) => {
           const fromJunction = Math.hypot(vertex.x - junction.x, vertex.z - junction.z);
-          return fromJunction > 6 && fromJunction < 30 && road.distanceTo(vertex.x, vertex.z) < 1;
+          return fromJunction > 6 && fromJunction < 30 && besideTheMiddle(road, vertex);
         });
         expect(across.length, `${road.id} at ${junction.x},${junction.z}`).toBeGreaterThanOrEqual(4);
       }
     }
     expect(arms).toBeGreaterThan(0);
     for (const road of world.roads.filter((candidate) => candidate.kind === 'rural')) {
-      const middle = vertices.filter((vertex) => road.distanceTo(vertex.x, vertex.z) < 1 && nearestJunction(vertex.x, vertex.z) > 40);
+      const xs = Array.from({ length: road.pointCount }, (_, i) => road.x(i));
+      const zs = Array.from({ length: road.pointCount }, (_, i) => road.z(i));
+      const [minX, maxX, minZ, maxZ] = [Math.min(...xs) - 10, Math.max(...xs) + 10, Math.min(...zs) - 10, Math.max(...zs) + 10];
+      const middle = vertices.filter(
+        (vertex) =>
+          vertex.x > minX &&
+          vertex.x < maxX &&
+          vertex.z > minZ &&
+          vertex.z < maxZ &&
+          besideTheMiddle(road, vertex) &&
+          nearestJunction(vertex.x, vertex.z) > 40,
+      );
       expect(middle, road.id).toHaveLength(0);
     }
   });
@@ -479,24 +533,24 @@ describe('TrackView', () => {
     const view = new TrackView(scene, world, {
       sky: { zenith, horizon, sunColor: { value: new Color() }, sunDirection: { value: new Vector3() } },
     });
-    const wettable: MeshBasicMaterial[] = [];
+    const wettable = new Set<MeshBasicMaterial>();
     scene.traverse((object) => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
         const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '' };
         object.material.onBeforeCompile(probe as never, undefined as never);
         if ('wetness' in probe.uniforms) {
-          wettable.push(object.material);
+          wettable.add(object.material);
         }
       }
     });
-    // Only the asphalt: the shoulders, markings and ground stay as they are.
-    expect(wettable).toHaveLength(1);
+    // Only the asphalt, every tile of it: the shoulders, markings and ground stay as they are.
+    expect(wettable.size).toBe(1);
     const shader = {
       uniforms: UniformsUtils.clone(ShaderLib.basic.uniforms),
       vertexShader: ShaderLib.basic.vertexShader,
       fragmentShader: ShaderLib.basic.fragmentShader,
     };
-    wettable[0]!.onBeforeCompile(shader as never, undefined as never);
+    [...wettable][0]!.onBeforeCompile(shader as never, undefined as never);
 
     expect(shader.uniforms['wetSky']).toBe(horizon);
     expect(shader.uniforms['wetZenith']).toBe(zenith);

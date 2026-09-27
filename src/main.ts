@@ -1577,6 +1577,9 @@ async function start(): Promise<void> {
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
+        // What lies far off in the haze is not drawn.
+        track.showAround(eye.x, eye.z);
+        scenery.showAround(eye.x, eye.z);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
         snowfall.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.snow);
