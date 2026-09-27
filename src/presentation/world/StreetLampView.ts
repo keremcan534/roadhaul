@@ -8,13 +8,14 @@ import {
   Matrix4,
   MeshBasicMaterial,
   MeshLambertMaterial,
-  Quaternion,
-  Vector3,
   type BufferGeometry,
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { DebrisSimulation } from '../../domain/crash/DebrisSimulation';
+import { KNOCKABLES, knockableCode } from '../../domain/crash/knockables';
 import type { StreetLamp } from '../../domain/world/DrivingWorld';
+import { DebrisInstances } from '../effects/DebrisInstances';
 import { LampGlows } from '../vehicles/LampGlows';
 import type { StreetLampLight } from './LampLighting';
 
@@ -36,7 +37,19 @@ export interface StreetLampViewOptions {
   readonly lampGlows?: boolean;
   /** The posts cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
+  /**
+   * Each lamp's solid circle in the world (DrivingWorld.circleIndexOf), so
+   * the lamps knocked over leave their places (showKnocked); and how many
+   * bodies of debris there can be at once, to draw the lamps lying about
+   * (drawDebris). Without them, lamps are never knocked over.
+   */
+  readonly circles?: readonly number[];
+  readonly debrisCapacity?: number;
 }
+
+/** A lamp knocked over (showKnocked) stands nowhere: its copies shrunk to nothing. */
+const NOWHERE = new Matrix4().makeScale(0, 0, 0);
+const LAMP_CODE = knockableCode('lamp');
 
 /**
  * The street lamps along the city roads: a post with an arm and a head over
@@ -54,6 +67,17 @@ export class StreetLampView {
   /** Where each lamp's light comes from (just under its lens, in the world), and the way its head faces. */
   private readonly lights: readonly StreetLampLight[];
   private level = 0;
+  private readonly posts: InstancedMesh | null = null;
+  private readonly lenses: InstancedMesh | null = null;
+  /** Each lamp's circle in the world, and whether it lies knocked over (1): out, it lights nothing (dark). */
+  private readonly circles: readonly number[];
+  readonly dark: Uint8Array;
+  /** The world's knocks last shown (showKnocked). */
+  private shownKnocks = -1;
+  /** The posts of the lamps knocked over, lying about. */
+  private readonly fallen: DebrisInstances | null = null;
+  private readonly matrix = new Matrix4();
+  private lampsPlaced: readonly StreetLamp[] = [];
 
   constructor(
     private readonly scene: Scene,
@@ -73,11 +97,15 @@ export class StreetLampView {
         facingZ,
       };
     });
+    this.circles = options.circles ?? [];
+    this.dark = new Uint8Array(lamps.length);
     if (lamps.length === 0) {
       scene.add(this.root);
       return;
     }
-    const posts = this.instanced(this.track(postGeometry()), this.track(new MeshLambertMaterial({ vertexColors: true })), lamps);
+    const postShape = this.track(postGeometry());
+    const postMaterial = this.track(new MeshLambertMaterial({ vertexColors: true }));
+    const posts = this.instanced(postShape, postMaterial, lamps);
     posts.castShadow = options.castShadows === true;
     const lenses = this.instanced(
       this.track(new BoxGeometry(0.26, 0.04, 0.6).translate(0, LENS_Y, STREET_LAMP_REACH_METERS)),
@@ -85,6 +113,13 @@ export class StreetLampView {
       lamps,
     );
     this.root.add(posts, lenses);
+    this.posts = posts;
+    this.lenses = lenses;
+    if (this.circles.length === lamps.length && (options.debrisCapacity ?? 0) > 0) {
+      const { shape, centreZ } = KNOCKABLES.lamp;
+      this.fallen = new DebrisInstances(this.root, postShape, postMaterial, options.debrisCapacity!, shape.halfY, centreZ, 'street-lamps:fallen');
+      this.fallen.mesh.castShadow = options.castShadows === true;
+    }
 
     if (options.lampGlows !== false) {
       this.glows = new LampGlows(lamps.length, GLOW_SIZE_METERS);
@@ -116,8 +151,55 @@ export class StreetLampView {
     this.glows?.setLevel(level);
   }
 
+  /**
+   * Takes the lamps knocked over (`knocked`, by the world's circle, as of
+   * its knockVersion `version`) out of their places, glows and light, and
+   * puts those stood back up where they stood. Cheap when nothing changed.
+   */
+  showKnocked(knocked: Uint8Array, version: number): void {
+    if (version === this.shownKnocks || this.posts === null || this.lenses === null) {
+      return;
+    }
+    this.shownKnocks = version;
+    for (let lamp = 0; lamp < this.circles.length; lamp++) {
+      const down = knocked[this.circles[lamp]!] === 1 ? 1 : 0;
+      if (down === this.dark[lamp]) {
+        continue;
+      }
+      this.dark[lamp] = down;
+      if (down === 1) {
+        this.matrix.copy(NOWHERE);
+      } else {
+        this.lampMatrix(lamp);
+      }
+      this.posts.setMatrixAt(lamp, this.matrix);
+      this.lenses.setMatrixAt(lamp, this.matrix);
+      this.glows?.setColor(lamp, down === 1 ? 0x000000 : GLOW_COLOR);
+    }
+    this.posts.instanceMatrix.needsUpdate = true;
+    this.lenses.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Draws the lamps lying knocked over among `debris`, `alpha` of the way through the fixed step. Allocation-free. */
+  drawDebris(debris: DebrisSimulation | null, alpha: number): void {
+    const fallen = this.fallen;
+    if (fallen === null) {
+      return;
+    }
+    fallen.begin();
+    if (debris !== null) {
+      for (let slot = 0; slot < debris.capacity; slot++) {
+        if (debris.active[slot] === 1 && debris.kind[slot] === LAMP_CODE) {
+          fallen.add(debris, slot, alpha);
+        }
+      }
+    }
+    fallen.end();
+  }
+
   dispose(): void {
     this.scene.remove(this.root);
+    this.fallen?.dispose();
     this.glows?.dispose();
     for (const resource of this.resources) {
       resource.dispose();
@@ -131,18 +213,19 @@ export class StreetLampView {
     lamps: readonly StreetLamp[],
   ): InstancedMesh {
     const mesh = this.track(new InstancedMesh(geometry, material, lamps.length));
-    const matrix = new Matrix4();
-    const position = new Vector3();
-    const rotation = new Quaternion();
-    const scale = new Vector3(1, 1, 1);
-    const up = new Vector3(0, 1, 0);
-    lamps.forEach((lamp, index) => {
-      rotation.setFromAxisAngle(up, lamp.heading);
-      mesh.setMatrixAt(index, matrix.compose(position.set(lamp.x, 0, lamp.z), rotation, scale));
+    this.lampsPlaced = lamps;
+    lamps.forEach((_, index) => {
+      mesh.setMatrixAt(index, this.lampMatrix(index));
     });
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
     return mesh;
+  }
+
+  /** Lamp `index` standing where it stands, into `matrix`. */
+  private lampMatrix(index: number): Matrix4 {
+    const lamp = this.lampsPlaced[index]!;
+    return this.matrix.makeRotationY(lamp.heading).setPosition(lamp.x, 0, lamp.z);
   }
 
   /** Remembers a GPU resource so dispose() can release it. */

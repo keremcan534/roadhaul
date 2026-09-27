@@ -497,6 +497,7 @@ export class LampLighting {
   private readonly trafficShown: number;
   /** Every street lamp's light in the world: x, y, z and the way it faces (x, z) per lamp. */
   private streetLampAt = new Float32Array(0);
+  private streetLampDark: Uint8Array | null = null;
   /** Scratch: the nearest street lamps' indices and squared distances, nearest first. */
   private readonly nearest: number[];
   private readonly nearestSq: number[];
@@ -524,6 +525,11 @@ export class LampLighting {
   /** Where the street lamps shine from (their lenses, in the world), and the ways they face. Not per frame. */
   setStreetLamps(lamps: readonly StreetLampLight[]): void {
     this.streetLampAt = Float32Array.from(lamps.flatMap(({ x, y, z, facingX, facingZ }) => [x, y, z, facingX, facingZ]));
+  }
+
+  /** Which street lamps are out (1, by index: knocked over, StreetLampView.dark), kept and read every frame. */
+  setStreetLampsDark(dark: Uint8Array | null): void {
+    this.streetLampDark = dark;
   }
 
   /** How wet the roads are, 0..1 (WeatherService.wetness): wet roads mirror the headlights away. Cheap to call every frame. */
@@ -647,7 +653,11 @@ export class LampLighting {
     const farSq = far * far;
     // The nearest lamp left out.
     let nextSq = farSq;
+    const dark = this.streetLampDark;
     for (let lamp = 0; lamp < at.length / STREET_LAMP_STRIDE; lamp++) {
+      if (dark !== null && dark[lamp] === 1) {
+        continue;
+      }
       const dx = at[lamp * STREET_LAMP_STRIDE]! - x;
       const dz = at[lamp * STREET_LAMP_STRIDE + 2]! - z;
       const distanceSq = dx * dx + dz * dz;

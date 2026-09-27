@@ -259,6 +259,7 @@ export class WetReflections implements LampMirror {
   private readonly peaks: readonly number[];
   /** Every street lamp: x, y, z and the way it faces (x, z) per lamp. */
   private streetLampAt = new Float32Array(0);
+  private streetLampDark: Uint8Array | null = null;
   /** Where the camera is and looks (level), for the frame being gathered. */
   private readonly eye = new Vector3();
   private lookX = 0;
@@ -311,6 +312,11 @@ export class WetReflections implements LampMirror {
   }
 
   /** Where the street lamps shine from and the ways they face (StreetLampView.lampLights()). Not per frame. */
+  /** Which street lamps are out (1, by index: knocked over, StreetLampView.dark), kept and read every frame. */
+  setStreetLampsDark(dark: Uint8Array | null): void {
+    this.streetLampDark = dark;
+  }
+
   setStreetLamps(lamps: readonly StreetLampLight[]): void {
     this.streetLampAt = Float32Array.from(lamps.flatMap(({ x, y, z, facingX, facingZ }) => [x, y, z, facingX, facingZ]));
   }
@@ -438,6 +444,9 @@ export class WetReflections implements LampMirror {
       const inner = ((ring - 1) / RINGS) * REACH_METERS;
       const outer = (ring / RINGS) * REACH_METERS;
       for (let lamp = 0; lamp < lamps; lamp++) {
+        if (this.streetLampDark !== null && this.streetLampDark[lamp] === 1) {
+          continue;
+        }
         const first = lamp * STREET_LAMP_STRIDE;
         const x = at[first]!;
         const z = at[first + 2]!;

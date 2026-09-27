@@ -16,7 +16,10 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { FieldCrop } from '../../data/definitions/MapDefinition';
+import type { DebrisSimulation } from '../../domain/crash/DebrisSimulation';
+import { KNOCKABLES, knockableCode } from '../../domain/crash/knockables';
 import type { Field, HayBale } from '../../domain/world/DrivingWorld';
+import { DebrisInstances } from '../effects/DebrisInstances';
 import { fieldRowsImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { placeFlat } from './groundDecals';
@@ -47,7 +50,19 @@ export interface FarmlandViewOptions {
   readonly prelit?: PrelitMaterials;
   /** The seasons: young crops in spring, the harvest in autumn, snow over the ploughland in winter. */
   readonly seasons?: SeasonShading;
+  /**
+   * Each bale's solid circle in the world (DrivingWorld.circleIndexOf), so
+   * the bales knocked over leave their places (showKnocked); and how many
+   * bodies of debris there can be at once, to draw them tumbling about
+   * (drawDebris). Without them, bales are never knocked over.
+   */
+  readonly baleCircles?: readonly number[];
+  readonly debrisCapacity?: number;
 }
+
+/** A bale knocked over (showKnocked) lies nowhere: its copy shrunk to nothing. */
+const NOWHERE = new Matrix4().makeScale(0, 0, 0);
+const BALE_CODE = knockableCode('hayBale');
 
 /**
  * The fields through the year, a field at a time (its seed, 0..1): in
@@ -83,6 +98,15 @@ const FIELD_SEASONS_FRAGMENT = /* glsl */ `
 export class FarmlandView {
   private readonly root = new Group();
   private readonly resources: { dispose(): void }[] = [];
+  private bales: InstancedMesh | null = null;
+  private readonly placed: readonly HayBale[];
+  /** Each bale's circle in the world, and whether it lies knocked over (showKnocked). */
+  private readonly circles: readonly number[];
+  private readonly down: Uint8Array;
+  private shownKnocks = -1;
+  /** The bales knocked over, tumbling about. */
+  private fallen: DebrisInstances | null = null;
+  private readonly matrix = new Matrix4();
 
   constructor(
     private readonly scene: Scene,
@@ -124,14 +148,68 @@ export class FarmlandView {
       }
       this.root.add(new Mesh(geometry, material));
     }
+    this.placed = bales;
+    this.circles = options.baleCircles ?? [];
+    this.down = new Uint8Array(bales.length);
     if (bales.length > 0) {
-      this.root.add(this.createBales(bales));
+      const mesh = this.createBales(bales);
+      this.bales = mesh;
+      this.root.add(mesh);
+      if (this.circles.length === bales.length && (options.debrisCapacity ?? 0) > 0) {
+        const { shape, centreZ } = KNOCKABLES.hayBale;
+        this.fallen = new DebrisInstances(this.root, mesh.geometry, mesh.material as MeshLambertMaterial, options.debrisCapacity!, shape.halfY, centreZ, 'hay-bales:fallen');
+        const straw = new Color(BALE_COLOR).multiplyScalar(0.92);
+        for (let i = 0; i < options.debrisCapacity!; i++) {
+          this.fallen.mesh.setColorAt(i, straw);
+        }
+      }
     }
     scene.add(this.root);
   }
 
+  /**
+   * Takes the bales knocked over (`knocked`, by the world's circle, as of
+   * its knockVersion `version`) out of their places, and puts those stood
+   * back up where they lay. Cheap when nothing changed.
+   */
+  showKnocked(knocked: Uint8Array, version: number): void {
+    const bales = this.bales;
+    if (version === this.shownKnocks || bales === null) {
+      return;
+    }
+    this.shownKnocks = version;
+    for (let bale = 0; bale < this.circles.length; bale++) {
+      const down = knocked[this.circles[bale]!] === 1 ? 1 : 0;
+      if (down === this.down[bale]) {
+        continue;
+      }
+      this.down[bale] = down;
+      const { x, z, heading } = this.placed[bale]!;
+      bales.setMatrixAt(bale, down === 1 ? NOWHERE : this.matrix.makeRotationY(heading).setPosition(x, 0, z));
+    }
+    bales.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Draws the bales knocked over among `debris`, `alpha` of the way through the fixed step. Allocation-free. */
+  drawDebris(debris: DebrisSimulation | null, alpha: number): void {
+    const fallen = this.fallen;
+    if (fallen === null) {
+      return;
+    }
+    fallen.begin();
+    if (debris !== null) {
+      for (let slot = 0; slot < debris.capacity; slot++) {
+        if (debris.active[slot] === 1 && debris.kind[slot] === BALE_CODE) {
+          fallen.add(debris, slot, alpha);
+        }
+      }
+    }
+    fallen.end();
+  }
+
   dispose(): void {
     this.scene.remove(this.root);
+    this.fallen?.dispose();
     for (const resource of this.resources) {
       resource.dispose();
     }

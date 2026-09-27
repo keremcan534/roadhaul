@@ -22,6 +22,8 @@ import {
   Vector3,
   type Scene,
 } from 'three';
+import type { DebrisSimulation } from '../../domain/crash/DebrisSimulation';
+import { KNOCKABLES, knockableCode, type KnockableKind } from '../../domain/crash/knockables';
 import type { Grazer, GrazerKind, PowerLine } from '../../domain/world/countryside';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import type { RoadPath } from '../../domain/world/RoadPath';
@@ -36,6 +38,7 @@ import {
 import type { PixelRect } from '../textures/drawing';
 import { PROP_ATLAS, PROP_ATLAS_HEIGHT, PROP_ATLAS_WIDTH, SPEED_LIMIT_FACES, pavingImage, propAtlasImage } from '../textures/propImages';
 import { toTexture } from '../textures/toTexture';
+import { DebrisInstances } from '../effects/DebrisInstances';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
 const TILE_METERS = 600;
@@ -85,6 +88,12 @@ export interface SceneryViewOptions {
   readonly castShadows?: boolean;
   /** Sharper paving at grazing angles. */
   readonly anisotropy?: number;
+  /**
+   * How many bodies of debris there can be at once, to draw the benches,
+   * bins, shelters and speed signs knocked over tumbling about
+   * (drawDebris). Without it, only their places empty (showKnocked).
+   */
+  readonly debrisCapacity?: number;
 }
 
 /**
@@ -118,6 +127,28 @@ export class SceneryView {
   }[];
   private readonly tileCount: number;
   private time = 0;
+  /**
+   * What can be knocked over among the merged props: each one's circle in
+   * the world, the tile mesh it is merged into, and its vertices there
+   * (from, count); whether it lies knocked over, and its vertices as they
+   * were while it does (showKnocked squeezes them to a point).
+   */
+  private readonly knockCircles: number[] = [];
+  private readonly knockMeshes: Mesh[] = [];
+  private readonly knockFrom: number[] = [];
+  private readonly knockCount: number[] = [];
+  private readonly knockDown: Uint8Array;
+  private readonly knockSaved: (Float32Array | null)[] = [];
+  private shownKnocks = -1;
+  /**
+   * The props knocked over, tumbling about: one set of copies per look (a
+   * kind of furniture, a speed sign's limit); the furniture's by its
+   * knockable code, each speed sign's by its circle.
+   */
+  private readonly fallen: DebrisInstances[] = [];
+  private readonly fallenByCode: (DebrisInstances | undefined)[] = [];
+  private readonly fallenSigns = new Map<number, DebrisInstances>();
+  private readonly signLimits = new Map<number, number>();
   // Scratch objects reused every frame.
   private readonly matrix = new Matrix4();
   private readonly neck = new Matrix4();
@@ -155,7 +186,7 @@ export class SceneryView {
       tiles.add(rock.x, rock.z, parts.place(`rock:${shape}`, () => rockGeometry(shape), rock.x, rock.z, rock.turn, size));
     });
     for (const item of world.streetFurniture) {
-      tiles.add(item.x, item.z, parts.place(item.kind, () => furnitureGeometry(item.kind), item.x, item.z, item.heading));
+      tiles.add(item.x, item.z, parts.place(item.kind, () => furnitureGeometry(item.kind), item.x, item.z, item.heading), world.circleIndexOf(item));
     }
     for (const billboard of world.billboards) {
       const ad = billboard.ad % PROP_ATLAS.posters.length;
@@ -163,7 +194,9 @@ export class SceneryView {
     }
     for (const sign of world.speedSigns) {
       const limit = sign.limitKmh;
-      tiles.add(sign.x, sign.z, parts.place(`speed:${limit}`, () => speedSignGeometry(limit), sign.x, sign.z, sign.heading));
+      const circle = world.circleIndexOf(sign);
+      tiles.add(sign.x, sign.z, parts.place(`speed:${limit}`, () => speedSignGeometry(limit), sign.x, sign.z, sign.heading), circle);
+      this.signLimits.set(circle, limit);
     }
     parts.dispose();
     const paving: Tiles = new Tiles();
@@ -172,12 +205,48 @@ export class SceneryView {
     }
 
     for (const [key, parts] of tiles.entries()) {
+      const circles = tiles.circlesOf(key);
+      let from = 0;
+      const counts = parts.map((part) => part.getAttribute('position').count);
       const mesh = new Mesh(this.track(mergeParts(parts)), propMaterial);
       mesh.name = `scenery:${key}`;
       mesh.castShadow = castShadows;
       this.root.add(mesh);
+      counts.forEach((count, index) => {
+        if (circles[index]! >= 0) {
+          this.knockCircles.push(circles[index]!);
+          this.knockMeshes.push(mesh);
+          this.knockFrom.push(from);
+          this.knockCount.push(count);
+          this.knockSaved.push(null);
+        }
+        from += count;
+      });
     }
     this.tileCount = tiles.size;
+    this.knockDown = new Uint8Array(this.knockCircles.length);
+    const debrisCapacity = options.debrisCapacity ?? 0;
+    if (debrisCapacity > 0) {
+      const fallenOf = (kind: KnockableKind, geometry: BufferGeometry, name: string): DebrisInstances => {
+        const { shape, centreZ } = KNOCKABLES[kind];
+        const fallen = new DebrisInstances(this.root, this.track(geometry), propMaterial, debrisCapacity, shape.halfY, centreZ, name);
+        fallen.mesh.castShadow = castShadows;
+        this.fallen.push(fallen);
+        return fallen;
+      };
+      for (const kind of new Set(world.streetFurniture.map((item) => item.kind))) {
+        this.fallenByCode[knockableCode(kind)] = fallenOf(kind, furnitureGeometry(kind), `scenery:fallen:${kind}`);
+      }
+      const signs = new Map<number, DebrisInstances>();
+      for (const [circle, limit] of this.signLimits) {
+        let fallen = signs.get(limit);
+        if (fallen === undefined) {
+          fallen = fallenOf('speedSign', speedSignGeometry(limit), `scenery:fallen:speed:${limit}`);
+          signs.set(limit, fallen);
+        }
+        this.fallenSigns.set(circle, fallen);
+      }
+    }
     if (paving.size > 0) {
       const pavingMaterial = this.track(
         new MeshLambertMaterial({ map: this.track(toTexture(pavingImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 })) }),
@@ -225,8 +294,74 @@ export class SceneryView {
     this.animate();
   }
 
+  /**
+   * Empties the places of the benches, bins, shelters and speed signs
+   * knocked over (`knocked`, by the world's circle, as of its knockVersion
+   * `version`): their vertices squeezed to a point, so the merged tile
+   * draws nothing of them; and fills them again once they stand. Uploads
+   * only those vertices. Cheap when nothing changed.
+   */
+  showKnocked(knocked: Uint8Array, version: number): void {
+    if (version === this.shownKnocks) {
+      return;
+    }
+    this.shownKnocks = version;
+    for (let i = 0; i < this.knockCircles.length; i++) {
+      const down = knocked[this.knockCircles[i]!] === 1 ? 1 : 0;
+      if (down === this.knockDown[i]) {
+        continue;
+      }
+      this.knockDown[i] = down;
+      const position = this.knockMeshes[i]!.geometry.getAttribute('position') as BufferAttribute;
+      const array = position.array as Float32Array;
+      const from = this.knockFrom[i]! * 3;
+      const to = from + this.knockCount[i]! * 3;
+      if (down === 1) {
+        // Knocked over: kept aside (a rare copy), then every vertex on the first.
+        this.knockSaved[i] = array.slice(from, to);
+        for (let k = from + 3; k < to; k += 3) {
+          array[k] = array[from]!;
+          array[k + 1] = array[from + 1]!;
+          array[k + 2] = array[from + 2]!;
+        }
+      } else {
+        array.set(this.knockSaved[i]!, from);
+        this.knockSaved[i] = null;
+      }
+      position.addUpdateRange(from, to - from);
+      position.needsUpdate = true;
+    }
+  }
+
+  /** Draws the benches, bins, shelters and speed signs knocked over among `debris`, `alpha` of the way through the fixed step. */
+  drawDebris(debris: DebrisSimulation | null, alpha: number): void {
+    const fallen = this.fallen;
+    if (fallen.length === 0) {
+      return;
+    }
+    for (let i = 0; i < fallen.length; i++) {
+      fallen[i]!.begin();
+    }
+    if (debris !== null) {
+      for (let slot = 0; slot < debris.capacity; slot++) {
+        if (debris.active[slot] !== 1) {
+          continue;
+        }
+        const code = debris.kind[slot]!;
+        const look = code === SPEED_SIGN_CODE ? this.fallenSigns.get(debris.ref[slot]!) : this.fallenByCode[code];
+        look?.add(debris, slot, alpha);
+      }
+    }
+    for (let i = 0; i < fallen.length; i++) {
+      fallen[i]!.end();
+    }
+  }
+
   dispose(): void {
     this.scene.remove(this.root);
+    for (const fallen of this.fallen) {
+      fallen.dispose();
+    }
     for (const resource of this.resources) {
       resource.dispose();
     }
@@ -294,26 +429,35 @@ export class SceneryView {
 }
 
 const UP = new Vector3(0, 1, 0);
+const SPEED_SIGN_CODE = knockableCode('speedSign');
 /** Where a sheep's and a cow's neck is on its body (the head turns there), meters up and forward. */
 const SHEEP_NECK = { y: 0.78, z: 0.55 } as const;
 const COW_NECK = { y: 1.32, z: 1.0 } as const;
 
-/** Geometry parts by square tile, keyed "column,row". */
+/** Geometry parts by square tile, keyed "column,row", each with the world's circle of what it draws (-1: nothing that falls). */
 class Tiles {
   private readonly parts = new Map<string, BufferGeometry[]>();
+  private readonly circles = new Map<string, number[]>();
 
   get size(): number {
     return this.parts.size;
   }
 
-  add(x: number, z: number, geometry: BufferGeometry): void {
+  add(x: number, z: number, geometry: BufferGeometry, circle = -1): void {
     const key = `${Math.floor(x / TILE_METERS)},${Math.floor(z / TILE_METERS)}`;
     const list = this.parts.get(key);
     if (list === undefined) {
       this.parts.set(key, [geometry]);
+      this.circles.set(key, [circle]);
     } else {
       list.push(geometry);
+      this.circles.get(key)!.push(circle);
     }
+  }
+
+  /** Each part's circle in tile `key`, in the order the parts were added. */
+  circlesOf(key: string): readonly number[] {
+    return this.circles.get(key) ?? [];
   }
 
   entries(): IterableIterator<[string, BufferGeometry[]]> {
