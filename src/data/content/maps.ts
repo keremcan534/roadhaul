@@ -573,10 +573,34 @@ export const MAPS: readonly MapDefinition[] = [
       { id: 'amberfield_green', area: { x: 270, z: 1560, headingDegrees: 90, lengthMeters: 90, widthMeters: 60 } },
       { id: 'copperdale_square', area: { x: 100, z: -2450, headingDegrees: 0, lengthMeters: 56, widthMeters: 84 } },
     ],
+    // Villages in the open country round and between the towns: each grows its street, houses, green and roads out
+    // to the nearest roads (villages.ts).
+    villages: [
+      { id: 'brinemoor', x: -1650, z: 2500, headingDegrees: 0, houses: 10, green: true },
+      { id: 'wheatcombe', x: 400, z: 2650, headingDegrees: 90, houses: 12, green: true },
+      { id: 'larkvale', x: 2300, z: 2300, headingDegrees: 0, houses: 8 },
+      { id: 'dawnmere', x: 2950, z: -250, headingDegrees: 0, houses: 10, green: true },
+      { id: 'reedmill', x: 350, z: 650, headingDegrees: 90, houses: 8 },
+      { id: 'cinderfold', x: -1100, z: -3050, headingDegrees: 90, houses: 10, green: true },
+      { id: 'flintwick', x: 1450, z: -3050, headingDegrees: 90, houses: 8 },
+      { id: 'bramblegate', x: -600, z: -1550, headingDegrees: 0, houses: 8 },
+      { id: 'hollowmere', x: -450, z: 3150, headingDegrees: 90, houses: 8, green: true },
+      { id: 'thistlebury', x: 1600, z: 3150, headingDegrees: 90, houses: 10 },
+      { id: 'ravensgate', x: 3200, z: 1450, headingDegrees: 0, houses: 8, green: true },
+      { id: 'eastholt', x: 3150, z: -1900, headingDegrees: 0, houses: 10 },
+      { id: 'southmoor', x: 250, z: -3250, headingDegrees: 90, houses: 8, green: true },
+    ],
     // On A's high street, in the lane heading south past the home depot (traffic keeps right).
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     // Street lamps light the four towns' streets and B's ring road, on alternate sides; the towns have their
     // pavements and street furniture, the country its power lines, walls, rocks, herds and planted trees.
-    scenery: { seed: 20260923, treesPerKilometer: 70, streetLampSpacingMeters: 26, streetscape: true, countryside: true },
+    scenery: {
+      seed: 20260923,
+      treesPerKilometer: 70,
+      streetLampSpacingMeters: 26,
+      streetscape: true,
+      countryside: true,
+      sideRoadsPerKilometer: 2,
+    },
   },
 ];

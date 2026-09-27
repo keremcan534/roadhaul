@@ -9,6 +9,10 @@ import { ROUTE_LOOK_AHEAD_METERS, type RouteGuidance } from './roadRoute';
  */
 export const JUNCTION_RADIUS_METERS = 0.5;
 
+/** The paved turning circles at the dead ends (DrivingWorld) are this big, their centre this far past the road's end. */
+export const TURNING_CIRCLE_RADIUS_METERS = 11;
+export const TURNING_CIRCLE_OFFSET_METERS = 2;
+
 /** One road's centreline sample, e.g. where the road meets another. */
 export interface RoadSampleRef {
   readonly roadIndex: number;

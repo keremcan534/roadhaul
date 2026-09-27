@@ -3,8 +3,11 @@ import type { Validator } from '../../core/validation/Validator';
 /** A point on the ground plane: [x, z] in meters. */
 export type Point2 = readonly [x: number, z: number];
 
-/** Spec §20's road types: city streets, a ring road, the highway and country roads. */
-export const ROAD_KINDS = ['street', 'ringRoad', 'highway', 'rural'] as const;
+/**
+ * Spec §20's road types: city streets, a ring road, the highway and country
+ * roads; and the narrow lanes that wind off them to the farms and hamlets.
+ */
+export const ROAD_KINDS = ['street', 'ringRoad', 'highway', 'rural', 'lane'] as const;
 export type RoadKind = (typeof ROAD_KINDS)[number];
 
 /**
@@ -218,6 +221,27 @@ export interface ParkDefinition {
 export const MIN_PARK_SIDE_METERS = 40;
 
 /**
+ * A village the map grows (DrivingWorld, villages.ts): a street through
+ * (x, z) running `headingDegrees`, north–south or east–west (its houses
+ * stand square to the map), lined with about `houses` houses, with a green
+ * beside it where `green`, and a country road from each end to the nearest
+ * road it can reach. One with no room, or no road that reaches another, is
+ * left out (the content tests check they all grow).
+ */
+export interface VillageDefinition {
+  /** Stable snake_case id: its name's key. */
+  readonly id: string;
+  readonly x: number;
+  readonly z: number;
+  readonly headingDegrees: number;
+  readonly houses: number;
+  readonly green?: boolean;
+}
+
+/** A village has this many houses, at least and at most. */
+export const VILLAGE_HOUSES_RANGE = [4, 24] as const;
+
+/**
  * A drivable area (spec §20, one region of the world): roads, buildings,
  * depots, rest areas, city name boards, the truck's start and scenery.
  */
@@ -242,6 +266,8 @@ export interface MapDefinition {
   readonly forests?: readonly ForestDefinition[];
   /** The towns' parks; absent: none. */
   readonly parks?: readonly ParkDefinition[];
+  /** Villages the map grows, with their roads; absent: none. */
+  readonly villages?: readonly VillageDefinition[];
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
@@ -265,8 +291,18 @@ export interface MapDefinition {
      * planted poplars, olives and cypresses. Absent or false: none.
      */
     readonly countryside?: boolean;
+    /**
+     * Side roads: about this many narrow lanes per kilometre of country
+     * road leave it (now and then crossing it) and wind off across the land
+     * to farmsteads and hamlets, or on to join another road, with fields
+     * along them; the longer ones have lanes of their own. Absent or 0: none.
+     */
+    readonly sideRoadsPerKilometer?: number;
   };
 }
+
+/** Side roads branch off the country roads at most this many times per kilometre. */
+export const MAX_SIDE_ROADS_PER_KILOMETER = 5;
 
 /** Street lamps stand at least this far apart along a road, meters. */
 export const MIN_STREET_LAMP_SPACING_METERS = 10;
@@ -393,6 +429,34 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       }
     });
   }
+  if (map.villages !== undefined && validator.check(Array.isArray(map.villages), `${path}.villages`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.villages.forEach((village, index) => {
+      const villagePath = `${path}.villages[${index}]`;
+      if (!validator.check(typeof village === 'object' && village !== null, villagePath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(village.id, `${villagePath}.id`)) {
+        validator.check(!seen.has(village.id), `${villagePath}.id`, `duplicate village id "${village.id}"`);
+        seen.add(village.id);
+      }
+      validator.check(inside(village.x, village.z), villagePath, 'must be inside the map');
+      validator.check(
+        Number.isFinite(village.headingDegrees) && village.headingDegrees % 90 === 0,
+        `${villagePath}.headingDegrees`,
+        'must be a multiple of 90',
+      );
+      const [fewest, most] = VILLAGE_HOUSES_RANGE;
+      validator.check(
+        Number.isInteger(village.houses) && village.houses >= fewest && village.houses <= most,
+        `${villagePath}.houses`,
+        `must be a whole number from ${fewest} to ${most}`,
+      );
+      if (village.green !== undefined) {
+        validator.check(typeof village.green === 'boolean', `${villagePath}.green`, 'must be true or false');
+      }
+    });
+  }
   const spawn = map.spawn;
   if (validator.check(typeof spawn === 'object' && spawn !== null, `${path}.spawn`, 'must be an object')) {
     validator.check(inside(spawn.x, spawn.z), `${path}.spawn`, 'must be inside the map');
@@ -415,6 +479,14 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
         Number.isFinite(lampSpacing) && lampSpacing >= MIN_STREET_LAMP_SPACING_METERS,
         `${path}.scenery.streetLampSpacingMeters`,
         `must be at least ${MIN_STREET_LAMP_SPACING_METERS} m`,
+      );
+    }
+    const sideRoads = scenery.sideRoadsPerKilometer;
+    if (sideRoads !== undefined) {
+      validator.check(
+        Number.isFinite(sideRoads) && sideRoads >= 0 && sideRoads <= MAX_SIDE_ROADS_PER_KILOMETER,
+        `${path}.scenery.sideRoadsPerKilometer`,
+        `must be 0 to ${MAX_SIDE_ROADS_PER_KILOMETER}`,
       );
     }
     for (const flag of ['streetscape', 'countryside'] as const) {

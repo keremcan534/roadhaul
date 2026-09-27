@@ -3,8 +3,10 @@ import { SeededRandom } from '../../core/random/SeededRandom';
 import {
   isInSea,
   rectangleContains,
+  rectangleCorners,
   shorelineXAt,
   type BoatKind,
+  type BuildingDefinition,
   type CitySignDefinition,
   type DepotDefinition,
   type FieldCrop,
@@ -36,6 +38,7 @@ import {
 import type { DebrisSolids, SolidContact } from '../crash/DebrisSimulation';
 import { KNOCKABLES, knockableCode, knockableKindOf, type KnockableKind } from '../crash/knockables';
 import { bankWalls, findBridges, parapetWalls, type Bridge, type WallPiece } from './bridges';
+import { Buckets } from './buckets';
 import {
   createForest,
   FOREST_ROADSIDE_METERS,
@@ -46,13 +49,18 @@ import {
   type Forest,
   type ForestTreeKind,
 } from './forests';
+import { fieldArea } from './fields';
 import { cellKey, cellOf } from './gridCells';
 import { placeGuardRails, type GuardRail } from './guardRails';
+import { CountryPlan } from './countryPlan';
+import { OpenLand } from './openLand';
 import { hedgeWalls, layoutPark, onParkPath, type Park } from './parks';
 import { RiverPath } from './RiverPath';
 import { RoadGrid } from './RoadGrid';
-import { RoadNetwork } from './RoadNetwork';
+import { RoadNetwork, TURNING_CIRCLE_OFFSET_METERS, TURNING_CIRCLE_RADIUS_METERS } from './RoadNetwork';
 import { createRoadPoint, RoadPath } from './RoadPath';
+import { growSideRoads, layFarmland } from './sideRoads';
+import { growVillages, type Village } from './villages';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 import {
   billboardLegs,
@@ -255,6 +263,8 @@ export interface BuildingObstacle {
   readonly minZ: number;
   readonly maxZ: number;
   readonly heightMeters: number;
+  /** Out in the country, grown with it (CountryPlan): a farm's, a hamlet's or a village's, in no town. */
+  readonly country?: boolean;
 }
 
 const TREE_TRUNK_RADIUS = 0.45;
@@ -271,6 +281,8 @@ const WALK_BUILDING_CLEARANCE = 1.5;
 const TREE_ROAD_CLEARANCE = 4;
 /** …and are scattered up to this far beyond it. */
 const TREE_SCATTER_METERS = 45;
+/** The roads the country grew have this share of the map's trees to the kilometre. */
+const GROWN_ROAD_TREE_SHARE = 0.5;
 const TREE_BUILDING_CLEARANCE = 4;
 /** Trees keep this far from depot yards and rest area lots, so trucks can manoeuvre. */
 const TREE_YARD_CLEARANCE = 6;
@@ -314,6 +326,8 @@ const BALE_SPACING_METERS = 15;
 /** …some left out, and none closer than this to the field's edge. */
 const BALE_SKIP_CHANCE = 0.35;
 const BALE_EDGE_MARGIN_METERS = 6;
+/** Of the stubble fields the country grew, one in this many is baled: the rest were cleared already. */
+const GROWN_FIELDS_PER_BALED = 8;
 const BALE_RADIUS = 0.8;
 const TURBINE_TOWER_RADIUS = 2.4;
 /** Trees keep out of fields (by this much) and this far from a turbine's tower. */
@@ -346,9 +360,15 @@ const SHORE_ROCK_SCATTER_METERS = 1.4;
 const FULL_DEFLECTION_ANGLE = degreesToRadians(20);
 /** …from this one on it is stopped like in a head-on crash. In between, the two blend. */
 const NO_DEFLECTION_ANGLE = degreesToRadians(45);
-/** Turning circles are this big, their centre this far past the road's end. */
-export const TURNING_CIRCLE_RADIUS_METERS = 11;
-export const TURNING_CIRCLE_OFFSET_METERS = 2;
+/**
+ * The buildings, fields and turning circles are filed by where they are in
+ * cells this big, for asking how near something is to them from at most
+ * this far: the furthest the checks below look.
+ */
+const BUCKET_METERS = 60;
+const NEAR_BUILDING_METERS = TREE_BUILDING_CLEARANCE;
+const NEAR_FIELD_METERS = TREE_FIELD_CLEARANCE;
+const NEAR_CIRCLE_METERS = Math.max(LAMP_YARD_CLEARANCE, RAIL_YARD_CLEARANCE, WALK_YARD_CLEARANCE, TREE_ROAD_CLEARANCE);
 /**
  * A truck moving into a moving obstacle slower than this is not to blame for
  * the contact: the obstacle drove into it, and it takes no damage.
@@ -399,8 +419,12 @@ export class DrivingWorld implements DebrisSolids {
   readonly bridges: readonly Bridge[];
   /** The forests: their trees are among `trees`. */
   readonly forests: readonly Forest[];
-  /** The towns' parks: their trees, benches, bins and lamps are among the others; their hedges are walls. */
+  /** The towns' parks and the villages' greens: their trees, benches, bins and lamps are among the others; their hedges are walls. */
   readonly parks: readonly Park[];
+  /** The villages that grew (MapDefinition.villages): their streets, roads, houses and greens are among the others. */
+  readonly villages: readonly Village[];
+  /** The map's own roads come first among `roads`, this many; the ones the country grew (villages, side roads) follow. */
+  readonly mapRoadCount: number;
   /** The countryside (countryside.ts): power lines along the country roads, the fields' fences and walls, boulders and grazing animals. */
   readonly powerLines: readonly PowerLine[];
   readonly fieldEdges: readonly FieldEdge[];
@@ -464,6 +488,10 @@ export class DrivingWorld implements DebrisSolids {
   private readonly roadGrid: RoadGrid;
   /** The pavements' pieces by where they are: paved ground beside the town streets. */
   private readonly pavements: PavementGrid;
+  /** The buildings, fields and turning circles by where they are, for what keeps clear of them. */
+  private readonly buildingBuckets = new Buckets(BUCKET_METERS);
+  private readonly fieldBuckets = new Buckets(BUCKET_METERS);
+  private readonly circleBuckets = new Buckets(BUCKET_METERS);
   /**
    * Hardest contact of the current resolveCollisions() call: impact speed,
    * contact normal and which footprint circle touched (scratch fields, so
@@ -479,16 +507,10 @@ export class DrivingWorld implements DebrisSolids {
   constructor(map: MapDefinition) {
     this.id = map.id;
     this.halfSizeMeters = map.halfSizeMeters;
-    this.roads = map.roads.map((road) => new RoadPath(road));
-    this.roadGrid = new RoadGrid(this.roads, TREE_ROAD_CLEARANCE);
-    this.network = new RoadNetwork(this.roads);
-    this.buildings = map.buildings.map((building) => ({
-      minX: building.x - building.widthMeters / 2,
-      maxX: building.x + building.widthMeters / 2,
-      minZ: building.z - building.depthMeters / 2,
-      maxZ: building.z + building.depthMeters / 2,
-      heightMeters: building.heightMeters,
-    }));
+    // The map's own roads first: what stands beside them is placed along them.
+    const mapRoads = map.roads.map((road) => new RoadPath(road));
+    this.roads = mapRoads;
+    const mapBuildings = map.buildings.map(buildingObstacle);
     this.depots = map.depots;
     this.restAreas = map.restAreas;
     this.servicePoints = [
@@ -496,6 +518,40 @@ export class DrivingWorld implements DebrisSolids {
       ...map.restAreas.map((restArea): ServicePoint => ({ kind: 'restArea', restArea })),
     ];
     this.spawn = { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
+    this.citySigns = map.citySigns.map((sign) => this.placeCitySign(sign));
+    const mapFields = map.fields.map((field) => this.placeField(field));
+    this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
+    this.rivers = (map.rivers ?? []).map((river) => new RiverPath(river, map.sea?.shoreline ?? null));
+    this.forests = (map.forests ?? []).map(createForest);
+    const mapParks = map.parks ?? [];
+    // Then the country fills in on the land left open (CountryPlan): the villages with their roads, the
+    // side roads off the country roads with their farms and hamlets, and fields along the new roads.
+    const land = new OpenLand({
+      halfSizeMeters: map.halfSizeMeters,
+      shoreline: map.sea?.shoreline ?? null,
+      rivers: this.rivers,
+      forests: this.forests,
+      parks: mapParks,
+      fields: mapFields,
+      yards: [...map.depots.map((depot) => depot.yard), ...map.restAreas.map((restArea) => restArea.lot)],
+      buildings: mapBuildings,
+      windTurbines: this.windTurbines,
+      citySigns: this.citySigns,
+      bridges: findBridges(mapRoads, this.rivers),
+    });
+    const plan = new CountryPlan(land, mapRoads);
+    this.mapRoadCount = mapRoads.length;
+    const countrySeed = growthSeed(map.scenery.seed);
+    this.villages = growVillages(plan, map.villages ?? [], countrySeed);
+    growSideRoads(plan, countrySeed + 1, map.scenery.sideRoadsPerKilometer ?? 0);
+    layFarmland(plan, countrySeed + 2);
+    this.roads = plan.roads;
+    this.roadGrid = new RoadGrid(this.roads, TREE_ROAD_CLEARANCE);
+    this.network = new RoadNetwork(this.roads);
+    this.buildings = [...mapBuildings, ...plan.buildings.map((building) => ({ ...buildingObstacle(building), country: true }))];
+    this.fields = [...mapFields, ...plan.fields.map((field) => this.placeField(field))];
+    const parkLayouts = [...mapParks, ...plan.parks].map((park) => layoutPark(park, map.scenery.seed));
+    this.parks = parkLayouts.map((layout) => layout.park);
     this.turningCircles = this.network.deadEnds.map(({ roadIndex, sampleIndex }) => {
       const road = this.roads[roadIndex]!;
       const inward = sampleIndex === 0 ? 1 : sampleIndex - 1;
@@ -510,21 +566,39 @@ export class DrivingWorld implements DebrisSolids {
         sampleIndex,
       };
     });
-    this.citySigns = map.citySigns.map((sign) => this.placeCitySign(sign));
-    this.fields = map.fields.map((field) => this.placeField(field));
-    this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
-    this.rivers = (map.rivers ?? []).map((river) => new RiverPath(river, map.sea?.shoreline ?? null));
+    this.buildings.forEach((box, id) =>
+      this.buildingBuckets.add(
+        id,
+        box.minX - NEAR_BUILDING_METERS,
+        box.maxX + NEAR_BUILDING_METERS,
+        box.minZ - NEAR_BUILDING_METERS,
+        box.maxZ + NEAR_BUILDING_METERS,
+      ),
+    );
+    this.fields.forEach((field, id) => {
+      const corners = rectangleCorners(field.area);
+      const xs = corners.map(([x]) => x);
+      const zs = corners.map(([, z]) => z);
+      this.fieldBuckets.add(
+        id,
+        Math.min(...xs) - NEAR_FIELD_METERS,
+        Math.max(...xs) + NEAR_FIELD_METERS,
+        Math.min(...zs) - NEAR_FIELD_METERS,
+        Math.max(...zs) + NEAR_FIELD_METERS,
+      );
+    });
+    this.turningCircles.forEach((circle, id) => {
+      const reach = circle.radiusMeters + NEAR_CIRCLE_METERS;
+      this.circleBuckets.add(id, circle.x - reach, circle.x + reach, circle.z - reach, circle.z + reach);
+    });
     this.bridges = findBridges(this.roads, this.rivers);
-    this.forests = (map.forests ?? []).map(createForest);
-    const parkLayouts = (map.parks ?? []).map((park) => layoutPark(park, map.scenery.seed));
-    this.parks = parkLayouts.map((layout) => layout.park);
     this.sea =
       map.sea === undefined
         ? null
         : createSea(map.sea, map.halfSizeMeters, map.scenery.seed, (x, z) =>
             this.rivers.some((river) => river.contains(x, z, SHORE_ROCK_MOUTH_CLEARANCE)),
           );
-    this.hayBales = placeHayBales(this.fields, map.scenery.seed);
+    this.hayBales = placeHayBales(this.fields, mapFields.length, map.scenery.seed);
     this.guardRails = placeGuardRails(this.roads, (x, z) => this.isClearForRail(x, z));
     const pieces: WallPiece[] = this.guardRails.flatMap((rail) =>
       rail.points.slice(1).map((b, index) => {
@@ -623,7 +697,8 @@ export class DrivingWorld implements DebrisSolids {
         )
       : [];
     this.billboards = streetscape ? placeBillboards(ground, occupancy) : [];
-    this.powerLines = countryside ? placePowerLines(ground, occupancy) : [];
+    // Along the map's own country roads: the villages and farms off them are fed from there.
+    this.powerLines = countryside ? placePowerLines({ ...ground, roads: this.roads.slice(0, this.mapRoadCount) }, occupancy) : [];
     this.fieldEdges = countryside ? placeFieldEdges(ground) : [];
     // The forests, round whatever stands already, before the country's own trees, rocks and herds (kept out of them).
     // Their edges grow close only where a road passes near.
@@ -643,7 +718,7 @@ export class DrivingWorld implements DebrisSolids {
         radius: FOREST_TRUNK_RADIUS_METERS,
       })),
     );
-    const plantedTrees = countryside ? plantTrees(ground, occupancy, seed) : [];
+    const plantedTrees = countryside ? plantTrees(ground, occupancy, seed, this.mapRoadCount) : [];
     this.rocks = countryside ? placeRocks(ground, occupancy, map.halfSizeMeters, seed) : [];
     this.grazers = countryside ? placeGrazers(ground, occupancy, seed) : [];
     this.trees = [...wildTrees, ...forestTrees, ...parkTrees, ...plantedTrees];
@@ -1237,12 +1312,13 @@ export class DrivingWorld implements DebrisSolids {
     state.z += pivotOffset * (cos - Math.cos(state.heading));
   }
 
-  /** Scatters trees beside the roads. The same seed always gives the same forest. */
+  /** Scatters trees beside the roads, the grown ones' fewer (GROWN_ROAD_TREE_SHARE). The same seed always gives the same forest. */
   private placeTrees(seed: number, treesPerKilometer: number): TreeObstacle[] {
     const random = new SeededRandom(seed);
     const trees: TreeObstacle[] = [];
-    for (const road of this.roads) {
-      const count = Math.round((road.lengthMeters / 1000) * treesPerKilometer);
+    for (const [index, road] of this.roads.entries()) {
+      const share = index < this.mapRoadCount ? 1 : GROWN_ROAD_TREE_SHARE;
+      const count = Math.round((road.lengthMeters / 1000) * treesPerKilometer * share);
       for (let i = 0; i < count; i++) {
         // Consume the same random numbers for every candidate, so rejected trees do not shift the others.
         const index = random.int(0, road.pointCount - 2);
@@ -1320,50 +1396,9 @@ export class DrivingWorld implements DebrisSolids {
     return { cityId: sign.cityId, x: x - dz * offset, z: z + dx * offset, heading: Math.atan2(-dx, -dz) };
   }
 
-  /**
-   * A field's rectangle: along the chord of its stretch of road, set back
-   * from the road's edge where the road bulges furthest toward it, so a
-   * bend never runs into the field.
-   */
+  /** A field where it lies beside its road (fieldArea). */
   private placeField(field: FieldDefinition): Field {
-    const road = this.roadById(field.roadId);
-    const start = road.pointAt(field.fromMeters, createRoadPoint());
-    const end = road.pointAt(field.fromMeters + field.lengthMeters, createRoadPoint());
-    const chordX = end.x - start.x;
-    const chordZ = end.z - start.z;
-    const chord = Math.hypot(chordX, chordZ) || 1;
-    const ux = chordX / chord;
-    const uz = chordZ / chord;
-    // Toward the field: right of the road's direction is (-uz, ux).
-    const side = field.side === 'right' ? 1 : -1;
-    const nx = -uz * side;
-    const nz = ux * side;
-    const middleX = (start.x + end.x) / 2;
-    const middleZ = (start.z + end.z) / 2;
-    // The centreline is straight between samples, so it bulges furthest at one of them (or at an end).
-    let bulge = Math.max(
-      0,
-      (start.x - middleX) * nx + (start.z - middleZ) * nz,
-      (end.x - middleX) * nx + (end.z - middleZ) * nz,
-    );
-    for (let i = 0; i < road.pointCount; i++) {
-      const along = road.distances[i]! - field.fromMeters;
-      const within = road.closed ? ((along % road.lengthMeters) + road.lengthMeters) % road.lengthMeters : along;
-      if (within >= 0 && within <= field.lengthMeters) {
-        bulge = Math.max(bulge, (road.x(i) - middleX) * nx + (road.z(i) - middleZ) * nz);
-      }
-    }
-    const offset = bulge + road.widthMeters / 2 + field.setbackMeters + field.depthMeters / 2;
-    return {
-      crop: field.crop,
-      area: {
-        x: middleX + nx * offset,
-        z: middleZ + nz * offset,
-        headingDegrees: (Math.atan2(ux, uz) * 180) / Math.PI,
-        lengthMeters: chord,
-        widthMeters: field.depthMeters,
-      },
-    };
+    return { crop: field.crop, area: fieldArea(this.roadById(field.roadId), field) };
   }
 
   private isClearForLamp(x: number, z: number): boolean {
@@ -1390,16 +1425,11 @@ export class DrivingWorld implements DebrisSolids {
       return false;
     }
     if (
-      this.turningCircles.some(
-        (circle) => Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + LAMP_YARD_CLEARANCE,
-      )
+      this.isNearTurningCircle(x, z, LAMP_YARD_CLEARANCE)
     ) {
       return false;
     }
-    return this.buildings.every(
-      (box) =>
-        Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= LAMP_BUILDING_CLEARANCE,
-    );
+    return this.isClearOfBuildings(x, z, LAMP_BUILDING_CLEARANCE);
   }
 
   /**
@@ -1431,16 +1461,43 @@ export class DrivingWorld implements DebrisSolids {
       return false;
     }
     if (
-      this.turningCircles.some(
-        (circle) => Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + RAIL_YARD_CLEARANCE,
-      )
+      this.isNearTurningCircle(x, z, RAIL_YARD_CLEARANCE)
     ) {
       return false;
     }
-    return this.buildings.every(
-      (box) =>
-        Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= RAIL_BUILDING_CLEARANCE,
-    );
+    return this.isClearOfBuildings(x, z, RAIL_BUILDING_CLEARANCE);
+  }
+
+  /** Whether (x, z) stands at least `clearance` (at most NEAR_BUILDING_METERS) from every building. */
+  private isClearOfBuildings(x: number, z: number, clearance: number): boolean {
+    for (const id of this.buildingBuckets.at(x, z)) {
+      const box = this.buildings[id]!;
+      if (Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) < clearance) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Whether (x, z) lies in a field, or within `margin` (at most NEAR_FIELD_METERS) of one. */
+  private isInField(x: number, z: number, margin: number): boolean {
+    for (const id of this.fieldBuckets.at(x, z)) {
+      if (rectangleContains(this.fields[id]!.area, x, z, margin)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether (x, z) lies closer than `margin` (at most NEAR_CIRCLE_METERS) to a turning circle's rim. */
+  private isNearTurningCircle(x: number, z: number, margin: number): boolean {
+    for (const id of this.circleBuckets.at(x, z)) {
+      const circle = this.turningCircles[id]!;
+      if (Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + margin) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Whether something standing at (x, z) would be in the way of a name board. */
@@ -1467,12 +1524,10 @@ export class DrivingWorld implements DebrisSolids {
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, WALK_YARD_CLEARANCE))) {
       return false;
     }
-    if (!this.turningCircles.every((circle) => Math.hypot(x - circle.x, z - circle.z) > circle.radiusMeters + WALK_YARD_CLEARANCE)) {
+    if (this.isNearTurningCircle(x, z, WALK_YARD_CLEARANCE)) {
       return false;
     }
-    return this.buildings.every(
-      (box) => Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= WALK_BUILDING_CLEARANCE,
-    );
+    return this.isClearOfBuildings(x, z, WALK_BUILDING_CLEARANCE);
   }
 
   /**
@@ -1522,7 +1577,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.hidesCitySign(x, z)) {
       return false;
     }
-    if (this.fields.some((field) => rectangleContains(field.area, x, z, TREE_FIELD_CLEARANCE))) {
+    if (this.isInField(x, z, TREE_FIELD_CLEARANCE)) {
       return false;
     }
     if (this.windTurbines.some((turbine) => Math.hypot(x - turbine.x, z - turbine.z) < TREE_TURBINE_CLEARANCE)) {
@@ -1541,16 +1596,11 @@ export class DrivingWorld implements DebrisSolids {
       return false;
     }
     if (
-      this.turningCircles.some(
-        (circle) => Math.hypot(x - circle.x, z - circle.z) < circle.radiusMeters + TREE_ROAD_CLEARANCE,
-      )
+      this.isNearTurningCircle(x, z, TREE_ROAD_CLEARANCE)
     ) {
       return false;
     }
-    return this.buildings.every(
-      (box) =>
-        Math.hypot(x - clamp(x, box.minX, box.maxX), z - clamp(z, box.minZ, box.maxZ)) >= TREE_BUILDING_CLEARANCE,
-    );
+    return this.isClearOfBuildings(x, z, TREE_BUILDING_CLEARANCE);
   }
 }
 
@@ -1608,6 +1658,22 @@ function craneLegs(crane: Crane): { x: number; z: number; radius: number }[] {
 }
 
 /** A name board's two posts, either side of its middle across the way it faces. */
+/** A building's solid block, from its definition. */
+function buildingObstacle(building: BuildingDefinition): BuildingObstacle {
+  return {
+    minX: building.x - building.widthMeters / 2,
+    maxX: building.x + building.widthMeters / 2,
+    minZ: building.z - building.depthMeters / 2,
+    maxZ: building.z + building.depthMeters / 2,
+    heightMeters: building.heightMeters,
+  };
+}
+
+/** The country's growth's own seed from the map's: it grows apart from the rest of the scenery's numbers. */
+function growthSeed(seed: number): number {
+  return (Math.imul(seed ^ 0x51de5eed, 0x9e3779b1) >>> 0) % 0x7fffffff;
+}
+
 function signPosts(sign: CitySign): { x: number; z: number; radius: number }[] {
   const acrossX = Math.cos(sign.heading) * (CITY_SIGN_POST_SPACING_METERS / 2);
   const acrossZ = -Math.sin(sign.heading) * (CITY_SIGN_POST_SPACING_METERS / 2);
@@ -1620,14 +1686,17 @@ function signPosts(sign: CitySign): { x: number; z: number; radius: number }[] {
 /**
  * Round bales left in rows on the harvested (stubble) fields, where the
  * baler dropped them: a row every BALE_ROW_SPACING_METERS across the field,
- * a bale about every BALE_SPACING_METERS along it, some missing. The same
- * seed always lays the same bales.
+ * a bale about every BALE_SPACING_METERS along it, some missing. The map's
+ * own fields come first, `mapFieldCount` of them, each baled; of those the
+ * country grew, one stubble field in GROWN_FIELDS_PER_BALED. The same seed
+ * always lays the same bales.
  */
-function placeHayBales(fields: readonly Field[], seed: number): HayBale[] {
+function placeHayBales(fields: readonly Field[], mapFieldCount: number, seed: number): HayBale[] {
   const random = new SeededRandom(seed ^ 0x5bd1e995);
   const bales: HayBale[] = [];
-  for (const { area, crop } of fields) {
-    if (crop !== 'stubble') {
+  let grownStubble = 0;
+  for (const [index, { area, crop }] of fields.entries()) {
+    if (crop !== 'stubble' || (index >= mapFieldCount && grownStubble++ % GROWN_FIELDS_PER_BALED !== 0)) {
       continue;
     }
     const heading = (area.headingDegrees * Math.PI) / 180;

@@ -1,5 +1,6 @@
 import { SeededRandom } from '../../core/random/SeededRandom';
 import { polygonContains, type ForestDefinition, type ForestKind, type Point2 } from '../../data/definitions/MapDefinition';
+import { Buckets } from './buckets';
 import type { Occupancy } from './countryside';
 import type { RoadPath } from './RoadPath';
 
@@ -18,6 +19,8 @@ export const FOREST_EDGE_BAND_METERS = 11;
  */
 export const FOREST_ROADSIDE_METERS = 100;
 const INNER_SPACING_METERS = 11;
+/** The road samples near a forest are filed in cells this big, for asking whether a tree stands near one. */
+const ROADSIDE_CELL_METERS = 50;
 /** How big the trees grow (a scale on the views' tree): at the edge, and deeper in, where their crowns close over. */
 const EDGE_SCALE = [0.85, 1.25] as const;
 const INNER_SCALE = [1.3, 1.8] as const;
@@ -142,20 +145,23 @@ export function plantForest(
  * samples near the forest, a few meters apart.
  */
 export function forestRoadside(forest: Forest, roads: readonly RoadPath[], reachMeters: number): (x: number, z: number) => boolean {
+  // The samples near the forest, x, z and reach each, filed by the cells they reach.
   const near: number[] = [];
+  const buckets = new Buckets(ROADSIDE_CELL_METERS);
   for (const road of roads) {
     const reach = road.widthMeters / 2 + reachMeters;
     for (let i = 0; i < road.pointCount; i++) {
       const x = road.x(i);
       const z = road.z(i);
       if (x > forest.minX - reach && x < forest.maxX + reach && z > forest.minZ - reach && z < forest.maxZ + reach) {
+        buckets.add(near.length / 3, x - reach, x + reach, z - reach, z + reach);
         near.push(x, z, reach);
       }
     }
   }
   return (x, z) => {
-    for (let k = 0; k < near.length; k += 3) {
-      if (Math.hypot(x - near[k]!, z - near[k + 1]!) < near[k + 2]!) {
+    for (const k of buckets.at(x, z)) {
+      if (Math.hypot(x - near[k * 3]!, z - near[k * 3 + 1]!) < near[k * 3 + 2]!) {
         return true;
       }
     }

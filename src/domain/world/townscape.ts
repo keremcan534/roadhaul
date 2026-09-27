@@ -62,7 +62,13 @@ export interface SpeedSign {
 
 /** In a town the limit is this; out of it, the road's own. */
 export const TOWN_SPEED_LIMIT_KMH = 50;
-const ROAD_SPEED_LIMITS_KMH: Readonly<Record<RoadPath['kind'], number>> = { street: 50, ringRoad: 50, highway: 90, rural: 70 };
+const ROAD_SPEED_LIMITS_KMH: Readonly<Record<RoadPath['kind'], number>> = {
+  street: 50,
+  ringRoad: 50,
+  highway: 90,
+  rural: 70,
+  lane: 40,
+};
 
 /** What placing the streetscape needs to know of the world. */
 export interface TownGround {

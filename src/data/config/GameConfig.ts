@@ -349,7 +349,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     maxVehicles: 16,
     radiusMeters: 700,
     minSpawnDistanceMeters: 180,
-    speedLimitsKmh: { street: 45, ringRoad: 60, highway: 90, rural: 70 },
+    speedLimitsKmh: { street: 45, ringRoad: 60, highway: 90, rural: 70, lane: 40 },
   },
   crashes: {
     enabled: true,
