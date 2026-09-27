@@ -489,9 +489,9 @@ export class DrivingWorld implements DebrisSolids {
   /** The pavements' pieces by where they are: paved ground beside the town streets. */
   private readonly pavements: PavementGrid;
   /** The buildings, fields and turning circles by where they are, for what keeps clear of them. */
-  private readonly buildingBuckets = new Buckets(BUCKET_METERS);
-  private readonly fieldBuckets = new Buckets(BUCKET_METERS);
-  private readonly circleBuckets = new Buckets(BUCKET_METERS);
+  private readonly buildingBuckets: Buckets;
+  private readonly fieldBuckets: Buckets;
+  private readonly circleBuckets: Buckets;
   /**
    * Hardest contact of the current resolveCollisions() call: impact speed,
    * contact normal and which footprint circle touched (scratch fields, so
@@ -507,6 +507,9 @@ export class DrivingWorld implements DebrisSolids {
   constructor(map: MapDefinition) {
     this.id = map.id;
     this.halfSizeMeters = map.halfSizeMeters;
+    this.buildingBuckets = new Buckets(BUCKET_METERS, map.halfSizeMeters);
+    this.fieldBuckets = new Buckets(BUCKET_METERS, map.halfSizeMeters);
+    this.circleBuckets = new Buckets(BUCKET_METERS, map.halfSizeMeters);
     // The map's own roads first: what stands beside them is placed along them.
     const mapRoads = map.roads.map((road) => new RoadPath(road));
     this.roads = mapRoads;

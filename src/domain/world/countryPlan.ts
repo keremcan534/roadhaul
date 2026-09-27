@@ -8,7 +8,7 @@ import {
   type RectangleDefinition,
 } from '../../data/definitions/MapDefinition';
 import { Buckets } from './buckets';
-import { cellKey, cellOf } from './gridCells';
+import { cellOf } from './gridCells';
 import { LandRouter } from './landRoutes';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork, TURNING_CIRCLE_OFFSET_METERS, TURNING_CIRCLE_RADIUS_METERS } from './RoadNetwork';
@@ -82,15 +82,24 @@ export class CountryPlan {
   private readonly fieldAreas: RectangleDefinition[] = [];
   /** Each field's bounds, not grown: minX, maxX, minZ, maxZ. */
   private readonly fieldBounds: number[] = [];
-  private readonly buildingBuckets = new Buckets(BUCKET_METERS);
-  private readonly fieldBuckets = new Buckets(BUCKET_METERS);
-  private readonly parkBuckets = new Buckets(BUCKET_METERS);
+  private readonly buildingBuckets: Buckets;
+  private readonly fieldBuckets: Buckets;
+  private readonly parkBuckets: Buckets;
   /** The map's roads' pieces, to keep new things clear of them. */
   private readonly mapRoadGrid: RoadGrid;
   /** Each of the map's roads' bounds, grown by half its width: minX, maxX, minZ, maxZ. */
   private readonly mapRoadBounds: Float64Array;
-  /** The new roads' samples, filed by grid cell: x, z and the road's index, for each. */
-  private readonly samples = new Map<number, number[]>();
+  /**
+   * The new roads' samples, filed by grid cell (cellOf) over the land: x, z
+   * and the road's index, for each. `sampleCells` holds each cell's bucket
+   * in `sampleBuckets`, plus one (0: none), so a look needs no hashing (the
+   * router asks about 150,000 times in growing a big map).
+   */
+  private readonly sampleCells: Int32Array;
+  private readonly sampleBuckets: number[][] = [];
+  /** The land's first grid cell (along either axis), and how many cells it spans. */
+  private readonly firstCell: number;
+  private readonly cellSpan: number;
   /** Half the widest new road's width, meters. */
   private widestHalf = 0;
 
@@ -100,6 +109,12 @@ export class CountryPlan {
   ) {
     this.roads = [...mapRoads];
     this.mapRoadCount = mapRoads.length;
+    this.buildingBuckets = new Buckets(BUCKET_METERS, land.halfSizeMeters);
+    this.fieldBuckets = new Buckets(BUCKET_METERS, land.halfSizeMeters);
+    this.parkBuckets = new Buckets(BUCKET_METERS, land.halfSizeMeters);
+    this.firstCell = cellOf(-land.halfSizeMeters);
+    this.cellSpan = cellOf(land.halfSizeMeters) - this.firstCell + 1;
+    this.sampleCells = new Int32Array(this.cellSpan * this.cellSpan);
     this.mapRoadGrid = new RoadGrid(mapRoads, ROAD_CLEARANCE_METERS);
     this.mapRoadBounds = new Float64Array(mapRoads.length * 4);
     mapRoads.forEach((road, index) => {
@@ -206,18 +221,24 @@ export class CountryPlan {
     return true;
   }
 
-  /** Adds a new road. Returns its index. */
+  /** Adds a new road (on the land: the growers only lay roads there). Returns its index. */
   addRoad(path: RoadPath): number {
     const index = this.roads.length;
     this.roads.push(path);
     this.widestHalf = Math.max(this.widestHalf, path.widthMeters / 2);
     for (let i = 0; i < path.pointCount; i++) {
-      const key = cellKey(cellOf(path.x(i)), cellOf(path.z(i)));
-      const bucket = this.samples.get(key);
-      if (bucket === undefined) {
-        this.samples.set(key, [path.x(i), path.z(i), index]);
+      const column = cellOf(path.x(i)) - this.firstCell;
+      const row = cellOf(path.z(i)) - this.firstCell;
+      if (column < 0 || column >= this.cellSpan || row < 0 || row >= this.cellSpan) {
+        throw new Error(`Road ${path.id} leaves the land at (${path.x(i)}, ${path.z(i)}).`);
+      }
+      const cell = column * this.cellSpan + row;
+      const bucket = this.sampleCells[cell]!;
+      if (bucket === 0) {
+        this.sampleBuckets.push([path.x(i), path.z(i), index]);
+        this.sampleCells[cell] = this.sampleBuckets.length;
       } else {
-        bucket.push(path.x(i), path.z(i), index);
+        this.sampleBuckets[bucket - 1]!.push(path.x(i), path.z(i), index);
       }
     }
     return index;
@@ -369,12 +390,19 @@ export class CountryPlan {
   /** Whether (x, z) lies closer than `clearance` to the edge of a new road other than `except`. */
   private nearNewRoad(x: number, z: number, clearance: number, except = -1): boolean {
     const reach = clearance + this.widestHalf;
-    for (let cellX = cellOf(x - reach); cellX <= cellOf(x + reach); cellX++) {
-      for (let cellZ = cellOf(z - reach); cellZ <= cellOf(z + reach); cellZ++) {
-        const bucket = this.samples.get(cellKey(cellX, cellZ));
-        if (bucket === undefined) {
+    // Every sample lies on the land: the cells beyond it hold none.
+    const span = this.cellSpan;
+    const firstColumn = Math.max(0, cellOf(x - reach) - this.firstCell);
+    const lastColumn = Math.min(span - 1, cellOf(x + reach) - this.firstCell);
+    const firstRow = Math.max(0, cellOf(z - reach) - this.firstCell);
+    const lastRow = Math.min(span - 1, cellOf(z + reach) - this.firstCell);
+    for (let column = firstColumn; column <= lastColumn; column++) {
+      for (let row = firstRow; row <= lastRow; row++) {
+        const filed = this.sampleCells[column * span + row]!;
+        if (filed === 0) {
           continue;
         }
+        const bucket = this.sampleBuckets[filed - 1]!;
         for (let k = 0; k < bucket.length; k += 3) {
           const road = bucket[k + 2]!;
           if (road === except) {

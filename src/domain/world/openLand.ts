@@ -127,16 +127,24 @@ const REACH = {
  */
 export class OpenLand {
   readonly halfSizeMeters: number;
-  private readonly fields = new Buckets(BUCKET_METERS);
-  private readonly parks = new Buckets(BUCKET_METERS);
-  private readonly yards = new Buckets(BUCKET_METERS);
-  private readonly buildings = new Buckets(BUCKET_METERS);
-  private readonly turbines = new Buckets(BUCKET_METERS);
-  private readonly signs = new Buckets(BUCKET_METERS);
-  private readonly forests = new Buckets(BUCKET_METERS);
+  private readonly fields: Buckets;
+  private readonly parks: Buckets;
+  private readonly yards: Buckets;
+  private readonly buildings: Buckets;
+  private readonly turbines: Buckets;
+  private readonly signs: Buckets;
+  private readonly forests: Buckets;
 
   constructor(private readonly parts: LandParts) {
     this.halfSizeMeters = parts.halfSizeMeters;
+    const half = parts.halfSizeMeters;
+    this.fields = new Buckets(BUCKET_METERS, half);
+    this.parks = new Buckets(BUCKET_METERS, half);
+    this.yards = new Buckets(BUCKET_METERS, half);
+    this.buildings = new Buckets(BUCKET_METERS, half);
+    this.turbines = new Buckets(BUCKET_METERS, half);
+    this.signs = new Buckets(BUCKET_METERS, half);
+    this.forests = new Buckets(BUCKET_METERS, half);
     const fileRectangle = (buckets: Buckets, id: number, area: RectangleDefinition, reach: number): void => {
       const corners = rectangleCorners(area);
       const xs = corners.map(([x]) => x);
