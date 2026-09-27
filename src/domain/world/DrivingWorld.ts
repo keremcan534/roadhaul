@@ -60,6 +60,15 @@ import { RiverPath } from './RiverPath';
 import { RoadGrid } from './RoadGrid';
 import { RoadNetwork, TURNING_CIRCLE_OFFSET_METERS, TURNING_CIRCLE_RADIUS_METERS } from './RoadNetwork';
 import { createRoadPoint, RoadPath } from './RoadPath';
+import {
+  directionBoardLegs,
+  placeDirectionBoards,
+  placeRoadSigns,
+  type DirectionBoard,
+  type RoadSign,
+  type SignGround,
+  type TownGate,
+} from './roadSigns';
 import { growSideRoads, layFarmland } from './sideRoads';
 import { growVillages, type Village } from './villages';
 import { ASPHALT, GRASS, type Surface } from './Surface';
@@ -329,6 +338,11 @@ export const CITY_SIGN_POST_SPACING_METERS = 4.8;
 const SIGN_POST_RADIUS = 0.12;
 /** Trees and lamps keep this far from a board's middle, so nothing hides it. */
 const SIGN_CLEARANCE_METERS = 9;
+/** Road signs' posts stand closer than this to no other road's edge, and keep this far from the water, yards and buildings. */
+const ROAD_SIGN_ROAD_CLEARANCE = 1;
+const ROAD_SIGN_SHORE_CLEARANCE = 1.5;
+const ROAD_SIGN_YARD_CLEARANCE = 4;
+const ROAD_SIGN_BUILDING_CLEARANCE = 1.5;
 /** Hay bales lie in rows this far apart across a stubble field, about this far apart along a row… */
 const BALE_ROW_SPACING_METERS = 22;
 const BALE_SPACING_METERS = 15;
@@ -453,6 +467,9 @@ export class DrivingWorld implements DebrisSolids {
   readonly streetFurniture: readonly StreetFurniture[];
   readonly billboards: readonly Billboard[];
   readonly speedSigns: readonly SpeedSign[];
+  /** The country roads' signs (roadSigns.ts): warnings, chevrons, give way and stop, and the direction boards. */
+  readonly roadSigns: readonly RoadSign[];
+  readonly directionBoards: readonly DirectionBoard[];
   /**
    * The solid circles (tree trunks, lamp and sign posts, bales, turbine
    * towers), filed by grid cell as indices into the arrays below.
@@ -684,7 +701,7 @@ export class DrivingWorld implements DebrisSolids {
     ]) {
       occupancy.add(circle.x, circle.z, circle.radius);
     }
-    const { seed, streetscape = false, countryside = false } = map.scenery;
+    const { seed, streetscape = false, countryside = false, roadSigns = false } = map.scenery;
     // The country's scenery asks how near the roads it is from further out than the trees do.
     const sceneryRoads = countryside ? new RoadGrid(this.roads, SCENERY_ROAD_REACH_METERS) : this.roadGrid;
     const ground: SceneryGround & TownGround = {
@@ -714,18 +731,24 @@ export class DrivingWorld implements DebrisSolids {
       }
     }
     this.streetFurniture = [...townFurniture, ...parkFurniture];
-    this.speedSigns = streetscape
-      ? placeSpeedSigns(
-          ground,
-          map.citySigns.map((sign) => ({
-            roadIndex: this.roads.findIndex((road) => road.id === sign.roadId),
-            distanceMeters: sign.distanceMeters,
-            direction: sign.direction,
-          })),
-          occupancy,
-        )
-      : [];
+    const townGates: TownGate[] = map.citySigns.map((sign) => ({
+      cityId: sign.cityId,
+      roadIndex: this.roads.findIndex((road) => road.id === sign.roadId),
+      distanceMeters: sign.distanceMeters,
+      direction: sign.direction,
+    }));
+    this.speedSigns = streetscape ? placeSpeedSigns(ground, townGates, occupancy) : [];
     this.billboards = streetscape ? placeBillboards(ground, occupancy) : [];
+    // The country roads' signs: the direction boards first (they need the most room), then the small ones.
+    const signGround: SignGround = {
+      roads: this.roads,
+      network: this.network,
+      townGates,
+      villages: this.villages,
+      isClear: (x, z) => this.isClearForRoadSign(x, z),
+    };
+    this.directionBoards = roadSigns ? placeDirectionBoards(signGround, occupancy) : [];
+    this.roadSigns = roadSigns ? placeRoadSigns(signGround, occupancy) : [];
     // Along the map's own country roads: the villages and farms off them are fed from there.
     this.powerLines = countryside ? placePowerLines({ ...ground, roads: this.roads.slice(0, this.mapRoadCount) }, occupancy) : [];
     this.fieldEdges = countryside ? placeFieldEdges(ground) : [];
@@ -777,6 +800,8 @@ export class DrivingWorld implements DebrisSolids {
     add(this.streetFurniture, (piece) => piece.kind);
     add(this.billboards.flatMap(billboardLegs));
     add(this.speedSigns, () => 'speedSign');
+    add(this.roadSigns, () => 'roadSign');
+    add(this.directionBoards.flatMap(directionBoardLegs));
     this.circleThings = circles;
     this.circleKind = Uint8Array.from(kinds);
     this.knocked = new Uint8Array(circles.length);
@@ -1632,6 +1657,35 @@ export class DrivingWorld implements DebrisSolids {
       }
     }
     return false;
+  }
+
+  /**
+   * Whether a road sign's post may stand at (x, z): inside the map, off the
+   * water and the quays, not in the way of a name board, clear of every
+   * road's edge by a little, of yards, lots, turning circles, fields and
+   * buildings. Unlike a lamp it may stand near a junction: many are for one.
+   */
+  private isClearForRoadSign(x: number, z: number): boolean {
+    const limit = this.halfSizeMeters - LAMP_BOUNDARY_MARGIN;
+    if (Math.abs(x) > limit || Math.abs(z) > limit) {
+      return false;
+    }
+    if (this.isWater(x, z, ROAD_SIGN_SHORE_CLEARANCE) || this.isOnQuay(x, z, ROAD_SIGN_YARD_CLEARANCE)) {
+      return false;
+    }
+    if (this.hidesCitySign(x, z) || this.roadGrid.nearRoad(x, z, ROAD_SIGN_ROAD_CLEARANCE)) {
+      return false;
+    }
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, ROAD_SIGN_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, ROAD_SIGN_YARD_CLEARANCE))) {
+      return false;
+    }
+    if (this.isNearTurningCircle(x, z, ROAD_SIGN_YARD_CLEARANCE) || this.isInField(x, z, 1)) {
+      return false;
+    }
+    return this.isClearOfBuildings(x, z, ROAD_SIGN_BUILDING_CLEARANCE);
   }
 
   /** Whether something standing at (x, z) would be in the way of a name board. */

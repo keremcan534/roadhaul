@@ -251,6 +251,7 @@ export class GameAudio {
         this.noiseBurst('bandpass', 700, 0.3, 0.3 * level, 0.9);
         break;
       case 'speedSign':
+      case 'roadSign':
         this.note(880, 0, 0.35, 0.12 * level, 'triangle');
         this.note(2217, 0, 0.2, 0.05 * level, 'sine');
         this.noiseBurst('highpass', 2500, 0.12, 0.3 * level);

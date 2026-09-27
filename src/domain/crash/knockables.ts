@@ -7,7 +7,7 @@ import type { DebrisShape } from './DebrisSimulation';
  * falls. Trees, walls, posts that carry wires, boulders and animals stay
  * solid.
  */
-export const KNOCKABLE_KINDS = ['lamp', 'hayBale', 'bench', 'bin', 'busStop', 'speedSign'] as const;
+export const KNOCKABLE_KINDS = ['lamp', 'hayBale', 'bench', 'bin', 'busStop', 'speedSign', 'roadSign'] as const;
 export type KnockableKind = (typeof KNOCKABLE_KINDS)[number];
 
 export interface Knockable {
@@ -86,6 +86,17 @@ export const KNOCKABLES: Readonly<Record<KnockableKind, Knockable>> = {
   speedSign: {
     knockSpeed: 2,
     shape: { halfX: 0.4, halfY: 1.3, halfZ: 0.05, massKg: 14, restitution: 0.3, friction: 0.5 },
+    centreZ: 0,
+    throwShare: 1,
+    popShare: 0.3,
+    topple: 0.3,
+    tumble: 0.4,
+    damageShare: 0.05,
+  },
+  // A warning triangle, give way, stop or chevron board on its post, as light as a speed limit.
+  roadSign: {
+    knockSpeed: 2,
+    shape: { halfX: 0.45, halfY: 1.3, halfZ: 0.05, massKg: 14, restitution: 0.3, friction: 0.5 },
     centreZ: 0,
     throwShare: 1,
     popShare: 0.3,

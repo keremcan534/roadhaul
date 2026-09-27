@@ -8,6 +8,8 @@ import { DrivingWorld, type MovingObstacles } from '../../../../src/domain/world
 import { ASPHALT, GRASS } from '../../../../src/domain/world/Surface';
 import { input, STEP_SECONDS } from '../../../support/driving';
 import { billboardLegs } from '../../../../src/domain/world/townscape';
+import { directionBoardLegs } from '../../../../src/domain/world/roadSigns';
+import { knockableCode } from '../../../../src/domain/crash/knockables';
 import { mapFixture, seaFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const truck = vehicleFixture();
@@ -851,6 +853,12 @@ describe('DrivingWorld', () => {
 
     it('dresses the shipped region: its towns and its countryside', () => {
       const region = new DrivingWorld(MAPS[0]!);
+      expect(region.roadSigns.length).toBeGreaterThan(100);
+      for (const kind of ['bendLeft', 'bendRight', 'chevron', 'giveWay', 'stop', 'crossroads'] as const) {
+        expect(region.roadSigns.filter((sign) => sign.kind === kind).length, kind).toBeGreaterThan(3);
+      }
+      expect(region.directionBoards.length).toBeGreaterThan(30);
+      expect(region.directionBoards.every((board) => board.rows.length >= 1 && board.rows.length <= 3)).toBe(true);
       expect(region.sidewalks.length).toBeGreaterThan(6);
       expect(region.streetFurniture.filter((item) => item.kind === 'busStop').length).toBeGreaterThanOrEqual(2);
       expect(region.billboards.length).toBeGreaterThanOrEqual(4);
@@ -861,6 +869,78 @@ describe('DrivingWorld', () => {
       expect(region.grazers.length).toBeGreaterThan(40);
       for (const species of ['poplar', 'cypress', 'olive'] as const) {
         expect(region.trees.filter((tree) => tree.species === species).length, species).toBeGreaterThan(20);
+      }
+    });
+  });
+  describe('the road signs', () => {
+    /** A country road along z = 0 from one town to another, a road north off its middle to a village. */
+    const main = {
+      id: 'main_road',
+      kind: 'rural',
+      widthMeters: 8,
+      closed: false,
+      controlPoints: [
+        [-560, 0],
+        [0, 0],
+        [560, 0],
+      ],
+    } as const;
+    const north = {
+      id: 'north_road',
+      kind: 'rural',
+      widthMeters: 8,
+      closed: false,
+      controlPoints: [
+        [0, 0],
+        [0, 500],
+      ],
+    } as const;
+    const map = mapFixture({
+      halfSizeMeters: 600,
+      roads: [main, north],
+      buildings: [],
+      depots: [],
+      spawn: { x: 0, z: -300, headingDegrees: 90 },
+      citySigns: [
+        { cityId: 'west_town', roadId: 'main_road', distanceMeters: 40, direction: 'backward' },
+        { cityId: 'east_town', roadId: 'main_road', distanceMeters: 1080, direction: 'forward' },
+      ],
+      villages: [],
+      scenery: { seed: 3, treesPerKilometer: 0, roadSigns: true },
+    });
+    const signed = new DrivingWorld(map);
+
+    /** A truck driving at `speed` straight at the thing at (x, z) from the south, its front circle just into it. */
+    const drivingInto = (thing: { x: number; z: number; radius: number }, speed: number) => {
+      const reach = front + footprint.radius + thing.radius - 0.2;
+      const state = truckAt(thing.x, thing.z - reach, 0, speed);
+      return state;
+    };
+
+    it('only comes where the map asks for it', () => {
+      const plain = new DrivingWorld({ ...map, scenery: { ...map.scenery, roadSigns: false } });
+      expect(plain.roadSigns).toEqual([]);
+      expect(plain.directionBoards).toEqual([]);
+      expect(signed.roadSigns.map((sign) => sign.kind).sort()).toEqual(['sideRoadLeft', 'sideRoadRight', 'stop']);
+      // Before the junction on its three roads, and just out of both towns.
+      expect(signed.directionBoards).toHaveLength(5);
+    });
+
+    it('knocks a sign over at speed, stops the truck at a board\'s legs, and keeps them all off the road', () => {
+      const stop = signed.roadSigns.find((sign) => sign.kind === 'stop')!;
+      const circle = signed.circleIndexOf(stop);
+      expect(signed.circleKind[circle]).toBe(knockableCode('roadSign'));
+      expect(signed.resolveCollisions(drivingInto(stop, 8), footprint, null, true)).toBe(0);
+      expect(signed.knocked[circle]).toBe(1);
+
+      const board = signed.directionBoards.find((candidate) => candidate.z > 0 && Math.abs(candidate.x) > 100)!;
+      const leg = directionBoardLegs(board)[0]!;
+      const state = drivingInto(leg, 8);
+      expect(signed.resolveCollisions(state, footprint, null, true)).toBeGreaterThan(7);
+      expect(Math.abs(state.speed)).toBeLessThan(1);
+
+      for (const thing of [...signed.roadSigns, ...signed.directionBoards.flatMap(directionBoardLegs)]) {
+        expect(signed.roads.every((road) => road.distanceTo(thing.x, thing.z) > road.widthMeters / 2 + 1)).toBe(true);
       }
     });
   });
