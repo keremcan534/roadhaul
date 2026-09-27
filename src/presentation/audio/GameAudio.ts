@@ -1,5 +1,6 @@
 import { clamp01 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import type { KnockableKind } from '../../domain/crash/knockables';
 import {
   brakeNoiseLevel,
   crashLevel,
@@ -232,6 +233,57 @@ export class GameAudio {
     const level = crashLevel(impactSpeed);
     this.note(58, 0, 0.3, 0.5 * level, 'sine');
     this.noiseBurst('lowpass', 900, 0.45, 0.45 * level);
+  }
+
+  /**
+   * `kind` was knocked over, struck `speed` m/s hard: a tall post's ring and
+   * its clatter as it lands, a sign's clang, a bin's hollow bonk, a
+   * shelter's panes shattering, a bench's clack, a bale's soft thump.
+   */
+  knock(kind: KnockableKind, speed: number): void {
+    const level = crashLevel(speed) * 0.8;
+    switch (kind) {
+      case 'lamp':
+        this.note(196, 0, 0.9, 0.22 * level, 'triangle');
+        this.note(523, 0, 0.6, 0.12 * level, 'triangle');
+        this.note(1397, 0, 0.35, 0.06 * level, 'sine');
+        this.noiseBurst('highpass', 1800, 0.18, 0.35 * level);
+        this.noiseBurst('bandpass', 700, 0.3, 0.3 * level, 0.9);
+        break;
+      case 'speedSign':
+        this.note(880, 0, 0.35, 0.12 * level, 'triangle');
+        this.note(2217, 0, 0.2, 0.05 * level, 'sine');
+        this.noiseBurst('highpass', 2500, 0.12, 0.3 * level);
+        break;
+      case 'bin':
+        this.note(330, 0, 0.25, 0.14 * level, 'triangle');
+        this.noiseBurst('bandpass', 1200, 0.15, 0.3 * level);
+        break;
+      case 'busStop':
+        this.note(262, 0, 0.5, 0.12 * level, 'triangle');
+        this.noiseBurst('highpass', 4000, 0.4, 0.4 * level);
+        this.noiseBurst('highpass', 6000, 0.25, 0.25 * level, 0.08);
+        break;
+      case 'bench':
+        this.note(180, 0, 0.12, 0.2 * level, 'triangle');
+        this.noiseBurst('bandpass', 900, 0.12, 0.4 * level);
+        break;
+      case 'hayBale':
+        this.note(70, 0, 0.25, 0.3 * level, 'sine');
+        this.noiseBurst('lowpass', 500, 0.35, 0.45 * level);
+        break;
+    }
+  }
+
+  /** A car or minibus was wrecked, struck `speed` m/s hard: a heavy crunch, and the tinkle of its glass. */
+  wreck(speed: number): void {
+    const level = crashLevel(speed);
+    this.note(48, 0, 0.4, 0.5 * level, 'sine');
+    this.noiseBurst('lowpass', 1400, 0.55, 0.5 * level);
+    this.noiseBurst('bandpass', 600, 0.3, 0.35 * level, 0.05);
+    for (let shard = 0; shard < 5; shard++) {
+      this.noiseBurst('highpass', 5000 + shard * 700, 0.08, 0.18 * level, 0.08 + shard * 0.05 + this.random.range(0, 0.03));
+    }
   }
 
   /** The cargo was loaded: a heavy clunk. */
