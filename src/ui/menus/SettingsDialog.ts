@@ -8,6 +8,7 @@ import {
   type WeatherChoice,
 } from '../../data/config/controls';
 import { QUALITY_CHOICES, type QualityChoice, type QualityLevel } from '../../data/config/GameConfig';
+import { isLanguageChoice, LANGUAGE_NAMES, LANGUAGES, type Language, type LanguageChoice } from '../../data/config/languages';
 import { CLOCK_PRESETS, type ClockPreset } from '../../systems/weather/TimeOfDayService';
 import { button, element } from '../dom';
 import { choiceRow, select } from './choiceRow';
@@ -15,6 +16,9 @@ import type { Strings } from '../i18n';
 
 /** What the dialog shows as set when it opens. */
 export interface SettingsShown {
+  /** The player's language setting, and the language the device's setting gives. */
+  readonly language: LanguageChoice;
+  readonly deviceLanguage: Language;
   /** The player's graphics setting, and the preset it gave (the device's when `auto`, or `?quality=`). */
   readonly quality: QualityChoice;
   readonly qualityInUse: QualityLevel;
@@ -43,6 +47,8 @@ export interface SettingsShown {
 }
 
 export interface SettingsActions {
+  /** The player picked another language; the game restarts in it. */
+  readonly onLanguage: (choice: LanguageChoice) => void;
   /** The player picked another graphics setting; the game restarts with it. */
   readonly onQuality: (choice: QualityChoice) => void;
   /** The rest apply at once. */
@@ -63,14 +69,15 @@ export interface SettingsActions {
 const CLOCK_STEP_MINUTES = 5;
 
 /**
- * The device's settings (spec Phase 7): the graphics preset, or `auto` to
- * let the device decide, with the preset in use now; the time of day (a
- * preset, or any time on a slider) and whether the day passes, stands
- * still or keeps the phone's time; the weather, as it comes or held as one
- * kind; the season, the calendar's or held as one; sound and vibration on
- * or off; and the performance display, for testing on phones. A new
- * graphics setting restarts the game, which picks it up at boot; everything
- * else applies at once. Below them, about the game: its version, the
+ * The device's settings (spec Phase 7): the language, the device's or one
+ * picked from a list; the graphics preset, or `auto` to let the device
+ * decide, with the preset in use now; the time of day (a preset, or any
+ * time on a slider) and whether the day passes, stands still or keeps the
+ * phone's time; the weather, as it comes or held as one kind; the season,
+ * the calendar's or held as one; sound and vibration on or off; and the
+ * performance display, for testing on phones. A new language or graphics
+ * setting restarts the game, which picks it up at boot; everything else
+ * applies at once. Below them, about the game: its version, the
  * open-source licences (a page of their own within the dialog) and the
  * privacy policy. It opens from the main menu and from the pause menu; the
  * controls have a page of their own (ControlsDialog).
@@ -78,6 +85,7 @@ const CLOCK_STEP_MINUTES = 5;
 export class SettingsDialog {
   private readonly overlay: HTMLDivElement;
   private readonly panel: HTMLDivElement;
+  private readonly languageSelect: HTMLSelectElement;
   private readonly licensesPanel: HTMLDivElement;
   private readonly licensesText: HTMLPreElement;
   private licensesLoaded = false;
@@ -94,6 +102,34 @@ export class SettingsDialog {
     this.overlay.hidden = true;
     const panel = element(document, 'div', 'panel settings__panel');
     this.panel = panel;
+
+    // The language: a list (ten names do not fit a row of buttons), each language named in itself.
+    const language = element(document, 'div', 'settings__row');
+    language.dataset.setting = 'language';
+    this.languageSelect = element(document, 'select', 'settings__select');
+    this.languageSelect.setAttribute('aria-label', strings.t('settings.language'));
+    const option = (value: LanguageChoice, label: string): HTMLOptionElement => {
+      const node = element(document, 'option', '', label);
+      node.value = value;
+      node.lang = value === 'auto' ? strings.language : value;
+      return node;
+    };
+    this.languageSelect.append(
+      option('auto', strings.t('settings.language.auto', { language: LANGUAGE_NAMES[shown.deviceLanguage] })),
+      ...LANGUAGES.map((code) => option(code, LANGUAGE_NAMES[code])),
+    );
+    this.languageSelect.value = shown.language;
+    this.languageSelect.addEventListener('change', () => {
+      const choice = this.languageSelect.value;
+      if (isLanguageChoice(choice) && choice !== shown.language) {
+        actions.onLanguage(choice);
+      }
+    });
+    language.append(
+      element(document, 'h3', 'settings__label', strings.t('settings.language')),
+      this.languageSelect,
+      element(document, 'p', 'settings__note', strings.t('settings.languageNote')),
+    );
 
     const quality = choiceRow(document, strings.t('settings.quality'), 'quality', QUALITY_CHOICES, shown.quality, (choice) =>
       strings.t(`settings.quality.${choice}`),
@@ -209,6 +245,7 @@ export class SettingsDialog {
 
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('settings.title')),
+      language,
       quality.row,
       this.clockRow,
       flow.row,
@@ -248,6 +285,13 @@ export class SettingsDialog {
     this.overlay.hidden = true;
     this.panel.hidden = false;
     this.licensesPanel.hidden = true;
+  }
+
+  /** Opens the dialog at its language list (the main menu's language button). */
+  openAtLanguage(): void {
+    this.open();
+    this.languageSelect.scrollIntoView({ block: 'nearest' });
+    this.languageSelect.focus({ preventScroll: true });
   }
 
   /** Android's back button: from the licences back to the settings; from the settings, shut. */

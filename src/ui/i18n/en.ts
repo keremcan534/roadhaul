@@ -1,6 +1,6 @@
 import type { StringTable } from './Strings';
 
-/** English text. Every key here must also be in tr.ts (a unit test checks both ways). */
+/** English text, the fallback: every other language has exactly these keys and placeholders (a unit test checks). */
 export const EN: StringTable = {
   'format.money': '{amount} credits',
   'format.meters': '{value} m',

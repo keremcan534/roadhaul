@@ -101,7 +101,7 @@ import { RolloverPanel } from './ui/hud/RolloverPanel';
 import { GraphicsNotice } from './ui/hud/GraphicsNotice';
 import { Toasts } from './ui/hud/Toasts';
 import { TutorialHint, tutorialShows, type TutorialPlace } from './ui/hud/TutorialHint';
-import { chooseLanguage, stringsFor, type Strings } from './ui/i18n';
+import { chooseLanguage, loadStrings, stringsFor, type Strings } from './ui/i18n';
 import { MapPainter } from './ui/map/MapPainter';
 import { sketchWorld } from './ui/map/mapSketch';
 import { WorldMap } from './ui/map/WorldMap';
@@ -726,9 +726,9 @@ async function start(strings: Strings): Promise<void> {
       menuPreview = place;
     },
     onControls: () => openControls(),
-    onSwitchLanguage: () => {
-      query.set('lang', strings.language === 'tr' ? 'en' : 'tr');
-      window.location.search = query.toString();
+    onLanguage: () => {
+      openSettings();
+      settingsDialog.openAtLanguage();
     },
     onSettings: () => openSettings(),
   });
@@ -829,6 +829,8 @@ async function start(strings: Strings): Promise<void> {
     strings,
     {
       ...settings,
+      // What the device's own language setting gives (the list names it).
+      deviceLanguage: chooseLanguage(null, navigator.languages ?? [navigator.language]),
       quality: qualityChoice,
       qualityInUse: quality,
       clockMinutes: timeOfDay.minutes,
@@ -846,6 +848,22 @@ async function start(strings: Strings): Promise<void> {
       },
     },
     {
+    onLanguage: (choice) => {
+      // The game restarts in it. A `?lang=` would win over the setting, so it goes, unless storage forgets the
+      // setting: then the address carries the choice (as with a new graphics setting).
+      settings = { ...settings, language: choice };
+      if ((saveSettings(storage, settings) && persistent) || choice === 'auto') {
+        query.delete('lang');
+      } else {
+        query.set('lang', choice);
+      }
+      const search = query.toString();
+      if (search === window.location.search.replace(/^\?/, '')) {
+        window.location.reload();
+      } else {
+        window.location.search = search;
+      }
+    },
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice. Kept in the
@@ -1915,15 +1933,33 @@ function fatalText(strings: Strings, error: unknown): FatalErrorText {
   };
 }
 
+/**
+ * The language first (`?lang=`, the player's setting, the device's), so a
+ * failure at boot is told in it too; its table loads with its own chunk,
+ * English should that fail. Then the game.
+ */
+async function boot(): Promise<void> {
+  // Older WebViews may only have navigator.language.
+  const language = chooseLanguage(
+    new URLSearchParams(window.location.search).get('lang'),
+    navigator.languages ?? [navigator.language],
+    loadSettings(browserStorage(window).storage).language,
+  );
+  document.documentElement.lang = language;
+  let strings = stringsFor('en');
+  try {
+    strings = await loadStrings(language).catch((error: unknown) => {
+      console.warn(`The ${language} text did not load: the game speaks English.`, error);
+      return stringsFor('en');
+    });
+    document.documentElement.lang = strings.language;
+    await start(strings);
+  } catch (error) {
+    console.error(error);
+    document.documentElement.dataset.bootState = 'error';
+    showFatalError(document, fatalText(strings, error), error);
+  }
+}
+
 document.documentElement.dataset.bootState = 'booting';
-// The language, before anything else: a failure at boot is said in it too. Older WebViews may only have
-// navigator.language.
-const bootStrings = stringsFor(
-  chooseLanguage(new URLSearchParams(window.location.search).get('lang'), navigator.languages ?? [navigator.language]),
-);
-document.documentElement.lang = bootStrings.language;
-start(bootStrings).catch((error: unknown) => {
-  console.error(error);
-  document.documentElement.dataset.bootState = 'error';
-  showFatalError(document, fatalText(bootStrings, error), error);
-});
+void boot();

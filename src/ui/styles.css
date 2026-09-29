@@ -1176,6 +1176,28 @@ body {
   opacity: 0.4;
 }
 
+/* The language list: a native list (the phone's own picker), dressed as the settings' buttons. */
+.settings__select {
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 10px;
+  background: rgb(0 0 0 / 30%);
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 15px;
+}
+
+.settings__select:focus-visible {
+  border-color: var(--rh-accent);
+  outline: none;
+}
+
+.settings__select option {
+  background: var(--rh-bg);
+  color: var(--rh-fg);
+}
+
 /* The dialog's two pages (the settings, the licences): the one not shown stays hidden in every layout. */
 .settings .settings__panel[hidden] {
   display: none;
