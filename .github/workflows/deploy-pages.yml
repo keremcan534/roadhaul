@@ -24,6 +24,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The whole history: the build's number (Settings → About) counts main's commits, as the Play releases' do.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
@@ -36,7 +39,7 @@ jobs:
         run: npm run typecheck && npm test
 
       - name: Build
-        run: npm run build
+        run: ROADHAUL_VERSION_CODE="$(git rev-list --count HEAD)" npm run build
 
       - uses: actions/configure-pages@v5
 
