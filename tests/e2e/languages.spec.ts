@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openMainMenu, watchForProblems } from './support';
+import { openGame, openMainMenu, openPanel, watchForProblems } from './support';
 
 /** Waits for the game to have booted (again) into the main menu. */
 async function booted(page: Page): Promise<void> {
@@ -60,5 +60,31 @@ test('boots in each language the address asks for, its table loaded on demand', 
     await expect(page.locator('html')).toHaveAttribute('lang', code);
     await expect(page.locator('[data-action="new-company"]')).toHaveText(label);
   }
+  expect(problems).toEqual([]);
+});
+
+test('fits a long language into the company panel of a small phone on its side', async ({ page }) => {
+  test.slow(); // A game started, drawn in software.
+  const problems = watchForProblems(page);
+  await page.setViewportSize({ width: 640, height: 360 });
+  await openGame(page, '?lang=fr');
+  await openPanel(page, 'events');
+
+  // No tab's name is cut short ("Événements" is made smaller to fit instead), measured to a fraction of a pixel.
+  const cut = await page.locator('.hq__tab-label').evaluateAll((labels) =>
+    labels
+      .filter((label) => {
+        const text = document.createRange();
+        text.selectNodeContents(label);
+        return text.getBoundingClientRect().width > label.getBoundingClientRect().width + 0.5;
+      })
+      .map((label) => label.textContent),
+  );
+  expect(cut).toEqual([]);
+
+  // The level ("Niveau 1 · Débutant") stays clear of the credits beside it.
+  const level = await page.locator('.hq__level').boundingBox();
+  const money = await page.locator('.hq__money').boundingBox();
+  expect(level!.x + level!.width).toBeLessThanOrEqual(money!.x + 0.5);
   expect(problems).toEqual([]);
 });
