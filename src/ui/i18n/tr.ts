@@ -9,7 +9,7 @@ export const TR: StringTable = {
 
   'menu.tagline': 'Sür · Teslim et · Büyüt',
   'menu.play': 'Oyna',
-  'menu.language': 'English',
+  'menu.language': 'Dil',
 
   'hq.title': 'Şirket Merkezi',
   'hq.map': 'Harita',
@@ -348,6 +348,12 @@ export const TR: StringTable = {
   'settings.on': 'Açık',
   'settings.off': 'Kapalı',
   'settings.close': 'Kapat',
+  'settings.language': 'Dil',
+  'settings.language.auto': 'Cihazın dili ({language})',
+  'settings.languageNote': 'Oyun seçilen dilde yeniden başlar.',
+  'settings.vibration': 'Titreşim',
+  'settings.vibrationNote': 'Kamyon bir yere çarptığında telefon titrer.',
+  'settings.about': 'Hakkında',
 
   'vehicle.rh_h1.name': 'RoadHaul H1',
   'vehicle.rh_h2.name': 'RoadHaul H2',
@@ -571,4 +577,14 @@ export const TR: StringTable = {
   'facility.effect.marketShareBonus': 'Teslimatlardan pay +{percent}',
   'facility.effect.xpBonus': 'Teslimatlardan deneyim +{percent}',
   'facility.effect.extraContracts': 'Günün işleri +{count}',
+
+  'about.version': 'Sürüm {version} · derleme {build}',
+  'about.credits': 'three.js ve Capacitor ile yapıldı: MIT lisanslı açık kaynak yazılımlar.',
+  'about.licenses': 'Açık kaynak lisansları',
+  'about.privacy': 'Gizlilik politikası',
+  'crash.title': 'Bir şeyler ters gitti',
+  'crash.note': 'Şirketin son kaydedildiği hâliyle duruyor. Devam etmek için oyunu yeniden başlat.',
+  'crash.restart': 'Yeniden başlat',
+  'graphics.restoring': 'Grafikler geri yükleniyor…',
+  'boot.noWebgl': 'Bu cihaz oyunun 3B grafiklerini çizemiyor. Android System WebView’ı ya da Chrome’u güncelleyip yeniden dene.',
 };

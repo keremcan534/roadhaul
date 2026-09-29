@@ -22,6 +22,8 @@ import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfi
 export interface DeviceSettings {
   readonly quality: QualityChoice;
   readonly sound: boolean;
+  /** The phone buzzes when the truck hits something (on touch screens). */
+  readonly vibration: boolean;
   /** The performance display (FPS, draw calls, the preset and GPU), for testing on phones. */
   readonly stats: boolean;
   /** How the phone steers: the on-screen wheel, tilting the phone, or left/right buttons. */
@@ -45,6 +47,7 @@ export const SETTINGS_KEY = 'roadhaul.settings';
 export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   quality: 'auto',
   sound: true,
+  vibration: true,
   stats: false,
   steering: 'wheel',
   tiltSensitivity: 'normal',
@@ -63,11 +66,12 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { quality, sound, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather, season } =
+    const { quality, sound, vibration, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather, season } =
       parsed as Record<string, unknown>;
     return {
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
       sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
+      vibration: typeof vibration === 'boolean' ? vibration : DEFAULT_SETTINGS.vibration,
       stats: typeof stats === 'boolean' ? stats : DEFAULT_SETTINGS.stats,
       steering: isSteeringMode(steering) ? steering : DEFAULT_SETTINGS.steering,
       tiltSensitivity: isTiltSensitivity(tiltSensitivity) ? tiltSensitivity : DEFAULT_SETTINGS.tiltSensitivity,

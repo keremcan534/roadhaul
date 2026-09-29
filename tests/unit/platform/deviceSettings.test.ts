@@ -5,6 +5,7 @@ import { loadSettings, saveSettings, SETTINGS_KEY, type DeviceSettings } from '.
 const DEFAULTS: DeviceSettings = {
   quality: 'auto',
   sound: true,
+  vibration: true,
   stats: false,
   steering: 'wheel',
   tiltSensitivity: 'normal',
@@ -17,13 +18,14 @@ const DEFAULTS: DeviceSettings = {
 };
 
 describe('device settings', () => {
-  it('lets the device decide, plays sound and steers with the wheel until the player picks otherwise', () => {
+  it('lets the device decide, plays sound, buzzes and steers with the wheel until the player picks otherwise', () => {
     const storage = new MemoryStorage();
     expect(loadSettings(storage)).toEqual(DEFAULTS);
 
     const picked: DeviceSettings = {
       quality: 'low',
       sound: false,
+      vibration: false,
       stats: true,
       steering: 'tilt',
       tiltSensitivity: 'high',
@@ -45,7 +47,7 @@ describe('device settings', () => {
       '{',
       'null',
       '[]',
-      '{"quality":"ultra","sound":"loud","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon"}',
+      '{"quality":"ultra","sound":"loud","vibration":"strong","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon"}',
     ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);
@@ -57,6 +59,8 @@ describe('device settings', () => {
     expect(loadSettings(storage)).toEqual({ ...DEFAULTS, sound: false, stats: true });
     storage.setItem(SETTINGS_KEY, '{"steering":"buttons","controlSize":"small"}');
     expect(loadSettings(storage)).toEqual({ ...DEFAULTS, steering: 'buttons', controlSize: 'small' });
+    storage.setItem(SETTINGS_KEY, '{"vibration":false}');
+    expect(loadSettings(storage)).toEqual({ ...DEFAULTS, vibration: false });
   });
 
   it('survives storage that throws', () => {
