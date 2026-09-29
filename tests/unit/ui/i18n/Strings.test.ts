@@ -13,16 +13,45 @@ import { TUTORIAL_STEPS } from '../../../../src/domain/tutorial/tutorialSteps';
 import { DAMAGE_BANDS } from '../../../../src/domain/vehicles/vehicleDamage';
 import { CLOCK_PRESETS } from '../../../../src/systems/weather/TimeOfDayService';
 import { HQ_TABS } from '../../../../src/ui/hq/hqTabs';
+import { LANGUAGE_NAMES, LANGUAGES, type Language } from '../../../../src/data/config/languages';
+import { DE } from '../../../../src/ui/i18n/de';
 import { EN } from '../../../../src/ui/i18n/en';
-import { chooseLanguage, stringsFor } from '../../../../src/ui/i18n';
+import { ES } from '../../../../src/ui/i18n/es';
+import { FR } from '../../../../src/ui/i18n/fr';
+import { ID } from '../../../../src/ui/i18n/id';
+import { chooseLanguage, loadStrings, stringsFor } from '../../../../src/ui/i18n';
+import { IT } from '../../../../src/ui/i18n/it';
+import { PL } from '../../../../src/ui/i18n/pl';
+import { PT } from '../../../../src/ui/i18n/pt';
+import { RU } from '../../../../src/ui/i18n/ru';
+import { Strings, type StringTable } from '../../../../src/ui/i18n/Strings';
 import { TR } from '../../../../src/ui/i18n/tr';
 
 const tr = stringsFor('tr');
 const en = stringsFor('en');
 
+/** Every language's table. */
+const TABLES: Readonly<Record<Language, StringTable>> = { de: DE, en: EN, es: ES, fr: FR, id: ID, it: IT, pl: PL, pt: PT, ru: RU, tr: TR };
+
+/** Names are the same in every language: the cities, villages, trucks, drivers and rival companies. */
+const NAME = /^(city|village|vehicle|driver|rival)\./;
+
 describe('string tables', () => {
-  it('have the same keys in Turkish and English', () => {
-    expect(Object.keys(TR).sort()).toEqual(Object.keys(EN).sort());
+  it('have the same keys in every language', () => {
+    for (const language of LANGUAGES) {
+      expect(Object.keys(TABLES[language]).sort(), language).toEqual(Object.keys(EN).sort());
+    }
+  });
+
+  it('say something in every entry, and keep the names as they are', () => {
+    for (const language of LANGUAGES) {
+      for (const [key, text] of Object.entries(TABLES[language])) {
+        expect(text.trim(), `${language}: ${key}`).not.toBe('');
+        if (NAME.test(key)) {
+          expect(text, `${language}: ${key}`).toBe(EN[key]);
+        }
+      }
+    }
   });
 
   it('name every city, village, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, driver, rival, facility and its effect, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
@@ -70,10 +99,22 @@ describe('string tables', () => {
     expect(tr.cityName('city_b')).toBe('Ironford');
   });
 
-  it('keep every placeholder of the English text in the Turkish one', () => {
+  it('keep every placeholder of the English text in every language', () => {
     const placeholders = (text: string): string[] => [...text.matchAll(/\{(\w+)\}/g)].map((match) => match[1]!).sort();
-    for (const [key, text] of Object.entries(EN)) {
-      expect(placeholders(TR[key]!), key).toEqual(placeholders(text));
+    for (const language of LANGUAGES) {
+      for (const [key, text] of Object.entries(EN)) {
+        expect(placeholders(TABLES[language][key]!), `${language}: ${key}`).toEqual(placeholders(text));
+      }
+    }
+  });
+
+  it('name every language in itself, and load each one’s table', async () => {
+    expect(new Set(LANGUAGES).size).toBe(LANGUAGES.length);
+    for (const language of LANGUAGES) {
+      expect(LANGUAGE_NAMES[language].length, language).toBeGreaterThan(2);
+      const strings = await loadStrings(language);
+      expect(strings.language).toBe(language);
+      expect(strings.t('settings.title')).toBe(TABLES[language]['settings.title']);
     }
   });
 });
@@ -88,6 +129,13 @@ describe('Strings', () => {
   it('groups whole numbers the way each language does', () => {
     expect(tr.number(12000)).toBe('12.000');
     expect(en.number(12000)).toBe('12,000');
+    expect(new Strings('de', DE).number(12000)).toBe('12.000');
+    expect(new Strings('pt', PT).number(12000)).toBe('12.000');
+    expect(new Strings('id', ID).number(12000)).toBe('12.000');
+    // A (narrow) no-break space.
+    expect(new Strings('ru', RU).number(12000)).toMatch(/^12\s000$/u);
+    expect(new Strings('fr', FR).number(12000)).toMatch(/^12\s000$/u);
+    expect(new Strings('de', DE).tons(4.5)).toBe('4,5 t');
   });
 
   it('formats money with each language’s grouping', () => {
@@ -132,11 +180,25 @@ describe('Strings', () => {
 });
 
 describe('chooseLanguage', () => {
-  it('prefers an explicit choice, then the browser languages, then English', () => {
+  it('prefers the address, then the browser languages it speaks, then English', () => {
     expect(chooseLanguage('en', ['tr-TR'])).toBe('en');
     expect(chooseLanguage(null, ['tr-TR', 'en-US'])).toBe('tr');
-    expect(chooseLanguage(null, ['de-DE', 'en-US'])).toBe('en');
+    expect(chooseLanguage(null, ['ja-JP', 'de-DE', 'en-US'])).toBe('de');
     expect(chooseLanguage('xx', ['TR'])).toBe('tr');
+    expect(chooseLanguage(null, ['ja-JP'])).toBe('en');
     expect(chooseLanguage(null, [])).toBe('en');
+  });
+
+  it('keeps the player’s pick over the device’s, though not over the address', () => {
+    expect(chooseLanguage(null, ['tr-TR'], 'ru')).toBe('ru');
+    expect(chooseLanguage(null, ['tr-TR'], 'auto')).toBe('tr');
+    expect(chooseLanguage('es', ['tr-TR'], 'ru')).toBe('es');
+  });
+
+  it('reads a language by its base, and Indonesian by its old Android name', () => {
+    expect(chooseLanguage(null, ['pt-PT'])).toBe('pt');
+    expect(chooseLanguage(null, ['es-419'])).toBe('es');
+    expect(chooseLanguage(null, ['in-ID'])).toBe('id');
+    expect(chooseLanguage(null, ['fr_CA'])).toBe('fr');
   });
 });

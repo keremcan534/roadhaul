@@ -17,6 +17,7 @@ import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
+import { LabelFitter } from '../LabelFitter';
 import { companyPage } from './companyPage';
 import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
@@ -117,6 +118,8 @@ export class CompanyHq {
   private readonly reputation: HTMLSpanElement;
   private readonly credits: HTMLSpanElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
+  /** Keeps the tabs' names whole: a name too long for its tab is made smaller. */
+  private readonly tabNames: LabelFitter;
   private readonly list: HTMLDivElement;
   /** Where the tutorial's hint goes while the panel is open: above the list, in the flow. */
   readonly hintSlot: HTMLDivElement;
@@ -178,18 +181,23 @@ export class CompanyHq {
     const tabBar = el('nav', 'hq__tabs');
     tabBar.setAttribute('role', 'tablist');
     const tabs = new Map<HqTab, HTMLButtonElement>();
+    const tabLabels: HTMLElement[] = [];
     for (const tab of HQ_TABS) {
       const tabButton = el('button', 'hq__tab');
       tabButton.type = 'button';
       tabButton.dataset.action = 'tab';
       tabButton.dataset.tab = tab;
       tabButton.setAttribute('role', 'tab');
-      tabButton.append(icon(document, TAB_ICONS[tab]), el('span', 'hq__tab-label', strings.t(`hq.tab.${tab}`)));
+      const label = el('span', 'hq__tab-label', strings.t(`hq.tab.${tab}`));
+      tabLabels.push(label);
+      tabButton.append(icon(document, TAB_ICONS[tab]), label);
       tabButton.addEventListener('click', () => this.selectTab(tab));
       tabs.set(tab, tabButton);
       tabBar.append(tabButton);
     }
     this.tabs = tabs;
+    // The tabs change shape with the screen (a rail on a phone on its side, a row upright): their names fit each.
+    this.tabNames = new LabelFitter(tabBar, tabLabels);
     this.hintSlot = el('div', 'hq__hint');
     // The one scrolling part: a finger dragged anywhere on it scrolls it, never the page behind.
     this.list = el('div', 'hq__list');
@@ -226,6 +234,7 @@ export class CompanyHq {
   open(tab: HqTab): void {
     this.root.hidden = false;
     this.selectTab(tab);
+    this.tabNames.refit();
   }
 
   /** Closes the panel: the truck is shown as it is again. */
@@ -254,7 +263,8 @@ export class CompanyHq {
     const progress = company.levelProgress;
     setText(
       this.levelLabel,
-      `${strings.t('company.level', { level: progress.level })} · ${strings.t(`company.levelName.${progress.level}`)}`,
+      // The dot kept with the number: a narrow header puts the level's name under it.
+      `${strings.t('company.level', { level: progress.level })}\u00a0· ${strings.t(`company.levelName.${progress.level}`)}`,
     );
     this.xpFill.style.transform = `scaleX(${progress.fraction})`;
     setText(
@@ -314,6 +324,7 @@ export class CompanyHq {
   }
 
   dispose(): void {
+    this.tabNames.dispose();
     this.root.remove();
   }
 

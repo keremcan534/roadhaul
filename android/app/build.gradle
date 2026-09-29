@@ -29,6 +29,17 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // The upload key Google Play knows the game by: secret, never in the repository. CI unpacks it from the
+        // repository's secrets (.github/workflows/release.yml); on a desktop it comes from the same variables
+        // (docs/RELEASE.md). Without them a release build is left unsigned.
+        if (System.getenv('ROADHAUL_KEYSTORE_FILE')) {
+            release {
+                storeFile file(System.getenv('ROADHAUL_KEYSTORE_FILE'))
+                storePassword System.getenv('ROADHAUL_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ROADHAUL_KEY_ALIAS')
+                keyPassword System.getenv('ROADHAUL_KEY_PASSWORD')
+            }
+        }
     }
     buildTypes {
         debug {
@@ -37,6 +48,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv('ROADHAUL_KEYSTORE_FILE')) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

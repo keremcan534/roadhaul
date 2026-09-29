@@ -1,0 +1,135 @@
+import { expect, test, type Page } from '@playwright/test';
+import { openGame, openMainMenu, openPanel, watchForProblems } from './support';
+
+/** Waits for the game to have booted (again) into the main menu, within `timeout` (the assertions' own by default). */
+async function booted(page: Page, timeout?: number): Promise<void> {
+  const html = page.locator('html');
+  const within = timeout === undefined ? {} : { timeout };
+  await expect(html).toHaveAttribute('data-boot-state', 'ready', within);
+  await expect(html).toHaveAttribute('data-game-state', 'mainMenu', within);
+}
+
+/**
+ * Picks a language (`pick`), which starts the game again in a new page, and waits for it to have booted into the
+ * main menu. Drawn in software, leaving the old page takes seconds and the new one boots slower meanwhile: the new
+ * page's load is waited for first (else a check could still see the old page, or give the new one's boot only the
+ * time left), then its boot gets a restart's time.
+ */
+async function restartAfter(page: Page, pick: () => Promise<unknown>): Promise<void> {
+  const loaded = page.waitForEvent('load', { timeout: 60_000 });
+  await pick();
+  await loaded;
+  await booted(page, 30_000);
+}
+
+test('picks a language from the main menu, restarts in it and keeps it', async ({ page }) => {
+  test.slow(); // The game booted four times, drawn in software.
+  const problems = watchForProblems(page);
+  // The phone's own language: English (the test browser's).
+  await openMainMenu(page);
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('lang', 'en');
+  const language = page.locator('[data-action="language"]');
+  await expect(language).toContainText('English');
+
+  // The language button opens the settings at the list, which offers the device's language first.
+  await language.click();
+  const list = page.locator('.settings [data-setting="language"] select');
+  await expect(list).toBeVisible();
+  await expect(list.locator('option').first()).toHaveText('Device language (English)');
+  await expect(list.locator('option')).toHaveCount(11);
+
+  // German: the game starts again, in German.
+  await restartAfter(page, () => list.selectOption('de'));
+  await expect(html).toHaveAttribute('lang', 'de');
+  await expect(page.locator('[data-action="new-company"]')).toHaveText('Neue Firma');
+  await expect(page.locator('[data-action="language"]')).toContainText('Deutsch');
+
+  // It is kept: the page opened again, with nothing in its address, speaks German still.
+  await page.goto(page.url().replace(/[?&]lang=[^&]*/, ''));
+  await booted(page);
+  await expect(html).toHaveAttribute('lang', 'de');
+
+  // Back to the phone's own.
+  await page.locator('[data-action="language"]').click();
+  await restartAfter(page, () => page.locator('.settings [data-setting="language"] select').selectOption('auto'));
+  await expect(html).toHaveAttribute('lang', 'en');
+  await expect(page.locator('[data-action="new-company"]')).toHaveText('New company');
+  expect(problems).toEqual([]);
+});
+
+test('boots in each language the address asks for, its table loaded on demand', async ({ page }) => {
+  test.slow(); // Ten boots, drawn in software.
+  const problems = watchForProblems(page);
+  const newCompany: Record<string, string> = {
+    id: 'Perusahaan baru',
+    de: 'Neue Firma',
+    ru: 'Новая компания',
+    tr: 'Yeni şirket',
+  };
+  for (const [code, label] of Object.entries(newCompany)) {
+    await openMainMenu(page, `?lang=${code}`);
+    await expect(page.locator('html')).toHaveAttribute('lang', code);
+    await expect(page.locator('[data-action="new-company"]')).toHaveText(label);
+  }
+  expect(problems).toEqual([]);
+});
+
+test('fits a long language into the company panel of a small phone on its side', async ({ page }) => {
+  test.slow(); // A game started, drawn in software.
+  const problems = watchForProblems(page);
+  await page.setViewportSize({ width: 640, height: 360 });
+  await openGame(page, '?lang=fr');
+  await openPanel(page, 'events');
+
+  // No tab's name is cut short ("Événements" is made smaller to fit instead), measured to a fraction of a pixel.
+  const cut = await page.locator('.hq__tab-label').evaluateAll((labels) =>
+    labels
+      .filter((label) => {
+        const text = document.createRange();
+        text.selectNodeContents(label);
+        return text.getBoundingClientRect().width > label.getBoundingClientRect().width + 0.5;
+      })
+      .map((label) => label.textContent),
+  );
+  expect(cut).toEqual([]);
+
+  // The level ("Niveau 1 · Débutant") stays clear of the credits beside it.
+  const level = await page.locator('.hq__level').boundingBox();
+  const money = await page.locator('.hq__money').boundingBox();
+  expect(level!.x + level!.width).toBeLessThanOrEqual(money!.x + 0.5);
+  expect(problems).toEqual([]);
+});
+
+test('keeps every button on an upright phone in a long language: the main menu, Settings and Controls', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await openMainMenu(page, '?lang=pl');
+
+  /** The buttons (and cards) under `selector` that reach past the screen's sides. */
+  const offScreen = (selector: string): Promise<string[]> =>
+    page.locator(`${selector} button`).evaluateAll((buttons) =>
+      buttons
+        .filter((button) => button.checkVisibility())
+        .filter((button) => {
+          const box = button.getBoundingClientRect();
+          return box.left < -0.5 || box.right > window.innerWidth + 0.5;
+        })
+        .map((button) => button.textContent ?? ''),
+    );
+
+  // The main menu's row of small buttons ("Sterowanie", "Ustawienia", "Polski") takes a second line if it must.
+  expect(await offScreen('.main-menu')).toEqual([]);
+
+  // Settings: the weather's five choices ("Zmienna" … "Śnieżna"), the time of day's and the season's wrap.
+  await page.locator('[data-action="settings"]').click();
+  await expect(page.locator('.settings')).toBeVisible();
+  expect(await offScreen('.settings')).toEqual([]);
+  await page.locator('[data-action="close-settings"]').click();
+
+  // Controls: the three steering cards stay alike ("Kierownica" made smaller to fit), the camera's choices wrap.
+  await page.locator('[data-action="controls"]').click();
+  await expect(page.locator('.controls')).toBeVisible();
+  expect(await offScreen('.controls')).toEqual([]);
+  expect(problems).toEqual([]);
+});

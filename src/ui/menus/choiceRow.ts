@@ -26,7 +26,6 @@ export function choiceRow<T extends string | boolean>(
   const group = element(document, 'div', 'settings__choices');
   group.setAttribute('role', 'radiogroup');
   group.setAttribute('aria-label', label);
-  group.style.setProperty('--rh-choices', String(values.length));
   const dataKey = key.replace(/-(\w)/g, (_, letter: string) => letter.toUpperCase());
   let listener: (value: T) => void = () => {};
   const options = values.map((value) => {

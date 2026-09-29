@@ -38,6 +38,7 @@ const PAGES_FIGURES_AND_MENUS = [
   'plus',
   'home',
   'settings',
+  'language',
 ] as const satisfies readonly IconName[];
 
 const ALL: readonly IconName[] = [

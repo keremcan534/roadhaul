@@ -1,6 +1,6 @@
 import type { StringTable } from './Strings';
 
-/** English text. Every key here must also be in tr.ts (a unit test checks both ways). */
+/** English text, the fallback: every other language has exactly these keys and placeholders (a unit test checks). */
 export const EN: StringTable = {
   'format.money': '{amount} credits',
   'format.meters': '{value} m',
@@ -9,7 +9,7 @@ export const EN: StringTable = {
 
   'menu.tagline': 'Drive · Deliver · Grow',
   'menu.play': 'Play',
-  'menu.language': 'Türkçe',
+  'menu.language': 'Language',
 
   'hq.title': 'Company HQ',
   'hq.map': 'Map',
@@ -348,6 +348,12 @@ export const EN: StringTable = {
   'settings.on': 'On',
   'settings.off': 'Off',
   'settings.close': 'Close',
+  'settings.language': 'Language',
+  'settings.language.auto': 'Device language ({language})',
+  'settings.languageNote': 'The game restarts in the language picked.',
+  'settings.vibration': 'Vibration',
+  'settings.vibrationNote': 'The phone buzzes when the truck hits something.',
+  'settings.about': 'About',
 
   'vehicle.rh_h1.name': 'RoadHaul H1',
   'vehicle.rh_h2.name': 'RoadHaul H2',
@@ -571,4 +577,14 @@ export const EN: StringTable = {
   'facility.effect.marketShareBonus': 'Standing from deliveries +{percent}',
   'facility.effect.xpBonus': 'Experience from deliveries +{percent}',
   'facility.effect.extraContracts': 'Contracts of the day +{count}',
+
+  'about.version': 'Version {version} · build {build}',
+  'about.credits': 'Made with three.js and Capacitor, open-source software under the MIT licence.',
+  'about.licenses': 'Open-source licences',
+  'about.privacy': 'Privacy policy',
+  'crash.title': 'Something went wrong',
+  'crash.note': 'Your company is kept as it was last saved. Restart the game to go on.',
+  'crash.restart': 'Restart',
+  'graphics.restoring': 'Restoring the graphics…',
+  'boot.noWebgl': 'This device cannot draw the game’s 3D graphics. Update Android System WebView or Chrome and try again.',
 };

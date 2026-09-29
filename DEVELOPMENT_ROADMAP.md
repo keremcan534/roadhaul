@@ -132,6 +132,23 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber; since the brand round, the brand's mark) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
 - Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
 - For step 29, Settings has a performance display switch: FPS, draw calls, the pixel ratio, the graphics preset and the GPU, in the browser and the app, without `?debug`.
+- Release hardening (toward step 30):
+  - A boot screen while the world is built.
+  - The error screen in the player's language, with a restart: no WebGL is told so; a crash keeps the save.
+  - A lost WebGL context pauses and saves the drive under a note until the graphics are back.
+  - The screen stays on while the game is in front; in a browser, a wake lock while driving.
+  - A short buzz on crashes (Settings can switch it off).
+  - Settings → About: the version and build, the open-source licences and the privacy policy's link.
+  - Release builds: a signed Android App Bundle from a `v*` tag or by hand (`.github/workflows/release.yml`), with the upload key in the repository's secrets. A local release build with a test key was checked here: `./gradlew bundleRelease`, 3.3 MB, signed.
+- Store kit (toward step 30), with `docs/RELEASE.md` as the checklist for the owner's part (the developer account, the upload key, the Play Console's forms, closed testing):
+  - The listing in ten languages in `fastlane/metadata/android/` (English and Turkish written here, the rest machine-written: they want native readers), held to the store's limits by a unit test.
+  - The 512 px icon, the 1024 × 500 feature graphic and one captioned 1920 × 1080 screenshot per language, drawn from the game (`scripts/androidIcons.mjs`, `scripts/storeArt.mjs`). Google Play needs at least two screenshots: more to come once the look is agreed. A video later.
+  - The privacy policy, `public/privacy.html`, at the address Settings links to: no data collected, the saves on the phone.
+  - Long languages checked at phone sizes (640 × 360 and 915 × 412 on its side, 360 × 740 upright) for text that spills, is cut short or overlaps, and for buttons pushed off the screen:
+    - Settings' choices, About's links and the main menu's small buttons ran off an upright phone in Polish, German and others: their rows now take a second line.
+    - Short labels in rows of equal boxes (the panel's tabs, the dock's buttons, the steering cards' names) are made smaller to fit (`LabelFitter`).
+    - An event's dates, a truck card's status and the panel header's level, XP and reputation go under what they share a line with when both do not fit; the truck's part tiles are wide enough for a name and its pips.
+    - The saved company's lines on the main menu take two lines before they are cut short.
 
 ### Player feedback (between steps 28 and 29)
 
@@ -301,6 +318,7 @@ The player found the truck "glued to the ground": a touch on its side made it ju
 | A main menu | ✅ | A hub before the drive. The saved company at a glance: its name and level, credits, trucks, drivers and deliveries, the truck and where it was left, the contract under way. Where to start: where the truck was left (a new company: its home town), any city's depot or the rest area, the truck shown there behind the menu as it is picked; with a contract under way the drive goes on from where the truck is. The controls before driving, on a page of their own (also in the pause menu): the way of steering as three cards, tilt sensitivity, the controls' size with a picture of them at that size, the camera to start with, and the keyboard's keys on a computer. The settings keep the graphics, the time, the weather, the season and the sound |
 | Road signs | ✅ | The country roads signed as in a real country: a warning triangle before each sharp bend (left or right, as each way's traffic sees it) and red chevron boards round the outside of the sharpest; a warning before a crossroads or a country road joining; give way where a farm lane comes out, stop where a country road does; and blue direction boards before the junctions of the country roads, each way's arrow, the towns and villages it leads to and how many kilometres by road, with one just out of each town naming what lies ahead (green on the highway). The small signs fly off when hit, the boards stand. Two draw calls more for all the boards; the signs merge into the scenery's tiles |
 | Roadside life | ✅ | The bare stretches filled: wild hedgerows along both sides of the country roads and the lanes (about 42 km of them on the region, in runs broken round trees and posts, clear of junctions); stone gate pillars and a mailbox at the mouth of each farm lane (the mailbox flies off when hit, the pillars stand); and a post-and-wire fence along both sides of the highway (about 5 km, two wires). All merged into the scenery's tiles (the fence's wires with the power lines'): no draw call more |
+| Ten languages | ✅ | ("yayınlamak için gerekli olacak ekstra diller") Besides English and Turkish: German, Spanish, French, Italian, Polish, Brazilian Portuguese, Russian and Indonesian. Settings pick one (a list, each named in itself) or follow the device; the choice is kept and the game restarts in it. English and Turkish come with the code, the others load when picked. Unit tests keep every table complete (keys, placeholders, names). The tables were machine-written and want a native speaker's read before release |
 
 ## Next step: 29 Device testing
 

@@ -1,3 +1,4 @@
+import { LANGUAGE_NAMES } from '../../data/config/languages';
 import type { SaveSummary } from '../../domain/save/saveSummary';
 import type { StartPlace, StartPlaceKind } from '../../domain/world/startPlaces';
 import { brandMark, brandWordmark } from '../brand';
@@ -15,7 +16,8 @@ export interface MainMenuActions {
   /** A place to start was picked: the truck is shown there behind the menu. */
   readonly onPreviewStart: (place: StartPlace) => void;
   /** Switches between Turkish and English. */
-  readonly onSwitchLanguage: () => void;
+  /** Opens the settings at the language list. */
+  readonly onLanguage: () => void;
   readonly onControls: () => void;
   readonly onSettings: () => void;
 }
@@ -44,7 +46,8 @@ const PLACE_ICONS: Readonly<Record<StartPlaceKind, IconName>> = { left: 'pin', h
  * where the drive starts (where the truck was left or the map's own start,
  * a depot or the rest area: the truck is shown there behind the menu), then
  * Continue (with a saved company) and New company; and the controls, the
- * settings and a language switch.
+ * settings and the language (its own name under a globe: the settings'
+ * language list).
  */
 export class MainMenu {
   private readonly root: HTMLDivElement;
@@ -139,7 +142,7 @@ export class MainMenu {
     small.append(
       withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.controls'), 'controls', actions.onControls), 'controls'),
       withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.settings'), 'settings', actions.onSettings), 'settings'),
-      button(document, 'button--ghost main-menu__language', strings.t('menu.language'), 'switch-language', actions.onSwitchLanguage),
+      this.languageButton(document, strings, actions),
     );
 
     const side = element(document, 'div', 'main-menu__side');
@@ -226,6 +229,15 @@ export class MainMenu {
 
   private pickedId(): string {
     return this.shownPlaces[this.picked]?.id ?? 'left';
+  }
+
+  /** The language button: the language spoken now, named in itself, with a globe; it opens the language list. */
+  private languageButton(document: Document, strings: Strings, actions: MainMenuActions): HTMLButtonElement {
+    const name = LANGUAGE_NAMES[strings.language];
+    const node = withIcon(button(document, 'button--ghost main-menu__language', name, 'language', actions.onLanguage), 'language');
+    node.setAttribute('aria-label', `${strings.t('menu.language')}: ${name}`);
+    node.lang = strings.language;
+    return node;
   }
 
   /** What a place is called on its chip: where the truck was left, home, a city's depot, the rest area. */

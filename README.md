@@ -25,7 +25,7 @@ Built with TypeScript, [three.js](https://threejs.org) and Vite. It runs in the 
 
 ## Play
 
-**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops. It speaks your browser's language (Turkish or English); `?lang=tr` or `?lang=en` at the end of the URL picks one. `?debug` shows FPS; its T key parks the truck in the bay the contract needs next, and Y at the rest area. `?traffic=0` empties the roads (any number up to 48 sets how many vehicles drive around). `?weather=rain` (or `clear`, `cloudy`; `dusk`, `night` and `dawn` are times of day) keeps that weather, `?time=19:30` sets the clock (Settings pick the time of day too), `?date=2026-09-30` starts the calendar (events, contracts of the day) on another day, and `?quality=low` (or `medium`, `high`) plays on that graphics preset instead of the one picked in Settings or for the device.
+**https://keremcan534.github.io/roadhaul/** always runs the latest `main`. It works on phones and desktops. It speaks your browser's language (ten of them: English, Turkish, German, Spanish, French, Italian, Polish, Brazilian Portuguese, Russian and Indonesian; Settings pick another); `?lang=de` and the like at the end of the URL picks one. `?debug` shows FPS; its T key parks the truck in the bay the contract needs next, and Y at the rest area. `?traffic=0` empties the roads (any number up to 48 sets how many vehicles drive around). `?weather=rain` (or `clear`, `cloudy`; `dusk`, `night` and `dawn` are times of day) keeps that weather, `?time=19:30` sets the clock (Settings pick the time of day too), `?date=2026-09-30` starts the calendar (events, contracts of the day) on another day, and `?quality=low` (or `medium`, `high`) plays on that graphics preset instead of the one picked in Settings or for the device.
 Every push to `main` redeploys it through [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml). This needs one-time repository settings: public visibility (or a paid plan) and *Settings → Pages → Source: GitHub Actions*.
 
 ## Android app
@@ -41,6 +41,8 @@ cd android && ./gradlew assembleDebug     # gradlew.bat on Windows
 ```
 
 The APK lands in `android/app/build/outputs/apk/debug/`. `npx cap open android` opens the project in Android Studio. `node scripts/androidIcons.mjs` redraws the launcher icons.
+
+Publishing on Google Play (the signed bundle, the upload key, the store listing in `fastlane/`, the privacy policy and the Play Console's forms): see [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Quick start
 

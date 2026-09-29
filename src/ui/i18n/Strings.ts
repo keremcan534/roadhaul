@@ -1,8 +1,14 @@
+import {
+  FALLBACK_LANGUAGE,
+  LANGUAGE_LOCALES,
+  languageOfTag,
+  type Language,
+  type LanguageChoice,
+} from '../../data/config/languages';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { Credits, Fraction } from '../../data/units';
 
-export const LANGUAGES = ['tr', 'en'] as const;
-export type Language = (typeof LANGUAGES)[number];
+export { LANGUAGES, type Language } from '../../data/config/languages';
 
 /** Player-facing text by key. Content keys derive from definition ids: `cargo.<id>.name`, `city.<id>.name`, `mission.<id>.title`. */
 export type StringTable = Readonly<Record<string, string>>;
@@ -10,9 +16,9 @@ export type StringTable = Readonly<Record<string, string>>;
 export type TextParameters = Readonly<Record<string, string | number>>;
 
 /**
- * Localised text and number formats for one language (Turkish and English;
- * spec: localization, roadmap Phase 7). UI code asks for text by key and
- * never hard-codes player-facing strings.
+ * Localised text and number formats for one language (spec: localization,
+ * roadmap Phase 7; the languages: data/config/languages.ts). UI code asks
+ * for text by key and never hard-codes player-facing strings.
  */
 export class Strings {
   private readonly integer: Intl.NumberFormat;
@@ -23,7 +29,7 @@ export class Strings {
     readonly language: Language,
     private readonly table: StringTable,
   ) {
-    const locale = language === 'tr' ? 'tr-TR' : 'en-GB';
+    const locale = LANGUAGE_LOCALES[language];
     this.integer = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
     this.decimal = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     this.percentFormat = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 });
@@ -136,16 +142,24 @@ export class Strings {
 }
 
 /**
- * Picks the language: an explicit choice (URL `?lang=`) wins, then the
- * browser's preferred languages; English otherwise.
+ * Picks the language: the address's (`?lang=`, for tests and links) wins,
+ * then the player's setting, then the first of the device's preferred
+ * languages the game speaks (by its base: `pt-PT` speaks Brazilian
+ * Portuguese); English otherwise.
  */
-export function chooseLanguage(requested: string | null, preferred: readonly string[]): Language {
-  const candidates = requested === null ? preferred : [requested, ...preferred];
-  for (const candidate of candidates) {
-    const base = candidate.toLowerCase().split('-')[0];
-    if (base === 'tr' || base === 'en') {
-      return base;
+export function chooseLanguage(requested: string | null, preferred: readonly string[], setting: LanguageChoice = 'auto'): Language {
+  const asked = requested === null ? null : languageOfTag(requested);
+  if (asked !== null) {
+    return asked;
+  }
+  if (setting !== 'auto') {
+    return setting;
+  }
+  for (const tag of preferred) {
+    const language = languageOfTag(tag);
+    if (language !== null) {
+      return language;
     }
   }
-  return 'en';
+  return FALLBACK_LANGUAGE;
 }

@@ -38,7 +38,9 @@ import {
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
-import { showFatalError } from './platform/browser/fatalError';
+import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
+import { Haptics } from './platform/browser/haptics';
+import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
@@ -96,9 +98,10 @@ import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { RolloverPanel } from './ui/hud/RolloverPanel';
+import { GraphicsNotice } from './ui/hud/GraphicsNotice';
 import { Toasts } from './ui/hud/Toasts';
 import { TutorialHint, tutorialShows, type TutorialPlace } from './ui/hud/TutorialHint';
-import { chooseLanguage, stringsFor } from './ui/i18n';
+import { chooseLanguage, loadStrings, stringsFor, type Strings } from './ui/i18n';
 import { MapPainter } from './ui/map/MapPainter';
 import { sketchWorld } from './ui/map/mapSketch';
 import { WorldMap } from './ui/map/WorldMap';
@@ -192,8 +195,13 @@ const FLEET_FAST_FORWARD_SECONDS = 600;
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
 /** From this thick (0..1, morningMist) the mist hides the road ahead: the driver is told. */
 const THICK_MIST = 0.5;
+/** The game's version (package.json) and its build number (CI; `dev` on a desktop): vite.config.ts sets them. */
+declare const __APP_VERSION__: string;
+declare const __APP_BUILD__: string;
+/** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
+const PRIVACY_POLICY_URL = 'https://keremcan534.github.io/roadhaul/privacy.html';
 
-async function start(): Promise<void> {
+async function start(strings: Strings): Promise<void> {
   const root = document.documentElement;
   const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
   if (canvas === null) {
@@ -276,11 +284,6 @@ async function start(): Promise<void> {
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
-
-  // Older WebViews may only have navigator.language.
-  const language = chooseLanguage(query.get('lang'), navigator.languages ?? [navigator.language]);
-  root.lang = language;
-  const strings = stringsFor(language);
 
   // Behind the main menu the starting truck waits at the start of the map, seen from a circling camera.
   // Starting or continuing a company puts its own truck where it was left.
@@ -494,6 +497,12 @@ async function start(): Promise<void> {
   };
   // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
   const audio = new GameAudio(() => (typeof AudioContext === 'undefined' ? null : new AudioContext()), settings.sound);
+  // A touch screen's phone buzzes as hard as a blow jolts the view, unless the player switched it off (Settings).
+  const canVibrate = navigator.maxTouchPoints > 0 && typeof navigator.vibrate === 'function';
+  const haptics = new Haptics(navigator);
+  haptics.enabled = canVibrate && settings.vibration;
+  // The screen stays on while the truck is driven: steering by tilting the phone touches nothing.
+  const screenWake = new ScreenWake(navigator);
   const soundState = createSoundState();
   const honk = (pressed: boolean): void => audio.setHorn(pressed);
   // Steering by turning the phone reads the motion sensor while it is the picked way of steering (applySteering).
@@ -717,9 +726,9 @@ async function start(): Promise<void> {
       menuPreview = place;
     },
     onControls: () => openControls(),
-    onSwitchLanguage: () => {
-      query.set('lang', language === 'tr' ? 'en' : 'tr');
-      window.location.search = query.toString();
+    onLanguage: () => {
+      openSettings();
+      settingsDialog.openAtLanguage();
     },
     onSettings: () => openSettings(),
   });
@@ -820,6 +829,8 @@ async function start(): Promise<void> {
     strings,
     {
       ...settings,
+      // What the device's own language setting gives (the list names it).
+      deviceLanguage: chooseLanguage(null, navigator.languages ?? [navigator.language]),
       quality: qualityChoice,
       qualityInUse: quality,
       clockMinutes: timeOfDay.minutes,
@@ -827,8 +838,32 @@ async function start(): Promise<void> {
       clockPresets: clockPresets(),
       weather: weatherChoiceFor(weather.held),
       season: season.held ?? 'auto',
+      vibration: canVibrate ? settings.vibration : null,
+      about: {
+        version: __APP_VERSION__,
+        build: __APP_BUILD__,
+        privacyUrl: PRIVACY_POLICY_URL,
+        // The Android app hands a link it is sent to to the phone's browser; a browser opens it in a new tab.
+        linksInPlace: isNativeApp(window),
+      },
     },
     {
+    onLanguage: (choice) => {
+      // The game restarts in it. A `?lang=` would win over the setting, so it goes, unless storage forgets the
+      // setting: then the address carries the choice (as with a new graphics setting).
+      settings = { ...settings, language: choice };
+      if ((saveSettings(storage, settings) && persistent) || choice === 'auto') {
+        query.delete('lang');
+      } else {
+        query.set('lang', choice);
+      }
+      const search = query.toString();
+      if (search === window.location.search.replace(/^\?/, '')) {
+        window.location.reload();
+      } else {
+        window.location.search = search;
+      }
+    },
     onQuality: (choice) => {
       // A preset changes what the game builds at boot: start again with it. A `?quality=` would win over the
       // setting, so it goes, unless storage forgets the setting: then the address carries the choice. Kept in the
@@ -845,6 +880,11 @@ async function start(): Promise<void> {
       settings = { ...settings, sound: on };
       saveSettings(storage, settings);
       audio.enabled = on;
+    },
+    onVibration: (on) => {
+      settings = { ...settings, vibration: on };
+      saveSettings(storage, settings);
+      haptics.enabled = on;
     },
     onStats: (on) => {
       settings = { ...settings, stats: on };
@@ -872,6 +912,8 @@ async function start(): Promise<void> {
       settings = { ...settings, season: choice };
       saveSettings(storage, settings);
     },
+    loadLicenses: () =>
+      fetch('licenses.txt').then((response) => (response.ok ? response.text() : Promise.reject(new Error(String(response.status))))),
     onClose: () => settingsDialog.close(),
     },
   );
@@ -1175,10 +1217,15 @@ async function start(): Promise<void> {
       restArea.refresh();
     }
   };
+  /** A blow: the view jolts and the phone buzzes, as hard as `strength` (CameraRig.shake's). */
+  const jolt = (strength: number): void => {
+    cameraRig.shake(strength);
+    haptics.pulse(strength);
+  };
   events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) => {
     audio.crash(impactSpeedMetersPerSecond);
     // A hard blow, or the truck slamming down on its side, jolts the view.
-    cameraRig.shake(Math.min(1.2, impactSpeedMetersPerSecond / BLOW_SHAKE_SPEED));
+    jolt(Math.min(1.2, impactSpeedMetersPerSecond / BLOW_SHAKE_SPEED));
   });
   // Going over: the moment runs slow, and the panel offers to put it back on its wheels once it has come to rest.
   let overturns = 0;
@@ -1195,7 +1242,7 @@ async function start(): Promise<void> {
     crashEffects.knock(kind, x, z, speedMetersPerSecond, driving.vehicle.heading);
     audio.knock(kind, speedMetersPerSecond);
     if (byTruck) {
-      cameraRig.shake(KNOCK_SHAKE[kind] * Math.min(1.5, speedMetersPerSecond / FULL_SHAKE_SPEED));
+      jolt(KNOCK_SHAKE[kind] * Math.min(1.5, speedMetersPerSecond / FULL_SHAKE_SPEED));
     }
     root.dataset.knockedOver = String(++knockedOver);
   });
@@ -1205,7 +1252,7 @@ async function start(): Promise<void> {
     if (speedMetersPerSecond >= SLOW_MOTION_SPEED) {
       slowMotion.trigger();
     }
-    cameraRig.shake(WRECK_SHAKE * Math.min(1.5, speedMetersPerSecond / FULL_SHAKE_SPEED));
+    jolt(WRECK_SHAKE * Math.min(1.5, speedMetersPerSecond / FULL_SHAKE_SPEED));
     root.dataset.wrecked = String(++wrecked);
   });
   events.on('MissionStateChanged', ({ current }) => {
@@ -1385,6 +1432,7 @@ async function start(): Promise<void> {
   const showState = (state: GameState): void => {
     root.dataset.gameState = state;
     const drivingNow = state === 'driving';
+    screenWake.keepAwake = drivingNow;
     mainMenu.visible = state === 'mainMenu';
     if (state === 'mainMenu') {
       showMainMenu();
@@ -1431,7 +1479,20 @@ async function start(): Promise<void> {
     } else {
       adaptiveResolution.restart();
       audio.resume();
+      screenWake.resume();
     }
+  });
+  // The phone may take the GPU back (the WebGL context lost: memory ran low, the driver reset). three.js rebuilds
+  // everything once it is returned; meanwhile the drive waits, paused and saved, under a note.
+  const graphicsNotice = new GraphicsNotice(ui, strings);
+  canvas.addEventListener('webglcontextlost', () => {
+    leave();
+    graphicsNotice.visible = true;
+    root.dataset.graphics = 'lost';
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    graphicsNotice.visible = false;
+    root.dataset.graphics = 'restored';
   });
   // Sound may start once the page has been touched or typed on: a touch counts when the finger lifts. Starting it
   // earlier would only be refused, with a warning. iOS shares the motion sensor (tilt steering) only from a tap too.
@@ -1463,7 +1524,7 @@ async function start(): Promise<void> {
     });
     switch (action) {
       case 'closeDialog':
-        settingsDialog.close();
+        settingsDialog.stepBack();
         controlsDialog.close();
         newCompany.close();
         closeMap();
@@ -1835,7 +1896,7 @@ async function start(): Promise<void> {
       onError: (error) => {
         logger.error('The game loop stopped.', error);
         root.dataset.bootState = 'error';
-        showFatalError(document, 'RoadHaul stopped because of an error.', error);
+        showFatalError(document, fatalText(strings, error), error);
       },
     },
     {
@@ -1861,9 +1922,44 @@ async function start(): Promise<void> {
   root.dataset.bootState = 'ready';
 }
 
+/** The error screen's words: a device that cannot draw the game is told so; anything else is a crash, the save kept. */
+function fatalText(strings: Strings, error: unknown): FatalErrorText {
+  // three.js: "Error creating WebGL context."
+  const noWebgl = error instanceof Error && /webgl/i.test(error.message);
+  return {
+    title: strings.t('crash.title'),
+    note: strings.t(noWebgl ? 'boot.noWebgl' : 'crash.note'),
+    restart: strings.t('crash.restart'),
+  };
+}
+
+/**
+ * The language first (`?lang=`, the player's setting, the device's), so a
+ * failure at boot is told in it too; its table loads with its own chunk,
+ * English should that fail. Then the game.
+ */
+async function boot(): Promise<void> {
+  // Older WebViews may only have navigator.language.
+  const language = chooseLanguage(
+    new URLSearchParams(window.location.search).get('lang'),
+    navigator.languages ?? [navigator.language],
+    loadSettings(browserStorage(window).storage).language,
+  );
+  document.documentElement.lang = language;
+  let strings = stringsFor('en');
+  try {
+    strings = await loadStrings(language).catch((error: unknown) => {
+      console.warn(`The ${language} text did not load: the game speaks English.`, error);
+      return stringsFor('en');
+    });
+    document.documentElement.lang = strings.language;
+    await start(strings);
+  } catch (error) {
+    console.error(error);
+    document.documentElement.dataset.bootState = 'error';
+    showFatalError(document, fatalText(strings, error), error);
+  }
+}
+
 document.documentElement.dataset.bootState = 'booting';
-start().catch((error: unknown) => {
-  console.error(error);
-  document.documentElement.dataset.bootState = 'error';
-  showFatalError(document, 'RoadHaul could not start.', error);
-});
+void boot();
