@@ -1,11 +1,25 @@
 import { expect, test, type Page } from '@playwright/test';
 import { openGame, openMainMenu, openPanel, watchForProblems } from './support';
 
-/** Waits for the game to have booted (again) into the main menu. */
-async function booted(page: Page): Promise<void> {
+/** Waits for the game to have booted (again) into the main menu, within `timeout` (the assertions' own by default). */
+async function booted(page: Page, timeout?: number): Promise<void> {
   const html = page.locator('html');
-  await expect(html).toHaveAttribute('data-boot-state', 'ready');
-  await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
+  const within = timeout === undefined ? {} : { timeout };
+  await expect(html).toHaveAttribute('data-boot-state', 'ready', within);
+  await expect(html).toHaveAttribute('data-game-state', 'mainMenu', within);
+}
+
+/**
+ * Picks a language (`pick`), which starts the game again in a new page, and waits for it to have booted into the
+ * main menu. Drawn in software, leaving the old page takes seconds and the new one boots slower meanwhile: the new
+ * page's load is waited for first (else a check could still see the old page, or give the new one's boot only the
+ * time left), then its boot gets a restart's time.
+ */
+async function restartAfter(page: Page, pick: () => Promise<unknown>): Promise<void> {
+  const loaded = page.waitForEvent('load', { timeout: 60_000 });
+  await pick();
+  await loaded;
+  await booted(page, 30_000);
 }
 
 test('picks a language from the main menu, restarts in it and keeps it', async ({ page }) => {
@@ -26,8 +40,7 @@ test('picks a language from the main menu, restarts in it and keeps it', async (
   await expect(list.locator('option')).toHaveCount(11);
 
   // German: the game starts again, in German.
-  await list.selectOption('de');
-  await booted(page);
+  await restartAfter(page, () => list.selectOption('de'));
   await expect(html).toHaveAttribute('lang', 'de');
   await expect(page.locator('[data-action="new-company"]')).toHaveText('Neue Firma');
   await expect(page.locator('[data-action="language"]')).toContainText('Deutsch');
@@ -39,8 +52,7 @@ test('picks a language from the main menu, restarts in it and keeps it', async (
 
   // Back to the phone's own.
   await page.locator('[data-action="language"]').click();
-  await page.locator('.settings [data-setting="language"] select').selectOption('auto');
-  await booted(page);
+  await restartAfter(page, () => page.locator('.settings [data-setting="language"] select').selectOption('auto'));
   await expect(html).toHaveAttribute('lang', 'en');
   await expect(page.locator('[data-action="new-company"]')).toHaveText('New company');
   expect(problems).toEqual([]);
