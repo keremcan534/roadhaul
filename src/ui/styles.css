@@ -1219,10 +1219,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* About's two links share their row alike, or stack when their names are too long for halves of it. */
 .settings__links {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.settings__links > * {
+  flex: 1 1 0;
 }
 
 .settings__link {
@@ -1396,13 +1401,11 @@ body {
 .hq__xp {
   color: var(--rh-muted);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .hq__reputation {
   color: var(--rh-muted);
   font-weight: 700;
-  white-space: nowrap;
 }
 
 .hq__money {
@@ -1888,9 +1891,10 @@ body {
   gap: 6px;
 }
 
+/* Tiles wide enough for a part's name and its pips side by side, in any language: one column on a small phone. */
 .truck-page__part-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   gap: 8px;
 }
 
