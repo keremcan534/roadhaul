@@ -10,12 +10,16 @@
 //                                        on @color/ic_launcher_background
 //   mipmap-*/ic_launcher.png             a rounded square, for older launchers
 //   mipmap-*/ic_launcher_round.png       a circle, for older launchers
+// and fastlane/metadata/android/en-US/images/icon.png: Google Play's 512 px
+// listing icon, the plate filling the square (the store rounds its corners).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
-const RES = join(dirname(fileURLToPath(import.meta.url)), '../android/app/src/main/res');
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const RES = join(ROOT, 'android/app/src/main/res');
+const STORE_ICON = join(ROOT, 'fastlane/metadata/android/en-US/images/icon.png');
 
 const AMBER = [0xf2, 0xa3, 0x3a];
 const ASPHALT = [0x16, 0x19, 0x1d];
@@ -166,3 +170,8 @@ for (const [density, scale] of Object.entries(DENSITIES)) {
   writeFileSync(join(folder, 'ic_launcher_round.png'), render(48 * scale, roundPlate, 1.5));
 }
 console.log(`Launcher icons written to ${RES}.`);
+
+// The store's icon shows the same middle 72 units as a legacy one, on a square plate.
+mkdirSync(dirname(STORE_ICON), { recursive: true });
+writeFileSync(STORE_ICON, render(512, () => true, 1.5));
+console.log(`Google Play icon written to ${STORE_ICON}.`);
