@@ -96,7 +96,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | MissionHud | ui | `src/ui/hud/MissionHud.ts` | Objective, direction arrow and distance, next turn, arrival time, stop hint, loading bar, delivery clock, cargo condition (spec §12, §30, §63); in a tender, the rival's time left and how far it has got | MissionService, NavigationService, DrivingService, RivalService | none |
 | RolloverPanel | ui | `src/ui/hud/RolloverPanel.ts` | A warning while the truck is up on two wheels (ease off!); once it is over and has about stopped, a panel putting it back on its wheels on the road; touches the DOM only on a change | DrivingService (its attitude, read only; `recover`) | none |
 | PauseMenu, ResultDialog | ui | `src/ui/menus/` | Pause (resume, recover, fuel truck, abandon, the map, the controls and the settings side by side, main menu); the itemised result or the failure reason, with a tender won or lost and the leader's bonus, then the next job or the road | Strings | none |
-| String tables | ui | `src/ui/i18n/` | Turkish and English text, number, money, distance and time formats; language choice | none | none |
+| String tables, languages | data, ui | `src/data/config/languages.ts`, `src/ui/i18n/` | Ten languages: their names in themselves and their number locales; the text of each (English and Turkish with the code, the others loaded when picked), number, money, distance and time formats; the language chosen (address, setting, device, English) | none | none |
 
 ### Economy, upkeep, progression and saving (Phase 3, roadmap steps 14–18)
 
@@ -286,7 +286,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 |---|---|---|---|
 | Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
-| More settings, more languages | ui | ⬜ Phase 7 | Language in Settings (graphics, controls and sound are there); more string tables |
+| More settings, more languages | ui | ✅ | Language in Settings (a list, kept on the device) and ten languages |
 
 ## Not in the MVP (spec §44)
 
