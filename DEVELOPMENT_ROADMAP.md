@@ -132,6 +132,14 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber; since the brand round, the brand's mark) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
 - Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
 - For step 29, Settings has a performance display switch: FPS, draw calls, the pixel ratio, the graphics preset and the GPU, in the browser and the app, without `?debug`.
+- Release hardening (toward step 30):
+  - A boot screen while the world is built.
+  - The error screen in the player's language, with a restart: no WebGL is told so; a crash keeps the save.
+  - A lost WebGL context pauses and saves the drive under a note until the graphics are back.
+  - The screen stays on while the game is in front; in a browser, a wake lock while driving.
+  - A short buzz on crashes (Settings can switch it off).
+  - Settings → About: the version and build, the open-source licences and the privacy policy's link.
+  - Release builds: a signed Android App Bundle from a `v*` tag or by hand (`.github/workflows/release.yml`), with the upload key in the repository's secrets. A local release build with a test key was checked here: `./gradlew bundleRelease`, 3.3 MB, signed.
 
 ### Player feedback (between steps 28 and 29)
 
