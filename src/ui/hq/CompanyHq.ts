@@ -93,6 +93,9 @@ const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
   events: 'events',
 };
 
+/** The smallest a tab's name is made to fit its tab (of its size): smaller would be hard to read. */
+const MIN_TAB_LABEL_FIT = 0.7;
+
 /**
  * The company HQ (spec §26), as a panel over the game: the world and the
  * truck stay in sight beside it (on a phone held upright, above it), and
@@ -117,6 +120,11 @@ export class CompanyHq {
   private readonly reputation: HTMLSpanElement;
   private readonly credits: HTMLSpanElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
+  private readonly tabBar: HTMLElement;
+  private readonly tabLabels: HTMLElement[] = [];
+  /** The tab bar's width when the tabs' names were last fitted to it (-1: not yet). */
+  private fittedWidth = -1;
+  private readonly resizeObserver: ResizeObserver | null = null;
   private readonly list: HTMLDivElement;
   /** Where the tutorial's hint goes while the panel is open: above the list, in the flow. */
   readonly hintSlot: HTMLDivElement;
@@ -184,12 +192,21 @@ export class CompanyHq {
       tabButton.dataset.action = 'tab';
       tabButton.dataset.tab = tab;
       tabButton.setAttribute('role', 'tab');
-      tabButton.append(icon(document, TAB_ICONS[tab]), el('span', 'hq__tab-label', strings.t(`hq.tab.${tab}`)));
+      const label = el('span', 'hq__tab-label', strings.t(`hq.tab.${tab}`));
+      this.tabLabels.push(label);
+      tabButton.append(icon(document, TAB_ICONS[tab]), label);
       tabButton.addEventListener('click', () => this.selectTab(tab));
       tabs.set(tab, tabButton);
       tabBar.append(tabButton);
     }
     this.tabs = tabs;
+    this.tabBar = tabBar;
+    // The tabs change shape with the screen (a rail on a phone on its side, a row upright): their names are fitted again.
+    const view = document.defaultView;
+    if (view !== null && typeof view.ResizeObserver === 'function') {
+      this.resizeObserver = new view.ResizeObserver(() => this.fitTabLabels());
+      this.resizeObserver.observe(tabBar);
+    }
     this.hintSlot = el('div', 'hq__hint');
     // The one scrolling part: a finger dragged anywhere on it scrolls it, never the page behind.
     this.list = el('div', 'hq__list');
@@ -226,6 +243,7 @@ export class CompanyHq {
   open(tab: HqTab): void {
     this.root.hidden = false;
     this.selectTab(tab);
+    this.fitTabLabels();
   }
 
   /** Closes the panel: the truck is shown as it is again. */
@@ -254,7 +272,8 @@ export class CompanyHq {
     const progress = company.levelProgress;
     setText(
       this.levelLabel,
-      `${strings.t('company.level', { level: progress.level })} · ${strings.t(`company.levelName.${progress.level}`)}`,
+      // The dot kept with the number: a narrow header puts the level's name under it.
+      `${strings.t('company.level', { level: progress.level })}\u00a0· ${strings.t(`company.levelName.${progress.level}`)}`,
     );
     this.xpFill.style.transform = `scaleX(${progress.fraction})`;
     setText(
@@ -314,7 +333,50 @@ export class CompanyHq {
   }
 
   dispose(): void {
+    this.resizeObserver?.disconnect();
     this.root.remove();
+  }
+
+  /**
+   * Makes each tab's name that is wider than its tab (a long word in some
+   * languages: "Événements", "Perusahaan") smaller until it fits, rather
+   * than cutting it short. Reads the layout: on opening and when the tab bar
+   * changes width, not per frame. The names' sizes do not change the bar's
+   * width, so fitting them never calls for fitting again.
+   */
+  private fitTabLabels(): void {
+    const width = this.tabBar.clientWidth;
+    if (this.root.hidden || width === 0 || width === this.fittedWidth) {
+      return;
+    }
+    this.fittedWidth = width;
+    for (const label of this.tabLabels) {
+      label.style.removeProperty('--fit');
+    }
+    // The text's own width against its box's, in fractions of a pixel (a name a hair too wide is cut short too); every
+    // name measured before any changes, so the page is laid out once for them all. Glyphs do not shrink exactly with
+    // the font: 2% to spare, and a name still too wide is taken down a little more.
+    const range = this.tabBar.ownerDocument.createRange();
+    const overflow = (label: HTMLElement): number => {
+      range.selectNodeContents(label);
+      return range.getBoundingClientRect().width / Math.max(1, label.getBoundingClientRect().width);
+    };
+    let fits = this.tabLabels.map((label) => {
+      const ratio = overflow(label);
+      return ratio > 1.001 ? Math.floor((0.98 / ratio) * 100) / 100 : 1;
+    });
+    for (let pass = 0; pass < 3 && fits.some((fit) => fit < 1); pass++) {
+      this.tabLabels.forEach((label, index) => {
+        const fit = Math.max(MIN_TAB_LABEL_FIT, fits[index] ?? 1);
+        if (fit < 1) {
+          label.style.setProperty('--fit', String(fit));
+        }
+      });
+      fits = this.tabLabels.map((label, index) => {
+        const fit = Math.max(MIN_TAB_LABEL_FIT, fits[index] ?? 1);
+        return fit < 1 && fit > MIN_TAB_LABEL_FIT && overflow(label) > 1.001 ? fit - 0.03 : 1;
+      });
+    }
   }
 
   /** Shows `preview` on the truck (or the truck as it is), and marks the card that shows it. */

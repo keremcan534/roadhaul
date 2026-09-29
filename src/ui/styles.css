@@ -1375,10 +1375,11 @@ body {
   max-width: 120px;
 }
 
+/* A narrow header (a small phone on its side, a long language) puts the level's name under its number. */
 .hq__level {
+  min-width: 0;
   color: var(--rh-accent);
   font-weight: 700;
-  white-space: nowrap;
 }
 
 .hq__xp {
@@ -1475,9 +1476,11 @@ body {
     color 160ms ease-out;
 }
 
+/* A name too long for its tab is made smaller to fit (--fit, CompanyHq); the ellipsis only if it still cannot. */
 .hq__tab-label {
   max-width: 100%;
   overflow: hidden;
+  font-size: calc(var(--fit, 1) * 1em);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2689,12 +2692,19 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   margin-top: 2px;
 }
 
+/* When the name and its dates do not fit side by side (long words, a narrow card), the dates go under it. */
+.event-card__top {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
 .event-card__title {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   margin: 0;
   font-size: 17px;
   font-weight: 800;
+  overflow-wrap: break-word;
 }
 
 .event-card__when {
