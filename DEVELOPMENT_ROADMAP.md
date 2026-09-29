@@ -145,9 +145,9 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
   - The 512 px icon, the 1024 × 500 feature graphic and one captioned 1920 × 1080 screenshot per language, drawn from the game (`scripts/androidIcons.mjs`, `scripts/storeArt.mjs`). Google Play needs at least two screenshots: more to come once the look is agreed. A video later.
   - The privacy policy, `public/privacy.html`, at the address Settings links to: no data collected, the saves on the phone.
   - Long languages checked at phone sizes (640 × 360 and 915 × 412 on its side, 360 × 740 upright) for text that spills, is cut short or overlaps, and for buttons pushed off the screen:
-    - Settings' choices and the main menu's small buttons ran off an upright phone in Polish, German and others: their rows now take a second line.
+    - Settings' choices, About's links and the main menu's small buttons ran off an upright phone in Polish, German and others: their rows now take a second line.
     - Short labels in rows of equal boxes (the panel's tabs, the dock's buttons, the steering cards' names) are made smaller to fit (`LabelFitter`).
-    - An event's dates, a truck card's status and the level's name go under what they share a line with when both do not fit.
+    - An event's dates, a truck card's status and the panel header's level, XP and reputation go under what they share a line with when both do not fit; the truck's part tiles are wide enough for a name and its pips.
     - The saved company's lines on the main menu take two lines before they are cut short.
 
 ### Player feedback (between steps 28 and 29)
