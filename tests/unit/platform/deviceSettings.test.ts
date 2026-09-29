@@ -3,6 +3,7 @@ import { MemoryStorage } from '../../../src/core/storage/KeyValueStorage';
 import { loadSettings, saveSettings, SETTINGS_KEY, type DeviceSettings } from '../../../src/platform/browser/deviceSettings';
 
 const DEFAULTS: DeviceSettings = {
+  language: 'auto',
   quality: 'auto',
   sound: true,
   vibration: true,
@@ -18,11 +19,12 @@ const DEFAULTS: DeviceSettings = {
 };
 
 describe('device settings', () => {
-  it('lets the device decide, plays sound, buzzes and steers with the wheel until the player picks otherwise', () => {
+  it('speaks the device’s language, lets it decide the graphics, plays sound, buzzes and steers with the wheel until the player picks otherwise', () => {
     const storage = new MemoryStorage();
     expect(loadSettings(storage)).toEqual(DEFAULTS);
 
     const picked: DeviceSettings = {
+      language: 'de',
       quality: 'low',
       sound: false,
       vibration: false,
@@ -47,7 +49,7 @@ describe('device settings', () => {
       '{',
       'null',
       '[]',
-      '{"quality":"ultra","sound":"loud","vibration":"strong","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon"}',
+      '{"language":"klingon","quality":"ultra","sound":"loud","vibration":"strong","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon"}',
     ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);
@@ -61,6 +63,8 @@ describe('device settings', () => {
     expect(loadSettings(storage)).toEqual({ ...DEFAULTS, steering: 'buttons', controlSize: 'small' });
     storage.setItem(SETTINGS_KEY, '{"vibration":false}');
     expect(loadSettings(storage)).toEqual({ ...DEFAULTS, vibration: false });
+    storage.setItem(SETTINGS_KEY, '{"language":"ru"}');
+    expect(loadSettings(storage)).toEqual({ ...DEFAULTS, language: 'ru' });
   });
 
   it('survives storage that throws', () => {
