@@ -88,3 +88,36 @@ test('fits a long language into the company panel of a small phone on its side',
   expect(level!.x + level!.width).toBeLessThanOrEqual(money!.x + 0.5);
   expect(problems).toEqual([]);
 });
+
+test('keeps every button on an upright phone in a long language: the main menu, Settings and Controls', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await page.setViewportSize({ width: 360, height: 740 });
+  await openMainMenu(page, '?lang=pl');
+
+  /** The buttons (and cards) under `selector` that reach past the screen's sides. */
+  const offScreen = (selector: string): Promise<string[]> =>
+    page.locator(`${selector} button`).evaluateAll((buttons) =>
+      buttons
+        .filter((button) => button.checkVisibility())
+        .filter((button) => {
+          const box = button.getBoundingClientRect();
+          return box.left < -0.5 || box.right > window.innerWidth + 0.5;
+        })
+        .map((button) => button.textContent ?? ''),
+    );
+
+  // The main menu's row of small buttons ("Sterowanie", "Ustawienia", "Polski") takes a second line if it must.
+  expect(await offScreen('.main-menu')).toEqual([]);
+
+  // Settings: the weather's five choices ("Zmienna" … "Śnieżna"), the time of day's and the season's wrap.
+  await page.locator('[data-action="settings"]').click();
+  await expect(page.locator('.settings')).toBeVisible();
+  expect(await offScreen('.settings')).toEqual([]);
+  await page.locator('[data-action="close-settings"]').click();
+
+  // Controls: the three steering cards stay alike ("Kierownica" made smaller to fit), the camera's choices wrap.
+  await page.locator('[data-action="controls"]').click();
+  await expect(page.locator('.controls')).toBeVisible();
+  expect(await offScreen('.controls')).toEqual([]);
+  expect(problems).toEqual([]);
+});
