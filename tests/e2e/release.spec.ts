@@ -113,3 +113,14 @@ test('tells the game’s version, shows the open-source licences and links the p
   await expect(page.locator('[data-setting="vibration"] [data-vibration="off"]')).toHaveAttribute('aria-checked', 'true');
   expect(problems).toEqual([]);
 });
+
+test('publishes the privacy policy beside the game, in English and Turkish', async ({ page }) => {
+  const problems = watchForProblems(page);
+  // Where Settings links to (the game's own site); the page ships in the Android app too.
+  await page.goto('/privacy.html');
+  await expect(page).toHaveTitle('RoadHaul · Privacy Policy');
+  await expect(page.locator('#en')).toContainText('RoadHaul does not collect, keep or share any personal information');
+  await expect(page.locator('#tr')).toHaveAttribute('lang', 'tr');
+  await expect(page.locator('#tr')).toContainText('RoadHaul hiçbir kişisel bilgi toplamaz, saklamaz ve paylaşmaz');
+  expect(problems).toEqual([]);
+});
