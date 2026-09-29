@@ -157,7 +157,6 @@ export class SettingsDialog {
     this.clockTime = element(document, 'output', 'settings__clock-time');
     clockLabel.append(this.clockTime);
     const presets = element(document, 'div', 'settings__choices');
-    presets.style.setProperty('--rh-choices', String(CLOCK_PRESETS.length));
     this.clockPresets = CLOCK_PRESETS.map((preset) => {
       const option = button(document, 'settings__choice button--secondary', strings.t(`settings.clock.${preset}`), 'clock', () =>
         this.setClock(this.presetMinutes[preset], actions),

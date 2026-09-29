@@ -941,13 +941,15 @@ body {
   height: 18px;
 }
 
+/* Where the truck is, and the contract: a second line in a long language before they are cut short. */
 .main-menu__card-line {
+  display: -webkit-box;
   overflow: hidden;
   margin: 0;
   color: var(--rh-muted);
   font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .main-menu__card-line[hidden] {
@@ -1102,6 +1104,8 @@ body {
 
 .main-menu__small {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
 }
 
@@ -1139,11 +1143,18 @@ body {
   display: none;
 }
 
-/* The choices of a row share its width (--rh-choices: how many there are). */
+/*
+ * The choices of a row share its width alike. When their names do not all fit side by side (a long language on a
+ * narrow phone), the row takes a second line rather than run off the screen.
+ */
 .settings__choices {
-  display: grid;
-  grid-template-columns: repeat(var(--rh-choices, 4), 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.settings__choices > * {
+  flex: 1 1 0;
 }
 
 .settings__choice {
@@ -1412,6 +1423,18 @@ body {
   white-space: nowrap;
 }
 
+/* A small phone on its side: the money a size smaller, so the company's name and level keep room beside it. */
+@media (orientation: landscape) and (max-width: 720px) {
+  .hq__money {
+    gap: 4px;
+    padding: 6px 9px;
+  }
+
+  .hq__credits {
+    font-size: 14px;
+  }
+}
+
 .hq__icon-button {
   display: grid;
   flex: none;
@@ -1476,7 +1499,7 @@ body {
     color 160ms ease-out;
 }
 
-/* A name too long for its tab is made smaller to fit (--fit, CompanyHq); the ellipsis only if it still cannot. */
+/* A name too long for its tab is made smaller to fit (--fit, LabelFitter); the ellipsis only if it still cannot. */
 .hq__tab-label {
   max-width: 100%;
   overflow: hidden;
@@ -1939,7 +1962,12 @@ body {
   height: 22px;
 }
 
+/* A name too long for its button (an upright phone, a long language) is made smaller to fit (--fit, LabelFitter). */
 .hud-dock__label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: calc(var(--fit, 1) * 1em);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -2193,13 +2221,15 @@ body {
 }
 
 .truck-card__top,
+/* When a card's line does not fit its width (a long language, a small phone), what does not fit goes under. */
 .truck-card__bottom,
 .upgrade-card__top,
 .upgrade-card__bottom {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px 8px;
 }
 
 .truck-card__bottom,
@@ -2264,6 +2294,7 @@ body {
 
 .truck-card__status,
 .upgrade-card__status {
+  margin-left: auto;
   color: var(--rh-muted);
   font-size: 12px;
   font-weight: 700;
@@ -3584,9 +3615,10 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 }
 
 /* The ways of steering: a card each, its picture over its name and how it goes. */
+/* Three cards alike, whatever their names: a name too long for its card is made smaller (LabelFitter). */
 .controls__cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -3607,8 +3639,12 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 }
 
 .controls__card-title {
-  font-size: 15px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: calc(var(--fit, 1) * 15px);
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .controls__card-note {

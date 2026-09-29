@@ -12,6 +12,7 @@ import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { icon } from '../icons';
 import type { IconName } from '../iconShapes';
+import { LabelFitter } from '../LabelFitter';
 import { choiceRow, select, type ChoiceRow } from './choiceRow';
 
 /** The controls as set when the page opens. */
@@ -58,6 +59,8 @@ const KEYS: readonly (readonly [action: string, keys: readonly string[]])[] = [
 export class ControlsDialog {
   private readonly overlay: HTMLDivElement;
   private readonly steeringCards: readonly HTMLButtonElement[];
+  /** Keeps the steering cards' names whole: a name too long for its card is made smaller. */
+  private readonly cardTitles: LabelFitter;
   private readonly tilt: ChoiceRow<TiltSensitivity>;
   private readonly size: ChoiceRow<ControlSize>;
   private readonly camera: ChoiceRow<CameraMode>;
@@ -76,6 +79,7 @@ export class ControlsDialog {
     const cards = element(document, 'div', 'controls__cards');
     cards.setAttribute('role', 'radiogroup');
     cards.setAttribute('aria-label', strings.t('settings.steering'));
+    const titles: HTMLElement[] = [];
     this.steeringCards = STEERING_MODES.map((mode) => {
       const card = button(document, 'controls__card', '', 'steering', () => {
         this.showSteering(mode);
@@ -83,15 +87,18 @@ export class ControlsDialog {
       });
       card.setAttribute('role', 'radio');
       card.dataset.steering = mode;
+      const title = element(document, 'span', 'controls__card-title', strings.t(`settings.steering.${mode}`));
+      titles.push(title);
       card.append(
         icon(document, STEERING_ICONS[mode], 'controls__card-icon'),
-        element(document, 'span', 'controls__card-title', strings.t(`settings.steering.${mode}`)),
+        title,
         element(document, 'span', 'controls__card-note', strings.t(`controls.steering.${mode}`)),
       );
       cards.append(card);
       return card;
     });
     steering.append(element(document, 'h3', 'settings__label', strings.t('settings.steering')), cards);
+    this.cardTitles = new LabelFitter(cards, titles);
 
     this.tilt = choiceRow(
       document,
@@ -161,6 +168,7 @@ export class ControlsDialog {
 
   open(): void {
     this.overlay.hidden = false;
+    this.cardTitles.refit();
   }
 
   close(): void {
@@ -181,6 +189,7 @@ export class ControlsDialog {
   }
 
   dispose(): void {
+    this.cardTitles.dispose();
     this.overlay.remove();
   }
 
