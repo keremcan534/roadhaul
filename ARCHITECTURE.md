@@ -561,10 +561,12 @@ src/
   main.ts
 tests/
   unit/ architecture/ e2e/ support/
+public/            privacy.html (copied beside the game as it is)
 android/           the Android app's native project (Capacitor): Gradle build, manifest, icons
-scripts/           androidIcons.mjs (draws the launcher icons)
+fastlane/          metadata/android/<locale>/: the Google Play listing (texts, icon, feature graphic, screenshots)
+scripts/           androidIcons.mjs (launcher and store icons), storeArt.mjs (store art), releaseNotes.mjs, fonts/
 docs/
-  ROADHAUL_Game_Design_Technical_Spec.md  adr/
+  ROADHAUL_Game_Design_Technical_Spec.md  RELEASE.md  adr/
 ```
 
 Feature folders are created inside a layer when the feature arrives (`src/domain/missions`, `src/systems/missions`, ...). The layer folder decides what code may depend on.
@@ -601,3 +603,4 @@ Feature folders are created inside a layer when the feature arrives (`src/domain
 - **Store releases** are Android App Bundles signed with an upload key kept out of the repository. `.github/workflows/release.yml` builds one from a `v*` tag, or by hand from `main`: it unpacks the key from the repository's secrets, numbers the build by the count of `main`'s commits (Google Play takes each upload only numbered higher than the last), runs `./gradlew bundleRelease` and keeps the `.aab` for 30 days. `android/app/build.gradle` signs a release with the key the `ROADHAUL_KEYSTORE_*` variables name, and leaves it unsigned without them. `docs/RELEASE.md` walks through the key, the secrets and Google Play.
 - **Settings → About** shows the version (`package.json`, `__APP_VERSION__`) and the build (`ROADHAUL_VERSION_CODE`, `__APP_BUILD__`; `dev` on a desktop), the open-source licences (`licenses.txt` beside the page: vite.config.ts gathers the licence of each package the game ships; fetched when their page opens) and a link to the privacy policy.
 - **Art:** the launcher icons (`scripts/androidIcons.mjs`: the brand's mark, an R whose leg is a road, in asphalt on amber) and the splash (the icon on the game's background) are original. Capacitor's template images were removed.
+- **The Google Play listing** lives in `fastlane/metadata/android/<locale>/`, fastlane's layout: the title, the short and full descriptions and the release notes in each of the game's ten languages (a unit test holds them to the store's limits), the 512 px icon (`scripts/androidIcons.mjs`, the launcher's mark), and the feature graphic and a captioned screenshot per language, drawn from the game itself by `scripts/storeArt.mjs` (the production build driven in headless Chromium; captions in Oswald, `scripts/fonts`, SIL Open Font License). `scripts/releaseNotes.mjs` prints the notes in the form the Play Console takes. The privacy policy is `public/privacy.html` (English and Turkish), published beside the game on GitHub Pages and shipped in the app. `docs/RELEASE.md` is the checklist.

@@ -140,6 +140,11 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
   - A short buzz on crashes (Settings can switch it off).
   - Settings → About: the version and build, the open-source licences and the privacy policy's link.
   - Release builds: a signed Android App Bundle from a `v*` tag or by hand (`.github/workflows/release.yml`), with the upload key in the repository's secrets. A local release build with a test key was checked here: `./gradlew bundleRelease`, 3.3 MB, signed.
+- Store kit (toward step 30), with `docs/RELEASE.md` as the checklist for the owner's part (the developer account, the upload key, the Play Console's forms, closed testing):
+  - The listing in ten languages in `fastlane/metadata/android/` (English and Turkish written here, the rest machine-written: they want native readers), held to the store's limits by a unit test.
+  - The 512 px icon, the 1024 × 500 feature graphic and one captioned 1920 × 1080 screenshot per language, drawn from the game (`scripts/androidIcons.mjs`, `scripts/storeArt.mjs`). Google Play needs at least two screenshots: more to come once the look is agreed. A video later.
+  - The privacy policy, `public/privacy.html`, at the address Settings links to: no data collected, the saves on the phone.
+  - Long languages checked at phone sizes (640 × 360 and 915 × 412 on its side, 360 × 740 upright) for text that spills, is cut short or overlaps: a tab's name too long for its tab is made smaller, an event's dates go under a long name, and the level's name goes under its number in a narrow header.
 
 ### Player feedback (between steps 28 and 29)
 

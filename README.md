@@ -42,6 +42,8 @@ cd android && ./gradlew assembleDebug     # gradlew.bat on Windows
 
 The APK lands in `android/app/build/outputs/apk/debug/`. `npx cap open android` opens the project in Android Studio. `node scripts/androidIcons.mjs` redraws the launcher icons.
 
+Publishing on Google Play (the signed bundle, the upload key, the store listing in `fastlane/`, the privacy policy and the Play Console's forms): see [docs/RELEASE.md](docs/RELEASE.md).
+
 ## Quick start
 
 Requires Node.js 22 (22.12 or later), 24, or 26+. These are the versions Vite and Vitest support.

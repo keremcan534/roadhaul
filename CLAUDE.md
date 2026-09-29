@@ -5,6 +5,7 @@ RoadHaul is a mobile-first logistics and truck simulation game: take a contract,
 - **Requirements:** `docs/ROADHAUL_Game_Design_Technical_Spec.md` (Turkish, written for Unity; see "Translating the spec" below)
 - **Stack:** TypeScript + three.js + Vite, tested with Vitest and Playwright. Why not Unity: `docs/adr/0001-web-stack-typescript-threejs.md`. Why no physics engine: `docs/adr/0002-custom-vehicle-model.md`
 - **Architecture:** `ARCHITECTURE.md` · **Systems and owners:** `SYSTEM_MAP.md` · **Plan and status:** `DEVELOPMENT_ROADMAP.md`
+- **Releasing on Google Play:** `docs/RELEASE.md` (the store listing is in `fastlane/metadata/android/`)
 
 ## Commands
 
