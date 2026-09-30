@@ -1,3 +1,4 @@
+import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { KnockableKind } from '../domain/crash/knockables';
 import type { MissionDefinition } from '../data/definitions/MissionDefinition';
@@ -277,5 +278,9 @@ export interface GameEvents {
   RivalAcquired: {
     readonly rivalId: string;
     readonly price: Credits;
+  };
+  /** What the player owns from the store changed: a purchase, or the store's list read again (a refund drops one). */
+  PurchasesChanged: {
+    readonly owned: readonly ProductId[];
   };
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { ProductId } from '../../../../src/data/config/products';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { bootGame, deliver, newCompany, play, reachLevel } from '../../../support/game';
 
@@ -193,6 +194,36 @@ describe('GarageService paint shop', () => {
     expect(game.garage.paint('truck_009', 'signal_red')).toEqual({ ok: false, error: 'unknownTruck' });
     expect(game.garage.paint('truck_001', 'signal_red')).toEqual({ ok: false, error: 'insufficientFunds' });
     expect(game.garage.activeTruck.paint).toBeNull();
+    expect(game.economy.credits).toBe(1000);
+  });
+
+  it('shows the premium colours only where they are sold, locked until bought, then free', async () => {
+    const game = await newCompany(1, 1000);
+    const premium = (): string[] =>
+      game.garage
+        .paintShop()
+        .filter((offer) => offer.premium)
+        .map((offer) => `${offer.paint.id}${offer.locked ? ' (locked)' : ''}`);
+    expect(premium()).toEqual([]);
+    expect(game.garage.paint('truck_001', 'candy_red')).toEqual({ ok: false, error: 'unknownPaint' });
+
+    let receipts: ProductId[] = [];
+    await game.monetization.attachStore({
+      enabled: true,
+      products: (ids) => Promise.resolve(ids.map((id) => ({ id, price: '€2.99' }))),
+      purchase: (id) => {
+        receipts = [...receipts, id];
+        return Promise.resolve('purchased');
+      },
+      owned: () => Promise.resolve(receipts),
+    });
+    expect(premium()).toContain('candy_red (locked)');
+    expect(game.garage.paint('truck_001', 'candy_red')).toEqual({ ok: false, error: 'locked' });
+
+    await game.monetization.buy('premium_paints');
+    expect(premium()).toContain('candy_red');
+    const painted = game.garage.paint('truck_001', 'candy_red');
+    expect(painted.ok && painted.value.paint?.id).toBe('candy_red');
     expect(game.economy.credits).toBe(1000);
   });
 

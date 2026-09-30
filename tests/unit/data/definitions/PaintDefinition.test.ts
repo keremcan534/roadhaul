@@ -31,4 +31,11 @@ describe('validatePaintDefinition', () => {
     expect(paths(paintFixture({ price: 0 }))).toEqual(['paint.price']);
     expect(paths(paintFixture({ requiredCompanyLevel: 0 }))).toEqual(['paint.requiredCompanyLevel']);
   });
+
+  it('keeps the premium colours free of credits: the purchase pays for them', () => {
+    expect(PAINTS.filter((paint) => paint.premium === true).length).toBeGreaterThan(0);
+    expect(paths(paintFixture({ premium: true, price: 0 }))).toEqual([]);
+    expect(paths(paintFixture({ premium: true, price: 1500 }))).toEqual(['paint.price']);
+    expect(paths(paintFixture({ premium: 'yes' as unknown as boolean, price: 1500 }))).toEqual(['paint.premium']);
+  });
 });

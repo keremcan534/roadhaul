@@ -217,6 +217,27 @@ export interface GameConfig {
     /** MapDefinition id the driving starts on. */
     readonly startingMapId: string;
   };
+  /**
+   * Ads and their rewards (spec §35): never forced on the player, never in the drive. A rewarded ad is the player's
+   * choice, for a small bonus; an interstitial comes only between contracts, and seldom. MonetizationService owns them.
+   */
+  readonly monetization: {
+    /** A rewarded ad after a delivery pays this share of its total on top… */
+    readonly deliveryBonusShare: Fraction;
+    /** …at least this much, and at most this much. */
+    readonly deliveryBonusMinCredits: Credits;
+    readonly deliveryBonusMaxCredits: Credits;
+    /** A rewarded ad takes this share off a repair or a fill-up in a depot's yard or at a rest area… */
+    readonly serviceDiscount: Fraction;
+    /** …this many times a day. */
+    readonly serviceDiscountsPerDay: number;
+    /** No interstitial before this many deliveries since the game started… */
+    readonly interstitialFirstAfterDeliveries: number;
+    /** …then one after every this many deliveries… */
+    readonly interstitialEveryDeliveries: number;
+    /** …and never two closer than this, seconds (a rewarded ad counts too). */
+    readonly interstitialMinSeconds: number;
+  };
   readonly debug: {
     readonly logLevel: LogLevel;
     /** Shows FPS, draw calls and triangles (enable in the browser with `?debug`). */
@@ -413,6 +434,16 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     startingVehicleId: 'rh_h1',
     startingMapId: 'north_valley',
   },
+  monetization: {
+    deliveryBonusShare: 0.25,
+    deliveryBonusMinCredits: 100,
+    deliveryBonusMaxCredits: 2500,
+    serviceDiscount: 0.5,
+    serviceDiscountsPerDay: 5,
+    interstitialFirstAfterDeliveries: 3,
+    interstitialEveryDeliveries: 3,
+    interstitialMinSeconds: 480,
+  },
   debug: {
     logLevel: 'info',
     showPerfOverlay: false,
@@ -487,6 +518,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     fleet,
     rivals,
     newGame,
+    monetization,
     debug,
   } = config;
 
@@ -717,7 +749,32 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'newGame.startingMapId',
     `unknown map "${newGame.startingMapId}"`,
   );
+  validateMonetization(validator, monetization);
   validator.check(isLogLevel(debug.logLevel), 'debug.logLevel', `unknown log level "${debug.logLevel}"`);
   validator.boolean(debug.showPerfOverlay, 'debug.showPerfOverlay');
   return validator.issues;
+}
+
+function validateMonetization(validator: Validator, monetization: GameConfig['monetization']): void {
+  validator.fraction(monetization.deliveryBonusShare, 'monetization.deliveryBonusShare');
+  validator.positiveInteger(monetization.deliveryBonusMinCredits, 'monetization.deliveryBonusMinCredits');
+  validator.check(
+    Number.isInteger(monetization.deliveryBonusMaxCredits) &&
+      monetization.deliveryBonusMaxCredits >= monetization.deliveryBonusMinCredits,
+    'monetization.deliveryBonusMaxCredits',
+    'must be a whole number, at least deliveryBonusMinCredits',
+  );
+  validator.check(
+    Number.isFinite(monetization.serviceDiscount) && monetization.serviceDiscount > 0 && monetization.serviceDiscount < 1,
+    'monetization.serviceDiscount',
+    'must be greater than 0 and less than 1',
+  );
+  validator.nonNegativeInteger(monetization.serviceDiscountsPerDay, 'monetization.serviceDiscountsPerDay');
+  validator.nonNegativeInteger(monetization.interstitialFirstAfterDeliveries, 'monetization.interstitialFirstAfterDeliveries');
+  validator.positiveInteger(monetization.interstitialEveryDeliveries, 'monetization.interstitialEveryDeliveries');
+  validator.check(
+    Number.isFinite(monetization.interstitialMinSeconds) && monetization.interstitialMinSeconds >= 0,
+    'monetization.interstitialMinSeconds',
+    'must be zero or more',
+  );
 }

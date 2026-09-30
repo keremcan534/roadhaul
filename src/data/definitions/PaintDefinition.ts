@@ -14,9 +14,15 @@ export interface PaintDefinition {
   readonly id: string;
   /** 0xRRGGBB. */
   readonly color: number;
+  /** Credits for each truck painted in it: 0 for a premium colour, which the purchase pays for. */
   readonly price: Credits;
   /** The company level that lets the garage use it (spec §14). Omit for level 1. */
   readonly requiredCompanyLevel?: number;
+  /**
+   * One of the premium colours: they come with the "Premium paints" purchase (data/config/products.ts), and the
+   * garage shows them only where it is sold.
+   */
+  readonly premium?: boolean;
 }
 
 export function validatePaintDefinition(paint: PaintDefinition, path: string, validator: Validator): void {
@@ -26,7 +32,14 @@ export function validatePaintDefinition(paint: PaintDefinition, path: string, va
     `${path}.color`,
     'must be a colour, 0x000000 to 0xffffff',
   );
-  validator.positiveInteger(paint.price, `${path}.price`);
+  if (paint.premium !== undefined) {
+    validator.boolean(paint.premium, `${path}.premium`);
+  }
+  if (paint.premium === true) {
+    validator.check(paint.price === 0, `${path}.price`, 'must be 0 for a premium colour: the purchase pays for it');
+  } else {
+    validator.positiveInteger(paint.price, `${path}.price`);
+  }
   if (paint.requiredCompanyLevel !== undefined) {
     validator.positiveInteger(paint.requiredCompanyLevel, `${path}.requiredCompanyLevel`);
   }

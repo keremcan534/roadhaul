@@ -16,6 +16,7 @@ import type { GameEvents } from '../systems/GameEvents';
 import type { GameStateService } from '../systems/gameState/GameStateService';
 import type { DailyContracts } from '../systems/missions/DailyContracts';
 import type { MissionService } from '../systems/missions/MissionService';
+import type { MonetizationService } from '../systems/monetization/MonetizationService';
 import type { NavigationService } from '../systems/navigation/NavigationService';
 import type { RivalService } from '../systems/rivals/RivalService';
 import type { SaveService } from '../systems/save/SaveService';
@@ -61,6 +62,8 @@ export const ServiceKeys = Object.freeze({
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),
+  /** Ads and purchases (spec §35–36), behind the platform's AdService and PurchaseStore. */
+  monetization: serviceKey<MonetizationService>('MonetizationService'),
   upgrades: serviceKey<UpgradeService>('UpgradeService'),
   /** The cities' depots and the roads between them, for the fleet's and the rivals' contracts. */
   depotRoads: serviceKey<DepotRoads>('DepotRoads'),

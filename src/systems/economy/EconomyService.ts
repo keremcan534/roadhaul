@@ -24,6 +24,7 @@ export const MONEY_REASONS = [
   'campaign',
   'buyout',
   'facility',
+  'adBonus',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 
