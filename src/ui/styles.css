@@ -4410,3 +4410,182 @@ html[data-panel='open'] .toasts {
 .paint-picker__apply[hidden] {
   display: none;
 }
+
+/* ---- Premium colours (src/ui/hq/paintPicker.ts): a gold ring; until bought, dimmed, and a tap opens the shop ---- */
+
+.paint-picker__swatch.is-premium {
+  border-color: rgb(242 196 90 / 90%);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 35%),
+    0 0 0 2px rgb(242 163 58 / 35%);
+}
+
+.paint-picker__swatch.is-for-sale {
+  opacity: 0.55;
+}
+
+/* ---- The rewarded delivery bonus (src/ui/menus/ResultDialog.ts) ---- */
+
+.result-dialog__bonus {
+  width: 100%;
+  border: 1px solid rgb(242 163 58 / 55%);
+}
+
+/* ---- Half-price services after a rewarded ad (src/ui/serviceDiscounts.ts): rest areas and the truck page ---- */
+
+.service-discounts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.service-discounts__note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.service-discounts__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.service-discounts__button {
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid rgb(242 163 58 / 45%);
+  font-size: 14px;
+}
+
+.rest-area-panel__discounts:empty {
+  display: none;
+}
+
+/* ---- The shop (src/ui/menus/ShopDialog.ts) ---- */
+
+.shop {
+  /* Over the main menu, the company panel and the settings. */
+  z-index: 13;
+  background: radial-gradient(ellipse at 50% 50%, rgb(8 11 15 / 22%), rgb(8 11 15 / 55%));
+}
+
+.shop__panel {
+  width: min(100%, 440px);
+}
+
+.shop__intro,
+.shop__note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.shop__note:empty {
+  display: none;
+}
+
+.shop__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shop__product {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: var(--rh-glass-inner);
+  box-shadow: var(--rh-glass-rim-inner);
+}
+
+.shop__product-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.shop__product-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.shop__product-description {
+  margin: 2px 0 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+.shop__buy,
+.shop__owned {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.shop__buy {
+  min-height: 40px;
+  padding: 8px 16px;
+  font-size: 15px;
+}
+
+.shop__owned {
+  color: var(--rh-accent);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.shop__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop__buttons .button {
+  flex: 1 1 140px;
+}
+
+/* ---- Simulated ads and store (src/platform/browser/simulated*.ts): development and tests only ---- */
+
+.simulated {
+  position: fixed;
+  inset: 0;
+  /* Over everything but the error screens, as the ads SDK's and Google Play's own screens are. */
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgb(6 8 12 / 94%);
+  color: #fff;
+}
+
+.simulated__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: min(90vw, 360px);
+  padding: 24px;
+  border: 2px dashed rgb(255 255 255 / 35%);
+  border-radius: 20px;
+  text-align: center;
+}
+
+.simulated__title {
+  font-size: 18px;
+}
+
+.simulated__status {
+  margin: 0;
+  color: #c8d0d8;
+}
+
+.simulated__buttons {
+  display: flex;
+  gap: 8px;
+}

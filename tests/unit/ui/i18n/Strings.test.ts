@@ -14,6 +14,7 @@ import { DAMAGE_BANDS } from '../../../../src/domain/vehicles/vehicleDamage';
 import { CLOCK_PRESETS } from '../../../../src/systems/weather/TimeOfDayService';
 import { HQ_TABS } from '../../../../src/ui/hq/hqTabs';
 import { LANGUAGE_NAMES, LANGUAGES, type Language } from '../../../../src/data/config/languages';
+import { PRODUCT_IDS } from '../../../../src/data/config/products';
 import { DE } from '../../../../src/ui/i18n/de';
 import { EN } from '../../../../src/ui/i18n/en';
 import { ES } from '../../../../src/ui/i18n/es';
@@ -54,9 +55,11 @@ describe('string tables', () => {
     }
   });
 
-  it('name every city, village, cargo, mission, truck, upgrade, weather, time of day, clock setting, event, driver, rival, facility and its effect, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, village, cargo, mission, truck, upgrade, paint, product, weather, time of day, clock setting, event, driver, rival, facility and its effect, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
+      ...GAME_CONTENT.paints.map((paint) => `paint.${paint.id}.name`),
+      ...PRODUCT_IDS.flatMap((id) => [`product.${id}.name`, `product.${id}.description`]),
       ...GAME_CONTENT.maps.flatMap((map) => (map.villages ?? []).map((village) => `village.${village.id}.name`)),
       ...GAME_CONTENT.cargo.map((cargo) => `cargo.${cargo.id}.name`),
       ...GAME_CONTENT.missions.map((mission) => `mission.${mission.id}.title`),

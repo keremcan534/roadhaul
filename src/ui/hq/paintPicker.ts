@@ -14,7 +14,8 @@ export interface PaintPickerState {
  * factory colour first (free), then the paints; colours for bigger companies
  * shown locked. Tapping a swatch picks it, and `onPick` shows it on the
  * truck; the button under them paints the truck, for the price it names, so
- * a stray tap never costs anything.
+ * a stray tap never costs anything. The premium colours come last, marked:
+ * free once bought, and until then a tap on one opens the shop (`onPremium`).
  */
 export function paintPicker(
   document: Document,
@@ -22,6 +23,7 @@ export function paintPicker(
   state: PaintPickerState,
   onPaint: (instanceId: string, paintId: string | null) => void,
   onPick?: (paintId: string | null) => void,
+  onPremium?: () => void,
 ): HTMLElement {
   const { truck } = state;
   const current = truck.paint?.id ?? null;
@@ -46,13 +48,17 @@ export function paintPicker(
     label.textContent = strings.t('hq.garage.paintLabel', { paint: nameOf(paintId) });
     apply.hidden = paintId === current;
     apply.textContent =
-      price === 0 ? strings.t('hq.garage.paintFactory') : strings.t('hq.garage.paintNow', { price: strings.money(price) });
+      paintId === null
+        ? strings.t('hq.garage.paintFactory')
+        : price === 0
+          ? strings.t('hq.garage.paintPremium')
+          : strings.t('hq.garage.paintNow', { price: strings.money(price) });
     apply.disabled = !state.canAfford(price);
   };
-  const swatch = (paintId: string | null, color: number, price: number, lockedAt: number | null): void => {
+  const swatch = (paintId: string | null, color: number, price: number, lockedAt: number | null, premium = false): void => {
     const node = document.createElement('button');
     node.type = 'button';
-    node.className = 'paint-picker__swatch';
+    node.className = premium ? 'paint-picker__swatch is-premium' : 'paint-picker__swatch';
     node.dataset.paintId = paintId ?? 'factory';
     node.style.setProperty('--rh-swatch', `#${color.toString(16).padStart(6, '0')}`);
     node.setAttribute('role', 'radio');
@@ -78,9 +84,26 @@ export function paintPicker(
     swatches.append(node);
   };
 
+  /** A premium colour not bought yet: shown, and a tap on it opens the shop. */
+  const forSale = (paintId: string, color: number): void => {
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.className = 'paint-picker__swatch is-premium is-for-sale';
+    node.dataset.paintId = paintId;
+    node.style.setProperty('--rh-swatch', `#${color.toString(16).padStart(6, '0')}`);
+    node.setAttribute('aria-label', `${nameOf(paintId)} · ${strings.t('hq.garage.premium')}`);
+    node.title = node.getAttribute('aria-label')!;
+    node.addEventListener('click', () => onPremium?.());
+    swatches.append(node);
+  };
+
   swatch(null, truck.definition.factoryColor, 0, null);
   for (const offer of state.offers) {
-    swatch(offer.paint.id, offer.paint.color, offer.paint.price, offer.locked ? offer.requiredCompanyLevel : null);
+    if (offer.premium && offer.locked) {
+      forSale(offer.paint.id, offer.paint.color);
+    } else {
+      swatch(offer.paint.id, offer.paint.color, offer.paint.price, offer.locked ? offer.requiredCompanyLevel : null, offer.premium);
+    }
   }
   root.append(label, swatches, apply);
   pick(current);

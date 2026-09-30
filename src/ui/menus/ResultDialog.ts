@@ -6,6 +6,7 @@ import type { GameEvents } from '../../systems/GameEvents';
 import { button, element } from '../dom';
 import { routeText } from '../hq/jobCards';
 import type { Strings } from '../i18n';
+import { withIcon } from '../icons';
 
 /** Where the player goes from the result: back on the road, or to the job board for the next contract. */
 export type ResultChoice = 'road' | 'jobs';
@@ -18,6 +19,8 @@ export type ResultChoice = 'road' | 'jobs';
 export class ResultDialog {
   private readonly overlay: HTMLDivElement;
   private readonly panel: HTMLDivElement;
+  /** The open delivery's balance, which a bonus claimed on it raises. */
+  private balance: HTMLElement | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -43,10 +46,12 @@ export class ResultDialog {
     const document = this.overlay.ownerDocument;
     const { reward } = delivery;
     const lines = element(document, 'dl', 'result-dialog__lines');
-    const line = (label: string, amount: string, className = ''): void => {
+    const line = (label: string, amount: string, className = ''): HTMLElement => {
       const row = element(document, 'div', `result-dialog__line ${className}`.trim());
-      row.append(element(document, 'dt', '', label), element(document, 'dd', '', amount));
+      const value = element(document, 'dd', '', amount);
+      row.append(element(document, 'dt', '', label), value);
       lines.append(row);
+      return value;
     };
     line(strings.t('result.basePay'), strings.money(reward.basePay));
     if (reward.onTime) {
@@ -62,7 +67,7 @@ export class ResultDialog {
     line(strings.t('result.total'), strings.money(reward.total), 'is-total');
     line(strings.t('result.xp'), `+${strings.t('format.xp', { value: delivery.xp })}`, 'is-progress');
     line(strings.t('result.reputation'), `+${delivery.reputation}`, 'is-progress');
-    line(strings.t('result.balance'), strings.money(balance));
+    this.balance = line(strings.t('result.balance'), strings.money(balance));
 
     const facts = element(
       document,
@@ -72,6 +77,39 @@ export class ResultDialog {
         ` · ${strings.t('result.cargoCondition')} ${strings.percent(1 - delivery.cargoDamage)}`,
     );
     this.show('is-success', strings.t('result.completed'), definition, [lines, facts]);
+  }
+
+  /**
+   * Adds the delivery's rewarded bonus to the open result: a button, for an ad (`withAd`) or without one once ads are
+   * removed. `onClaim` watches the ad and pays, answering the new balance, or null when nothing was paid (the button
+   * stays for another try); once paid, the bonus becomes a line of the result.
+   */
+  offerBonus(bonus: Credits, withAd: boolean, onClaim: () => Promise<Credits | null>): void {
+    const { strings } = this;
+    const document = this.overlay.ownerDocument;
+    const label = strings.t(withAd ? 'ads.bonus' : 'ads.bonusFree', { credits: strings.money(bonus) });
+    const claim = button(document, 'button--secondary result-dialog__bonus', label, 'claim-bonus', () => {
+      claim.disabled = true;
+      void onClaim().then((balance) => {
+        if (balance === null) {
+          claim.disabled = false;
+          return;
+        }
+        const row = element(document, 'p', 'result-dialog__rivalry is-bonus');
+        row.append(
+          element(document, 'span', '', strings.t('ads.bonusPaid')),
+          element(document, 'span', 'result-dialog__rivalry-amount', strings.signedMoney(bonus)),
+        );
+        claim.replaceWith(row);
+        if (this.balance !== null) {
+          this.balance.textContent = strings.money(balance);
+        }
+      });
+    });
+    if (withAd) {
+      withIcon(claim, 'play');
+    }
+    this.panel.insertBefore(claim, this.panel.lastElementChild);
   }
 
   showFailed(definition: MissionDefinition, reason: MissionFailureReason, reputationLost: number): void {
@@ -171,6 +209,9 @@ export class ResultDialog {
 
   private show(outcome: string, title: string, definition: MissionDefinition, body: HTMLElement[]): void {
     const { strings } = this;
+    if (outcome !== 'is-success') {
+      this.balance = null;
+    }
     const document = this.overlay.ownerDocument;
     this.panel.className = `panel result-dialog__panel ${outcome}`;
     this.panel.replaceChildren(

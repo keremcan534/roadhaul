@@ -11,6 +11,7 @@ import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { cargoIcon, icon, upgradeIcon, type IconName } from '../icons';
+import { serviceDiscounts, type ServiceDiscountSource } from '../serviceDiscounts';
 import { truckSilhouette } from './truckSilhouette';
 
 /** What the truck page reads. It only reads them; changes go through the actions. */
@@ -23,11 +24,16 @@ export interface TruckPageServices {
   readonly damage: DamageService;
   readonly garage: GarageService;
   readonly upgrades: UpgradeService;
+  /** The rewarded half-price services. */
+  readonly monetization: ServiceDiscountSource;
 }
 
 export interface TruckPageActions {
   readonly onRefuel: () => void;
   readonly onRepair: () => void;
+  /** The same at half price, after a rewarded ad. */
+  readonly onRefuelDiscounted: () => void;
+  readonly onRepairDiscounted: () => void;
 }
 
 /**
@@ -116,6 +122,20 @@ export function truckPage(
     repair,
   );
   gauges.append(fuelRow, damageRow);
+  // Half price after a rewarded ad, for what the pump and the workshop where the truck stands can do now.
+  const discounts = serviceDiscounts(document, strings, services.monetization, {
+    refuel:
+      tankFull || !fuel.atPump
+        ? null
+        : { fullCost: fuel.fillUpCost(), affordable: () => economy.credits > 0, onTake: actions.onRefuelDiscounted },
+    repair:
+      undamaged || !damage.atWorkshop
+        ? null
+        : { fullCost: damage.repairCost, affordable: (cost) => economy.canAfford(cost), onTake: actions.onRepairDiscounted },
+  });
+  if (discounts !== null) {
+    gauges.append(discounts);
+  }
 
   return [head, gauges, cargoSection(document, strings, services), partsSection(document, strings, services)];
 }
