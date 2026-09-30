@@ -176,7 +176,7 @@
     world: words(copy, { kicker: 'A living world', lines: [], className: 'at-world' }),
     paid: words(copy, { kicker: 'Every job pays', lines: ['Deliver.', '*Get paid.*'], className: 'at-left is-paid' }),
     paint: words(copy, { kicker: 'Paint shop', lines: ['Make it', '*yours.*'], className: 'at-left' }),
-    upgrade: words(copy, { kicker: 'Engine, brakes, tyres and more', lines: ['Upgrade', 'every *part.*'], className: 'at-left' }),
+    upgrade: words(copy, { kicker: 'Engine to tyres', lines: ['Upgrade', 'every *part.*'], className: 'at-left is-narrow' }),
     company: words(copy, { kicker: 'Drivers, depots, a fleet', lines: ['Build your', '*company.*'], className: 'at-left' }),
     rivals: words(copy, { kicker: 'Four cities to win', lines: ['Beat your', '*rivals.*'], className: 'at-map' }),
   };
@@ -311,9 +311,9 @@
     const rise = spring(local, 9, 0.62);
     const leave = inCubic(span(t, SCENES.company - 0.3, SCENES.company));
     pose(main, {
-      x: 1235 + 900 * leave,
+      x: 1300 + 900 * leave,
       y: lerp(900, 560, rise),
-      scale: lerp(0.6, 0.64, span(local, 0, 4)),
+      scale: 0.6,
       rx: lerp(30, 6, rise),
       ry: -12 + 6 * span(local, 0, 4) - 20 * leave,
     });
@@ -467,9 +467,7 @@
       sweep(t, at);
     }
     flash.style.opacity = String(flashes);
-    // Film grain, a new scatter each frame, and a fade to black at the very end.
-    const frame = Math.round(t * FPS);
-    grain.style.backgroundPosition = `${(frame * 173) % 512}px ${(frame * 311) % 512}px`;
+    // A fade to black at the very end.
     stage.style.opacity = String(1 - span(t, timeline.DURATION - 0.6, timeline.DURATION));
     const waiting = pending.splice(0);
     await Promise.all(waiting);

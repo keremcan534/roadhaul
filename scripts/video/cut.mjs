@@ -44,6 +44,7 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
 .at-top{left:110px;top:84px}
 .at-left{left:110px;top:330px}
 .at-left.is-paid{top:190px}
+.is-narrow .words__line{font-size:128px}
 .at-centre{left:0;right:0;top:370px;text-align:center}
 .at-centre .words__bar{margin:0 auto 20px}
 .at-centre .words__kicker{margin:0 0 8px}
@@ -62,7 +63,8 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
 #wipe{position:absolute;top:-25%;bottom:-25%;left:-15%;width:130%;display:none;
   background:linear-gradient(90deg,#d9862a,${AMBER} 30%,#ffc977 50%,${AMBER} 70%,#d9862a)}
 #flash{background:#fff;opacity:0}
-#grain{opacity:.075;mix-blend-mode:overlay;background-size:512px 512px}
+/* A still grain over everything: texture, not noise (grain that moved each frame would cost the encoder more than the picture). */
+#grain{opacity:.06;mix-blend-mode:overlay;background-size:512px 512px}
 #vignette{background:radial-gradient(125% 105% at 50% 50%,rgba(0,0,0,0) 58%,rgba(0,0,0,.38) 100%)}
 #end{display:none}
 #end-lockup{position:absolute;left:0;right:0;top:300px;display:flex;justify-content:center;align-items:center;gap:44px}
@@ -122,7 +124,7 @@ export async function cut(browser, { ffmpeg, dir, notes, sound, file }) {
     '-hide_banner', '-loglevel', 'error', '-y',
     '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
     '-i', sound,
-    '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', String(FPS),
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', String(FPS),
     '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart',
     file,
   ], { stdio: ['pipe', 'inherit', 'inherit'] });

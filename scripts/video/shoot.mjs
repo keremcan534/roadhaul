@@ -43,15 +43,15 @@ function inLane(x, z, headingDegrees, offset) {
 export const CLIPS = [
   {
     id: 'hero',
-    // The country road north of Havenport in autumn, the low sun on the truck's side, poplars and fields beyond;
-    // the camera swings from behind the truck round to its side.
+    // The country road north of Havenport on an autumn evening, the sun setting beyond the fields; the camera swings
+    // from behind the truck round to its side, the side without the power line (its poles would cross the lens).
     query: 'weather=clear&date=2026-09-20&time=18:15&traffic=6',
     spawn: inLane(-1699, -850, 178.9, 2),
     runUp: 10,
     seconds: 4.4,
     turn: [
-      [0.12, -0.02],
-      [0.6, -0.04],
+      [-0.12, -0.02],
+      [-0.6, -0.04],
     ],
   },
   {
@@ -179,7 +179,8 @@ export async function shootClip(browser, baseUrl, clip, dir) {
       await step(page, 250);
     }
     await page.setViewportSize(VIDEO);
-    const origin = { x: VIDEO.width * 0.1, y: VIDEO.height * 0.5 };
+    // The drag starts near the side it moves away from, so the pointer stays on the screen.
+    const origin = { x: VIDEO.width * ((clip.turn?.[1][0] ?? 0) < 0 ? 0.9 : 0.1), y: VIDEO.height * 0.5 };
     const pointer = (p) => {
       const [[x0, y0], [x1, y1]] = clip.turn;
       const eased = easeInOut(p);
@@ -336,8 +337,8 @@ export async function shootStills(browser, baseUrl, dir) {
     await page.locator('[data-action="close-hq"]').click();
     await settle();
     await page.keyboard.press('KeyM');
-    // The map and its key, without its title and buttons: the video frames the region.
-    await page.addStyleTag({ content: '.world-map__bar,.world-map__tools{visibility:hidden!important}' });
+    // The map and its key, without its title, its buttons and the garage's notes: the video frames the region.
+    await page.addStyleTag({ content: '.world-map__bar,.world-map__tools,.toasts{visibility:hidden!important}' });
     await settle();
     await snap('map');
     const found = { brand: brandSvg, icons, tap, pay, paints, paint, upgrade };
