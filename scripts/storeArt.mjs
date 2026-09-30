@@ -13,15 +13,12 @@
 // It serves dist/ on a spare port, drives the game in headless Chromium
 // (Playwright, as the end-to-end tests do) and composes the art on a plain
 // page. A game drawn in software takes a minute or two.
-import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { AMBER, ASPHALT, BRAND_CSS, DUSK, FONT_FACES, ROOT, brand, brandDrawings, serveBuild } from './storeKit.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const LISTINGS = join(ROOT, 'fastlane/metadata/android');
-const FONTS = join(ROOT, 'scripts/fonts');
 const PORT = 4180;
 
 /** The scene: a village street at dusk, the truck parked facing the low sun, no traffic, the clock held. */
@@ -41,35 +38,6 @@ const CAPTIONS = {
   'ru-RU': { lang: 'ru', words: ['Води.', 'Доставляй.', 'Расти.'], line: 'Создай свою транспортную компанию' },
   id: { lang: 'id', words: ['Mengemudi.', 'Mengantar.', 'Berkembang.'], line: 'Bangun perusahaan truk milikmu sendiri' },
 };
-
-/** Oswald, a variable font (weights 200 to 700), in the parts the captions' languages use. */
-const FONT_FACES = [
-  ['Oswald-latin.woff2', 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD'],
-  ['Oswald-latin-ext.woff2', 'U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF'],
-  ['Oswald-cyrillic.woff2', 'U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116'],
-]
-  .map(([file, range]) => {
-    const data = readFileSync(join(FONTS, file)).toString('base64');
-    return `@font-face{font-family:Oswald;font-weight:200 700;font-display:block;src:url(data:font/woff2;base64,${data}) format('woff2');unicode-range:${range}}`;
-  })
-  .join('');
-
-const AMBER = '#f2a33a';
-const ASPHALT = '#16191d';
-/** The dusk sky's darkest purple, behind the feature graphic's brand. */
-const DUSK = '#1a1320';
-
-/** The brand: the mark on an amber tile, and the wordmark in white and amber (both drawn by the game, src/ui/brand.ts). */
-function brand(markSvg, wordSvg) {
-  return `<div class="brand"><div class="tile">${markSvg}</div>${wordSvg}</div>`;
-}
-
-const BRAND_CSS = `
-.brand{display:flex;align-items:center;filter:drop-shadow(0 4px 16px rgba(0,0,0,.45))}
-.tile{display:grid;place-items:center;background:${AMBER};border-radius:22%;color:${ASPHALT};--rh-brand-dash:${AMBER}}
-/* The mark's middle, (57, 50) of its 100 units, at the tile's. */
-.tile svg{width:80%;height:80%;transform:translateX(-7%)}
-.brand .wordmark{color:#fff;--rh-accent:${AMBER};height:auto}`;
 
 function screenshotPage(shot, markSvg, wordSvg, caption) {
   const [first, second, last] = caption.words.map((word) => word.replace(/&/g, '&amp;').replace(/</g, '&lt;'));
@@ -121,39 +89,12 @@ ${brand(markSvg, wordSvg)}
 </div></body></html>`;
 }
 
-/** Serves dist/ as the game's players get it, until the returned function stops it. */
-async function serveBuild() {
-  if (!existsSync(join(ROOT, 'dist/index.html'))) {
-    throw new Error('No build to draw from: run `npm run build` first.');
-  }
-  const vite = join(ROOT, 'node_modules/vite/bin/vite.js');
-  const server = spawn(process.execPath, [vite, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], {
-    cwd: ROOT,
-    stdio: 'ignore',
-  });
-  for (let attempt = 0; attempt < 60; attempt++) {
-    try {
-      if ((await fetch(`http://127.0.0.1:${PORT}/`)).ok) {
-        return () => server.kill();
-      }
-    } catch {
-      // Not listening yet.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  }
-  server.kill();
-  throw new Error(`The build's server did not start on port ${PORT}.`);
-}
-
 /** Drives the game to the scene and returns it as a PNG (base64), with the brand's drawings from its main menu. */
 async function captureScene(browser) {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
   await page.goto(`http://127.0.0.1:${PORT}/${SCENE}`);
   await page.waitForFunction(() => document.documentElement.dataset.gameState === 'mainMenu', null, { timeout: 180_000 });
-  const markSvg = await page.locator('.main-menu__mark').evaluate((svg) => svg.outerHTML);
-  const wordSvg = await page
-    .locator('.main-menu__wordmark')
-    .evaluate((svg) => svg.outerHTML.replace('main-menu__wordmark', 'wordmark'));
+  const { markSvg, wordSvg } = await brandDrawings(page);
   await page.locator('[data-action="new-company"]').click();
   await page.locator('.new-company__input').fill('RoadHaul');
   await page.locator('[data-action="start-company"]').click();
@@ -202,7 +143,7 @@ async function render(browser, html, width, height, file) {
   await page.close();
 }
 
-const stop = await serveBuild();
+const stop = await serveBuild(PORT);
 const browser = await chromium.launch();
 try {
   const { shot, markSvg, wordSvg } = await captureScene(browser);
