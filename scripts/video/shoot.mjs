@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 export const FPS = 30;
 
 const HOOK = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'captureHook.js'), 'utf8');
-/** Every clip and still: English, the high preset. */
-const COMMON_QUERY = 'lang=en&quality=high';
+/** Every clip and still: the high preset (and English, unless a shot asks for another of the game's languages). */
+const COMMON_QUERY = 'quality=high';
 /** The company in the stills. */
 const COMPANY = 'Northstar Haulage';
 /** The size the game is booted and run up at between shots: frames drawn in software are cheap there. */
@@ -34,7 +34,8 @@ function inLane(x, z, headingDegrees, offset) {
 
 /**
  * The clips. Each boots the game with a new company at `spawn`, drives on (throttle held) for `runUp` seconds, then
- * records `seconds` of video at `speed` (game seconds per second of video: 0.5 is slow motion).
+ * records `seconds` of video at `speed` (game seconds per second of video: 0.5 is slow motion). A `parked` truck
+ * stands still; a `phone` clip is drawn at a phone's size (PHONE, at twice its pixels) rather than the video's.
  *
  * `turn` swings the camera round the truck as a player's drag does: the pointer's distance from where the drag
  * began, in fractions of the screen's width and height, at the clip's start and at its end (eased between). About
@@ -127,11 +128,11 @@ const frameName = (index) => `${String(index + 1).padStart(4, '0')}.jpg`;
 const step = (page, ms) => page.evaluate((frameMs) => window.__video.step(frameMs), ms);
 
 /** Opens the game with the capture hook at a small size, founds a company and holds the frames. */
-async function openGame(browser, baseUrl, query, viewport = SMALL, deviceScaleFactor = 1) {
+async function openGame(browser, baseUrl, query, lang, viewport = SMALL, deviceScaleFactor = 1) {
   const page = await browser.newPage({ viewport, deviceScaleFactor });
   page.setDefaultTimeout(300_000);
   await page.addInitScript({ content: HOOK });
-  await page.goto(`${baseUrl}?${COMMON_QUERY}&${query}`);
+  await page.goto(`${baseUrl}?${COMMON_QUERY}&lang=${lang}&${query}`);
   await page.waitForFunction(() => document.documentElement.dataset.gameState === 'mainMenu');
   return page;
 }
@@ -145,21 +146,26 @@ async function foundCompany(page, name) {
   const skip = page.locator('[data-action="skip-tutorial"]');
   await step(page, 1000 / FPS);
   if (await skip.isVisible()) {
-    await skip.click();
+    // Clicked in the page: at the small size a long language's hint can put the button below the screen.
+    await skip.dispatchEvent('click');
   }
 }
 
-/** Shoots `clip` into `<dir>/<id>/0001.jpg…`, unless the folder already holds this very clip. */
-export async function shootClip(browser, baseUrl, clip, dir) {
+/**
+ * Shoots `clip` into `<dir>/<id>/0001.jpg…`, unless the folder already holds this very clip; the HUD, when it shows,
+ * in `lang` (one of the game's languages).
+ */
+export async function shootClip(browser, baseUrl, clip, dir, lang = 'en') {
   const folder = join(dir, clip.id);
   const record = join(folder, 'clip.json');
-  const spec = JSON.stringify(clip);
+  const spec = JSON.stringify(lang === 'en' ? clip : { ...clip, lang });
   if (existsSync(record) && readFileSync(record, 'utf8') === spec) {
     return false;
   }
   rmSync(folder, { recursive: true, force: true });
   mkdirSync(folder, { recursive: true });
-  const page = await openGame(browser, baseUrl, `${clip.query}&spawn=${clip.spawn}`);
+  const page = await openGame(browser, baseUrl, `${clip.query}&spawn=${clip.spawn}`, lang, SMALL, clip.phone ? 2 : 1);
+  const size = clip.phone ? PHONE : VIDEO;
   try {
     await foundCompany(page, 'RoadHaul');
     if (clip.camera === 'cabin') {
@@ -175,19 +181,21 @@ export async function shootClip(browser, baseUrl, clip, dir) {
     }, clip.hud === true);
     // Run up at the small size: a quarter second a frame, which the game simulates as a twelfth (its catch-up cap)
     // and its dynamic resolution takes for a hitch, not a slow device.
-    await page.keyboard.down('ArrowUp');
+    if (clip.parked !== true) {
+      await page.keyboard.down('ArrowUp');
+    }
     for (let frame = 0; frame < clip.runUp * 12; frame++) {
       await step(page, 250);
     }
-    await page.setViewportSize(VIDEO);
+    await page.setViewportSize(size);
     // The drag starts near the side it moves away from, so the pointer stays on the screen.
-    const origin = { x: VIDEO.width * ((clip.turn?.[1][0] ?? 0) < 0 ? 0.9 : 0.1), y: VIDEO.height * 0.5 };
+    const origin = { x: size.width * ((clip.turn?.[1][0] ?? 0) < 0 ? 0.9 : 0.1), y: size.height * 0.5 };
     const pointer = (p) => {
       const [[x0, y0], [x1, y1]] = clip.turn;
       const eased = easeInOut(p);
       return {
-        x: origin.x + (x0 + (x1 - x0) * eased) * VIDEO.width,
-        y: origin.y + (y0 + (y1 - y0) * eased) * VIDEO.height,
+        x: origin.x + (x0 + (x1 - x0) * eased) * size.width,
+        y: origin.y + (y0 + (y1 - y0) * eased) * size.height,
       };
     };
     if (clip.turn !== undefined) {
@@ -237,16 +245,19 @@ export const STILLS = [
 ];
 
 /**
- * Plays the game's loop at a phone's size and takes each of STILLS into `<dir>/<name>.png`: the main menu, the job
- * board, a delivery's result (the debug key T parks the truck in the bays), the company panel's pages, paints tried
- * on the truck, one bought and an upgrade bought in the garage, and the map. Returns (and keeps in `<dir>/stills.json`) what the video draws with them: the brand's drawings and the
- * dock's icons from the game's own page, where the fingers tap (the job board's first "Take the job", the paints'
- * swatches, "Paint it", the upgrade's button: shares of the screen) and the delivery's pay.
+ * Plays the game's loop at a phone's size, in `lang`, and takes each of STILLS into `<dir>/<name>.png`: the main
+ * menu, the job board, a delivery's result (the debug key T parks the truck in the bays), the company panel's pages,
+ * paints tried on the truck, one bought and an upgrade bought in the garage, and the map. Without the `delivery` (the
+ * store's screenshots need none) it takes the menu, the job board, the garage's and the map.
+ *
+ * Returns (and keeps in `<dir>/stills.json`) what the video draws with them: the brand's drawings and the dock's
+ * icons from the game's own page, where the fingers tap (the job board's first "Take the job", the paints' swatches,
+ * "Paint it", the upgrade's button: shares of the screen) and the delivery's pay.
  */
-export async function shootStills(browser, baseUrl, dir) {
+export async function shootStills(browser, baseUrl, dir, { lang = 'en', delivery = true } = {}) {
   const record = join(dir, 'stills.json');
   mkdirSync(dir, { recursive: true });
-  const page = await openGame(browser, baseUrl, 'debug&weather=clear&date=2026-09-20&time=17:40&traffic=8', PHONE, 2);
+  const page = await openGame(browser, baseUrl, 'debug&weather=clear&date=2026-09-20&time=17:40&traffic=8', lang, PHONE, 2);
   try {
     const html = page.locator('html');
     const settle = async (frames = 8, ms = 1000 / FPS) => {
@@ -289,28 +300,32 @@ export async function shootStills(browser, baseUrl, dir) {
     // Where the first card's "Take the job" is, as a share of the screen: the video's finger taps it.
     const accept = await page.locator('.job-card [data-action="accept"]').first().boundingBox();
     const tap = { x: (accept.x + accept.width / 2) / PHONE.width, y: (accept.y + accept.height / 2) / PHONE.height };
-    await page.locator('.job-card[data-mission-id="first_package"] [data-action="accept"]').click();
-    await settle();
-    // Parked in the pickup bay; loading takes three seconds standing.
-    await page.keyboard.press('KeyT');
-    while ((await html.getAttribute('data-mission-state')) !== 'loaded') {
-      await settle(6, 250);
+    // A delivery (only for the video: it needs the result and the pay), then the company panel's pages.
+    let pay = 0;
+    if (delivery) {
+      await page.locator('.job-card[data-mission-id="first_package"] [data-action="accept"]').click();
+      await settle();
+      // Parked in the pickup bay; loading takes three seconds standing.
+      await page.keyboard.press('KeyT');
+      while ((await html.getAttribute('data-mission-state')) !== 'loaded') {
+        await settle(6, 250);
+      }
+      await page.keyboard.down('ArrowUp');
+      while ((await html.getAttribute('data-mission-state')) !== 'delivering') {
+        await settle(2, 250);
+      }
+      await page.keyboard.up('ArrowUp');
+      await page.keyboard.press('KeyT');
+      while (!(await page.locator('.result-dialog').isVisible())) {
+        await settle(6, 250);
+      }
+      await settle();
+      await snap('result');
+      pay = Number((await page.locator('.result-dialog__line.is-total dd').textContent()).replace(/\D/g, ''));
+      await page.locator('[data-action="result-jobs"]').click();
+      await settle();
     }
-    await page.keyboard.down('ArrowUp');
-    while ((await html.getAttribute('data-mission-state')) !== 'delivering') {
-      await settle(2, 250);
-    }
-    await page.keyboard.up('ArrowUp');
-    await page.keyboard.press('KeyT');
-    while (!(await page.locator('.result-dialog').isVisible())) {
-      await settle(6, 250);
-    }
-    await settle();
-    await snap('result');
-    const pay = Number((await page.locator('.result-dialog__line.is-total dd').textContent()).replace(/\D/g, ''));
-    await page.locator('[data-action="result-jobs"]').click();
-    await settle();
-    for (const tab of ['truck', 'fleet', 'company', 'rivals', 'events', 'garage']) {
+    for (const tab of delivery ? ['truck', 'fleet', 'company', 'rivals', 'events', 'garage'] : ['garage']) {
       await page.locator(`.hq__tab[data-tab="${tab}"]`).click();
       await settle();
       await snap(tab);

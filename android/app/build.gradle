@@ -13,6 +13,14 @@ android {
         // CI numbers its builds (ROADHAUL_VERSION_CODE), so a newer one installs over an older one.
         versionCode((System.getenv('ROADHAUL_VERSION_CODE') ?: '1') as Integer)
         versionName packageJson.version
+        // The ads (docs/RELEASE.md): ROADHAUL_ADS is off, test or live. AdMob's app id goes into the manifest: the
+        // game's own (ROADHAUL_ADMOB_APP_ID) for live ads, Google's sample app's for test ads.
+        def ads = System.getenv('ROADHAUL_ADS') ?: 'off'
+        def admobAppId = System.getenv('ROADHAUL_ADMOB_APP_ID')
+        if (ads == 'live' && !admobAppId) {
+            throw new GradleException('ROADHAUL_ADS=live needs ROADHAUL_ADMOB_APP_ID, AdMob\'s id for the app (docs/RELEASE.md).')
+        }
+        manifestPlaceholders += [admobAppId: admobAppId ?: 'ca-app-pub-3940256099942544~3347511713']
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

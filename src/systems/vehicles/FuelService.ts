@@ -139,9 +139,10 @@ export class FuelService {
    * Fills the tank, or as much of it as the company can pay for: at the pump
    * of a depot or rest area, or anywhere from a fuel truck at the roadside
    * price. A stranded truck whose company cannot pay for a single litre gets
-   * emergency fuel for free.
+   * emergency fuel for free. `priceFactor` takes a share off the price (a
+   * rewarded ad's discount, MonetizationService).
    */
-  refuel(roadside = false): Result<Refuelled, RefuelError> {
+  refuel(roadside = false, priceFactor = 1): Result<Refuelled, RefuelError> {
     const missing = this.missingLiters;
     if (missing < 0.5) {
       return err('tankFull');
@@ -149,11 +150,12 @@ export class FuelService {
     if (!roadside && !this.atPump) {
       return err('notAtServicePoint');
     }
+    const price = (liters: number): Credits => Math.round(this.economy.fuelCost(liters, roadside) * priceFactor);
     let liters = missing;
-    let cost = this.economy.fuelCost(liters, roadside);
+    let cost = price(liters);
     if (!this.economy.canAfford(cost)) {
-      liters = Math.min(missing, this.economy.litersAffordable(this.economy.credits, roadside));
-      cost = this.economy.fuelCost(liters, roadside);
+      liters = Math.min(missing, this.economy.litersAffordable(Math.floor(this.economy.credits / priceFactor), roadside));
+      cost = price(liters);
     }
     if (liters <= 0) {
       if (!this.isEmpty) {

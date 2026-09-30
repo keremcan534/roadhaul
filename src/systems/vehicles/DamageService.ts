@@ -61,15 +61,18 @@ export class DamageService {
     return this.driving.servicePoint !== null;
   }
 
-  /** Repairs the truck completely at a depot or rest area, paying for it. */
-  repair(): Result<Credits, RepairError> {
+  /**
+   * Repairs the truck completely at a depot or rest area, paying for it: the full price, or `priceFactor` of it (a
+   * rewarded ad's discount, MonetizationService).
+   */
+  repair(priceFactor = 1): Result<Credits, RepairError> {
     if (this.currentDamage <= 0) {
       return err('notDamaged');
     }
     if (!this.atWorkshop) {
       return err('notAtServicePoint');
     }
-    const cost = this.repairCost;
+    const cost = Math.round(this.repairCost * priceFactor);
     const paid = this.economy.spend(cost, 'repair');
     if (!paid.ok) {
       return err(paid.error);

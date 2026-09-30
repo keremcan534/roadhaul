@@ -5,6 +5,7 @@ import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { serviceDiscounts, type ServiceDiscountSource } from '../serviceDiscounts';
 
 /** What the panel reads. It only reads them; changes go through the actions. */
 export interface RestAreaPanelServices {
@@ -12,11 +13,16 @@ export interface RestAreaPanelServices {
   readonly fuel: FuelService;
   readonly damage: DamageService;
   readonly economy: EconomyService;
+  /** The rewarded half-price services. */
+  readonly discounts: ServiceDiscountSource;
 }
 
 export interface RestAreaPanelActions {
   readonly onRefuel: () => void;
   readonly onRepair: () => void;
+  /** The same at half price, after a rewarded ad. */
+  readonly onRefuelDiscounted: () => void;
+  readonly onRepairDiscounted: () => void;
 }
 
 /**
@@ -28,6 +34,7 @@ export class RestAreaPanel {
   private readonly root: HTMLDivElement;
   private readonly refuelButton: HTMLButtonElement;
   private readonly repairButton: HTMLButtonElement;
+  private readonly discounts: HTMLDivElement;
   private enabled = false;
   /** Continue was pressed: stay closed until the truck leaves the lot. */
   private dismissed = false;
@@ -36,7 +43,7 @@ export class RestAreaPanel {
     parent: HTMLElement,
     private readonly strings: Strings,
     private readonly services: RestAreaPanelServices,
-    actions: RestAreaPanelActions,
+    private readonly actions: RestAreaPanelActions,
   ) {
     const document = parent.ownerDocument;
     this.root = element(document, 'div', 'rest-area-panel');
@@ -53,7 +60,8 @@ export class RestAreaPanel {
         this.root.hidden = true;
       }),
     );
-    this.root.append(element(document, 'h2', 'rest-area-panel__title', strings.t('rest.title')), buttons);
+    this.discounts = element(document, 'div', 'rest-area-panel__discounts');
+    this.root.append(element(document, 'h2', 'rest-area-panel__title', strings.t('rest.title')), buttons, this.discounts);
     parent.append(this.root);
   }
 
@@ -102,6 +110,14 @@ export class RestAreaPanel {
     const undamaged = damage.damage <= 0;
     this.repairButton.disabled = undamaged || !economy.canAfford(damage.repairCost);
     setText(this.repairButton, undamaged ? strings.t('hq.noDamage') : strings.t('rest.repair', { cost: strings.money(damage.repairCost) }));
+    // A fill-up the company cannot pay in full buys what it can.
+    const discounted = serviceDiscounts(this.root.ownerDocument, strings, this.services.discounts, {
+      refuel: tankFull ? null : { fullCost: fuel.fillUpCost(), affordable: () => economy.credits > 0, onTake: this.actions.onRefuelDiscounted },
+      repair: undamaged
+        ? null
+        : { fullCost: damage.repairCost, affordable: (cost) => economy.canAfford(cost), onTake: this.actions.onRepairDiscounted },
+    });
+    this.discounts.replaceChildren(...(discounted === null ? [] : [discounted]));
   }
 
   dispose(): void {

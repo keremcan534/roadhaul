@@ -17,6 +17,13 @@ jobs:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      # The ads (docs/RELEASE.md): none until the repository's variables switch them on (ROADHAUL_ADS=live) with the
+      # game's own AdMob ids. They are not secret: they ship inside the app.
+      ROADHAUL_ADS: ${{ vars.ROADHAUL_ADS || 'off' }}
+      ROADHAUL_ADMOB_APP_ID: ${{ vars.ROADHAUL_ADMOB_APP_ID }}
+      ROADHAUL_ADMOB_REWARDED_ID: ${{ vars.ROADHAUL_ADMOB_REWARDED_ID }}
+      ROADHAUL_ADMOB_INTERSTITIAL_ID: ${{ vars.ROADHAUL_ADMOB_INTERSTITIAL_ID }}
     steps:
       - uses: actions/checkout@v5
         with:

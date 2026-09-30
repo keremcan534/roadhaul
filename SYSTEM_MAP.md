@@ -141,7 +141,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | FacilityService | systems | `src/systems/company/FacilityService.ts`, `CompanyPerks.ts` | Builds a facility's next level for its price from the company level it needs; keeps the levels in the save; sets the company's perks, which the economy (repairs, diesel), the garage (room), the fleet (pay, diesel), the rivals (standing), the missions (experience) and the contracts of the day read | ContentCatalog, EconomyService, CompanyService | emits `FacilityBuilt` |
 | Company page | ui | `src/ui/hq/companyPage.ts` | The company panel's Company page: what the facilities give now, and a card for each with its level, effect, and the next level's effect and price or what unlocks it | FacilityService, EconomyService (read only) | none |
 | Garage page | ui | `src/ui/hq/CompanyHq.ts`, `garageCards.ts`, `paintPicker.ts`, `upgradeCards.ts` | Paint the truck being driven (pick a swatch: it shows on the truck; then confirm the price); upgrade levels, each previewed on the truck; buy, preview and switch trucks; each card says what it costs or unlocks it | GarageService, UpgradeService (read only) | none |
-| Paints | data | `src/data/definitions/PaintDefinition.ts`, `src/data/content/paints.ts` | Nine colours with prices, the richer ones from company levels 2 and 3; each truck model's factory colour is in its VehicleDefinition | Validator | none |
+| Paints | data | `src/data/definitions/PaintDefinition.ts`, `src/data/content/paints.ts` | Nine colours with prices, the richer ones from company levels 2 and 3, and six premium ones that come with the "Premium paints" purchase (free once bought, shown only where it is sold); each truck model's factory colour is in its VehicleDefinition | Validator | none |
 
 ### The 3-city region (Phase 4, roadmap step 21)
 
@@ -271,7 +271,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| Android project | tooling | `android/`, `capacitor.config.json`, `scripts/androidIcons.mjs` | Capacitor 8 wrapper around `dist/`: Gradle build, manifest, full-screen activity, original icons (the brand's mark on amber) and splash, debug signing | Capacitor | none |
+| Android project | tooling | `android/`, `capacitor.config.js`, `scripts/androidIcons.mjs` | Capacitor 8 wrapper around `dist/`: Gradle build, manifest, full-screen activity, original icons (the brand's mark on amber) and splash, debug signing; `ROADHAUL_ADS` (off, test, live) puts the AdMob plugin in the app or leaves it out, and sets AdMob's app id in the manifest | Capacitor | none |
 | Store kit | tooling | `fastlane/metadata/android/`, `scripts/storeArt.mjs`, `scripts/storeKit.mjs`, `scripts/releaseNotes.mjs`, `public/privacy.html`, `docs/RELEASE.md` | The Google Play listing in ten languages (texts, icon, feature graphic, screenshots drawn from the game), the release notes for the Play Console, the privacy policy page and the release checklist | Playwright (art only) | none |
 | Store video | tooling | `scripts/storeVideo.mjs`, `scripts/video/` | The listing's 32-second promo video: clips and stills shot from the production build frame by frame (`shoot.mjs`, `captureHook.js`), the cut drawn in a page on a 120 BPM timeline (`promo.js`, `cut.mjs`, `timeline.mjs`), a synthesised soundtrack (`soundtrack.mjs`), encoded by ffmpeg into `store-video/` (not committed) | Playwright, ffmpeg | none |
 | Native app shell | platform | `src/platform/native/nativeApp.ts`, `capacitorShell.ts` | Inside the app: the back button and going to the background, through Capacitor's App plugin (loaded only there) | `@capacitor/app` | none |
@@ -279,7 +279,18 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Boot and error screens | entry, platform, ui | `index.html`, `src/platform/browser/fatalError.ts`, `src/ui/hud/GraphicsNotice.ts` | The boot screen until `data-boot-state` is `ready`; the error screen in the player's language (no WebGL, or a crash, the save kept) with a restart; the note while a lost WebGL context is rebuilt | Strings | none |
 | Release build | CI | `.github/workflows/release.yml`, `android/app/build.gradle` | The signed Android App Bundle for Google Play, from a `v*` tag or by hand from main; numbered by main's commits, signed with the upload key from the repository's secrets | Capacitor, Gradle | none |
 | Back button rules | ui | `src/ui/menus/backAction.ts` | What back does on each screen: close a dialog or the company panel, pause or resume, put the app away | GameState | none |
-| APK build | CI | `.github/workflows/ci.yml` (job `android`) | A debug APK for every pull request, kept 14 days | JDK 21, Android SDK | none |
+| APK build | CI | `.github/workflows/ci.yml` (job `android`) | A debug APK for every pull request, kept 14 days, with Google's test ads | JDK 21, Android SDK | none |
+
+### Ads and purchases (roadmap NEXT-8)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Products, monetization config | data | `src/data/config/products.ts`, `GameConfig.monetization` | What the game sells on Google Play (`remove_ads`, `premium_paints`), and the boosts' and interstitials' numbers | none | none |
+| Ad rules | domain | `src/domain/monetization/adRules.ts` | A delivery's rewarded bonus; the interstitials' pacing (never in the first deliveries, then every few, never soon after another ad); the daily allowance of half-price services (UTC days) | GameConfig | none |
+| MonetizationService | systems | `src/systems/monetization/MonetizationService.ts`, `AdService.ts`, `PurchaseStore.ts` | The one owner of ads and purchases, so gameplay never talks to an SDK: the rewarded delivery bonus, the half-price repair and fill-up (everything checked before the ad), the interstitial between contracts, what the player owns (kept on the device, read from the store at each start), the premium paints' access for the garage; none of it until the platform attaches its ads and store | EconomyService, FuelService, DamageService, KeyValueStorage, Clock | listens `MissionCompleted`; emits `PurchasesChanged`, `MoneyChanged` (`adBonus`) |
+| AdMob, Google Play Billing | platform | `src/platform/native/admobAds.ts`, `playBilling.ts` | In the Android app: Google's consent form where the law asks, then a rewarded ad and an interstitial kept loaded (asked again after a failure, waiting longer each time); the store's products, purchases (a pending payment acknowledged when it turns up) and what the player owns | `@capacitor-community/admob`, `@capgo/native-purchases` | none |
+| Simulated ads and store | platform | `src/platform/browser/simulatedAds.ts`, `simulatedStore.ts`, `simulatedSheet.ts` | Stand-ins for development and the end-to-end tests (`?ads=simulated`, `?store=simulated`): a sheet for each ad and purchase | DOM, KeyValueStorage | none |
+| Shop, boosts, purchase settings | ui | `src/ui/menus/ShopDialog.ts`, `ResultDialog.ts`, `src/ui/serviceDiscounts.ts`, `src/ui/hq/paintPicker.ts`, `MainMenu.ts`, `SettingsDialog.ts` | The shop (from the main menu and a premium colour), the result's "watch an ad" bonus, the half-price buttons at the pump and the workshop, "Restore purchases" and "Ad privacy choices" in Settings | MonetizationService (read only) | none |
 
 ## Planned for the MVP
 

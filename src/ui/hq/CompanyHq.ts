@@ -9,6 +9,7 @@ import type { EventService } from '../../systems/events/EventService';
 import type { FleetService } from '../../systems/fleet/FleetService';
 import type { DailyContracts } from '../../systems/missions/DailyContracts';
 import type { JobOffer, MissionService } from '../../systems/missions/MissionService';
+import type { MonetizationService } from '../../systems/monetization/MonetizationService';
 import type { RivalService } from '../../systems/rivals/RivalService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
@@ -48,6 +49,8 @@ export interface CompanyHqServices {
   readonly rivals: RivalService;
   readonly facilities: FacilityService;
   readonly clock: Clock;
+  /** Ads and purchases: the half-price services, and the premium paints. */
+  readonly monetization: MonetizationService;
 }
 
 /** Something shown on the truck in the showroom before it is bought: a paint, an upgrade's next level, another model. */
@@ -60,9 +63,14 @@ export interface CompanyHqActions {
   readonly onAccept: (missionId: string) => void;
   readonly onRefuel: () => void;
   readonly onRepair: () => void;
+  /** The same at half price, after a rewarded ad. */
+  readonly onRefuelDiscounted: () => void;
+  readonly onRepairDiscounted: () => void;
   readonly onBuyTruck: (definitionId: string) => void;
   readonly onSwitchTruck: (instanceId: string) => void;
   readonly onPaintTruck: (instanceId: string, paintId: string | null) => void;
+  /** Opens the shop, from a premium colour not bought yet. */
+  readonly onOpenShop: () => void;
   readonly onBuyUpgrade: (upgradeId: string) => void;
   readonly onHireDriver: (driverId: string) => void;
   readonly onDismissDriver: (driverId: string) => void;
@@ -356,6 +364,8 @@ export class CompanyHq {
         return truckPage(this.root.ownerDocument, this.strings, this.services, {
           onRefuel: this.actions.onRefuel,
           onRepair: this.actions.onRepair,
+          onRefuelDiscounted: this.actions.onRefuelDiscounted,
+          onRepairDiscounted: this.actions.onRepairDiscounted,
         });
       case 'garage':
         return this.garagePage();
@@ -465,6 +475,7 @@ export class CompanyHq {
         { truck, offers: garage.paintShop(), canAfford },
         actions.onPaintTruck,
         (paintId) => this.showPreview({ kind: 'paint', paintId }),
+        actions.onOpenShop,
       ),
     );
 

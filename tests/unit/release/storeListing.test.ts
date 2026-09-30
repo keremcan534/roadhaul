@@ -3,7 +3,8 @@ import { LANGUAGES, languageOfTag } from '../../../src/data/config/languages';
 
 /**
  * The Google Play listing (fastlane/metadata/android/<locale>, docs/RELEASE.md): one for each language the game
- * speaks, every text within the store's limits, and a screenshot each.
+ * speaks, every text within the store's limits, and screenshots in each: Google Play takes a listing with two or more,
+ * and at most eight.
  */
 const ROOT = '/fastlane/metadata/android';
 const texts = import.meta.glob<string>('/fastlane/metadata/android/**/*.txt', { query: '?raw', import: 'default', eager: true });
@@ -36,8 +37,10 @@ describe('the Google Play listing', () => {
     }
   });
 
-  it.each(locales)('%s: has a screenshot', (locale) => {
-    expect(screenshots.some((path) => localeOf(path) === locale)).toBe(true);
+  it.each(locales)('%s: has two to eight screenshots', (locale) => {
+    const count = screenshots.filter((path) => localeOf(path) === locale).length;
+    expect(count).toBeGreaterThanOrEqual(2);
+    expect(count).toBeLessThanOrEqual(8);
   });
 
   it('has the icon and the feature graphic every language shares', () => {

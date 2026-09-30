@@ -46,9 +46,23 @@ export interface OwnedTruck {
 export interface PaintOffer {
   readonly paint: PaintDefinition;
   readonly requiredCompanyLevel: number;
-  /** Below that level: shown, but not for use yet. */
+  /** Below that level, or a premium colour not bought yet: shown, but not for use yet. */
   readonly locked: boolean;
+  /** One of the premium colours (PaintDefinition.premium): bought in the shop, not with credits. */
+  readonly premium: boolean;
 }
+
+/**
+ * The premium colours here: bought, for sale (shown locked until bought), or not sold in this game (not shown: the
+ * web game, a build without the store). MonetizationService knows.
+ */
+export type PremiumPaintAccess = 'owned' | 'forSale' | 'unavailable';
+
+export interface PremiumPaintSource {
+  readonly premiumPaintAccess: PremiumPaintAccess;
+}
+
+export const NO_PREMIUM_PAINTS: PremiumPaintSource = Object.freeze({ premiumPaintAccess: 'unavailable' });
 
 /** A truck model at the dealer (spec §15). */
 export interface TruckOffer {
@@ -108,6 +122,8 @@ export class GarageService {
     private readonly garageSlots: readonly number[],
     /** The company's facilities: a truck yard holds more. */
     private readonly perks: PerkSource = NO_PERK_SOURCE,
+    /** Whether the premium colours are bought, or at least sold here. */
+    private readonly premiumPaints: PremiumPaintSource = NO_PREMIUM_PAINTS,
   ) {}
 
   /** How many trucks the garage holds at the company's level, and in the yard it has built. */
@@ -225,17 +241,26 @@ export class GarageService {
     return ok(this.view(next));
   }
 
-  /** Every colour of the paint shop, in content order. */
+  /** Every colour of the paint shop, in content order: the premium ones only where they are sold. */
   paintShop(): readonly PaintOffer[] {
-    return this.content.paints.all.map((paint) => {
+    const access = this.premiumPaints.premiumPaintAccess;
+    const offers: PaintOffer[] = [];
+    for (const paint of this.content.paints.all) {
+      const premium = paint.premium === true;
+      if (premium && access === 'unavailable') {
+        continue;
+      }
       const requiredCompanyLevel = paint.requiredCompanyLevel ?? 1;
-      return { paint, requiredCompanyLevel, locked: this.company.level < requiredCompanyLevel };
-    });
+      const locked = this.company.level < requiredCompanyLevel || (premium && access !== 'owned');
+      offers.push({ paint, requiredCompanyLevel, locked, premium });
+    }
+    return offers;
   }
 
   /**
    * Paints one of the company's trucks, wherever it stands, for the colour's
-   * price; `paintId` null brings the model's factory colour back, for free.
+   * price (a premium colour, once bought, for free); `paintId` null brings
+   * the model's factory colour back, for free.
    */
   paint(instanceId: string, paintId: string | null): Result<OwnedTruck, PaintTruckError> {
     const record = this.records.find((candidate) => candidate.instanceId === instanceId);

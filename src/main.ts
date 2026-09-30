@@ -1,6 +1,7 @@
 import { GameBootstrapper } from './app/GameBootstrapper';
 import { ServiceKeys } from './app/ServiceKeys';
 import { ConsoleLogger } from './core/logging/ConsoleLogger';
+import type { Result } from './core/Result';
 import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
 import { formatClock } from './core/time/dayTime';
@@ -10,6 +11,7 @@ import { weatherChoiceFor, type SteeringMode, type TiltStatus } from './data/con
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
+import type { Credits } from './data/units';
 import type { KnockableKind } from './domain/crash/knockables';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import type { SaveSummary } from './domain/save/saveSummary';
@@ -31,6 +33,7 @@ import {
   requestedSeason,
   requestedLampLight,
   requestedMist,
+  requestedSimulations,
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
@@ -83,6 +86,9 @@ import { TrackView } from './presentation/world/TrackView';
 import { createTruckPose, interpolateBodyPose, interpolatePose } from './systems/driving/DrivingService';
 import { CLOCK_PRESETS, type ClockPreset } from './systems/weather/TimeOfDayService';
 import type { GameState } from './systems/gameState/GameState';
+import type { BoostError } from './systems/monetization/MonetizationService';
+import type { RepairError } from './systems/vehicles/DamageService';
+import type { RefuelError, Refuelled } from './systems/vehicles/FuelService';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
@@ -112,6 +118,7 @@ import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import { ResultDialog } from './ui/menus/ResultDialog';
+import { ShopDialog } from './ui/menus/ShopDialog';
 import { SettingsDialog } from './ui/menus/SettingsDialog';
 import './ui/styles.css';
 
@@ -198,6 +205,8 @@ const THICK_MIST = 0.5;
 /** The game's version (package.json) and its build number (CI; `dev` on a desktop): vite.config.ts sets them. */
 declare const __APP_VERSION__: string;
 declare const __APP_BUILD__: string;
+/** The ads this build shows (vite.config.ts, from ROADHAUL_ADS; docs/RELEASE.md): none, Google's test ads, or the game's own. */
+declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly rewarded: string; readonly interstitial: string };
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
 const PRIVACY_POLICY_URL = 'https://keremcan534.github.io/roadhaul/privacy.html';
 
@@ -284,6 +293,7 @@ async function start(strings: Strings): Promise<void> {
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
+  const monetization = services.resolve(ServiceKeys.monetization);
 
   // Behind the main menu the starting truck waits at the start of the map, seen from a circling camera.
   // Starting or continuing a company puts its own truck where it was left.
@@ -523,16 +533,30 @@ async function start(strings: Strings): Promise<void> {
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
-  // From the result: the next contract, or back on the road.
+  // From the result: the next contract, or back on the road; an ad between contracts first, when one is due.
   const result = new ResultDialog(ui, strings, (choice) => {
-    paused = false;
-    showHud();
-    if (choice === 'jobs') {
-      openPanel('jobs');
-    }
+    void monetization.betweenContracts().then(() => {
+      paused = false;
+      showHud();
+      if (choice === 'jobs') {
+        openPanel('jobs');
+      }
+    });
   });
-  const refuel = (roadside: boolean): void => {
-    const filled = fuel.refuel(roadside);
+  /** Why a rewarded boost gave nothing. */
+  const boostFailed = (error: BoostError): void => {
+    toasts.show(strings.t(error === 'skipped' ? 'ads.skipped' : error === 'used' ? 'ads.used' : 'ads.unavailable'), 'warning');
+  };
+  const isBoostError = (error: string): error is BoostError => error === 'skipped' || error === 'used' || error === 'unavailable';
+  const refuel = (roadside: boolean): void => showRefuel(fuel.refuel(roadside));
+  // Half price after a rewarded ad (none when ads are removed); then the panels show how many are left today.
+  const refuelDiscounted = (): void => {
+    void monetization.refuelWithAd().then((filled) => {
+      showRefuel(filled);
+      refreshHq();
+    });
+  };
+  const showRefuel = (filled: Result<Refuelled, RefuelError | BoostError>): void => {
     if (filled.ok) {
       const liters = strings.t('format.liters', { value: Math.round(filled.value.liters) });
       toasts.show(
@@ -545,19 +569,34 @@ async function start(strings: Strings): Promise<void> {
       toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
     } else if (filled.error === 'notAtServicePoint') {
       toasts.show(strings.t('hq.serviceAway'), 'warning');
+    } else if (isBoostError(filled.error)) {
+      boostFailed(filled.error);
     }
   };
-  const repair = (): void => {
-    const repaired = damage.repair();
+  const repair = (): void => showRepair(damage.repair());
+  const repairDiscounted = (): void => {
+    void monetization.repairWithAd().then((repaired) => {
+      showRepair(repaired);
+      refreshHq();
+    });
+  };
+  const showRepair = (repaired: Result<Credits, RepairError | BoostError>): void => {
     if (repaired.ok) {
       toasts.show(strings.t('toast.repaired', { cost: strings.money(repaired.value) }), 'success');
     } else if (repaired.error === 'insufficientFunds') {
       toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
     } else if (repaired.error === 'notAtServicePoint') {
       toasts.show(strings.t('hq.serviceAway'), 'warning');
+    } else if (isBoostError(repaired.error)) {
+      boostFailed(repaired.error);
     }
   };
-  const restArea = new RestAreaPanel(ui, strings, { driving, fuel, damage, economy }, { onRefuel: () => refuel(false), onRepair: repair });
+  const restArea = new RestAreaPanel(
+    ui,
+    strings,
+    { driving, fuel, damage, economy, discounts: monetization },
+    { onRefuel: () => refuel(false), onRepair: repair, onRefuelDiscounted: refuelDiscounted, onRepairDiscounted: repairDiscounted },
+  );
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   const roadsideFuelOffer = (): RoadsideFuelOffer => {
     if (fuel.missingLiters < 0.5) {
@@ -731,6 +770,7 @@ async function start(strings: Strings): Promise<void> {
       settingsDialog.openAtLanguage();
     },
     onSettings: () => openSettings(),
+    onShop: () => openShop(),
   });
   /**
    * The main menu as the save stands: the saved company's card (its truck
@@ -914,9 +954,57 @@ async function start(strings: Strings): Promise<void> {
     },
     loadLicenses: () =>
       fetch('licenses.txt').then((response) => (response.ok ? response.text() : Promise.reject(new Error(String(response.status))))),
+    onRestorePurchases: () => restorePurchases(),
+    onAdPrivacy: () => {
+      void monetization.showPrivacyOptions().then(showPurchaseOptions);
+    },
     onClose: () => settingsDialog.close(),
     },
   );
+  // The shop: Google Play in the Android app (`?store=simulated` in a browser). It opens from the main menu and from a
+  // premium colour in the garage; Settings restore the purchases.
+  const shop = new ShopDialog(ui, strings, {
+    onBuy: (id) => {
+      shop.busy = true;
+      void monetization.buy(id).then((outcome) => {
+        shop.busy = false;
+        if (outcome === 'purchased') {
+          toasts.show(strings.t('shop.purchased', { product: strings.t(`product.${id}.name`) }), 'success');
+        } else if (outcome === 'pending') {
+          toasts.show(strings.t('shop.pending'), 'info');
+        } else if (outcome === 'failed') {
+          toasts.show(strings.t('shop.failed'), 'warning');
+        }
+        fillShop();
+      });
+    },
+    onRestore: () => restorePurchases(),
+    onClose: () => shop.close(),
+  });
+  /** What is on sale, with the store's prices, into the open shop. */
+  const fillShop = (): void => {
+    void monetization.productsForSale().then((products) => {
+      if (shop.isOpen) {
+        shop.show(products, monetization.owned);
+      }
+    });
+  };
+  const openShop = (): void => {
+    shop.open();
+    fillShop();
+  };
+  const restorePurchases = (): void => {
+    shop.busy = true;
+    void monetization.restorePurchases().then((restored) => {
+      shop.busy = false;
+      toasts.show(strings.t(restored ? 'shop.restored' : 'shop.restoreFailed'), restored ? 'success' : 'warning');
+    });
+  };
+  /** The shop's button and Settings' purchase options, as the store and the ads come up. */
+  const showPurchaseOptions = (): void => {
+    settingsDialog.showPurchaseOptions(monetization.storeEnabled, monetization.privacyOptionsRequired);
+    mainMenu.shopVisible = monetization.storeEnabled;
+  };
   /** The controls as set now, for their page. */
   const controlsShown = () => ({
     steering: settings.steering,
@@ -958,7 +1046,7 @@ async function start(strings: Strings): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, facilities, clock },
+    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, facilities, clock, monetization },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -970,6 +1058,9 @@ async function start(strings: Strings): Promise<void> {
       },
       onRefuel: () => refuel(false),
       onRepair: repair,
+      onRefuelDiscounted: refuelDiscounted,
+      onRepairDiscounted: repairDiscounted,
+      onOpenShop: () => openShop(),
       onBuyTruck: (definitionId) => {
         const bought = garage.buy(definitionId);
         if (bought.ok) {
@@ -1269,6 +1360,25 @@ async function start(strings: Strings): Promise<void> {
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
     result.showCompleted(delivery.mission, delivery, economy.credits);
+    // A share of the pay again for a rewarded ad, if the player wants it (none in a build without ads).
+    const bonus = monetization.deliveryBonusOffer;
+    if (bonus > 0) {
+      result.offerBonus(bonus, !monetization.adsRemoved, async () => {
+        const claimed = await monetization.claimDeliveryBonus();
+        if (claimed.ok) {
+          return economy.credits;
+        }
+        boostFailed(claimed.error);
+        return null;
+      });
+    }
+  });
+  events.on('PurchasesChanged', () => {
+    showPurchaseOptions();
+    refreshHq();
+    if (shop.isOpen) {
+      fillShop();
+    }
   });
   events.on('MissionFailed', ({ mission, reason, reputationLost }) => {
     audio.fail();
@@ -1549,6 +1659,55 @@ async function start(strings: Strings): Promise<void> {
     import('./platform/native/capacitorShell')
       .then(({ capacitorShell }) => attachNativeApp(capacitorShell(), { back: goBack, leave }))
       .catch((error: unknown) => logger.error('The Android app shell did not load.', error));
+  }
+  // Ads and purchases come up after the game has started (their SDKs load late): in the Android app, AdMob when this
+  // build has ads (__ADS__) and Google Play; in a browser, simulated ones when the address asks for them.
+  if (isNativeApp(window)) {
+    if (__ADS__.mode !== 'off') {
+      import('./platform/native/admobAds')
+        .then(({ admobAds, TEST_AD_UNITS }) =>
+          admobAds(
+            __ADS__.mode === 'live' ? { rewarded: __ADS__.rewarded, interstitial: __ADS__.interstitial, testing: false } : TEST_AD_UNITS,
+            logger.withCategory('Ads'),
+            (run, ms) => {
+              const timer = window.setTimeout(run, ms);
+              return () => window.clearTimeout(timer);
+            },
+          ),
+        )
+        .then((ads) => {
+          monetization.attachAds(ads);
+          showPurchaseOptions();
+        })
+        .catch((error: unknown) => logger.error('The ads did not start.', error));
+    }
+    import('./platform/native/playBilling')
+      .then(({ playBilling }) => playBilling(logger.withCategory('Store')))
+      .then(async (store) => {
+        if (store !== null) {
+          await monetization.attachStore(store);
+          showPurchaseOptions();
+        }
+      })
+      .catch((error: unknown) => logger.error('The store did not start.', error));
+  } else {
+    const simulated = requestedSimulations(query);
+    if (simulated.ads) {
+      import('./platform/browser/simulatedAds')
+        .then(({ simulatedAds }) => {
+          monetization.attachAds(simulatedAds(document));
+          showPurchaseOptions();
+        })
+        .catch((error: unknown) => logger.error('The simulated ads did not load.', error));
+    }
+    if (simulated.store) {
+      import('./platform/browser/simulatedStore')
+        .then(async ({ simulatedStore }) => {
+          await monetization.attachStore(simulatedStore(document, storage));
+          showPurchaseOptions();
+        })
+        .catch((error: unknown) => logger.error('The simulated store did not load.', error));
+    }
   }
 
   if (config.debug.showPerfOverlay) {

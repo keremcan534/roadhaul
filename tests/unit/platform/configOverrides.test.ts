@@ -5,6 +5,7 @@ import {
   requestedDateMs,
   requestedLampLight,
   requestedMist,
+  requestedSimulations,
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
@@ -151,5 +152,14 @@ describe('requestedSpawn', () => {
     expect(requestedSpawn(query('?spawn=a,2'))).toBeNull();
     expect(requestedSpawn(query('?spawn='))).toBeNull();
     expect(requestedSpawn(query(''))).toBeNull();
+  });
+});
+
+describe('requestedSimulations', () => {
+  it('simulates the ads and the store only when the address asks', () => {
+    expect(requestedSimulations(query('?ads=simulated&store=simulated'))).toEqual({ ads: true, store: true });
+    expect(requestedSimulations(query('?ads=simulated'))).toEqual({ ads: true, store: false });
+    expect(requestedSimulations(query('?ads=1&store=live'))).toEqual({ ads: false, store: false });
+    expect(requestedSimulations(query(''))).toEqual({ ads: false, store: false });
   });
 });

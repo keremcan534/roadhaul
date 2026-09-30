@@ -62,6 +62,10 @@ export interface SettingsActions {
   readonly onSeason: (choice: SeasonChoice) => void;
   /** The open-source licences' text, loaded the first time their page opens. */
   readonly loadLicenses: () => Promise<string>;
+  /** Reads what was bought from Google Play again (a new phone, a reinstall). */
+  readonly onRestorePurchases: () => void;
+  /** The ad privacy choices (consent), where the law wants them offered. */
+  readonly onAdPrivacy: () => void;
   readonly onClose: () => void;
 }
 
@@ -88,6 +92,9 @@ export class SettingsDialog {
   private readonly languageSelect: HTMLSelectElement;
   private readonly licensesPanel: HTMLDivElement;
   private readonly licensesText: HTMLPreElement;
+  private readonly purchases: HTMLDivElement;
+  private readonly restoreButton: HTMLButtonElement;
+  private readonly adPrivacyButton: HTMLButtonElement;
   private licensesLoaded = false;
   private readonly clockRow: HTMLDivElement;
   private readonly clockTime: HTMLOutputElement;
@@ -242,6 +249,16 @@ export class SettingsDialog {
       links,
     );
 
+    // Purchases and ads: shown once the store or the ads are up, in the Android app.
+    this.purchases = element(document, 'div', 'settings__row settings__purchases');
+    this.purchases.dataset.setting = 'purchases';
+    this.purchases.hidden = true;
+    this.restoreButton = button(document, 'button--secondary settings__link', strings.t('shop.restore'), 'restore-purchases', actions.onRestorePurchases);
+    this.adPrivacyButton = button(document, 'button--secondary settings__link', strings.t('ads.privacy'), 'ad-privacy', actions.onAdPrivacy);
+    const purchaseLinks = element(document, 'div', 'settings__links');
+    purchaseLinks.append(this.restoreButton, this.adPrivacyButton);
+    this.purchases.append(element(document, 'h3', 'settings__label', strings.t('settings.purchases')), purchaseLinks);
+
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('settings.title')),
       language,
@@ -253,6 +270,7 @@ export class SettingsDialog {
       sound.row,
       ...(vibration === null ? [] : [vibration.row]),
       stats.row,
+      this.purchases,
       about,
       button(document, 'button--ghost settings__close', strings.t('settings.close'), 'close-settings', actions.onClose),
     );
@@ -274,6 +292,13 @@ export class SettingsDialog {
 
   get isOpen(): boolean {
     return !this.overlay.hidden;
+  }
+
+  /** Shows "Restore purchases" where the store is up, and the ad privacy choices where they must be offered. */
+  showPurchaseOptions(restore: boolean, adPrivacy: boolean): void {
+    this.restoreButton.hidden = !restore;
+    this.adPrivacyButton.hidden = !adPrivacy;
+    this.purchases.hidden = !restore && !adPrivacy;
   }
 
   open(): void {

@@ -24,6 +24,12 @@
 
         </activity>
 
+        <!-- AdMob's app id, which Google's ads SDK reads at start (build.gradle sets it). Only a build with ads carries
+             that SDK (ROADHAUL_ADS, docs/RELEASE.md); without it this line does nothing. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

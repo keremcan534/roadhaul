@@ -20,6 +20,8 @@ export interface MainMenuActions {
   readonly onLanguage: () => void;
   readonly onControls: () => void;
   readonly onSettings: () => void;
+  /** The shop: shown only where purchases can be made (shopVisible). */
+  readonly onShop: () => void;
 }
 
 /** What the main menu shows. */
@@ -65,6 +67,7 @@ export class MainMenu {
   private readonly continueButton: HTMLButtonElement;
   private readonly newCompanyButton: HTMLButtonElement;
   private readonly message: HTMLParagraphElement;
+  private readonly shopButton: HTMLButtonElement;
   private shownPlaces: readonly StartPlace[] = [];
   private placeButtons: HTMLButtonElement[] = [];
   private picked = 0;
@@ -139,9 +142,12 @@ export class MainMenu {
     play.append(this.continueButton, this.newCompanyButton);
     this.message = element(document, 'p', 'main-menu__message');
     const small = element(document, 'div', 'main-menu__small');
+    this.shopButton = withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.shop'), 'shop', actions.onShop), 'coins');
+    this.shopButton.hidden = true;
     small.append(
       withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.controls'), 'controls', actions.onControls), 'controls'),
       withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.settings'), 'settings', actions.onSettings), 'settings'),
+      this.shopButton,
       this.languageButton(document, strings, actions),
     );
 
@@ -155,6 +161,11 @@ export class MainMenu {
 
   set visible(visible: boolean) {
     this.root.hidden = !visible;
+  }
+
+  /** The shop's button, once the store is up (the Android app with Google Play; never the web game). */
+  set shopVisible(visible: boolean) {
+    this.shopButton.hidden = !visible;
   }
 
   /**

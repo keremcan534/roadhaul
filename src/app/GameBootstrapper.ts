@@ -21,6 +21,7 @@ import { GameStateService } from '../systems/gameState/GameStateService';
 import { CombinedContracts } from '../systems/missions/CombinedContracts';
 import { DailyContracts } from '../systems/missions/DailyContracts';
 import { MissionService } from '../systems/missions/MissionService';
+import { MonetizationService } from '../systems/monetization/MonetizationService';
 import { NavigationService } from '../systems/navigation/NavigationService';
 import { RivalService } from '../systems/rivals/RivalService';
 import { TenderBoard } from '../systems/rivals/TenderBoard';
@@ -183,6 +184,20 @@ export class GameBootstrapper {
         ServiceKeys.fuel,
         new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel')),
       );
+      // Ads and purchases: none until the platform attaches its own (main.ts); the garage asks it for the premium paints.
+      const monetization = container.register(
+        ServiceKeys.monetization,
+        new MonetizationService(
+          economy,
+          fuel,
+          damage,
+          events,
+          storage,
+          clock,
+          config.monetization,
+          logger.withCategory('Monetization'),
+        ),
+      );
       const garage = container.register(
         ServiceKeys.garage,
         new GarageService(
@@ -197,6 +212,7 @@ export class GameBootstrapper {
           logger.withCategory('Garage'),
           config.fleet.garageSlots,
           perks,
+          monetization,
         ),
       );
       container.register(
