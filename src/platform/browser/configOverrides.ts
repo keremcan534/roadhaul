@@ -71,6 +71,15 @@ export function requestedSpawn(query: QueryParameters): { readonly x: number; re
   return { x, z, headingDegrees };
 }
 
+/**
+ * `?ads=simulated` and `?store=simulated` stand in for the Android app's ads and Google Play in a browser (simulatedAds,
+ * simulatedStore), to try the rewarded boosts, the ads between contracts and the shop without a phone: development
+ * and the end-to-end tests.
+ */
+export function requestedSimulations(query: QueryParameters): { readonly ads: boolean; readonly store: boolean } {
+  return { ads: query.get('ads') === 'simulated', store: query.get('store') === 'simulated' };
+}
+
 /** `?season=winter` (or `spring`, `summer`, `autumn`) holds that season; null when the URL does not say, or says something else. */
 export function requestedSeason(query: QueryParameters): Season | null {
   const season = query.get('season')?.trim();

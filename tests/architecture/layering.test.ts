@@ -47,7 +47,7 @@ const ALLOWED_PACKAGES: Readonly<Record<Layer, readonly string[]>> = {
   app: [],
   presentation: ['three'],
   ui: [],
-  platform: ['@capacitor/app'],
+  platform: ['@capacitor/app', '@capacitor-community/admob', '@capgo/native-purchases'],
   entry: [],
 };
 

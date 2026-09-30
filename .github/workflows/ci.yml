@@ -63,6 +63,8 @@ jobs:
     env:
       # Numbered by the CI run, so a newer APK installs over an older one and keeps the saved game; Settings show it.
       ROADHAUL_VERSION_CODE: ${{ github.run_number }}
+      # Google's test ads, so the rewarded boosts and the ads between contracts can be tried on a phone (docs/RELEASE.md).
+      ROADHAUL_ADS: test
     steps:
       - uses: actions/checkout@v5
 
