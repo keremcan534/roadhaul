@@ -18,6 +18,8 @@ Console's screens and rules from time to time. When a screen here looks differen
 | Promo video (optional) | `store-video/roadhaul-promo.mp4`, made by `node scripts/storeVideo.mjs` | 32 seconds, 1920 × 1080, English, with music. Not kept in the repository (tens of MB): the script makes it from the build. Google Play takes it as a YouTube link (below). |
 | Privacy policy | `public/privacy.html` → https://keremcan534.github.io/roadhaul/privacy.html | English and Turkish. Deployed with the game by `deploy-pages.yml` on every push to `main`. Settings → About links to it. |
 | Open-source licences | Settings → About | `licenses.txt`, built from the packages the game ships. |
+| In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`) and "Premium paints" (`premium_paints`), one-time products. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
+| Ads (off) | `ROADHAUL_ADS`, AdMob (`@capacitor-community/admob`) | Off in releases until you switch them on (step 7): a release without ads carries no ads code at all. CI's debug APK shows Google's test ads, to try them on a phone. |
 
 ## One-time setup
 
@@ -105,16 +107,74 @@ the declarations.
 | Declaration | Answer |
 |---|---|
 | Privacy policy | https://keremcan534.github.io/roadhaul/privacy.html |
-| Ads | No, the app contains no ads. |
+| Ads | **No** while the releases are built without ads (the default). **Yes** from the first release with live ads (step 7). |
 | App access | All functionality is available without special access (no sign-in). |
-| Content rating | Fill in the IARC questionnaire as a **Game**. Vehicles collide and get damaged, and props (lamps, signs, bins) can be knocked over. No people or animals are hurt: pedestrians step out of the way. There is no blood, no weapons, no bad language, no gambling, and no alcohol, drugs or tobacco. Players cannot talk to each other or share anything, and there are no purchases. The game does not share the player's location. Expect the lowest or near-lowest ratings (for example PEGI 3 or 7, ESRB Everyone). |
-| Target audience | 13 and over (13–15, 16–17, 18+) keeps the first release outside the Families programme. The game would qualify for younger players too (no data, no ads), but choosing ages under 13 adds the Families policy's requirements and review. |
-| Data safety | "Does your app collect or share any of the required user data types?" **No.** The game has no accounts, sends nothing off the device and keeps its saves on the phone. |
-| Advertising ID | No, the app does not use the advertising ID. |
+| Content rating | Fill in the IARC questionnaire as a **Game**. Vehicles collide and get damaged, and props (lamps, signs, bins) can be knocked over. No people or animals are hurt: pedestrians step out of the way. There is no blood, no weapons, no bad language, no gambling, and no alcohol, drugs or tobacco. Players cannot talk to each other or share anything. It offers in-app purchases of digital goods ("Remove ads", "Premium paints"): answer yes to that question. The game does not share the player's location. Expect the lowest or near-lowest ratings (for example PEGI 3 or 7, ESRB Everyone). |
+| Target audience | 13 and over (13–15, 16–17, 18+) keeps the game outside the Families programme. Choosing ages under 13 adds the Families policy's requirements and review, and with ads, only Families-certified ad networks and settings. |
+| Data safety | Without ads: "Does your app collect or share any of the required user data types?" **No.** The game has no accounts, sends nothing off the device and keeps its saves on the phone; Google Play's purchases are Google's own. With live ads: **Yes**, for what the Google Mobile Ads SDK collects (step 7). |
+| Advertising ID | No while the releases have no ads. With live ads: **Yes**, for advertising (the ads SDK declares the permission itself). |
 | Government apps | No. |
 | Financial features | None. |
 | Health | None. |
 | News app | No. |
+
+### 6. Selling in the app (in-app purchases)
+
+The game sells two one-time products (`src/data/config/products.ts`): **Remove ads** (no ads between contracts, and the
+bonuses without an ad; the shop offers it only in a build with ads) and **Premium paints** (six premium garage colours,
+free to use once bought). Nothing in the shop speeds the game up. The app reads what the player owns from Google Play
+at every start, so a purchase follows the player to a new phone, and a refund takes it back.
+
+1. Play Console → Setup → **Payments profile**: link or make a merchant account (it needs a bank account and, in many
+   countries, tax details). Google takes its service fee from each sale.
+2. Upload a bundle to a testing track first: the Console lets you make products only once the app has one with the
+   billing library in it (every build has).
+3. Monetize with Play → Products → **In-app products** → Create product, twice. The product ids must be exactly
+   `remove_ads` and `premium_paints` (they are in the game's code and stored on players' phones: never rename them).
+   Give each a name and a description (translate them for the listings' languages), a price, and **activate** it.
+4. Setup → **License testing**: add the Google accounts that test purchases. Their purchases are free test orders,
+   and they can test a pending (slow) payment too.
+5. On a tester's phone, install the build from the testing track: Settings shows "Restore purchases", the main menu
+   a Shop button, and the garage the premium colours (dimmed until bought).
+
+In a browser, `?store=simulated` stands in for Google Play (development and the end-to-end tests).
+
+### 7. Switching the ads on
+
+Releases are built without ads until you switch them on here. CI's debug APK always shows Google's **test** ads, so the
+rewarded boosts and the ads between contracts can be tried on a phone first. The ads, when on:
+
+- **Rewarded**, the player's choice only: a quarter of a delivery's pay again (100 to 2,500 credits), or half off a
+  repair or a fill-up at a depot or rest area (five a day).
+- **Interstitial**, never while driving: as a delivery's result closes, after the first three deliveries, then every
+  third, at least eight minutes apart. None once "Remove ads" is bought.
+
+The numbers are in `GameConfig.monetization` (`src/data/config/GameConfig.ts`).
+
+1. Sign up at https://admob.google.com with the Google account that owns the game, and link it to the Play app
+   (Apps → Add app → Android, "published on Google Play" once it is).
+2. In the app: Ad units → **Rewarded** (one) and **Interstitial** (one). Note the **App ID** (`ca-app-pub-…~…`) and the
+   two **ad unit IDs** (`ca-app-pub-…/…`).
+3. Privacy & messaging: create a **European regulations** (GDPR) message for the app, and a **US states** message if
+   you like. The game shows Google's consent form where the law asks for it, and Settings → "Ad privacy choices" lets
+   players change their answer.
+4. **app-ads.txt**: AdMob shows a line for it. It must be at the root of the website on the store listing. The game's
+   site is a project page (keremcan534.github.io/roadhaul), and the root belongs to a `keremcan534.github.io`
+   repository: create that repository with `app-ads.txt` in it, or list a website of your own whose root you control.
+5. GitHub → the repository → Settings → Secrets and variables → Actions → **Variables** (not secrets: the ids ship
+   inside the app): `ROADHAUL_ADS` = `live`, `ROADHAUL_ADMOB_APP_ID`, `ROADHAUL_ADMOB_REWARDED_ID` and
+   `ROADHAUL_ADMOB_INTERSTITIAL_ID`. The next "Release bundle" builds with the ads. A build on a desktop takes the
+   same environment variables; `ROADHAUL_ADS=test` builds Google's test ads.
+6. Play Console → App content: **Ads: Yes**; **Advertising ID: Yes**, for advertising or marketing; **Data safety**:
+   declare what the Google Mobile Ads SDK collects and shares, as Google lists it at
+   https://developers.google.com/admob/android/privacy/play-data-disclosure (device or other IDs, app interactions,
+   diagnostics, approximate location from the IP address; shared for advertising, analytics and fraud prevention).
+   The privacy policy already describes the ads.
+7. Put the release through a closed test first and check, on a phone in the EEA or with a VPN, that the consent form
+   shows.
+
+Never tap your own live ads, and never ask players to: AdMob closes accounts for invalid clicks. Test with the debug
+APK's test ads.
 
 ## Each release
 

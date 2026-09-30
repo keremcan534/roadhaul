@@ -119,8 +119,12 @@ test('publishes the privacy policy beside the game, in English and Turkish', asy
   // Where Settings links to (the game's own site); the page ships in the Android app too.
   await page.goto('/privacy.html');
   await expect(page).toHaveTitle('RoadHaul · Privacy Policy');
-  await expect(page.locator('#en')).toContainText('RoadHaul does not collect, keep or share any personal information');
+  await expect(page.locator('#en')).toContainText('RoadHaul itself does not collect, keep or share any personal information');
+  // What Google Play's purchases and AdMob's ads (where the Android app shows them) do, and the consent choices.
+  await expect(page.locator('#en')).toContainText('Purchases (Android)');
+  await expect(page.locator('#en')).toContainText('Settings → Ad privacy choices');
   await expect(page.locator('#tr')).toHaveAttribute('lang', 'tr');
-  await expect(page.locator('#tr')).toContainText('RoadHaul hiçbir kişisel bilgi toplamaz, saklamaz ve paylaşmaz');
+  await expect(page.locator('#tr')).toContainText('RoadHaul\'un kendisi hiçbir kişisel bilgi toplamaz, saklamaz ve paylaşmaz');
+  await expect(page.locator('#tr')).toContainText('Ayarlar → Reklam gizlilik seçenekleri');
   expect(problems).toEqual([]);
 });
