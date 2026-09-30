@@ -43,15 +43,16 @@ function inLane(x, z, headingDegrees, offset) {
 export const CLIPS = [
   {
     id: 'hero',
-    // The country road north of Havenport on an autumn evening, the sun setting beyond the fields; the camera swings
-    // from behind the truck round to its side, the side without the power line (its poles would cross the lens).
-    query: 'weather=clear&date=2026-09-20&time=18:15&traffic=6',
-    spawn: inLane(-1699, -850, 178.9, 2),
-    runUp: 10,
+    // The highway west of the rest area at an autumn sunset, the truck heading into the sun: the camera swings from
+    // behind it round to its left, over the empty lanes the other way. The highway has no power lines, whose poles
+    // would cross the lens (as its verge's trees would), and no traffic to drive through the camera.
+    query: 'weather=clear&date=2026-09-20&time=18:15&traffic=0',
+    spawn: inLane(150, -660, 268.6, 5.25),
+    runUp: 6,
     seconds: 4.4,
     turn: [
-      [-0.12, -0.02],
-      [-0.6, -0.04],
+      [0.1, -0.02],
+      [0.6, -0.04],
     ],
   },
   {

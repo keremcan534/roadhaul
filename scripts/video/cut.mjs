@@ -44,7 +44,7 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#000}
 .at-top{left:110px;top:84px}
 .at-left{left:110px;top:330px}
 .at-left.is-paid{top:190px}
-.is-narrow .words__line{font-size:128px}
+.is-narrow .words__line{font-size:118px}
 .at-centre{left:0;right:0;top:370px;text-align:center}
 .at-centre .words__bar{margin:0 auto 20px}
 .at-centre .words__kicker{margin:0 0 8px}

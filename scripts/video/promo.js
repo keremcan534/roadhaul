@@ -311,7 +311,7 @@
     const rise = spring(local, 9, 0.62);
     const leave = inCubic(span(t, SCENES.company - 0.3, SCENES.company));
     pose(main, {
-      x: 1300 + 900 * leave,
+      x: 1320 + 900 * leave,
       y: lerp(900, 560, rise),
       scale: 0.6,
       rx: lerp(30, 6, rise),
