@@ -15,6 +15,7 @@ Console's screens and rules from time to time. When a screen here looks differen
 | App icon, 512 × 512 | `fastlane/metadata/android/en-US/images/icon.png` | Drawn by `node scripts/androidIcons.mjs`, the same mark as the launcher icon. |
 | Feature graphic, 1024 × 500 | `fastlane/metadata/android/en-US/images/featureGraphic.jpg` | Drawn by `node scripts/storeArt.mjs` (after `npm run build`). It has no words, so every language shares it. |
 | Phone screenshots | `fastlane/metadata/android/<locale>/images/phoneScreenshots/` | One so far, 1920 × 1080, captioned in each listing's language (`scripts/storeArt.mjs`). **Google Play needs at least two.** Four or more at 1080p or larger help the listing. |
+| Promo video (optional) | `store-video/roadhaul-promo.mp4`, made by `node scripts/storeVideo.mjs` | 32 seconds, 1920 × 1080, English, with music. Not kept in the repository (tens of MB): the script makes it from the build. Google Play takes it as a YouTube link (below). |
 | Privacy policy | `public/privacy.html` → https://keremcan534.github.io/roadhaul/privacy.html | English and Turkish. Deployed with the game by `deploy-pages.yml` on every push to `main`. Settings → About links to it. |
 | Open-source licences | Settings → About | `licenses.txt`, built from the packages the game ships. |
 
@@ -89,6 +90,10 @@ the declarations.
   the same names.
 - Graphics: `icon.png`, `featureGraphic.jpg` and the screenshots. A language without its own screenshots shows the
   English ones.
+- Video (optional): upload `roadhaul-promo.mp4` to YouTube, then paste its address (`https://www.youtube.com/watch?v=…`)
+  into the listing's **Video** field. Google Play shows it on the feature graphic with a play button. The YouTube video
+  must be public or unlisted, with ads off, embedding allowed and no age restriction. One English video can serve every
+  language. For fastlane, the address goes in `fastlane/metadata/android/en-US/video.txt`.
 
 **Store settings** (Grow users → Store presence → Store settings):
 
@@ -156,5 +161,6 @@ npm run android && (cd android && ./gradlew bundleRelease)   # android/app/build
 
 - Android vitals (Monitor and improve) shows crashes, "app not responding" reports and slow frames on players' phones.
 - Reply to reviews in the Console.
-- For the next release: bump the version, update the notes, build, upload. `scripts/storeArt.mjs` redraws the
+- For the next release: bump the version, update the notes, build, upload. `scripts/storeVideo.mjs` cuts the video
+  again from the new build (it needs ffmpeg with libx264; see the script's header). `scripts/storeArt.mjs` redraws the
   screenshots and the feature graphic if the game's look has changed.
