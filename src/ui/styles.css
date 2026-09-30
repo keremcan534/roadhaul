@@ -2063,8 +2063,10 @@ body {
 }
 
 .job-card__top,
+/* The pay, and the button beside it; the button goes under it when a long language leaves no room beside. */
 .job-card__bottom {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -2186,6 +2188,7 @@ body {
 
 .job-card__accept {
   min-height: 40px;
+  margin-left: auto;
   padding: 8px 14px;
   font-size: 15px;
 }
