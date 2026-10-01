@@ -1,4 +1,4 @@
-package io.github.keremcan534.roadhaul;
+package com.keremcan534.roadhaul;
 
 import android.os.Bundle;
 import android.view.WindowManager;

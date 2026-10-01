@@ -9,7 +9,7 @@ const plugins = ['@capacitor/app', '@capgo/native-purchases', ...(ads === 'off' 
 
 /** @type {import('@capacitor/cli').CapacitorConfig} */
 const config = {
-  appId: 'io.github.keremcan534.roadhaul',
+  appId: 'com.keremcan534.roadhaul',
   appName: 'RoadHaul',
   webDir: 'dist',
   backgroundColor: '#1b2430',
