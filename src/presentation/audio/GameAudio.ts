@@ -1,15 +1,8 @@
 import { clamp01 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { KnockableKind } from '../../domain/crash/knockables';
-import {
-  brakeNoiseLevel,
-  crashLevel,
-  createEngineTone,
-  createThunderSound,
-  engineTone,
-  roadNoiseLevel,
-  thunderSound,
-} from './soundModel';
+import { EngineSound } from './EngineSound';
+import { brakeNoiseLevel, crashLevel, createThunderSound, roadNoiseLevel, thunderSound } from './soundModel';
 
 /** What the sound follows, written by the entry point every frame into one reused object. */
 export interface SoundState {
@@ -19,8 +12,9 @@ export interface SoundState {
   engineRpm: number;
   idleRpm: number;
   maxRpm: number;
-  /** The pedal that drives and the one that brakes, 0..1 (in reverse the pedals swap roles). */
-  drivePedal: number;
+  /** How hard the engine works, 0..1: the pedal that drives while the clutch holds (a gear change lets it go). */
+  engineLoad: number;
+  /** The pedal that brakes, 0..1 (in reverse the pedals swap roles). */
   brakePedal: number;
   /** m/s along the heading. */
   speed: number;
@@ -37,7 +31,7 @@ export function createSoundState(): SoundState {
     engineRpm: 0,
     idleRpm: 0,
     maxRpm: 1,
-    drivePedal: 0,
+    engineLoad: 0,
     brakePedal: 0,
     speed: 0,
     rain: 0,
@@ -49,7 +43,6 @@ export function createSoundState(): SoundState {
 export type SoundStatus = 'off' | 'waiting' | 'on';
 
 const MASTER_VOLUME = 0.8;
-const ENGINE_VOLUME = 0.3;
 const ROAD_VOLUME = 0.22;
 const BRAKE_VOLUME = 0.1;
 const RAIN_VOLUME = 0.14;
@@ -74,11 +67,7 @@ const HORN_NOTES = [196, 247] as const;
 interface Graph {
   readonly master: GainNode;
   readonly noise: AudioBuffer;
-  readonly fire: OscillatorNode;
-  readonly sub: OscillatorNode;
-  readonly engineFilter: BiquadFilterNode;
-  readonly clatter: GainNode;
-  readonly engine: GainNode;
+  readonly engine: EngineSound;
   readonly roadFilter: BiquadFilterNode;
   readonly road: GainNode;
   readonly brake: GainNode;
@@ -91,8 +80,8 @@ interface Graph {
  * The game's sound, spec §37's first version: the engine, the brakes, the
  * horn, the road, wind, rain and thunder, and the interface. All of it is made with
  * the Web Audio API from oscillators and noise: no sound files, nothing to
- * download, original by construction. The engine note follows the rpm and
- * the pedal, the tyres and wind the speed, the rain the weather.
+ * download, original by construction. The engine (EngineSound) follows the
+ * rpm and the load, the tyres and wind the speed, the rain the weather.
  *
  * Browsers start sound only after the player touches the page, so unlock()
  * is called from every touch or key press until it has. update() only moves
@@ -104,7 +93,6 @@ export class GameAudio {
   private graph: Graph | null = null;
   private on: boolean;
   private hornPressed = false;
-  private readonly tone = createEngineTone();
   private readonly thunderShape = createThunderSound();
   /** Braking from speed: stopping will let out the air brakes' hiss. */
   private hissArmed = false;
@@ -185,12 +173,7 @@ export class GameAudio {
     }
     const now = context.currentTime;
     const { driving } = state;
-    engineTone(this.tone, state.engineRpm, state.drivePedal, state.idleRpm, state.maxRpm);
-    follow(graph.fire.frequency, this.tone.frequency, now);
-    follow(graph.sub.frequency, this.tone.frequency / 2, now);
-    follow(graph.engineFilter.frequency, this.tone.cutoff, now);
-    follow(graph.clatter.gain, 0.1 + 0.3 * clamp01(state.drivePedal), now);
-    follow(graph.engine.gain, driving && state.engineRunning ? this.tone.gain * ENGINE_VOLUME : 0, now);
+    graph.engine.update(driving && state.engineRunning, state.engineRpm, state.engineLoad, state.idleRpm, state.maxRpm, now);
     follow(graph.roadFilter.frequency, 300 + 25 * Math.abs(state.speed), now);
     follow(graph.road.gain, driving ? roadNoiseLevel(state.speed) * ROAD_VOLUME : 0, now);
     follow(graph.brake.gain, driving ? brakeNoiseLevel(state.brakePedal, state.speed) * BRAKE_VOLUME : 0, now);
@@ -430,20 +413,7 @@ function buildGraph(context: AudioContext): Graph {
     return source;
   };
 
-  // The engine: the firing note, a rumble an octave down, and diesel clatter, through a filter the load opens.
-  const fire = context.createOscillator();
-  fire.type = 'sawtooth';
-  const sub = context.createOscillator();
-  sub.type = 'square';
-  const engineFilter = filterNode(context, 'lowpass', 400, 0.9);
-  const clatter = gainNode(context, 0);
-  const engine = gainNode(context, 0);
-  fire.connect(engineFilter);
-  sub.connect(gainNode(context, 0.45)).connect(engineFilter);
-  noiseLoop().connect(filterNode(context, 'bandpass', 900, 1.2)).connect(clatter).connect(engineFilter);
-  engineFilter.connect(engine).connect(master);
-  fire.start();
-  sub.start();
+  const engine = new EngineSound(context, master, noise);
 
   // Tyres and wind, the brakes rubbing, and rain.
   const roadFilter = filterNode(context, 'lowpass', 300);
@@ -474,5 +444,5 @@ function buildGraph(context: AudioContext): Graph {
   alarmNote.connect(alarm).connect(master);
   alarmNote.start();
 
-  return { master, noise, fire, sub, engineFilter, clatter, engine, roadFilter, road, brake, rain, horn, alarm };
+  return { master, noise, engine, roadFilter, road, brake, rain, horn, alarm };
 }
