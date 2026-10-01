@@ -2038,7 +2038,7 @@ async function start(strings: Strings): Promise<void> {
         soundState.engineRpm = vehicle.engineRpm;
         soundState.idleRpm = driving.definition.powertrain.idleRpm;
         soundState.maxRpm = driving.definition.powertrain.maxRpm;
-        soundState.drivePedal = dashboard.drivePedal;
+        soundState.engineLoad = dashboard.drivePedal * vehicle.driveEngagement;
         soundState.brakePedal = dashboard.brakePedal;
         soundState.reversing = reversing;
         soundState.speed = vehicle.speed;
