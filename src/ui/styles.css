@@ -2668,13 +2668,17 @@ body {
   font-size: 13px;
 }
 
+/*
+ * A glow that swells and fades round the control to press. A filter, which the compositor animates on its own: an
+ * animated box-shadow repainted the page every frame (a sixth of a low-end phone's main thread with the panel open).
+ */
 @keyframes tutorial-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(242 163 58 / 0%);
+    filter: drop-shadow(0 0 0 rgb(242 163 58 / 0%));
   }
   50% {
-    box-shadow: 0 0 0 5px rgb(242 163 58 / 60%);
+    filter: drop-shadow(0 0 5px rgb(242 163 58 / 90%));
   }
 }
 

@@ -13,6 +13,15 @@ export function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * The length of (x, z), as Math.hypot(x, z) gives it, for code that runs every
+ * step or frame: V8's Math.hypot gathers its arguments into a fresh array on
+ * every call.
+ */
+export function hypot2(x: number, z: number): number {
+  return Math.sqrt(x * x + z * z);
+}
+
 export function lerp(from: number, to: number, t: number): number {
   return from + (to - from) * t;
 }

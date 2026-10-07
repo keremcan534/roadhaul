@@ -1,4 +1,4 @@
-import { clamp, clamp01, degreesToRadians, smoothstep } from '../../core/math/scalar';
+import { clamp, clamp01, degreesToRadians, hypot2, smoothstep } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import {
   isInSea,
@@ -849,7 +849,7 @@ export class DrivingWorld implements DebrisSolids {
     }
     for (let i = 0; i < this.turningCircles.length; i++) {
       const circle = this.turningCircles[i]!;
-      if (Math.hypot(x - circle.x, z - circle.z) <= circle.radiusMeters) {
+      if (hypot2(x - circle.x, z - circle.z) <= circle.radiusMeters) {
         return ASPHALT;
       }
     }
@@ -1446,8 +1446,12 @@ export class DrivingWorld implements DebrisSolids {
     for (let i = 0; i < shoreline.length - 1; i++) {
       const cx = state.x + Math.sin(state.heading) * offset;
       const cz = state.z + Math.cos(state.heading) * offset;
-      const [x0, z0] = shoreline[i]!;
-      const [x1, z1] = shoreline[i + 1]!;
+      const from = shoreline[i]!;
+      const to = shoreline[i + 1]!;
+      const x0 = from[0];
+      const z0 = from[1];
+      const x1 = to[0];
+      const z1 = to[1];
       if (z1 < cz - reach || z0 > cz + reach || cx - reach > Math.max(x0, x1)) {
         continue;
       }

@@ -333,11 +333,40 @@ The player asked whether the ads and the rest were ready ("reklam vs şeyler haz
 | Try them in a browser | ✅ | `?ads=simulated` and `?store=simulated` stand in for AdMob and Google Play (a sheet for each ad and purchase): development and the end-to-end tests |
 | A nicer engine | ✅ | ("araba motoru sesini daha güzel kulağa hoş gelen bir şey yapsan") The buzz of a sawtooth and a square wave replaced by a six-cylinder diesel (`EngineSound`): an engine cycle's exhaust pulses as one wave, with the cylinders' small differences; it burns fuel pulling and at idle and goes quiet coasting; it wanders, trembles and breathes; an exhaust pipe's resonances the revs sweep through; a light knock in time with the firing, labouring most at low revs; a soft turbo that spools up; and a dip at each gear change. Rendered offline against the old one through the same drive: as loud under load (A-weighted, within 1 dB), quieter coasting, and its energy at 150–800 Hz instead of under 100 Hz, so a phone's speaker plays it |
 
+### A mobile performance run (between steps 28 and 29)
+
+The player asked for a mobile performance run ("mobil performans runu yap") before step 29's phones. `npm run perf` (ARCHITECTURE.md §11) plays the production build as three phones: a low-end one on low (told it has a Mali-G52, four cores and 3 GB, its CPU six times slower than the desktop's), a mid-range one on medium (an Adreno 619, four times slower) and a flagship on high (an Adreno 740, twice). It measures what their CPUs allow: the GPU's own drawing, heat and battery are step 29's. The numbers are estimates, and vary by up to a fifth between runs.
+
+Each scene's figure is the game's work on the main thread each frame (the median) and the frame rate it allows; the page's own (styling, compositing, garbage collection) comes on top, a fifth to a quarter of the main thread in the scenes traced. 33 ms a frame allows 30 FPS.
+
+| | Low-end, low | Mid-range, medium | Flagship, high |
+|---|---|---|---|
+| Boot to the main menu | 29–32 s | 20–22 s | 10–11 s |
+| Main menu | 17 ms (59 FPS) | 12.2 ms (60+ FPS) | 7.1 ms (60+ FPS) |
+| Highway, full throttle | 37.8 ms (26 FPS) | 31.8 ms (31 FPS) | 18.6 ms (54 FPS) |
+| City yard at night | 35.9 ms (28 FPS) | 29.4 ms (34 FPS) | 12.8 ms (60+ FPS) |
+| Rain | 38.6 ms (26 FPS) | 32.7 ms (31 FPS) | 19.2 ms (52 FPS) |
+| Job board open | 17.4 ms (57 FPS) | 8.3 ms (60+ FPS) | 6.7 ms (60+ FPS) |
+| Full map | 5.5 ms (60+ FPS) | 4.4 ms (60+ FPS) | 1.8 ms (60+ FPS) |
+| Draw calls | 97–109 | 113–122 | 112–147 |
+| Triangles | 228k–246k | 234k–250k | 241k–323k |
+| Heap | 29–64 MB | 24–50 MB | 25–69 MB |
+
+| Item | Status | Notes |
+|---|---|---|
+| The tutorial's glow off the main thread | ✅ | The glow round the control to press pulsed a `box-shadow`, which repaints the page every frame: 155 ms of painting a second on the low-end phone with the job board open, a sixth of its main thread. It is a `drop-shadow` filter now, which the compositor animates by itself: 2 ms a second, and the job board from 29 to 36 FPS. The boot screen's bar stops moving once the game is ready |
+| Less garbage while driving | ✅ | `Math.hypot`, which V8 gives a fresh array of its arguments on every call, gave way to `hypot2` in the traffic, the ground under the truck and the map's culling, and the shore's collision test indexes its points instead of destructuring them. Driving on the highway allocates 1.4 MB a second instead of 2.2, so the collector runs less often; most of what is left is three.js setting uniforms |
+| No shaders compiled after the boot | ✅ | On medium and high three shader programs were compiled the first time the sun came into view, a stall each: the sun's shafts, drawn only while the sun shows, which the boot's compile left out. The colour pass now compiles all its passes with the scene: every program (72 on medium, 76 on high) before the main menu shows, none after |
+| The boot | Open | 10–11 s on the flagship, 20–22 s on the mid-range phone and 29–32 s on the low-end one, nearly all of it one task building the world: the driving world's grids and walls (30%), the roads (16%), the scenery (14%), the noise textures (12%), the road furniture (5%), the truck (4%). The boot screen's bar keeps moving (the compositor animates it), but nothing else answers meanwhile. Next: what the map's seed grows is the same every time, so build it with the game (at build time) or in a worker, the noise textures in a worker, and yield between the pieces |
+| The low-end phone under 30 FPS | Open | Driving, its CPU allows 26–28 FPS by the game's own work (36–39 ms a frame) and less with the page's: under the 30 FPS floor. The mid-range phone's allows 31–34, about the floor once the page's work is counted. Most of a frame is three.js's work per object (culling, matrices, state and uniforms), and low draws nearly as many objects as medium: 97–109 draw calls against 113–122, as every preset culls the tiles at 1 km. Next: a shorter reach on low, `matrixAutoUpdate` off for what never moves (nothing turns it off today), fewer and bigger merged tiles. Confirm on a real phone first (step 29) |
+| A freeze as the resolution steps | Open | `AdaptiveResolution` resizes the drawing buffer and the colour pass's targets in the frame it decides to, every two seconds while frames are slow: 200 ms of one 255 ms frame in rain on the mid-range phone (traced), and most likely the run's worst frames, 370–480 ms, in the driving scenes. Next: draw into targets of a fixed size and scale the viewport |
+| The flagship over the triangle budget | Open | On high the sun's shadows draw the scene again: 312k–323k triangles by day (the budget is ~300k) and up to 147 draw calls; at night and in the rain, without them, about 245k. Next: fewer, nearer shadow casters |
+
 ## Next step: 29 Device testing
 
 Suggested request:
 
-> Implement roadmap step 29 only. Device testing (spec §81): install the CI debug APK (and the Pages build in Chrome) on at least one low-end and one mid-range Android phone, and fix what they show: frame rate against the 30 FPS floor with the `?debug` overlay (the Pages build takes it in the address; give the app a way to turn it on, such as a switch in Settings), which graphics preset each phone gets and whether the dynamic resolution settles, touch control feel (steering wheel, pedals, camera, pause), text and controls round display cutouts in both orientations, the back button and the app in the background, saving across restarts and updates, and the first ten minutes (tutorial) as a new player. Record each phone's results in the roadmap.
+> Implement roadmap step 29 only. Device testing (spec §81): install the CI debug APK (and the Pages build in Chrome) on at least one low-end and one mid-range Android phone, and fix what they show: frame rate against the 30 FPS floor with the `?debug` overlay (and against the mobile performance run's estimates) (the Pages build takes it in the address; give the app a way to turn it on, such as a switch in Settings), which graphics preset each phone gets and whether the dynamic resolution settles, touch control feel (steering wheel, pedals, camera, pause), text and controls round display cutouts in both orientations, the back button and the app in the background, saving across restarts and updates, and the first ten minutes (tutorial) as a new player. Record each phone's results in the roadmap.
 
 ## Infrastructure track
 

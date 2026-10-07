@@ -393,14 +393,33 @@ export class PostProcessing {
 
   /**
    * Compiles the shaders of everything in `scene` as the pass draws it (into
-   * its linear target, without tone mapping), so render() finds them ready.
-   * Not per frame.
+   * its linear target, without tone mapping), and the passes' own, each into
+   * the kind of target it draws into, so render() finds them ready. With
+   * `shafts`, the sun's shafts' too: drawn only while the sun shows, they
+   * would otherwise stall the first frame it comes into view. Not per frame.
    */
-  compile(scene: Scene, camera: Camera): void {
-    const previous = this.renderer.getRenderTarget();
-    this.renderer.setRenderTarget(this.sceneTarget);
-    this.renderer.compile(scene, camera);
-    this.renderer.setRenderTarget(previous);
+  compile(scene: Scene, camera: Camera, shafts: boolean): void {
+    const renderer = this.renderer;
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.sceneTarget);
+    renderer.compile(scene, camera);
+    const bloom = this.bloom ? [this.prefilter, this.downsample, this.upsample] : [];
+    for (const material of shafts ? [...bloom, this.shaftMask, this.shaftAround, this.shaftRays] : bloom) {
+      if (material !== null) {
+        this.quad.material = material;
+        renderer.compile(this.quadScene, this.quadCamera);
+      }
+    }
+    this.quad.material = this.composite;
+    renderer.setRenderTarget(this.pictureTarget);
+    renderer.compile(this.quadScene, this.quadCamera);
+    if (this.fxaa !== null) {
+      this.quad.material = this.fxaa;
+      renderer.setRenderTarget(null);
+      renderer.compile(this.quadScene, this.quadCamera);
+    }
+    this.quad.material = this.composite;
+    renderer.setRenderTarget(previous);
   }
 
   /** Draws `scene` from `camera` through the passes onto the screen. Allocation-free. */

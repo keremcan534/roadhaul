@@ -6,6 +6,7 @@ import {
   dampFactor,
   degreesToRadians,
   finiteOr,
+  hypot2,
   kmhToMetersPerSecond,
   lerp,
   metersPerSecondToKmh,
@@ -60,5 +61,14 @@ describe('scalar helpers', () => {
     expect(degreesToRadians(180)).toBeCloseTo(Math.PI);
     expect(kmhToMetersPerSecond(90)).toBe(25);
     expect(metersPerSecondToKmh(25)).toBe(90);
+  });
+
+  it("measures a length as Math.hypot does, for the per-step code that cannot afford its allocation", () => {
+    expect(hypot2(3, 4)).toBe(5);
+    expect(hypot2(-3, -4)).toBe(5);
+    expect(hypot2(0, 0)).toBe(0);
+    for (const [x, z] of [[12.5, -0.75], [1234.567, 89.01], [-0.003, 0.004]] as const) {
+      expect(hypot2(x, z)).toBeCloseTo(Math.hypot(x, z), 12);
+    }
   });
 });

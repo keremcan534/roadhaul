@@ -29,3 +29,6 @@ Thumbs.db
 
 # The store video's footage and cut (scripts/storeVideo.mjs)
 store-video/
+
+# The mobile performance run's results (scripts/perfRun.mjs)
+perf-results/

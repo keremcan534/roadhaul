@@ -1,3 +1,4 @@
+import { hypot2 } from '../../core/math/scalar';
 import type { MapBox } from './mapSketch';
 
 /** The 2D affine transform a canvas takes (setTransform(a, b, c, d, e, f)): screen = (a·x + c·z + e, b·x + d·z + f). */
@@ -111,7 +112,7 @@ export class MapViewport {
   /** True when any of `box` may be on screen, allowing `marginPixels` round it (lines drawn wide, labels). */
   sees(box: MapBox, marginPixels: number): boolean {
     // The screen's circumscribed circle, in meters: right however the map is turned.
-    const radius = (Math.hypot(this.width, this.height) / 2 + marginPixels) / this.scale;
+    const radius = (hypot2(this.width, this.height) / 2 + marginPixels) / this.scale;
     const dx = this.centerX - Math.min(box.maxX, Math.max(box.minX, this.centerX));
     const dz = this.centerZ - Math.min(box.maxZ, Math.max(box.minZ, this.centerZ));
     return dx * dx + dz * dz <= radius * radius;
