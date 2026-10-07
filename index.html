@@ -39,6 +39,11 @@
         visibility: hidden;
         pointer-events: none;
       }
+      /* Gone, the bar stops: an endless animation keeps the compositor drawing frames for nothing. */
+      html[data-boot-state='ready'] .boot-screen__bar::after,
+      html[data-boot-state='error'] .boot-screen__bar::after {
+        animation: none;
+      }
       .boot-screen__mark {
         width: 88px;
         height: 88px;
