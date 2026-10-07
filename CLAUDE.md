@@ -17,6 +17,7 @@ npm test            # unit + architecture tests (Vitest)
 npm run build       # production build into dist/
 npm run test:e2e    # Playwright smoke tests against dist/ (run build first)
 npm run check       # everything above, in order
+npm run perf        # the mobile performance run against dist/ (build first): three phones, six scenes (ARCHITECTURE.md §11)
 npm run android     # build, then copy into the Android project; `cd android && ./gradlew assembleDebug` builds the APK (JDK 21, Android SDK); ROADHAUL_ADS=test puts Google's test ads in it
 ```
 
@@ -76,6 +77,8 @@ Avoid in per-frame code (`fixedUpdate`, `frameUpdate`, anything they call):
 - `scene.traverse`, `getObjectByName`, DOM queries, layout-triggering DOM reads
 - DOM writes every frame (throttle UI updates)
 - logging
+- `Math.hypot` (it allocates; use `hypot2`) and destructuring points (`const [x, z] = p`) in loops
+- CSS animations of anything but `transform`, `opacity` and `filter` (they repaint the page every frame)
 
 Use: cached objects and scratch vectors, object pooling, `InstancedMesh`, merged low-poly geometry, the capped pixel ratio, no real-time shadows by default, compressed textures later. Always `dispose()` GPU resources you create.
 
