@@ -1,3 +1,4 @@
+import { hypot2 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { TrafficVehicleDefinition } from '../../data/definitions/TrafficVehicleDefinition';
 import { wreckableOf } from '../crash/wrecks';
@@ -465,7 +466,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.truckCircleCount = count;
     this.truckRadius = footprint.radius;
     this.truckReach = reach + footprint.radius;
-    const moved = Math.hypot(truck.x - this.truckX, truck.z - this.truckZ);
+    const moved = hypot2(truck.x - this.truckX, truck.z - this.truckZ);
     this.truckX = truck.x;
     this.truckZ = truck.z;
     this.truckHeading = truck.heading;
@@ -474,7 +475,7 @@ export class TrafficSimulation implements MovingObstacles {
       // Placed somewhere new: clear the spot and fill the roads around it.
       const clear = CLEAR_AROUND_TELEPORT_METERS + this.truckReach;
       for (let i = 0; i < this.capacity; i++) {
-        if (this.active[i] === 1 && Math.hypot(this.x[i]! - truck.x, this.z[i]! - truck.z) < clear) {
+        if (this.active[i] === 1 && hypot2(this.x[i]! - truck.x, this.z[i]! - truck.z) < clear) {
           this.despawn(i);
         }
       }
@@ -489,7 +490,7 @@ export class TrafficSimulation implements MovingObstacles {
       if (this.active[i] !== 1) {
         continue;
       }
-      const distance = Math.hypot(this.x[i]! - this.truckX, this.z[i]! - this.truckZ);
+      const distance = hypot2(this.x[i]! - this.truckX, this.z[i]! - this.truckZ);
       const stuck = this.stuckSeconds[i]! > STUCK_RECYCLE_SECONDS && distance > STUCK_RECYCLE_DISTANCE_METERS;
       const gone = this.leaving[i] === 1 && !this.inSight(this.x[i]!, this.z[i]!);
       if (distance > limit || stuck || gone) {
@@ -526,7 +527,7 @@ export class TrafficSimulation implements MovingObstacles {
     if (this.capacity === 0 || !this.truckKnown) {
       return -1;
     }
-    const distance = Math.hypot(x - this.truckX, z - this.truckZ);
+    const distance = hypot2(x - this.truckX, z - this.truckZ);
     if (distance < this.settings.minSpawnDistanceMeters || distance > this.settings.radiusMeters || this.inSight(x, z)) {
       return -1;
     }
@@ -562,7 +563,7 @@ export class TrafficSimulation implements MovingObstacles {
       if (this.active[j] !== 1 || this.guest[j]! >= 0 || this.inSight(this.x[j]!, this.z[j]!)) {
         continue;
       }
-      const distance = Math.hypot(this.x[j]! - this.truckX, this.z[j]! - this.truckZ);
+      const distance = hypot2(this.x[j]! - this.truckX, this.z[j]! - this.truckZ);
       if (distance > furthestDistance) {
         furthestDistance = distance;
         furthest = j;
@@ -580,7 +581,7 @@ export class TrafficSimulation implements MovingObstacles {
     const dx = x - this.truckX;
     const dz = z - this.truckZ;
     const ahead = dx * Math.sin(this.truckHeading) + dz * Math.cos(this.truckHeading);
-    return Math.hypot(dx, dz) < HIDDEN_DISTANCE_METERS && ahead > -HIDDEN_BEHIND_METERS;
+    return hypot2(dx, dz) < HIDDEN_DISTANCE_METERS && ahead > -HIDDEN_BEHIND_METERS;
   }
 
   /** No vehicle on `lane` within the spacing new vehicles keep of distance `s` along it. */
@@ -667,7 +668,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.pointAt(lane, s);
     const dx = this.pointXOut - this.truckX;
     const dz = this.pointZOut - this.truckZ;
-    const distance = Math.hypot(dx, dz);
+    const distance = hypot2(dx, dz);
     const minDistance = filling ? FILL_MIN_DISTANCE_METERS : this.settings.minSpawnDistanceMeters;
     if (distance < minDistance || distance > this.settings.radiusMeters) {
       return false;
@@ -833,7 +834,7 @@ export class TrafficSimulation implements MovingObstacles {
         }
         const dx = graph.nodeX[node]! - this.truckX;
         const dz = graph.nodeZ[node]! - this.truckZ;
-        const distance = Math.hypot(dx, dz);
+        const distance = hypot2(dx, dz);
         const towards = distance > 0 ? (dx * velocityX + dz * velocityZ) / distance : 0;
         if (speed > 1 && towards > 0.5 * speed) {
           eta = Math.max(0, distance - reach - this.truckReach) / towards;
