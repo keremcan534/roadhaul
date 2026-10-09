@@ -19,7 +19,8 @@ const FIRST_SEED = 20260922;
  */
 export class TrafficService {
   private current: TrafficSimulation | null = null;
-  private world: DrivingWorld | null = null;
+  /** The drive the traffic belongs to (DrivingService.drive). */
+  private drive = -1;
   private readonly graphs = new Map<string, LaneGraph>();
   private readonly speedLimits: Readonly<Record<RoadKind, number>>;
   private drives = 0;
@@ -51,7 +52,7 @@ export class TrafficService {
       return;
     }
     const world = this.driving.world;
-    if (world !== this.world) {
+    if (this.driving.drive !== this.drive) {
       this.startDrive(world);
     }
     this.current!.update(dt, this.driving.vehicle, this.driving.footprint);
@@ -66,10 +67,10 @@ export class TrafficService {
   dispose(): void {
     this.driving.setMovingObstacles(null);
     this.current = null;
-    this.world = null;
+    this.drive = -1;
   }
 
-  /** A new world (a new drive): its lanes, and fresh traffic that fills the roads on the first step. */
+  /** A new drive: its world's lanes, and fresh traffic that fills the roads on the first step. */
   private startDrive(world: DrivingWorld): void {
     let graph = this.graphs.get(world.id);
     if (graph === undefined) {
@@ -79,7 +80,7 @@ export class TrafficService {
         `Traffic lanes for ${world.id}: ${graph.linkCount} links, ${graph.nodeCount} junctions and turning circles.`,
       );
     }
-    this.world = world;
+    this.drive = this.driving.drive;
     this.current = new TrafficSimulation(
       graph,
       this.content.trafficVehicles.all,

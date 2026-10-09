@@ -65,6 +65,20 @@ describe('DrivingService', () => {
     expect(driving.previousPose).toEqual({ x: 0, z: 0, heading: driving.vehicle.heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
   });
 
+  it('drives the same world again on the same map, a new drive, with nothing left knocked over', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    const world = driving.world;
+    const firstDrive = driving.drive;
+    world.knocked.fill(1);
+
+    driving.start('test_truck', 'test_map');
+
+    expect(driving.world).toBe(world);
+    expect(driving.drive).toBe(firstDrive + 1);
+    expect(world.knocked.every((knocked) => knocked === 0)).toBe(true);
+  });
+
   it('drives the truck along the road and remembers the previous pose', () => {
     const { driving } = setup();
     driving.start('test_truck', 'test_map');

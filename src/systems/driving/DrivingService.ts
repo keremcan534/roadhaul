@@ -140,6 +140,7 @@ export type PerformanceModifier = PerformanceFactors;
  */
 export class DrivingService {
   private session: DrivingSession | null = null;
+  private drives = 0;
   private readonly modifiers = new Map<string, PerformanceModifier>();
   private engineRunning = true;
   /** Vehicles the truck can hit besides the world's static obstacles (TrafficService). */
@@ -217,6 +218,11 @@ export class DrivingService {
     );
   }
 
+  /** Counts the drives start() began: a new number is a new drive, though the world may be the same. */
+  get drive(): number {
+    return this.drives;
+  }
+
   get isEngineRunning(): boolean {
     return this.engineRunning;
   }
@@ -229,7 +235,13 @@ export class DrivingService {
   /** Puts `vehicleId` at the spawn point of `mapId`. Replaces any current session. */
   start(vehicleId: string, mapId: string, cargoMassKg = 0): void {
     const definition = this.content.vehicles.get(vehicleId);
-    const world = new DrivingWorld(this.content.maps.get(mapId));
+    // On the same map (a company founded or continued from the main menu) the world already built is used again,
+    // with what was knocked over stood back up: building it takes seconds on a phone, and the views drawn from it at
+    // boot go on drawing the same one.
+    const previous = this.session?.world;
+    const world = previous !== undefined && previous.id === mapId ? previous : new DrivingWorld(this.content.maps.get(mapId));
+    world.restoreAll();
+    this.drives++;
     const dynamics = new VehicleDynamics(definition, cargoMassKg);
     const state = dynamics.createState(world.spawn.x, world.spawn.z, world.spawn.heading);
     const previousPose = createTruckPose();
