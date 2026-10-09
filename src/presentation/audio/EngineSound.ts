@@ -2,8 +2,8 @@ import { SeededRandom } from '../../core/random/SeededRandom';
 import { COASTING, createEngineTone, engineTone, exhaustHarmonics, knockHarmonics, PULLING } from './soundModel';
 
 const ENGINE_VOLUME = 0.33;
-const CLATTER_VOLUME = 2;
-const TURBO_VOLUME = 0.1;
+const CLATTER_VOLUME = 0.55;
+const TURBO_VOLUME = 0.025;
 /** Harmonics of the engine cycle in its waves: up to about 3 kHz at idle, where a cycle is 5–6 a second. */
 const VOICE_HARMONICS = 640;
 const KNOCK_HARMONICS = 256;
@@ -25,7 +25,7 @@ const SPOOL_DOWN_SECONDS = 0.35;
  */
 const PIPE_ECHO_SECONDS = 0.006;
 const PIPE_ECHO = -0.3;
-const PIPE_DAMPING_HZ = 1100;
+const PIPE_DAMPING_HZ = 800;
 /** No engine runs perfectly even: its speed wanders (cents), its strength trembles cycle to cycle and breathes (shares). */
 const WANDER_CENTS = 8;
 const TREMBLE = 0.12;
@@ -136,9 +136,11 @@ export class EngineSound {
     tremble
       .connect(filter('peaking', 75, 0.9, 4))
       .connect(filter('peaking', 210, 0.8, 3))
+      // A warm body where a phone's speaker plays: the band it can carry, with the buzz above it cut.
+      .connect(filter('peaking', 440, 0.9, 4))
       .connect(pipe)
       .connect(this.brightness)
-      .connect(filter('highshelf', 2800, 0.7, -9))
+      .connect(filter('highshelf', 1500, 0.7, -14))
       .connect(this.level);
 
     // Its clatter: the knock's band of noise, let through as each cylinder fires.
@@ -146,8 +148,8 @@ export class EngineSound {
     this.knock.connect(knockGate.gain);
     this.clatter = gain(0);
     loop(noise, 1, 0.37)
-      .connect(filter('bandpass', 1700, 1.1))
-      .connect(filter('lowpass', 3600, 0.7))
+      .connect(filter('bandpass', 1000, 0.9))
+      .connect(filter('lowpass', 1800, 0.7))
       .connect(knockGate)
       .connect(this.clatter)
       .connect(this.level);
@@ -155,9 +157,9 @@ export class EngineSound {
     // Its turbo: a soft whistle with a breath of air round it.
     this.turbo = context.createOscillator();
     this.turbo.frequency.value = 1600;
-    this.turboHiss = filter('bandpass', 1600, 6);
+    this.turboHiss = filter('bandpass', 900, 4);
     this.turboLevel = gain(0);
-    this.turbo.connect(gain(0.6)).connect(this.turboLevel);
+    this.turbo.connect(gain(0.25)).connect(this.turboLevel);
     loop(noise, 1, 1.21).connect(this.turboHiss).connect(gain(1.5)).connect(this.turboLevel);
     this.turboLevel.connect(this.level);
 
