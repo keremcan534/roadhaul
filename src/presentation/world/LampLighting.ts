@@ -472,25 +472,27 @@ export class LampLighting {
     lampWetness: { value: 0 },
     headlightColor: { value: new Color(HEADLIGHT_COLOR) },
     headlightPeak: { value: HEADLIGHT_PEAK },
-    truckLamps: { value: [new Vector3(), new Vector3()] },
+    // The arrays are flat Float32Arrays: three.js hands those to WebGL as they are, where an array of vectors is
+    // flattened into a copy for every draw call of every lit material.
+    truckLamps: { value: new Float32Array(2 * 3) },
     truckForward: { value: new Vector3(0, 0, -1) },
     truckRight: { value: new Vector3(1, 0, 0) },
     trafficLampCount: { value: 0 },
-    trafficLamps: { value: Array.from({ length: MAX_TRAFFIC_VEHICLES * 2 }, () => new Vector3()) },
-    trafficForward: { value: Array.from({ length: MAX_TRAFFIC_VEHICLES }, () => new Vector3()) },
-    trafficRight: { value: Array.from({ length: MAX_TRAFFIC_VEHICLES }, () => new Vector3()) },
-    trafficStrength: { value: new Array<number>(MAX_TRAFFIC_VEHICLES).fill(0) },
+    trafficLamps: { value: new Float32Array(MAX_TRAFFIC_VEHICLES * 2 * 3) },
+    trafficForward: { value: new Float32Array(MAX_TRAFFIC_VEHICLES * 3) },
+    trafficRight: { value: new Float32Array(MAX_TRAFFIC_VEHICLES * 3) },
+    trafficStrength: { value: new Float32Array(MAX_TRAFFIC_VEHICLES) },
     streetLampColor: { value: new Color(STREET_LAMP_COLOR) },
     streetLampPeak: { value: STREET_LAMP_PEAK },
     streetLampCount: { value: 0 },
-    streetLamps: { value: Array.from({ length: MAX_STREET_LAMPS }, () => new Vector3()) },
-    streetLampFacing: { value: Array.from({ length: MAX_STREET_LAMPS }, () => new Vector3(0, 0, -1)) },
-    streetLampFade: { value: new Array<number>(MAX_STREET_LAMPS).fill(0) },
+    streetLamps: { value: new Float32Array(MAX_STREET_LAMPS * 3) },
+    streetLampFacing: { value: new Float32Array(MAX_STREET_LAMPS * 3) },
+    streetLampFade: { value: new Float32Array(MAX_STREET_LAMPS) },
     truckBox: { value: new Vector3() },
     truckBoxAlong: { value: new Vector3(0, 0, -1) },
     truckBoxAcross: { value: new Vector3(1, 0, 0) },
     truckBoxSize: { value: new Vector3() },
-    trafficShaded: { value: new Array<number>(MAX_TRAFFIC_VEHICLES).fill(0) },
+    trafficShaded: { value: new Float32Array(MAX_TRAFFIC_VEHICLES) },
   };
   private readonly lit = new WeakSet<Material>();
   private readonly streetLampsShown: number;
@@ -504,6 +506,9 @@ export class LampLighting {
   private readonly left = new Vector3();
   private readonly right = new Vector3();
   private readonly forward = new Vector3();
+  /** Scratch for what goes into the flat arrays. */
+  private readonly scratch = new Vector3();
+  private readonly scratchRight = new Vector3();
   /** Scratch: the truck's body's box in the world (Headlamps.bodyBox). */
   private readonly boxMiddle = new Vector3();
   private readonly boxForward = new Vector3();
@@ -576,8 +581,8 @@ export class LampLighting {
     u.lampUp.value.set(0, 1, 0).transformDirection(view);
 
     truck.headlamps(this.left, this.right, this.forward);
-    u.truckLamps.value[0]!.copy(this.left).applyMatrix4(view);
-    u.truckLamps.value[1]!.copy(this.right).applyMatrix4(view);
+    this.left.applyMatrix4(view).toArray(u.truckLamps.value, 0);
+    this.right.applyMatrix4(view).toArray(u.truckLamps.value, 3);
     this.facing(this.forward, view, u.truckForward.value, u.truckRight.value);
     truck.bodyBox(this.boxMiddle, this.boxForward, u.truckBoxSize.value);
     u.truckBox.value.copy(this.boxMiddle).applyMatrix4(view);
@@ -600,9 +605,11 @@ export class LampLighting {
       );
     }
     for (let v = 0; v < vehicles; v++) {
-      u.trafficLamps.value[v * 2]!.copy(this.trafficWorld[v * 2]!).applyMatrix4(view);
-      u.trafficLamps.value[v * 2 + 1]!.copy(this.trafficWorld[v * 2 + 1]!).applyMatrix4(view);
-      this.facing(this.trafficHeading[v]!, view, u.trafficForward.value[v]!, u.trafficRight.value[v]!);
+      this.scratch.copy(this.trafficWorld[v * 2]!).applyMatrix4(view).toArray(u.trafficLamps.value, v * 6);
+      this.scratch.copy(this.trafficWorld[v * 2 + 1]!).applyMatrix4(view).toArray(u.trafficLamps.value, v * 6 + 3);
+      this.facing(this.trafficHeading[v]!, view, this.scratch, this.scratchRight);
+      this.scratch.toArray(u.trafficForward.value, v * 3);
+      this.scratchRight.toArray(u.trafficRight.value, v * 3);
       u.trafficStrength.value[v] = this.trafficStrength[v]!;
       u.trafficShaded.value[v] = this.truckAhead(this.trafficWorld[v * 2]!, this.trafficHeading[v]!) ? 1 : 0;
     }
@@ -687,8 +694,8 @@ export class LampLighting {
     const next = Math.sqrt(nextSq);
     for (let slot = 0; slot < count; slot++) {
       const first = nearest[slot]! * STREET_LAMP_STRIDE;
-      u.streetLamps.value[slot]!.set(at[first]!, at[first + 1]!, at[first + 2]!).applyMatrix4(view);
-      u.streetLampFacing.value[slot]!.set(at[first + 3]!, 0, at[first + 4]!).transformDirection(view);
+      this.scratch.set(at[first]!, at[first + 1]!, at[first + 2]!).applyMatrix4(view).toArray(u.streetLamps.value, slot * 3);
+      this.scratch.set(at[first + 3]!, 0, at[first + 4]!).transformDirection(view).toArray(u.streetLampFacing.value, slot * 3);
       const distance = Math.sqrt(nearestSq[slot]!);
       let fade = 1 - Math.min(1, Math.max(0, (distance - near) / (far - near)));
       if (slot === count - 1) {

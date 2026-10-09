@@ -136,7 +136,8 @@ async function measure(browser, profileId, sceneId, options) {
   const name = `${profileId}-${sceneId}`;
   try {
     const started = Date.now();
-    await page.goto(`http://127.0.0.1:${PORT}/?debug&lang=en&date=2025-12-01&quality=${profile.quality}${scene.query}`);
+    // Only the response: the boot, timed below, outlasts the page's load event on a slow phone.
+    await page.goto(`http://127.0.0.1:${PORT}/?debug&lang=en&date=2025-12-01&quality=${profile.quality}${scene.query}`, { waitUntil: 'commit' });
     await attribute(page, 'data-boot-state', 'ready');
     result.bootSeconds = Math.round((Date.now() - started) / 100) / 10;
     result.bootLongestTaskMs = Math.round(Math.max(0, ...(await page.evaluate(() => __perf.long.map(([, d]) => d)))));

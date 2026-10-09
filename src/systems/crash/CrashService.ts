@@ -35,7 +35,8 @@ const DEBRIS_STRIKER_MASS_KG = 1200;
  */
 export class CrashService {
   private debris: DebrisSimulation | null = null;
-  private world: DrivingWorld | null = null;
+  /** The drive the debris belongs to (DrivingService.drive). */
+  private drive = -1;
   private random = new SeededRandom(FIRST_SEED);
   private drives = 0;
   /** The last of the world's collision steps whose knocks were taken. */
@@ -79,7 +80,7 @@ export class CrashService {
       return;
     }
     const world = this.driving.world;
-    if (world !== this.world) {
+    if (this.driving.drive !== this.drive) {
       this.startDrive(world);
     }
     const debris = this.debris!;
@@ -97,7 +98,7 @@ export class CrashService {
   }
 
   private startDrive(world: DrivingWorld): void {
-    this.world = world;
+    this.drive = this.driving.drive;
     this.debris = new DebrisSimulation(this.config.maxDebris, (x, z) => world.hasGround(x, z), world);
     this.paint = new Int32Array(this.config.maxDebris);
     this.random = new SeededRandom(FIRST_SEED + this.drives++);

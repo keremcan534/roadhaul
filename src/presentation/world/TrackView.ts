@@ -56,7 +56,7 @@ import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
-import { FarCulling, TileParts, tileRuns } from './worldTiles';
+import { FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
 import { createChannelMask } from './riverChannel';
@@ -460,6 +460,7 @@ export class TrackView {
       }
       this.root.add(country);
     }
+    freezeTransforms(this.root);
     scene.add(this.root);
   }
 

@@ -19,6 +19,7 @@ import type { GuardRail } from '../../domain/world/guardRails';
 import { createRoadPoint } from '../../domain/world/RoadPath';
 import type { SkyUniforms } from './EnvironmentView';
 import { reflectSky } from './skyReflection';
+import { freezeTransforms } from './worldTiles';
 
 /**
  * Delineator posts stand every this many meters along both sides of rural
@@ -212,6 +213,7 @@ export class RoadFurnitureView {
     }
     this.root.add(this.posts, this.reflectors, this.studs, ...this.rails);
     this.root.name = 'road-furniture';
+    freezeTransforms(this.root);
     scene.add(this.root);
   }
 

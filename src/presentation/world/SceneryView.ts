@@ -51,7 +51,7 @@ import {
 } from '../textures/propImages';
 import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
-import { FarCulling } from './worldTiles';
+import { FarCulling, freezeTransforms } from './worldTiles';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
 const TILE_METERS = 600;
@@ -368,6 +368,7 @@ export class SceneryView {
       .map((kind) => this.createHerd(kind, castShadows));
     this.animate();
     this.root.name = 'scenery';
+    freezeTransforms(this.root);
     scene.add(this.root);
   }
 

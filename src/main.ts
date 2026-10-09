@@ -1756,6 +1756,8 @@ async function start(strings: Strings): Promise<void> {
   /** What the cab's instruments read beyond the truck's motion, refreshed every frame (no allocation). */
   const dashboard = { fuelFraction: 1, clockMinutes: 0, drivePedal: 0, brakePedal: 0 };
   let menuFrames = 0;
+  /** The last frame's own work on the main thread (AdaptiveResolution: slow frames that are the CPU's keep their pixels). */
+  let lastFrameWorkSeconds = 0;
   const pose = { x: 0, z: 0, heading: 0 };
   /** How the truck's body stands between fixed steps (no allocation). */
   const bodyPose = createTruckPose();
@@ -1799,6 +1801,7 @@ async function start(strings: Strings): Promise<void> {
         session.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
+        const workStarted = performance.now();
         // After a big crash, game time runs slow a moment (the frame's time is game time: back to real time here).
         loop.timeScale = slowMotion.active ? slowMotion.update(deltaSeconds / Math.max(0.05, loop.timeScale)) : 1;
         const simulating = onRoad() && !paused;
@@ -2019,7 +2022,7 @@ async function start(strings: Strings): Promise<void> {
         toasts.update(deltaSeconds);
         // Slow frames on the road: fewer pixels (the rain's streaks and the wires keep their width in pixels). The menus,
         // drawn at half rate, are no measure.
-        if (simulating && adaptiveResolution.frame(deltaSeconds)) {
+        if (simulating && adaptiveResolution.frame(deltaSeconds, lastFrameWorkSeconds)) {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitPixelSizes();
         }
@@ -2051,6 +2054,7 @@ async function start(strings: Strings): Promise<void> {
         if (perfOverlay.visible) {
           perfOverlay.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
         }
+        lastFrameWorkSeconds = (performance.now() - workStarted) / 1000;
       },
       onError: (error) => {
         logger.error('The game loop stopped.', error);

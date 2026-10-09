@@ -26,6 +26,7 @@ import type { SkyUniforms } from './EnvironmentView';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
 import { groundTint } from './TrackView';
 import { createWaterMaterial } from './waterMaterial';
+import { freezeTransforms } from './worldTiles';
 
 /** The lawn is mown in stripes this wide along the park's length, alternately lighter and darker. */
 const STRIPE_METERS = 3;
@@ -148,6 +149,7 @@ export class ParkView {
       water.name = 'park-fountain-water';
       this.root.add(lawns, gravel, hedges, stone, water);
     }
+    freezeTransforms(this.root);
     scene.add(this.root);
   }
 

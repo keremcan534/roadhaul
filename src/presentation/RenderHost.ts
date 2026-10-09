@@ -62,6 +62,9 @@ export class RenderHost {
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
     // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
     this.renderer.info.autoReset = false;
+    // The scene's root never moves: left to update itself, it would make every object under it work out its matrix
+    // again each frame, the static world's frozen ones too (freezeTransforms).
+    this.scene.matrixAutoUpdate = false;
     // Soft-edged (percentage-closer) shadow maps, where the preset has them. Set once: switching them later
     // would rebuild every lit shader.
     this.renderer.shadowMap.enabled = settings.shadowMapSize > 0;
