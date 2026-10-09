@@ -82,6 +82,11 @@ function cameraAt(x: number, y: number, z: number, lookAt: Vector3): Perspective
   return camera;
 }
 
+/** The `index`th vector of a flat array of them (the lamps' uniforms). */
+function vec3(array: Float32Array, index: number): Vector3 {
+  return new Vector3().fromArray(array, index * 3);
+}
+
 function expectClose(actual: Vector3, expected: Vector3): void {
   expect(actual.x).toBeCloseTo(expected.x, 5);
   expect(actual.y).toBeCloseTo(expected.y, 5);
@@ -181,8 +186,8 @@ describe('LampLighting', () => {
 
     const view = camera.matrixWorldInverse;
     expect(u.lampLevel.value).toBe(1);
-    expectClose(u.truckLamps.value[0]!, new Vector3(0.9, 0.8, 3.2).applyMatrix4(view));
-    expectClose(u.truckLamps.value[1]!, new Vector3(-0.9, 0.8, 3.2).applyMatrix4(view));
+    expectClose(vec3(u.truckLamps.value, 0), new Vector3(0.9, 0.8, 3.2).applyMatrix4(view));
+    expectClose(vec3(u.truckLamps.value, 1), new Vector3(-0.9, 0.8, 3.2).applyMatrix4(view));
     expectClose(u.truckForward.value, new Vector3(0, 0, 1).transformDirection(view));
     // Facing +Z, its right is −X.
     expectClose(u.truckRight.value, new Vector3(-1, 0, 0).transformDirection(view));
@@ -267,10 +272,10 @@ describe('LampLighting', () => {
     expect(u.streetLampCount.value).toBe(8);
     const view = camera.matrixWorldInverse;
     // The nearest first: the one at the pick point, the one 20 m off last.
-    expectClose(u.streetLamps.value[0]!, new Vector3(LAMP_PICK_AHEAD_METERS, 7.4, 3).applyMatrix4(view));
-    expectClose(u.streetLamps.value[7]!, new Vector3(LAMP_PICK_AHEAD_METERS + 20, 7.4, 3).applyMatrix4(view));
-    expectClose(u.streetLampFacing.value[0]!, new Vector3(0, 0, -1).transformDirection(view));
-    expect(u.streetLampFade.value.slice(0, 7)).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expectClose(vec3(u.streetLamps.value, 0), new Vector3(LAMP_PICK_AHEAD_METERS, 7.4, 3).applyMatrix4(view));
+    expectClose(vec3(u.streetLamps.value, 7), new Vector3(LAMP_PICK_AHEAD_METERS + 20, 7.4, 3).applyMatrix4(view));
+    expectClose(vec3(u.streetLampFacing.value, 0), new Vector3(0, 0, -1).transformDirection(view));
+    expect([...u.streetLampFade.value.slice(0, 7)]).toEqual([1, 1, 1, 1, 1, 1, 1]);
     // It makes way for the next one out, 2 m further: a fifth of the 10 m it takes.
     expect(u.streetLampFade.value[7]).toBeCloseTo(0.2, 6);
 
@@ -304,7 +309,7 @@ describe('LampLighting', () => {
     lighting.update(TRUCK, null, camera, 1);
 
     expect(lighting.uniforms.streetLampCount.value).toBe(1);
-    expectClose(lighting.uniforms.streetLamps.value[0]!, new Vector3(25, 7.4, 0).applyMatrix4(camera.matrixWorldInverse));
+    expectClose(vec3(lighting.uniforms.streetLamps.value, 0), new Vector3(25, 7.4, 0).applyMatrix4(camera.matrixWorldInverse));
   });
 
   it('lights by the headlights of the vehicles nearest the camera, as bright as the traffic says', () => {
@@ -336,11 +341,12 @@ describe('LampLighting', () => {
     expect(asked).toEqual([MAX_TRAFFIC_VEHICLES]);
     expect(u.trafficLampCount.value).toBe(4);
     const view = camera.matrixWorldInverse;
-    expectClose(u.trafficLamps.value[0]!, new Vector3(0.8, 0.7, 40).applyMatrix4(view));
-    expectClose(u.trafficLamps.value[3]!, new Vector3(9.2, 0.7, 40).applyMatrix4(view));
-    expectClose(u.trafficForward.value[1]!, new Vector3(0, 0, -1).transformDirection(view));
-    expectClose(u.trafficRight.value[1]!, new Vector3(1, 0, 0).transformDirection(view));
-    expect(u.trafficStrength.value).toEqual([1, 0.4]);
+    expectClose(vec3(u.trafficLamps.value, 0), new Vector3(0.8, 0.7, 40).applyMatrix4(view));
+    expectClose(vec3(u.trafficLamps.value, 3), new Vector3(9.2, 0.7, 40).applyMatrix4(view));
+    expectClose(vec3(u.trafficForward.value, 1), new Vector3(0, 0, -1).transformDirection(view));
+    expectClose(vec3(u.trafficRight.value, 1), new Vector3(1, 0, 0).transformDirection(view));
+    expect(u.trafficStrength.value[0]).toBe(1);
+    expect(u.trafficStrength.value[1]).toBeCloseTo(0.4, 6);
 
     // No traffic, or none on weaker devices.
     lighting.update(TRUCK, null, camera, 1);

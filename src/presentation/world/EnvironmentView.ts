@@ -20,7 +20,6 @@ import {
   SphereGeometry,
   Vector2,
   Vector3,
-  Vector4,
   type Scene,
 } from 'three';
 import { clamp, degreesToRadians, smoothstep } from '../../core/math/scalar';
@@ -383,7 +382,8 @@ export class EnvironmentView {
      * Per town: the way toward it (x, z: shorter the nearer it is, its glow then all round), how brightly it
      * glows and how fast the glow fades up the sky (per unit of height's sine): the farther, the faster.
      */
-    readonly townGlow: { value: Vector4[] };
+    /** Four floats a town (a flat array: three.js hands it to WebGL without copying it on every draw call). */
+    readonly townGlow: { value: Float32Array };
     /** How strongly the rainbow shows, 0..1. */
     readonly rainbow: { value: number };
   };
@@ -482,7 +482,7 @@ export class EnvironmentView {
       twilight: { value: 0 },
       twilightAway: { value: new Vector2(0, 1) },
       earthShadow: { value: EARTH_SHADOW_LOW },
-      townGlow: { value: Array.from({ length: GLOWING_TOWNS }, () => new Vector4()) },
+      townGlow: { value: new Float32Array(GLOWING_TOWNS * 4) },
       rainbow: { value: 0 },
     };
     this.cloudGeometry = this.track(new InstancedBufferGeometry());
@@ -764,7 +764,7 @@ export class EnvironmentView {
     for (let i = 0; i < GLOWING_TOWNS; i++) {
       const town = this.towns[i];
       if (town === undefined || this.townLight <= 0) {
-        glow[i]!.set(0, 0, 0, 0);
+        glow.fill(0, i * 4, i * 4 + 4);
         continue;
       }
       const dx = town.x - cameraPosition.x;
@@ -772,12 +772,10 @@ export class EnvironmentView {
       const distance = Math.hypot(dx, dz);
       // The way toward it, shortened the nearer it is: in a town its glow is all round.
       const far = smoothstep(0, TOWN_GLOW_NEAR_METERS, distance) / Math.max(distance, 1e-3);
-      glow[i]!.set(
-        dx * far,
-        dz * far,
-        this.townLight * Math.exp(-Math.max(0, distance - TOWN_GLOW_NEAR_METERS) / TOWN_GLOW_REACH_METERS),
-        Math.max(distance, TOWN_GLOW_INSIDE_METERS) / TOWN_GLOW_HAZE_METERS,
-      );
+      glow[i * 4] = dx * far;
+      glow[i * 4 + 1] = dz * far;
+      glow[i * 4 + 2] = this.townLight * Math.exp(-Math.max(0, distance - TOWN_GLOW_NEAR_METERS) / TOWN_GLOW_REACH_METERS);
+      glow[i * 4 + 3] = Math.max(distance, TOWN_GLOW_INSIDE_METERS) / TOWN_GLOW_HAZE_METERS;
     }
     const time = this.starUniforms.time;
     time.value = (time.value + deltaSeconds) % TWINKLE_PERIOD_SECONDS;
