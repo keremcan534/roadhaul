@@ -16,6 +16,7 @@ import type { SkyUniforms } from './EnvironmentView';
 import { riverCourse, type CoursePoint } from './riverChannel';
 import { groundTint } from './TrackView';
 import { createWaterMaterial } from './waterMaterial';
+import { freezeTransforms } from './worldTiles';
 
 /** The channel is cut into stretches of this many samples (about 600 m), so those out of view are not drawn. */
 const STRETCH_SAMPLES = 100;
@@ -87,6 +88,7 @@ export class RiverView {
     if (world.bridges.length > 0) {
       this.root.add(this.createBridges(world));
     }
+    freezeTransforms(this.root);
     scene.add(this.root);
   }
 

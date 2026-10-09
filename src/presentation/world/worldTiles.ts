@@ -86,6 +86,21 @@ export function tileRuns(road: RoadPath, rows: readonly number[], tileMeters = C
 }
 
 /**
+ * Fixes the transforms of `root` and everything under it as they stand, for
+ * what never moves once built: three.js otherwise recomposes every object's
+ * matrix every frame (it still walks them, cheaply). About an eighth of a
+ * low-end phone's frame went on the static world's thousand-odd objects.
+ * Instanced meshes keep moving their instances; a frozen object itself must
+ * not move, or must call updateMatrix() and updateMatrixWorld() when it does.
+ */
+export function freezeTransforms(root: Object3D): void {
+  root.updateMatrixWorld(true);
+  root.traverse((object) => {
+    object.matrixAutoUpdate = false;
+  });
+}
+
+/**
  * Hides what lies too far from the camera to see: objects (a tile's
  * meshes, grouped), each with the rectangle of ground it covers, shown only
  * while that rectangle comes within `reachMeters` of the camera.
