@@ -58,11 +58,13 @@ export function engineTone(out: EngineTone, rpm: number, load: number, idleRpm: 
   out.gain = Math.min(1, 0.25 + 0.47 * work + 0.28 * revs);
   // Even a light load burns fuel enough to sound it.
   out.pull = Math.max(Math.sqrt(work), 1 - revs / IDLE_FUEL_REVS, 0);
-  out.cutoff = 1000 + 1200 * work + 800 * revs;
+  // Kept low: a phone's speaker plays little under 300 Hz, so what it does play is all the ear hears, and the
+  // engine's upper harmonics there buzz.
+  out.cutoff = 520 + 480 * work + 420 * revs;
   // The knock is fuel burning: none while the engine coasts.
   out.clatter = out.pull * (0.3 + 0.7 * work) * (1 - 0.6 * revs);
   const spin = revs * (0.4 + 0.6 * work);
-  out.turboHz = 1600 + 2800 * spin;
+  out.turboHz = 900 + 1100 * spin;
   out.turbo = spin * work;
   return out;
 }
@@ -89,9 +91,9 @@ export interface PulseShape {
 
 /** The engine pulling: fuel burns, the pulses are sharp and strong, and they bark. */
 export const PULLING: PulseShape = Object.freeze({
-  tau: 0.0045,
+  tau: 0.0085,
   order: 2,
-  bark: 0.35,
+  bark: 0.12,
   strengthSpread: 0.1,
   timingSpread: 0.004,
   sharpnessSpread: 0.12,
@@ -99,7 +101,7 @@ export const PULLING: PulseShape = Object.freeze({
 
 /** The engine coasting: no fuel burns, the cylinders only push air out, round and soft. */
 export const COASTING: PulseShape = Object.freeze({
-  tau: 0.007,
+  tau: 0.012,
   order: 2,
   bark: 0,
   strengthSpread: 0.06,

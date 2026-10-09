@@ -485,6 +485,15 @@ body {
   pointer-events: none;
 }
 
+/*
+ * In the cab the truck's own instruments show the speed and the gear, and the readout would stand over the wheel and
+ * the instrument panel: it steps aside.
+ */
+html[data-camera='cabin'] .dashboard {
+  opacity: 0;
+  visibility: hidden;
+}
+
 /* Upright phones: the wheel and pedals fill the bottom row, so the readout sits above them (and the D/R button). */
 @media (orientation: portrait) {
   .dashboard {
