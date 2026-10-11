@@ -206,6 +206,11 @@ export ROADHAUL_VERSION_CODE=$(git rev-list --count HEAD)
 npm run android && (cd android && ./gradlew bundleRelease)   # android/app/build/outputs/bundle/release/app-release.aab
 ```
 
+A release build is shrunk and optimized by R8 (`android/app/build.gradle`). The bundle carries R8's mapping file, so
+Google Play shows crash reports with the code's real names; nothing to upload by hand. A new native plugin that finds
+classes or resources by name needs its keep rules (`android/app/proguard-rules.pro`, `res/raw/keep.xml`); try the
+release build on a phone after adding one.
+
 ### 3. Upload it
 
 - **The first time: closed testing** (Test and release → Testing → Closed testing). Create a track, add the testers

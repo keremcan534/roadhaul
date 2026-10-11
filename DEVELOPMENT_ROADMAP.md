@@ -380,6 +380,7 @@ These are not gameplay features, so they sit outside the numbered order. They ma
 | CI: typecheck, unit tests, build, e2e | ✅ | `.github/workflows/ci.yml` on every pull request |
 | Phone preview link | ✅ | GitHub Pages: `.github/workflows/deploy-pages.yml` publishes every push to `main` at https://keremcan534.github.io/roadhaul/ (needs the repository to be public and Pages source set to "GitHub Actions") |
 | Android APK from CI | ✅ | Step 28: the `android` job in `.github/workflows/ci.yml`; download **roadhaul-debug-apk** from the run's page |
+| R8 in release builds | ✅ | Google Play flagged the app as unoptimized. A release build now runs R8 (`minifyEnabled`, `shrinkResources`, `proguard-android-optimize.txt`): the Java side (Capacitor, its plugins, Play Billing) goes from 10.8 MB of dex to 1.3 MB and the bundle from 5.0 MB to 2.4 MB; the game itself (the web assets) is untouched. Checked in the built bundle: the plugins keep their names, their `@PluginMethod` methods and annotations, the bridge's `postMessage` its `@JavascriptInterface`; Play Billing's Phenotype registrations, read by name from outside the app, are kept by `res/raw/keep.xml`. A test-ads build passes R8 with AdMob's methods intact. The bundle carries R8's mapping file, so Android vitals shows crashes with real names. Not yet run on a phone (no emulator here) |
 
 ## MVP scope (spec §43)
 
