@@ -1,21 +1,12 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# R8 rules for the release build (android/app/build.gradle). Capacitor, Play Billing and AdMob ship their own
+# consumer rules; these cover what they leave to the app.
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Capacitor finds plugins by class name (capacitor.plugins.json) and their methods by annotation, and reads the
+# annotations' values (the plugin's name, a method's return type) at run time: keep the annotation types whole.
+-keep @interface com.getcapacitor.annotation.** { *; }
+-keep @interface com.getcapacitor.PluginMethod { *; }
+-keep @interface com.getcapacitor.NativePlugin { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Crash reports with line numbers; the file names are not needed.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

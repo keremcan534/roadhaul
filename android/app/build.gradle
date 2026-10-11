@@ -54,8 +54,12 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // R8 shrinks and optimizes the Java side (Capacitor, its plugins, Play Billing, AdMob) and drops the
+            // resources nothing uses; the libraries bring their own keep rules, proguard-rules.pro adds the rest.
+            // The bundle carries R8's mapping file, so Google Play shows crashes with their real names.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (System.getenv('ROADHAUL_KEYSTORE_FILE')) {
                 signingConfig signingConfigs.release
             }

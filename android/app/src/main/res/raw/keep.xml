@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources the release build's shrinker (shrinkResources) must keep although no code names them: Google Play
+     services reads Google libraries' Phenotype registrations (Play Billing's, AdMob's) from the app by name. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@xml/*_phenotype,@raw/*_heterodyne_info,@raw/*_registration_info*" />
