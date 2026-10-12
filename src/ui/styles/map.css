@@ -1,0 +1,155 @@
+/* ---- The full map (src/ui/map/WorldMap.ts): the chart, and the plates over it ---- */
+
+.world-map {
+  z-index: 11;
+  padding: 0;
+  background: #1b2923;
+}
+
+.world-map__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+}
+
+.world-map__bar {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.world-map__bar > * {
+  pointer-events: auto;
+}
+
+.world-map__title {
+  margin: 0;
+  padding: 7px 14px 6px;
+  border: 1px solid var(--rh-plate-line);
+  border-left: 3px solid var(--rh-accent);
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  font: 500 17px/1.2 var(--rh-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.world-map__bar .button {
+  border-color: var(--rh-plate-line);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+}
+
+.world-map__tools {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+}
+
+.world-map__tool {
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rh-fg);
+  font: 400 24px/1 var(--rh-display);
+  transition: background-color var(--rh-quick) var(--rh-ease);
+}
+
+.world-map__tool + .world-map__tool {
+  box-shadow: inset 0 1px 0 var(--rh-plate-line);
+}
+
+.world-map__tool:active {
+  background: rgb(255 255 255 / 10%);
+}
+
+/* The companies' colours, bottom left; what a tap points at, under the title bar. */
+.world-map__legend,
+.world-map__card {
+  position: absolute;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+}
+
+.world-map__legend {
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(46vw, 220px);
+  padding: 9px 12px;
+  font: 500 12.5px/1.2 var(--rh-display);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.world-map__legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.world-map__legend-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.world-map__card {
+  top: calc(env(safe-area-inset-top, 0px) + 66px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(300px, calc(100vw - 32px));
+  padding: 10px 14px 12px;
+  transform: translateX(-50%);
+}
+
+.world-map__card[hidden] {
+  display: none;
+}
+
+.world-map__card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 500 17px/1.2 var(--rh-display);
+  letter-spacing: 0.01em;
+}
+
+.world-map__card-line {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+  font-weight: 500;
+}

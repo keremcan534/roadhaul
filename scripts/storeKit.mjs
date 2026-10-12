@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const FONTS = join(ROOT, 'scripts/fonts');
+const FONTS = join(ROOT, 'src/ui/fonts');
 
 /** Oswald, a variable font (weights 200 to 700), in the parts the captions' languages use. */
 export const FONT_FACES = [

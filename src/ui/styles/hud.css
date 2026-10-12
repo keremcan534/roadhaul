@@ -1,0 +1,1344 @@
+/* ---- On the road: the driving controls, the instruments, the navigation and the notices ---- */
+
+/* ---- Touch driving controls (src/ui/controls/TouchControls.ts) ---- */
+
+.touch-controls {
+  /* The size picked in Settings; capped so the bottom row still fits a narrow upright phone. */
+  --rh-control-scale: 1;
+  --rh-wheel-size: min(calc(clamp(120px, 40vmin, 200px) * var(--rh-control-scale)), 46vw);
+  --rh-pedal-width: min(calc(clamp(58px, 12vmin, 84px) * var(--rh-control-scale)), 17vw);
+  /* The D/R switch over the gas pedal, and how high the pair reaches (upright phones lift the instruments over it). */
+  --rh-gear-height: calc(var(--rh-pedal-width) * 1.15);
+  --rh-gas-stack-height: calc(var(--rh-pedal-width) * 1.7 + 12px + var(--rh-gear-height));
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  touch-action: none;
+}
+
+.touch-controls[hidden] {
+  display: none;
+}
+
+.touch-controls > * {
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-controls[data-size='small'] {
+  --rh-control-scale: 0.85;
+}
+
+.touch-controls[data-size='large'] {
+  --rh-control-scale: 1.2;
+}
+
+/* Only the picked way of steering shows: the wheel, the tilt button or the left/right buttons. */
+.touch-controls:not([data-steering='wheel']) .steering-wheel,
+.touch-controls:not([data-steering='tilt']) .tilt-button,
+.touch-controls:not([data-steering='buttons']) .steer-buttons {
+  display: none;
+}
+
+.steering-wheel {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 20px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: var(--rh-wheel-size);
+  height: var(--rh-wheel-size);
+  border-radius: 50%;
+  opacity: 0.88;
+  will-change: transform;
+}
+
+.steering-wheel__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.steering-wheel.is-held {
+  opacity: 1;
+}
+
+.pedals {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 20px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+/* Pedal plates: knurled, under a hairline, a strip of their colour along the top (green the gas, red the brake). */
+.pedal {
+  --rh-pedal-accent: #55c585;
+  --rh-pedal-pressed: rgb(85 197 133 / 24%);
+  width: var(--rh-pedal-width);
+  height: calc(var(--rh-pedal-width) * 1.7);
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--rh-pedal-accent), var(--rh-pedal-accent)) top / 100% 3px no-repeat,
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 9%) 0 2px, transparent 2px 9px) 50% 58% / 64% 70% no-repeat,
+    var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  transition:
+    transform 60ms ease-out,
+    background-color 60ms ease-out,
+    border-color 60ms ease-out;
+}
+
+.pedal--brake {
+  --rh-pedal-accent: #ea6153;
+  --rh-pedal-pressed: rgb(234 97 83 / 24%);
+  width: calc(var(--rh-pedal-width) * 1.2);
+  height: calc(var(--rh-pedal-width) * 1.2);
+}
+
+.pedal.is-pressed {
+  border-color: var(--rh-pedal-accent);
+  background:
+    linear-gradient(var(--rh-pedal-accent), var(--rh-pedal-accent)) top / 100% 3px no-repeat,
+    repeating-linear-gradient(180deg, rgb(255 255 255 / 14%) 0 2px, transparent 2px 9px) 50% 58% / 64% 70% no-repeat,
+    linear-gradient(var(--rh-pedal-pressed), var(--rh-pedal-pressed)),
+    var(--rh-plate);
+  transform: translateY(2px) scale(0.97);
+}
+
+/* The gear switch over the gas pedal: D and R, the one in use lit. A tap switches; in R the gas drives backwards. */
+.gear-button {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 20px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + var(--rh-pedal-width) * 1.7 + 12px);
+  display: flex;
+  flex-direction: column;
+  width: var(--rh-pedal-width);
+  height: var(--rh-gear-height);
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  font: 500 calc(19px * var(--rh-control-scale)) / 1 var(--rh-display);
+  transition: transform var(--rh-quick) var(--rh-ease);
+}
+
+.gear-button > span {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  border-radius: 3px;
+  color: rgb(255 255 255 / 42%);
+}
+
+.touch-controls[data-gear='drive'] .gear-button__drive {
+  background: var(--rh-fg);
+  color: #14171a;
+}
+
+.touch-controls[data-gear='reverse'] .gear-button__reverse {
+  background: var(--rh-accent);
+  color: var(--rh-accent-ink);
+}
+
+.touch-controls[data-gear='reverse'] .gear-button {
+  border-color: var(--rh-accent);
+}
+
+.gear-button:active {
+  transform: scale(0.96);
+}
+
+/* Steering by tilt: both thumbs are free, so the brake moves under the left one, the tilt button beside it. */
+.touch-controls[data-steering='tilt'] .pedals {
+  left: calc(env(safe-area-inset-left, 0px) + 20px);
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.touch-controls[data-steering='tilt'] .pedal {
+  pointer-events: auto;
+}
+
+/* Tap: the phone as held now is straight ahead. It glows while iOS waits for a tap to share the motion sensor. */
+.tilt-button {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 20px + var(--rh-pedal-width) * 1.2 + 16px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-control-line);
+  transition: transform var(--rh-quick) var(--rh-ease);
+}
+
+.tilt-button__icon {
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin: auto;
+}
+
+.tilt-button[data-status='waiting'] {
+  opacity: 0.55;
+}
+
+.tilt-button[data-status='locked'] {
+  animation: tutorial-glow 1.4s ease-in-out infinite;
+}
+
+.tilt-button:active {
+  transform: scale(0.95);
+}
+
+/* Steering by buttons: left and right under the left thumb, held to steer. */
+.steer-buttons {
+  position: absolute;
+  left: calc(env(safe-area-inset-left, 0px) + 20px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: flex;
+  gap: 12px;
+}
+
+.steer-button {
+  position: relative;
+  width: calc(var(--rh-pedal-width) * 1.25);
+  height: calc(var(--rh-pedal-width) * 1.25);
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  transition:
+    transform 60ms ease-out,
+    border-color 60ms ease-out;
+}
+
+/* An arrowhead drawn in CSS, pointing the way the button steers. */
+.steer-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 30%;
+  height: 38%;
+  background: var(--rh-control-line);
+  clip-path: polygon(100% 0, 0 50%, 100% 100%);
+  transform: translate(-58%, -50%);
+}
+
+.steer-button--right::before {
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform: translate(-42%, -50%);
+}
+
+.steer-button.is-pressed {
+  border-color: var(--rh-accent);
+  transform: scale(0.96);
+}
+
+.steer-button.is-pressed::before {
+  background: var(--rh-accent);
+}
+
+/* ---- The instruments: speed on its dial, the gear, fuel and damage, on one plate ---- */
+
+.dashboard {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 14px 7px 10px;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/*
+ * In the cab the truck's own instruments show the speed and the gear, and the readout would stand over the wheel and
+ * the instrument panel: it steps aside.
+ */
+html[data-camera='cabin'] .dashboard {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Upright phones: the wheel and pedals fill the bottom row, so the readout sits above them (and the D/R switch). */
+@media (orientation: portrait) {
+  .dashboard {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + max(var(--rh-wheel-size), var(--rh-gas-stack-height)) + 12px);
+  }
+}
+
+.dashboard__dial {
+  position: relative;
+  width: 104px;
+  height: 58px;
+}
+
+.dashboard__arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard__track,
+.dashboard__fill {
+  fill: none;
+  stroke-width: 5;
+}
+
+.dashboard__track {
+  stroke: rgb(255 255 255 / 13%);
+}
+
+.dashboard__ticks {
+  fill: none;
+  stroke: rgb(255 255 255 / 38%);
+  stroke-width: 1.4;
+}
+
+.dashboard__fill {
+  stroke: var(--rh-accent);
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset 150ms linear;
+}
+
+.dashboard__speed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 9px;
+  font: 600 27px/1 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.dashboard__unit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  color: var(--rh-muted);
+  font: 500 9.5px/1 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.dashboard__gear {
+  display: grid;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--rh-accent);
+  border-radius: 3px;
+  color: var(--rh-accent);
+  font: 500 18px/1 var(--rh-display);
+  letter-spacing: 0.02em;
+}
+
+/* Fuel and damage: two short bars of segments beside the gear, as a cluster's warning lights. */
+.dashboard__gauges {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dashboard__gauge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--rh-fg-2);
+}
+
+.dashboard__gauge-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.dashboard__gauge-bar {
+  width: 52px;
+  height: 5px;
+  overflow: hidden;
+  background: rgb(255 255 255 / 13%);
+  -webkit-mask: repeating-linear-gradient(90deg, #000 0 4.2px, transparent 4.2px 5.2px);
+  mask: repeating-linear-gradient(90deg, #000 0 4.2px, transparent 4.2px 5.2px);
+}
+
+.dashboard__gauge-fill {
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 200ms linear;
+}
+
+.dashboard__gauge--fuel .dashboard__gauge-fill {
+  background: var(--rh-good);
+}
+
+.dashboard__gauge--damage .dashboard__gauge-fill {
+  background: var(--rh-accent);
+}
+
+.dashboard__gauge--fuel.is-low {
+  color: var(--rh-danger);
+  animation: rh-flash 0.8s ease-in-out infinite;
+}
+
+.dashboard__gauge--fuel.is-low .dashboard__gauge-fill,
+.dashboard__gauge--damage.is-high .dashboard__gauge-fill {
+  background: var(--rh-danger);
+}
+
+/* ---- The corner buttons: square plates (the pause, the camera, the horn) ---- */
+
+.camera-button,
+.horn-button,
+.pause-button {
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  touch-action: manipulation;
+  transition:
+    transform var(--rh-quick) var(--rh-ease),
+    border-color var(--rh-quick) var(--rh-ease);
+}
+
+.camera-button:active,
+.pause-button:active {
+  transform: scale(0.95);
+}
+
+.camera-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+}
+
+/* A small camera drawn in CSS: body and lens. */
+.camera-button::before,
+.camera-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.camera-button::before {
+  width: 20px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--rh-control-line);
+}
+
+.camera-button::after {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #15181b;
+  box-shadow: 0 0 0 1.5px var(--rh-control-line);
+}
+
+/* The horn, under the camera button: a horn's bell drawn in CSS. */
+.horn-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  touch-action: none;
+}
+
+.horn-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 17px;
+  background: var(--rh-control-line);
+  clip-path: polygon(0 38%, 40% 38%, 100% 0, 100% 100%, 40% 62%, 0 62%);
+  transform: translate(-50%, -50%);
+}
+
+.horn-button.is-pressed {
+  border-color: var(--rh-accent);
+  transform: scale(0.95);
+}
+
+.horn-button.is-pressed::before {
+  background: var(--rh-accent);
+}
+
+/* Upright phones: the mission HUD takes the width under the corner buttons, so the horn joins their row. */
+@media (orientation: portrait) {
+  .horn-button {
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+    right: calc(env(safe-area-inset-right, 0px) + 70px);
+  }
+}
+
+/* ---- Pause button (src/ui/menus/PauseMenu.ts) ---- */
+
+.pause-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+}
+
+/* Two bars. */
+.pause-button::before,
+.pause-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 4px;
+  height: 16px;
+  border-radius: 1px;
+  background: var(--rh-control-line);
+  transform: translateY(-50%);
+}
+
+.pause-button::before {
+  left: calc(50% - 6px);
+}
+
+.pause-button::after {
+  left: calc(50% + 2px);
+}
+
+/* ---- The road's buttons to the company panel (src/ui/hud/HudDock.ts): one toolbar of segments ---- */
+
+/* Without a contract: where the mission HUD would be, "take a job" lit. */
+.hud-dock {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  transform: translateX(-50%);
+}
+
+.hud-dock[hidden],
+.hud-dock__button[hidden] {
+  display: none;
+}
+
+.hud-dock__button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 46px;
+  padding: 6px 15px 6px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--rh-fg);
+  font: 500 14px/1 var(--rh-display);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--rh-quick) var(--rh-ease);
+}
+
+.hud-dock__button + .hud-dock__button {
+  box-shadow: inset 1px 0 0 var(--rh-plate-line);
+}
+
+.hud-dock__icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* A name too long for its button (an upright phone, a long language) is made smaller to fit (--fit, LabelFitter). */
+.hud-dock__label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: calc(var(--fit, 1) * 1em);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.hud-dock__button--jobs {
+  background: var(--rh-accent);
+  color: var(--rh-accent-ink);
+}
+
+.hud-dock__button:active {
+  background: rgb(255 255 255 / 10%);
+}
+
+.hud-dock__button--jobs:active {
+  background: var(--rh-accent-hi);
+}
+
+/* With a contract under way: square buttons without names, under the minimap, out of the mission HUD's way. */
+.hud-dock[data-mode='compact'] {
+  top: calc(env(safe-area-inset-top, 0px) + 116px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  transform: none;
+}
+
+.hud-dock[data-mode='compact'] .hud-dock__button {
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  min-height: 0;
+  padding: 0;
+}
+
+.hud-dock[data-mode='compact'] .hud-dock__label {
+  display: none;
+}
+
+@media (orientation: landscape) {
+  .hud-dock {
+    left: calc(50% + 55px);
+  }
+}
+
+/* Upright: a row under the corner buttons, each picture over its name; with a contract, a column at the left. */
+@media (orientation: portrait) {
+  .hud-dock {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 480px;
+  }
+
+  .hud-dock__button {
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    min-height: 54px;
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+
+  .hud-dock[data-mode='compact'] {
+    top: calc(50% - 76px);
+    flex-direction: column;
+    width: auto;
+  }
+
+  .hud-dock[data-mode='compact'] .hud-dock__button {
+    flex: none;
+  }
+
+  .hud-dock[data-mode='compact'] .hud-dock__button + .hud-dock__button {
+    box-shadow: inset 0 1px 0 var(--rh-plate-line);
+  }
+}
+
+/* ---- The navigation (src/ui/hud/MissionHud.ts): a direction sign, blue to the pickup, green to the delivery ---- */
+
+.mission-hud {
+  --rh-target: var(--rh-sign-blue);
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(460px, calc(100vw - 2 * (env(safe-area-inset-left, 0px) + 76px)));
+  padding: 8px 14px 8px 10px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  background: var(--rh-target);
+  /* The sign's white border, inset from its edge as the boards' are. */
+  outline: 2px solid rgb(244 246 242 / 92%);
+  outline-offset: -5px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 35%);
+  color: var(--rh-sign-white);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.mission-hud[hidden] {
+  display: none;
+}
+
+.mission-hud.is-delivery {
+  --rh-target: var(--rh-sign-green);
+}
+
+.mission-hud__direction {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 50px;
+  padding-left: 2px;
+}
+
+.mission-hud__arrow {
+  width: 30px;
+  height: 30px;
+}
+
+.mission-hud__arrow circle {
+  fill: none;
+  stroke: rgb(244 246 242 / 35%);
+  stroke-width: 1.6;
+}
+
+.mission-hud__arrow path {
+  fill: var(--rh-sign-white);
+}
+
+.mission-hud__distance {
+  font: 600 14px/1.1 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mission-hud__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mission-hud__objective,
+.mission-hud__hint {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+/* The destination, as a board names it. */
+.mission-hud__objective {
+  font: 500 17px/1.2 var(--rh-display);
+  letter-spacing: 0.015em;
+}
+
+.mission-hud__hint {
+  color: var(--rh-sign-yellow);
+  font: 500 12.5px/1.25 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* The next turn: an arrow bent right (mirrored for left, a U to turn round) and when to take it. */
+.mission-hud__turn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  font: 500 13px/1.2 var(--rh-text);
+  white-space: nowrap;
+}
+
+.mission-hud__turn[hidden] {
+  display: none;
+}
+
+.mission-hud__turn-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.mission-hud__turn-icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  fill: var(--rh-sign-white);
+}
+
+.mission-hud__turn[data-turn='left'] .mission-hud__turn-icon {
+  transform: scaleX(-1);
+}
+
+.mission-hud__turn .mission-hud__turn-back,
+.mission-hud__turn[data-turn='turnAround'] .mission-hud__turn-bend {
+  display: none;
+}
+
+.mission-hud__turn[data-turn='turnAround'] .mission-hud__turn-back {
+  display: inline;
+}
+
+.mission-hud__hint[hidden],
+.mission-hud__progress[hidden],
+.mission-hud__timer[hidden],
+.mission-hud__cargo[hidden] {
+  display: none;
+}
+
+.mission-hud__progress {
+  width: 100%;
+  min-width: 60px;
+  height: 4px;
+  margin-top: 2px;
+  overflow: hidden;
+  background: rgb(244 246 242 / 25%);
+}
+
+.mission-hud__progress-fill {
+  height: 100%;
+  background: var(--rh-sign-white);
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+/* The time left, the cargo's state and the arrival: a column at the sign's right, past a rule. */
+.mission-hud__stats {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  padding-left: 12px;
+  border-left: 1px solid rgb(244 246 242 / 30%);
+  font: 500 12.5px/1.25 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+.mission-hud__timer {
+  font: 600 18px/1.05 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+.mission-hud__timer.is-late {
+  color: #ffb3a8;
+}
+
+.mission-hud__eta {
+  color: rgb(244 246 242 / 75%);
+}
+
+/* Arriving at this pace would be late. */
+.mission-hud__eta.is-late {
+  color: #ffb3a8;
+}
+
+.mission-hud.is-damaged .mission-hud__cargo {
+  color: #ffb3a8;
+  animation: rh-flash 0.3s ease-in-out 4;
+}
+
+/* The race on the sign: the rival's colour, its time left and how far it has got. */
+.mission-hud__race {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font: 500 12.5px/1.25 var(--rh-text);
+}
+
+.mission-hud__race[hidden] {
+  display: none;
+}
+
+.mission-hud__race .company-swatch {
+  box-shadow: 0 0 0 1.5px rgb(244 246 242 / 80%);
+}
+
+.mission-hud__race-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.mission-hud__race-bar {
+  flex: 1;
+  min-width: 36px;
+  height: 4px;
+  overflow: hidden;
+  background: rgb(244 246 242 / 25%);
+}
+
+.mission-hud__race-fill {
+  display: block;
+  height: 100%;
+  background: var(--company-color, var(--rh-sign-white));
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.mission-hud__race[data-stage='lost'] .mission-hud__race-text {
+  color: #ffb3a8;
+}
+
+/* Upright phones: the sign drops below the corner buttons and takes the full width. */
+@media (orientation: portrait) {
+  .mission-hud {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: 480px;
+  }
+
+  /* Narrow: wrap instead of cutting words off. */
+  .mission-hud__objective,
+  .mission-hud__hint,
+  .mission-hud__turn {
+    white-space: normal;
+  }
+}
+
+/* ---- The minimap on the road (src/ui/hud/Minimap.ts) ---- */
+
+.minimap {
+  --rh-minimap-size: 96px;
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 70px);
+  z-index: 2;
+  width: var(--rh-minimap-size);
+  height: var(--rh-minimap-size);
+  padding: 0;
+  border: 3px solid rgb(14 16 18 / 88%);
+  border-radius: 50%;
+  background: #1b2923;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 26%),
+    var(--rh-shadow-small);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.minimap[hidden] {
+  display: none;
+}
+
+.minimap__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+
+/* The time of day on the map's rim at its foot, like a watch's date: clear of north's mark inside it. */
+.minimap__clock {
+  position: absolute;
+  bottom: -11px;
+  left: 50%;
+  z-index: 1;
+  padding: 2px 6px 1px;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-plate-strong);
+  color: var(--rh-fg);
+  font: 600 11.5px/1.2 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.minimap__clock:empty {
+  display: none;
+}
+
+/* Upright, the HUD takes the top: the minimap waits at the right, halfway down, in the open sky. */
+@media (orientation: portrait) {
+  .minimap {
+    --rh-minimap-size: 104px;
+    top: calc(50% - 52px);
+    left: auto;
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+  }
+}
+
+/*
+ * On its side, the minimap sits beside the pause button: the mission HUD, the messages and the rest area
+ * counter centre on the room right of it.
+ */
+@media (orientation: landscape) {
+  .mission-hud,
+  .toasts,
+  .rest-area-panel {
+    left: calc(50% + 55px);
+  }
+
+  /* Their own width, not the room left of the screen's edge, sets how wide they are (they centre on `left`). */
+  .mission-hud {
+    width: max-content;
+    max-width: min(460px, calc(100vw - 250px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  }
+
+  .toasts {
+    width: min(420px, calc(100vw - 250px));
+  }
+
+  .rest-area-panel {
+    width: max-content;
+    max-width: min(520px, calc(100vw - 250px));
+  }
+
+  .perf-overlay {
+    top: calc(env(safe-area-inset-top, 0px) + 116px);
+  }
+}
+
+/* ---- Notices (src/ui/hud/Toasts.ts): a plate with a strip of its meaning down its edge ---- */
+
+.toasts {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 84px);
+  left: 50%;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(90vw, 420px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+@media (orientation: portrait) {
+  .toasts {
+    top: calc(env(safe-area-inset-top, 0px) + 150px);
+  }
+}
+
+/* With the company panel open, purchases are confirmed over the world beside it, clear of the cards being tapped. */
+html[data-panel='open'] .toasts {
+  top: auto;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  left: calc((100vw - min(640px, 70vw)) / 2);
+  width: min(420px, calc(100vw - min(640px, 70vw) - 24px));
+}
+
+@media (orientation: portrait) {
+  html[data-panel='open'] .toasts {
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    bottom: auto;
+    left: 50%;
+    width: min(90vw, 420px);
+  }
+}
+
+.toast {
+  padding: 8px 14px 8px 13px;
+  border: 1px solid var(--rh-plate-line);
+  border-left: 3px solid var(--rh-accent);
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  font: 500 14px/1.3 var(--rh-text);
+  text-align: center;
+  transition: opacity 0.5s ease-in;
+  animation: rh-toast-in 160ms var(--rh-ease);
+}
+
+@keyframes rh-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.toast--success {
+  border-left-color: var(--rh-good);
+}
+
+.toast--warning {
+  border-left-color: var(--rh-danger);
+}
+
+.toast.is-leaving {
+  opacity: 0;
+}
+
+/* ---- Tutorial (src/ui/hud/TutorialHint.ts): one short hint, and a glow on the control it is about ---- */
+
+/* Over the road it floats under the mission HUD, clear of the pedals and the wheel. */
+.tutorial-hint {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 112px);
+  left: 50%;
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: min(92vw, 540px);
+  padding: 8px 8px 8px 14px;
+  box-sizing: border-box;
+  border: 1px solid rgb(242 163 58 / 45%);
+  border-left: 3px solid var(--rh-accent);
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  transform: translateX(-50%);
+}
+
+.tutorial-hint[hidden] {
+  display: none;
+}
+
+/* Upright phones: the mission HUD is lower and taller there (like the rest area counter). */
+@media (orientation: portrait) {
+  .tutorial-hint {
+    top: calc(env(safe-area-inset-top, 0px) + 178px);
+  }
+}
+
+/* In the company panel it sits above the list, in the flow, so it never covers a button. */
+.tutorial-hint--inline {
+  position: static;
+  width: auto;
+  max-width: none;
+  padding: 6px 6px 6px 12px;
+  background: var(--rh-accent-soft);
+  box-shadow: none;
+  transform: none;
+}
+
+.tutorial-hint--inline .tutorial-hint__text {
+  font-size: 14px;
+}
+
+.hq__hint:empty {
+  display: none;
+}
+
+.tutorial-hint__text {
+  margin: 0;
+  font: 500 15px/1.3 var(--rh-text);
+}
+
+.tutorial-hint__skip {
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/*
+ * A glow that swells and fades round the control to press. A filter, which the compositor animates on its own: an
+ * animated box-shadow repainted the page every frame (a sixth of a low-end phone's main thread with the panel open).
+ */
+@keyframes tutorial-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgb(242 163 58 / 0%));
+  }
+  50% {
+    filter: drop-shadow(0 0 6px rgb(242 163 58 / 95%));
+  }
+}
+
+html[data-tutorial-step='takeContract'] .hud-dock__button--jobs,
+html[data-tutorial-step='takeContract'] .hq__tab[data-tab='jobs']:not(.is-selected),
+html[data-tutorial-step='takeContract'] .hq__list[data-tab='jobs'] .job-card--tutorial .job-card__accept,
+html[data-tutorial-step='buyUpgrade'] .hud-dock__button--garage,
+html[data-tutorial-step='buyUpgrade'] .hq__tab[data-tab='garage']:not(.is-selected),
+html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card__action:not(:disabled) {
+  animation: tutorial-glow 1.4s ease-in-out infinite;
+}
+
+/* ---- Rest area counter (src/ui/hud/RestAreaPanel.ts): under the mission HUD, clear of the truck ---- */
+
+.rest-area-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 92px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(92vw, 520px);
+  padding: 10px 14px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-plate-line);
+  border-top: 3px solid var(--rh-accent);
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  transform: translateX(-50%);
+}
+
+.rest-area-panel[hidden] {
+  display: none;
+}
+
+.rest-area-panel__title {
+  margin: 0;
+  color: var(--rh-accent);
+  font: 500 13px/1.2 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.rest-area-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.rest-area-panel__action {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.rest-area-panel__discounts:empty {
+  display: none;
+}
+
+/* Upright phones: below the mission HUD, above the truck. */
+@media (orientation: portrait) {
+  .rest-area-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 170px);
+  }
+}
+
+/* ---- The truck in trouble (src/ui/hud/RolloverPanel.ts): a warning up on two wheels, a way back once over ---- */
+
+.rollover-warning {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 92px);
+  left: 50%;
+  /* Over the tutorial's hint: the truck going over matters more now. */
+  z-index: 15;
+  padding: 7px 16px 6px;
+  border-radius: var(--rh-radius-small);
+  background: #c8372c;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 30%), 0 6px 18px rgb(0 0 0 / 35%);
+  color: #fff;
+  font: 500 16px/1.2 var(--rh-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: rollover-pulse 0.5s ease-in-out infinite alternate;
+}
+
+.rollover-warning[hidden],
+.rollover-panel[hidden] {
+  display: none;
+}
+
+@keyframes rollover-pulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rollover-warning {
+    animation: none;
+  }
+}
+
+.rollover-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 84px);
+  left: 50%;
+  /* Under the dock, over the tutorial's hint, clear of the truck lying below it in the view. */
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(88vw, 420px);
+  padding: 12px 18px 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-line-strong);
+  border-top: 3px solid var(--rh-danger);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface);
+  box-shadow: var(--rh-shadow);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.rollover-panel__title {
+  margin: 0;
+  color: #ff8b7f;
+  font: 500 19px/1.2 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rollover-panel__note {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.rollover-panel__action {
+  min-height: 44px;
+  padding: 10px 20px;
+  font-size: 15px;
+}
+
+/* Upright phones: below the mission HUD. */
+@media (orientation: portrait) {
+  .rollover-warning,
+  .rollover-panel {
+    top: calc(env(safe-area-inset-top, 0px) + 170px);
+  }
+}
+
+/* Stacking: the driving controls, then the HUD and pause button, then full-screen menus. */
+.touch-controls {
+  z-index: 1;
+}
+
+.mission-hud,
+.pause-button {
+  z-index: 2;
+}
+
+.screen {
+  z-index: 10;
+}
+
+.perf-overlay {
+  z-index: 20;
+}

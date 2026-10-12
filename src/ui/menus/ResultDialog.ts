@@ -19,6 +19,13 @@ export type ResultChoice = 'road' | 'jobs';
 export class ResultDialog {
   private readonly overlay: HTMLDivElement;
   private readonly panel: HTMLDivElement;
+  /**
+   * Under the title, the receipt (the pay's lines, or why the contract failed) and the way on (the facts, what else
+   * the delivery did, the choices): one under the other, or side by side on a short screen on its side.
+   */
+  private readonly body: HTMLDivElement;
+  private readonly receipt: HTMLDivElement;
+  private readonly way: HTMLDivElement;
   /** The open delivery's balance, which a bonus claimed on it raises. */
   private balance: HTMLElement | null = null;
 
@@ -32,6 +39,10 @@ export class ResultDialog {
     this.overlay.dataset.screen = 'result';
     this.overlay.hidden = true;
     this.panel = element(document, 'div', 'panel result-dialog__panel');
+    this.receipt = element(document, 'div', 'result-dialog__receipt');
+    this.way = element(document, 'div', 'result-dialog__way');
+    this.body = element(document, 'div', 'result-dialog__body');
+    this.body.append(this.receipt, this.way);
     this.overlay.append(this.panel);
     parent.append(this.overlay);
   }
@@ -76,7 +87,7 @@ export class ResultDialog {
       `${strings.t('result.deliveryTime')} ${strings.duration(delivery.deliverySeconds)} / ${strings.duration(definition.timeLimitSeconds)}` +
         ` · ${strings.t('result.cargoCondition')} ${strings.percent(1 - delivery.cargoDamage)}`,
     );
-    this.show('is-success', strings.t('result.completed'), definition, [lines, facts]);
+    this.show('is-success', strings.t('result.completed'), definition, [lines], [facts]);
   }
 
   /**
@@ -109,7 +120,7 @@ export class ResultDialog {
     if (withAd) {
       withIcon(claim, 'play');
     }
-    this.panel.insertBefore(claim, this.panel.lastElementChild);
+    this.way.insertBefore(claim, this.way.lastElementChild);
   }
 
   showFailed(definition: MissionDefinition, reason: MissionFailureReason, reputationLost: number): void {
@@ -119,7 +130,7 @@ export class ResultDialog {
     const row = element(document, 'div', 'result-dialog__line is-penalty');
     row.append(element(document, 'dt', '', this.strings.t('result.reputation')), element(document, 'dd', '', `−${reputationLost}`));
     lines.append(row);
-    this.show('is-failure', this.strings.t('result.failed'), definition, [why, lines]);
+    this.show('is-failure', this.strings.t('result.failed'), definition, [why, lines], []);
   }
 
   /** Adds the level-up banner to the open result. */
@@ -130,7 +141,7 @@ export class ResultDialog {
       'result-dialog__level-up',
       this.strings.t('result.levelUp', { level, name: this.strings.t(`company.levelName.${level}`) }),
     );
-    this.panel.insertBefore(banner, this.panel.lastElementChild);
+    this.way.insertBefore(banner, this.way.lastElementChild);
   }
 
   /**
@@ -158,7 +169,7 @@ export class ResultDialog {
           : strings.t('result.eventCompleted', { credits: strings.money(reward.credits), xp: strings.number(reward.xp) }),
       ),
     );
-    this.panel.insertBefore(block, this.panel.lastElementChild);
+    this.way.insertBefore(block, this.way.lastElementChild);
   }
 
   /** Adds the leader's bonus the delivery earned in `city` to the open result. */
@@ -185,7 +196,7 @@ export class ResultDialog {
     const document = this.overlay.ownerDocument;
     const row = element(document, 'p', className);
     row.append(element(document, 'span', '', label), element(document, 'span', 'result-dialog__rivalry-amount', amount));
-    this.panel.insertBefore(row, this.panel.lastElementChild);
+    this.way.insertBefore(row, this.way.lastElementChild);
   }
 
   /** The way on: the next job, or back on the road. The banners added later go above them. */
@@ -207,18 +218,19 @@ export class ResultDialog {
     this.overlay.remove();
   }
 
-  private show(outcome: string, title: string, definition: MissionDefinition, body: HTMLElement[]): void {
+  private show(outcome: string, title: string, definition: MissionDefinition, receipt: HTMLElement[], way: HTMLElement[]): void {
     const { strings } = this;
     if (outcome !== 'is-success') {
       this.balance = null;
     }
     const document = this.overlay.ownerDocument;
     this.panel.className = `panel result-dialog__panel ${outcome}`;
+    this.receipt.replaceChildren(...receipt);
+    this.way.replaceChildren(...way, this.choices());
     this.panel.replaceChildren(
       element(document, 'h2', 'panel__title', title),
       element(document, 'p', 'result-dialog__mission', `${strings.missionTitle(definition)} · ${routeText(strings, definition)}`),
-      ...body,
-      this.choices(),
+      this.body,
     );
     this.overlay.hidden = false;
   }

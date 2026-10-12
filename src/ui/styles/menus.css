@@ -1,0 +1,1315 @@
+/* ---- The menus: the title screen, the dialogs over it and over the road ---- */
+
+/* Every dialog dims the world behind it, flat. */
+.settings,
+.controls,
+.new-company,
+.pause-menu,
+.result-dialog,
+.shop {
+  background: var(--rh-scrim);
+}
+
+/* ---- Main menu (src/ui/menus/MainMenu.ts) ---- */
+
+/* The brand and the company beside where to start and the buttons; one above the other on an upright screen. */
+.main-menu {
+  flex-direction: row;
+  align-items: center;
+  justify-content: safe center;
+  gap: clamp(20px, 6vw, 80px);
+  overflow-y: auto;
+  /* Darker where the words are, the truck clear between them. */
+  background:
+    linear-gradient(90deg, rgb(10 11 13 / 80%) 0%, rgb(10 11 13 / 36%) 42%, rgb(10 11 13 / 36%) 58%, rgb(10 11 13 / 80%) 100%),
+    linear-gradient(180deg, rgb(10 11 13 / 10%) 55%, rgb(10 11 13 / 55%));
+}
+
+.main-menu__side,
+.main-menu__main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  width: min(100%, 410px);
+}
+
+@media (orientation: portrait) {
+  .main-menu {
+    flex-direction: column;
+    justify-content: safe center;
+    background: linear-gradient(180deg, rgb(10 11 13 / 72%), rgb(10 11 13 / 40%) 45%, rgb(10 11 13 / 82%));
+  }
+
+  .main-menu__side,
+  .main-menu__main {
+    align-items: center;
+  }
+}
+
+.main-menu__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* The brand's lockup (src/ui/brand.ts): the mark beside the wordmark, the motto under it. */
+.main-menu__logo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: clamp(8px, 2.2vmin, 16px);
+  margin: 0;
+  color: var(--rh-fg);
+}
+
+.main-menu__mark {
+  width: clamp(60px, 16vmin, 118px);
+  height: auto;
+}
+
+.main-menu__wordmark {
+  width: clamp(210px, 52vmin, 380px);
+  height: auto;
+}
+
+.main-menu__tagline {
+  margin: 10px 0 0;
+  color: var(--rh-fg-2);
+  font: 500 clamp(11px, 2.6vmin, 13px) / 1 var(--rh-display);
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+}
+
+@media (orientation: portrait) {
+  .main-menu__brand,
+  .main-menu__logo {
+    align-items: center;
+  }
+
+  .main-menu__tagline {
+    padding-left: 0.34em;
+    text-align: center;
+  }
+}
+
+/* Landscape on a phone: the mark beside the wordmark, so the buttons keep their room. */
+@media (max-height: 480px) and (orientation: landscape) {
+  .main-menu__logo {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .main-menu__mark {
+    width: clamp(46px, 12vmin, 68px);
+  }
+}
+
+/* The saved company at a glance: a manifest, its figures in a row under the name. */
+.main-menu__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px 13px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: var(--rh-radius);
+  background: rgb(21 24 27 / 92%);
+  box-shadow: var(--rh-shadow-small);
+}
+
+.main-menu__card[hidden] {
+  display: none;
+}
+
+.main-menu__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rh-line);
+}
+
+.main-menu__card-name {
+  overflow: hidden;
+  margin: 0;
+  font: 500 21px/1.15 var(--rh-display);
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.main-menu__card-level {
+  flex: none;
+  padding: 3px 12px 2px 8px;
+  background: var(--rh-accent);
+  color: var(--rh-accent-ink);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+  font: 500 12px/1.3 var(--rh-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.main-menu__card-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0;
+}
+
+.main-menu__figure {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 500 17px/1.2 var(--rh-display);
+}
+
+.main-menu__figure-icon {
+  width: 17px;
+  height: 17px;
+  color: var(--rh-muted);
+}
+
+/* Where the truck is, and the contract: a second line in a long language before they are cut short. */
+.main-menu__card-line {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 14px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.main-menu__card-line[hidden] {
+  display: none;
+}
+
+.main-menu__card-contract {
+  color: var(--rh-accent);
+  font-weight: 600;
+}
+
+/* Where the drive starts: a row for each place, the one picked marked as a radio's. */
+.main-menu__start {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  width: 100%;
+}
+
+/* Over the world, not a panel: lighter, and lifted off a bright sky. */
+.main-menu .main-menu__label {
+  color: var(--rh-fg-2);
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
+}
+
+.main-menu__places {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.main-menu .main-menu__place {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  border-color: var(--rh-line-strong);
+  background: rgb(21 24 27 / 82%);
+  color: var(--rh-fg-2);
+  clip-path: none;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+
+.main-menu .main-menu__place > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.main-menu .main-menu__place.is-selected {
+  border-color: var(--rh-accent);
+  background: rgb(36 30 20 / 92%);
+  box-shadow: inset 3px 0 0 var(--rh-accent);
+  color: var(--rh-fg);
+}
+
+.main-menu .main-menu__place.is-selected .main-menu__place-icon {
+  color: var(--rh-accent);
+}
+
+.main-menu__place:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.main-menu__place-icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  color: var(--rh-muted);
+}
+
+.main-menu__start-note {
+  max-width: 360px;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.main-menu__start-note[hidden] {
+  display: none;
+}
+
+.main-menu__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.main-menu__play {
+  flex: 1 1 200px;
+  min-height: 52px;
+  font-size: 18px;
+  letter-spacing: 0.08em;
+}
+
+.main-menu .button--secondary {
+  background: rgb(21 24 27 / 82%);
+}
+
+.main-menu__message {
+  max-width: 420px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--rh-line-strong);
+  border-left: 3px solid var(--rh-accent);
+  border-radius: var(--rh-radius);
+  background: rgb(21 24 27 / 92%);
+  color: var(--rh-fg);
+  font-size: 14px;
+}
+
+.main-menu__message[hidden] {
+  display: none;
+}
+
+/* The small way round: the controls, the settings, the shop and the language. */
+.main-menu__small {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin-left: -8px;
+}
+
+.main-menu__language {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+@media (orientation: portrait) {
+  .main-menu__small {
+    justify-content: center;
+    margin-left: 0;
+  }
+}
+
+/* ---- New company (src/ui/menus/NewCompanyDialog.ts) ---- */
+
+.new-company {
+  /* A dialog over the main menu, which is a screen too. */
+  z-index: 12;
+}
+
+.new-company__label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--rh-muted);
+  font: 500 12px/1.3 var(--rh-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.new-company__input {
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid var(--rh-line-strong);
+  border-bottom: 2px solid var(--rh-muted);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  font: 500 19px/1.2 var(--rh-display);
+  letter-spacing: 0.02em;
+  text-transform: none;
+  /* The page blocks selection for gameplay; typing needs it back. */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.new-company__input:focus {
+  border-bottom-color: var(--rh-accent);
+  outline: none;
+}
+
+.new-company__error {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--rh-danger);
+  font-size: 13px;
+}
+
+.new-company__warning {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.new-company__warning[hidden] {
+  display: none;
+}
+
+.new-company__buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.new-company__buttons .button {
+  flex: 1;
+}
+
+/* ---- Settings (src/ui/menus/SettingsDialog.ts) and the rows of choices they share with the controls ---- */
+
+.settings {
+  /* A dialog over the main menu, which is a screen too. */
+  z-index: 12;
+}
+
+/* A row's name: small capitals over its choices. */
+.settings__label {
+  margin: 4px 0 0;
+  color: var(--rh-muted);
+  font: 500 12px/1.3 var(--rh-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settings__row {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settings__row[hidden] {
+  display: none;
+}
+
+/*
+ * The choices of a row: one switch of segments, a hairline between them. The choices share its width alike; when
+ * their names do not all fit side by side (a long language on a narrow phone), the row takes a second line rather
+ * than run off the screen, the hairlines between the lines too.
+ */
+.settings__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 3px;
+  background: var(--rh-line-strong);
+}
+
+.settings__choices > * {
+  flex: 1 1 0;
+}
+
+.settings__choices > .button {
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: var(--rh-surface-2);
+  color: var(--rh-fg-2);
+  clip-path: none;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.settings__choices > .button:active {
+  background: var(--rh-surface-3);
+}
+
+.settings__choices > .button.is-selected {
+  background: var(--rh-accent);
+  color: var(--rh-accent-ink);
+}
+
+.settings__note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+}
+
+/* The clock's time beside its label, and the slider under the presets. */
+.settings__clock-time {
+  margin-left: 6px;
+  color: var(--rh-accent);
+  font-family: var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.settings__slider {
+  width: 100%;
+  height: 28px;
+  margin: 2px 0 0;
+  accent-color: var(--rh-accent);
+  touch-action: pan-x;
+}
+
+.settings__slider:disabled {
+  opacity: 0.4;
+}
+
+/* The language list: a native list (the phone's own picker), dressed as the settings' fields. */
+.settings__select {
+  min-height: 42px;
+  padding: 6px 12px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: 3px;
+  background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 15px;
+}
+
+.settings__select:focus-visible {
+  border-color: var(--rh-accent);
+  outline: none;
+}
+
+.settings__select option {
+  background: var(--rh-bg);
+  color: var(--rh-fg);
+}
+
+/* The dialog's two pages (the settings, the licences): the one not shown stays hidden in every layout. */
+.settings .settings__panel[hidden] {
+  display: none;
+}
+
+/* About the game: its version, and its links side by side. */
+.settings__version {
+  font-variant-numeric: tabular-nums;
+}
+
+/* About's two links share their row alike, or stack when their names are too long for halves of it. */
+.settings__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings__links > * {
+  flex: 1 1 0;
+}
+
+.settings__link {
+  display: grid;
+  place-items: center;
+  min-height: 40px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: center;
+  text-decoration: none;
+}
+
+/* The licences' text scrolls within its page. */
+.settings__licenses-text {
+  margin: 0;
+  max-height: min(62vh, 560px);
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-bg);
+  color: var(--rh-fg-2);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  touch-action: pan-y;
+}
+
+/* Close: a quiet button at the top right. */
+.settings__close {
+  border-color: var(--rh-line-strong);
+}
+
+/* Phones on their side: two columns of settings, so they fit the short screen. */
+@media (orientation: landscape) and (min-width: 700px) {
+  .settings .settings__panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 10px 26px;
+    width: min(100%, 800px);
+  }
+
+  /* The title and Close share the top row: Close stays in reach however short the screen. The title fills the row,
+     so its rule runs under Close, and its name sits level with it. */
+  .settings .settings__panel > .panel__title {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    grid-row: 1;
+    grid-column: 1 / -1;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rh-line);
+  }
+
+  .settings .settings__close {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    align-self: start;
+    min-width: 110px;
+    margin-bottom: 11px;
+  }
+
+  .settings .settings__choices > .button {
+    min-height: 36px;
+    padding: 4px 8px;
+  }
+
+  .settings .settings__note {
+    font-size: 12px;
+  }
+
+  .settings .settings__licenses-text {
+    grid-column: 1 / -1;
+    max-height: 64vh;
+  }
+}
+
+/* ---- Pause menu (src/ui/menus/PauseMenu.ts) ---- */
+
+.pause-menu__panel {
+  width: min(100%, 330px);
+}
+
+/* The map, the controls and the settings side by side: each an icon over its name. */
+.pause-menu__tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.pause-menu__tools .button {
+  flex-direction: column;
+  gap: 5px;
+  min-height: 62px;
+  padding: 8px 4px;
+  font-size: 12px;
+}
+
+.pause-menu__tools .button__icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---- Controls (src/ui/menus/ControlsDialog.ts) ---- */
+
+.controls {
+  /* A dialog over the main menu and the pause menu, which are screens too. */
+  z-index: 12;
+}
+
+.controls__panel {
+  width: min(100%, 520px);
+}
+
+/* The ways of steering: a card each, its picture over its name and how it goes. */
+/* Three cards alike, whatever their names: a name too long for its card is made smaller (LabelFitter). */
+.controls__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.controls .controls__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-height: 104px;
+  padding: 10px 6px;
+  border-color: var(--rh-line-strong);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+  color: var(--rh-fg-2);
+  clip-path: none;
+  text-align: center;
+}
+
+.controls .controls__card.is-selected {
+  border-color: var(--rh-accent);
+  background: rgb(242 163 58 / 8%);
+  box-shadow: inset 0 0 0 1px var(--rh-accent);
+  color: var(--rh-fg);
+}
+
+.controls__card-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.controls__card.is-selected .controls__card-icon {
+  color: var(--rh-accent);
+}
+
+.controls__card-title {
+  max-width: 100%;
+  overflow: hidden;
+  font: 500 calc(var(--fit, 1) * 14px) / 1.2 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Room for capitals' accents and cedillas in the clipped box (Ä, İ, Ş, Й), taken back by the margins. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.controls__card-note {
+  color: var(--rh-muted);
+  font: 400 12px/1.25 var(--rh-text);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.controls__card.is-selected .controls__card-note {
+  color: var(--rh-fg-2);
+}
+
+/* The screen's controls in miniature, at the size picked and for the way of steering picked. */
+.controls__preview {
+  --rh-preview-scale: 1;
+  position: relative;
+  width: min(100%, 260px);
+  aspect-ratio: 19.5 / 9;
+  margin: 4px auto 0;
+  overflow: hidden;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: 6px;
+  background:
+    linear-gradient(180deg, #2b3d4d 0 46%, #2e3a2a 46% 100%),
+    #1e262e;
+}
+
+.controls__preview[data-size='small'] {
+  --rh-preview-scale: 0.8;
+}
+
+.controls__preview[data-size='large'] {
+  --rh-preview-scale: 1.22;
+}
+
+.controls__preview-steer,
+.controls__preview-pedal {
+  position: absolute;
+  bottom: 8%;
+  box-sizing: border-box;
+  transition:
+    width 200ms ease-out,
+    height 200ms ease-out;
+}
+
+/* The wheel: a ring with its hub. */
+.controls__preview-steer {
+  left: 6%;
+  width: calc(40px * var(--rh-preview-scale));
+  height: calc(40px * var(--rh-preview-scale));
+  border: calc(4px * var(--rh-preview-scale)) solid rgb(255 255 255 / 80%);
+  border-radius: 50%;
+}
+
+.controls__preview-steer::after {
+  content: '';
+  position: absolute;
+  top: calc(-4px * var(--rh-preview-scale));
+  left: 50%;
+  width: calc(5px * var(--rh-preview-scale));
+  height: calc(7px * var(--rh-preview-scale));
+  background: var(--rh-accent);
+  transform: translateX(-50%);
+}
+
+/* Buttons: two keys side by side. */
+.controls__preview[data-mode='buttons'] .controls__preview-steer {
+  width: calc(26px * var(--rh-preview-scale));
+  height: calc(30px * var(--rh-preview-scale));
+  border: 0;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 80%);
+  box-shadow: calc(32px * var(--rh-preview-scale)) 0 rgb(255 255 255 / 80%);
+}
+
+.controls__preview[data-mode='buttons'] .controls__preview-steer::after {
+  display: none;
+}
+
+/* Tilt: the phone itself steers; a small button makes the way it is held straight ahead. */
+.controls__preview[data-mode='tilt'] .controls__preview-steer {
+  left: auto;
+  right: calc(6% + 40px * var(--rh-preview-scale));
+  width: calc(24px * var(--rh-preview-scale));
+  height: calc(24px * var(--rh-preview-scale));
+  border-width: calc(3px * var(--rh-preview-scale));
+  border-radius: 4px;
+}
+
+.controls__preview[data-mode='tilt'] .controls__preview-steer::after {
+  display: none;
+}
+
+.controls__preview-pedal {
+  right: 6%;
+  width: calc(24px * var(--rh-preview-scale));
+  height: calc(46px * var(--rh-preview-scale));
+  border-top: 3px solid #55c585;
+  border-radius: 3px;
+  background: rgb(14 16 18 / 85%);
+}
+
+.controls__preview-pedal--brake {
+  right: calc(6% + 30px * var(--rh-preview-scale));
+  height: calc(32px * var(--rh-preview-scale));
+  border-top-color: #ea6153;
+}
+
+/* Steering by tilt, the brake moves under the left thumb. */
+.controls__preview[data-mode='tilt'] .controls__preview-pedal--brake {
+  right: auto;
+  left: 6%;
+}
+
+/* The keyboard's keys and what they do. */
+.controls__keys[hidden] {
+  display: none;
+}
+
+.controls__key-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.controls__key-caps {
+  display: flex;
+  gap: 4px;
+}
+
+.controls__key {
+  min-width: 24px;
+  padding: 3px 7px 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-line-strong);
+  border-bottom-width: 3px;
+  border-radius: 3px;
+  background: var(--rh-surface-2);
+  font: 500 12px/1.3 var(--rh-display);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.controls__key-action {
+  margin: 0;
+  color: var(--rh-fg-2);
+}
+
+/* Screens on their side: the steering and its size beside the camera and the keys. */
+@media (orientation: landscape) and (min-width: 700px) {
+  .controls .controls__panel {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+    gap: 10px 26px;
+    width: min(100%, 800px);
+  }
+
+  .controls .controls__panel > .panel__title {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    grid-row: 1;
+    grid-column: 1 / -1;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rh-line);
+  }
+
+  /* The size and its picture on the right, beside the steering and the camera; the keys under both. */
+  .controls .controls__panel > [data-setting='control-size'] {
+    grid-row: 2 / span 3;
+    grid-column: 2;
+  }
+
+  .controls .controls__panel > [data-setting='keys'] {
+    grid-column: 1 / -1;
+  }
+
+  .controls .controls__preview {
+    width: min(100%, 230px);
+  }
+
+  .controls .settings__close {
+    grid-row: 1;
+    grid-column: 2;
+    justify-self: end;
+    align-self: start;
+    min-width: 110px;
+    margin-bottom: 11px;
+  }
+
+  .controls .settings__choices > .button {
+    min-height: 36px;
+    padding: 4px 8px;
+  }
+}
+
+/* ---- Contract result (src/ui/menus/ResultDialog.ts): a receipt ---- */
+
+.result-dialog__panel {
+  width: min(100%, 400px);
+}
+
+.result-dialog__panel .panel__title {
+  text-align: center;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.result-dialog__panel.is-success .panel__title {
+  color: var(--rh-good);
+}
+
+.result-dialog__panel.is-failure .panel__title {
+  color: #ff8b7f;
+}
+
+/* The way on: the next job, or back on the road. */
+.result-dialog__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.result-dialog__choices .button {
+  flex: 1 1 140px;
+}
+
+.result-dialog__mission,
+.result-dialog__facts,
+.result-dialog__reason {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 14px;
+  text-align: center;
+}
+
+.result-dialog__reason {
+  color: var(--rh-fg);
+  font-size: 16px;
+}
+
+/* Under a dashed tear-off rule, the receipt, then the way on (ResultDialog.ts). */
+.result-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  padding-top: 12px;
+  border-top: 1px dashed var(--rh-line-strong);
+}
+
+.result-dialog__receipt,
+.result-dialog__way {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  min-width: 0;
+}
+
+/* The lines: each name, a row of dots, its amount; the total under a double rule. */
+.result-dialog__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+}
+
+.result-dialog__line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.result-dialog__line dt,
+.result-dialog__line dd {
+  margin: 0;
+}
+
+.result-dialog__line dt {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  min-width: 0;
+  color: var(--rh-fg-2);
+  font-size: 14px;
+}
+
+.result-dialog__line dt::after {
+  content: '';
+  flex: 1;
+  min-width: 12px;
+  margin: 0 0 3px 8px;
+  border-bottom: 1px dotted rgb(255 255 255 / 28%);
+}
+
+.result-dialog__line dd {
+  font: 500 16px/1.2 var(--rh-display);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.result-dialog__line.is-bonus dd {
+  color: var(--rh-good);
+}
+
+.result-dialog__line.is-penalty dd {
+  color: #ff8b7f;
+}
+
+.result-dialog__line.is-total {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 3px double var(--rh-line-strong);
+}
+
+.result-dialog__line.is-total dt {
+  color: var(--rh-fg);
+  font: 500 15px/1.2 var(--rh-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.result-dialog__line.is-total dt::after {
+  border-bottom-color: transparent;
+}
+
+.result-dialog__line.is-total dd {
+  color: var(--rh-accent);
+  font-size: 24px;
+}
+
+.result-dialog__line.is-progress dd {
+  color: #8fbdf0;
+}
+
+.result-dialog__level-up {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--rh-accent);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-accent-soft);
+  color: var(--rh-accent);
+  font: 500 15px/1.3 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.result-dialog__event {
+  margin: 0;
+  padding: 7px 12px;
+  border-left: 3px solid var(--rh-accent);
+  background: var(--rh-surface-2);
+}
+
+.result-dialog__event.is-completed {
+  border-left-color: var(--rh-good);
+}
+
+.result-dialog__event-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.result-dialog__event-bonus {
+  color: var(--rh-accent);
+  font-family: var(--rh-display);
+  font-weight: 500;
+}
+
+.result-dialog__event-progress {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.result-dialog__event.is-completed .result-dialog__event-progress {
+  color: var(--rh-good);
+  font-weight: 600;
+}
+
+/* The rivals on the result: a tender won or lost, the leader's bonus. */
+.result-dialog__rivalry {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 7px 12px;
+  border-left: 3px solid #ffb020;
+  background: var(--rh-surface-2);
+  font-weight: 600;
+}
+
+.result-dialog__rivalry.is-penalty {
+  border-left-color: var(--rh-danger);
+  color: #ff8b7f;
+}
+
+.result-dialog__rivalry-amount {
+  color: #ffb020;
+  font-family: var(--rh-display);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* The rewarded delivery bonus. */
+.result-dialog__bonus {
+  width: 100%;
+  border-color: rgb(242 163 58 / 60%);
+  color: var(--rh-accent);
+}
+
+/* Short landscape phones: tighter lines. */
+@media (max-height: 420px) {
+  .result-dialog__lines {
+    gap: 3px;
+  }
+}
+
+/* A phone on its side: the receipt on the left, the way on beside it, its choices level with the balance. Everything
+   in view without scrolling. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .result-dialog__panel {
+    width: min(100%, 720px);
+  }
+
+  .result-dialog__panel .panel__title {
+    font-size: 22px;
+  }
+
+  .result-dialog__body {
+    flex-direction: row;
+    column-gap: 0;
+  }
+
+  .result-dialog__receipt {
+    flex: 1.15 1 0;
+    padding-right: 22px;
+  }
+
+  .result-dialog__way {
+    flex: 1 1 0;
+    padding-left: 22px;
+    border-left: 1px solid var(--rh-line);
+  }
+
+  .result-dialog__way .result-dialog__facts {
+    text-align: left;
+  }
+
+  .result-dialog__way .result-dialog__choices {
+    margin-top: auto;
+  }
+}
+
+/* ---- The shop (src/ui/menus/ShopDialog.ts) ---- */
+
+.shop {
+  /* Over the main menu, the company panel and the settings. */
+  z-index: 13;
+}
+
+.shop__panel {
+  width: min(100%, 440px);
+}
+
+.shop__intro,
+.shop__note {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.shop__note:empty {
+  display: none;
+}
+
+.shop__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shop__product {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+}
+
+.shop__product-icon {
+  width: 28px;
+  height: 28px;
+  --rh-icon-accent: var(--rh-accent);
+}
+
+.shop__product-name {
+  margin: 0;
+  font: 500 17px/1.2 var(--rh-display);
+  letter-spacing: 0.01em;
+}
+
+.shop__product-description {
+  margin: 2px 0 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.shop__buy,
+.shop__owned {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.shop__buy {
+  min-height: 40px;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+.shop__owned {
+  color: var(--rh-good);
+  font: 500 13px/1.3 var(--rh-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.shop__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.shop__buttons .button {
+  flex: 1 1 140px;
+}
+
+/* ---- Half-price services after a rewarded ad (src/ui/serviceDiscounts.ts): rest areas and the truck page ---- */
+
+.service-discounts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.service-discounts__note {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.service-discounts__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.service-discounts__button {
+  min-height: 38px;
+  padding: 6px 12px;
+  border-color: rgb(242 163 58 / 50%);
+  color: var(--rh-accent);
+  font-size: 13px;
+}
+
+/* ---- Simulated ads and store (src/platform/browser/simulated*.ts): development and tests only ---- */
+
+.simulated {
+  position: fixed;
+  inset: 0;
+  /* Over everything but the error screens, as the ads SDK's and Google Play's own screens are. */
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgb(6 8 12 / 94%);
+  color: #fff;
+}
+
+.simulated__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: min(90vw, 360px);
+  padding: 24px;
+  border: 2px dashed rgb(255 255 255 / 35%);
+  border-radius: var(--rh-radius);
+  text-align: center;
+}
+
+.simulated__title {
+  font: 500 19px/1.2 var(--rh-display);
+}
+
+.simulated__status {
+  margin: 0;
+  color: #c8d0d8;
+}
+
+.simulated__buttons {
+  display: flex;
+  gap: 8px;
+}

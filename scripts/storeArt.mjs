@@ -1,6 +1,6 @@
 // Draws the Google Play listing's art from the game itself: six screenshots with a caption in each listing's
 // language, and the feature graphic. Original art (spec §85): the game's own world, panels and brand, and Oswald
-// (scripts/fonts, SIL Open Font License) for the captions. The 512 px store icon comes from scripts/androidIcons.mjs.
+// (src/ui/fonts, the game's own type, SIL Open Font License) for the captions. The 512 px store icon comes from scripts/androidIcons.mjs.
 //
 //   npm run build && node scripts/storeArt.mjs
 //

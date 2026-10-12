@@ -432,9 +432,24 @@ For the player's request for more to buy for the company ("şirket yönetimini d
 
 Tester feedback asked to go straight into the game and to have the menus in it, with pictures. There is no HQ screen: starting or continuing a company goes onto the road (`GameState`: booting, mainMenu, driving), and the company HQ (spec §26) opens as a panel over the game.
 
-- **`HudDock`** (`src/ui/hud`): buttons on the road for four of the panel's pages (the fleet, the company and the rivals are reached through the panel), each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to round buttons out of the mission HUD's way.
+- **`HudDock`** (`src/ui/hud`): buttons on the road for four of the panel's pages (the fleet, the company and the rivals are reached through the panel), each with its picture and name. Without a contract they sit where the mission HUD would, Jobs first and lit; with a contract under way the Jobs button goes and the rest shrink to square buttons out of the mission HUD's way.
 - **`CompanyHq`** (`src/ui/hq`): the panel. At the right of a phone on its side, with its tabs in a rail; at the bottom of an upright one. At the top the company, its level, XP, reputation and credits, the map and the way back to the road; below the tabs everything scrolls as one list (`.hq__list`, `touch-action: pan-y`), which the e2e tests drag with real touch events. Seven pages: the job board (each blocked contract says what unlocks it; a card per contract with its cargo's picture); the truck (`truckPage`: the truck, where it stands, fuel and damage with the pump and the workshop, its cargo, its fitted parts); the garage (paint, upgrades, trucks); the fleet (`FleetPage`); the company's facilities (`companyPage`); the rivals (`RivalsPage`); and the special events.
 - **The showroom.** While the panel is open the truck waits (if it was moving, traffic and weather wait too; standing, the world goes on) and the camera circles it, framed in the part of the screen the panel leaves free (`CameraRig.frameBeside`: a view offset). Tapping a paint, an upgrade's Preview or a truck's Preview shows it on the truck before it is bought (`TruckPreview`; the entry point rebuilds the `TruckView` when its key changes), and the camera swings round to the part (`SHOWCASE_PART_ANGLES`). A purchase, a tab change or closing the panel ends the preview.
+
+### The interface's look
+
+The interface speaks the road's own language, not an app's: the direction boards, the paperwork, the plates on a lorry. Its styles are in `src/ui/styles`: `base.css` holds the tokens and the shared pieces, then `hud.css` (the road), `menus.css`, `hq.css` (the company panel) and `map.css`. `src/ui/styles.css` joins them, and Vite inlines them into one stylesheet.
+
+- **Surfaces** are solid asphalt greys under hairlines (`--rh-surface*`, `--rh-line*`). Over the world while driving, they are dark plates the road shows faintly through (`--rh-plate`). A dialog dims the world behind it (`--rh-scrim`), and nothing is blurred: a backdrop blur costs the GPU every frame the world moves. This replaced the liquid glass of the earlier menus.
+- **Type**: Oswald (`src/ui/fonts`, SIL Open Font License, listed in `licenses.txt`) is a condensed face like the boards' and the paperwork's. It sets the titles, the labels (small capitals), the buttons and the figures that stand still. Figures that change all the time, such as the speed, use a face whose digits are all one width (`--rh-numeric`), so they keep still. A box that clips its text for an ellipsis keeps room above and below for capitals' accents and cedillas (Ä, İ, Ş, Й).
+- **Shape**: corners are crisp (2 to 6 px). One cut corner (`--rh-cut-shape`) marks what moves the game on: the primary buttons and the level's stamp.
+- **Colour**: the brand's amber is kept for the next step and the money; green and red show what went well or wrong. The navigation (`MissionHud`) is a direction sign in the world's own board colours (`signBoardImages.ts`): blue to the pickup, green to the delivery, with the hint in the boards' yellow.
+- **Pieces**:
+  - Each of the settings' choices is a segmented control.
+  - A contract's card is a waybill, with stamps for a tender and the difficulty.
+  - A delivery's result is a receipt. On a phone on its side the way on sits beside it, so its choices never need a scroll.
+  - The dock is a segmented toolbar.
+  - The touch wheel, the speed dial and the pedals are drawn flat.
 
 ## 9. Data and content
 

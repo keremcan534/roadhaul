@@ -36,9 +36,9 @@ const SHIPPED_PACKAGES = [
 
 /**
  * `licenses.txt` beside the page: the licence of every package the game
- * ships, for Settings' open-source licences page (fetched when it opens).
- * Built from node_modules, so it follows the versions installed; the dev
- * server serves the same text.
+ * ships, and of the font in its interface, for Settings' open-source
+ * licences page (fetched when it opens). Built from node_modules, so it
+ * follows the versions installed; the dev server serves the same text.
  */
 function openSourceLicenses(): Plugin {
   const fileName = 'licenses.txt';
@@ -52,6 +52,7 @@ function openSourceLicenses(): Plugin {
       return `${name} ${version} (${license})\n\n${readFileSync(new URL('LICENSE', folder), 'utf8').trim()}`;
     });
     parts.push(
+      `Oswald (the interface's type)\n\n${readFileSync(new URL('./src/ui/fonts/OFL.txt', import.meta.url), 'utf8').trim()}`,
       'AndroidX and Guava (the Android app)\n\n' +
         'The Android app also contains AndroidX libraries, Copyright The Android Open Source Project, and Guava, ' +
         'Copyright The Guava Authors, licensed under the Apache License, Version 2.0: ' +

@@ -92,8 +92,6 @@ import type { RefuelError, Refuelled } from './systems/vehicles/FuelService';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
-import { installGlass } from './ui/glass';
-import { glassModeFor, isGlassMode, lensSupported } from './ui/glassMode';
 import { CompanyHq, type TruckPreview } from './ui/hq/CompanyHq';
 import { driverName, truckNumber } from './ui/hq/fleetPage';
 import { routeText } from './ui/hq/jobCards';
@@ -313,15 +311,6 @@ async function start(strings: Strings): Promise<void> {
   // a fifth of its time even by day, when the shaders skip it: there they light nothing, unless ?lamps=1 asks.
   const lampLighting = new LampLighting(software ? SOFTWARE_LAMP_LIGHTS : LAMP_LIGHTS[config.rendering.quality]);
   const lampLight = requestedLampLight(query) ?? !software;
-  // The menus' liquid glass blurs the world behind it: not drawn in software or on the low preset, bending only on
-  // high (glass.ts). `?glass=lens|blur|tint` picks it anyway, for comparison.
-  const requestedGlass = query.get('glass');
-  installGlass(
-    document,
-    isGlassMode(requestedGlass)
-      ? requestedGlass
-      : glassModeFor(config.rendering.quality, software, lensSupported(navigator.userAgent)),
-  );
   // The seasons on the land: the grass, the broadleaf trees, the verges' flowers, the fields, the hills and the snow.
   const seasonShading = new SeasonShading(season.season);
   const environment = new EnvironmentView(renderHost.scene, {
@@ -2039,7 +2028,7 @@ async function start(strings: Strings): Promise<void> {
           fitPixelSizes();
         }
         // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
-        // saves the battery (and the glass's blur of it). The full map hides it all.
+        // saves the battery. The full map hides it all.
         menuFrames = onRoad() && !paused ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.setGrade(environment.grade);

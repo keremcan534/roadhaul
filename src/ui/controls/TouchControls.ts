@@ -10,25 +10,21 @@ const WHEEL_RETURN_RATE = 7;
 const DIAL_MAX_KMH = 100;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** The on-screen steering wheel, drawn as SVG: leather rim with stitching, three spokes, hub and top marker. */
+/**
+ * The on-screen steering wheel, drawn as SVG in flat colours: a dark rim edged with hairlines and grooved for the
+ * thumbs, three straight spokes, the hub with the amber ring, and the amber mark at the top that shows the lock.
+ */
 const WHEEL_ART = `
-  <defs>
-    <linearGradient id="rh-wheel-rim" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#5a6069"/><stop offset="0.45" stop-color="#2c3036"/><stop offset="1" stop-color="#141619"/>
-    </linearGradient>
-    <radialGradient id="rh-wheel-hub" cx="0.45" cy="0.35" r="0.7">
-      <stop offset="0" stop-color="#626973"/><stop offset="1" stop-color="#1b1e22"/>
-    </radialGradient>
-  </defs>
-  <circle cx="100" cy="100" r="85" fill="none" stroke="rgb(0 0 0 / 35%)" stroke-width="24"/>
-  <circle cx="100" cy="100" r="85" fill="none" stroke="url(#rh-wheel-rim)" stroke-width="19"/>
-  <circle cx="100" cy="100" r="85" fill="none" stroke="rgb(255 255 255 / 22%)" stroke-width="1.2" stroke-dasharray="3 5"/>
-  <path d="M 22 94 Q 60 86 76 88 L 76 112 Q 60 114 22 106 Z" fill="#30353b"/>
-  <path d="M 178 94 Q 140 86 124 88 L 124 112 Q 140 114 178 106 Z" fill="#30353b"/>
-  <path d="M 90 122 L 110 122 L 106 182 L 94 182 Z" fill="#30353b"/>
-  <circle cx="100" cy="100" r="30" fill="url(#rh-wheel-hub)" stroke="#0d0f11" stroke-width="2"/>
-  <circle cx="100" cy="100" r="13" fill="none" stroke="#f2a33a" stroke-width="3.5"/>
-  <rect x="93" y="5" width="14" height="20" rx="4" fill="#f2a33a"/>
+  <circle cx="100" cy="100" r="85" fill="none" stroke="rgb(0 0 0 / 40%)" stroke-width="25"/>
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#252a30" stroke-width="19"/>
+  <circle cx="100" cy="100" r="85" fill="none" stroke="#2f353c" stroke-width="13" stroke-dasharray="1.6 4.4"/>
+  <circle cx="100" cy="100" r="94" fill="none" stroke="rgb(255 255 255 / 16%)" stroke-width="1"/>
+  <circle cx="100" cy="100" r="76" fill="none" stroke="rgb(255 255 255 / 10%)" stroke-width="1"/>
+  <path d="M 20 93 L 73 89 L 73 111 L 20 107 Z M 180 93 L 127 89 L 127 111 L 180 107 Z M 90 125 L 110 125 L 105 184 L 95 184 Z"
+    fill="#2b3036" stroke="rgb(255 255 255 / 10%)" stroke-width="1"/>
+  <circle cx="100" cy="100" r="29" fill="#1c2025" stroke="rgb(255 255 255 / 14%)" stroke-width="1"/>
+  <circle cx="100" cy="100" r="12.5" fill="none" stroke="#f2a33a" stroke-width="3"/>
+  <rect x="95" y="6" width="10" height="18" fill="#f2a33a"/>
 `;
 
 /** The tilt steering button: a phone turned like a wheel, between two turning arrows. */
@@ -48,14 +44,11 @@ const FUEL_ICON =
 const WRENCH_ICON =
   '<path d="M11.5 2.5a3.5 3.5 0 0 0-3.3 4.6L2.5 12.8l1.7 1.7 5.7-5.7a3.5 3.5 0 0 0 4.6-3.3l-2 1-1.6-1.6z" fill="currentColor"/>';
 
-/** The speed dial: a half-circle track and the arc that fills with speed. */
+/** The speed dial: a half-circle track, a tick every 20 km/h inside it, and the arc that fills with speed. */
 const DIAL_ART = `
-  <defs>
-    <linearGradient id="rh-dial" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#5fd38a"/><stop offset="0.6" stop-color="#f2a33a"/><stop offset="1" stop-color="#f0643c"/>
-    </linearGradient>
-  </defs>
   <path class="dashboard__track" d="M 12 58 A 48 48 0 0 1 108 58"/>
+  <path class="dashboard__ticks"
+    d="M 17 58 H 21 M 25.21 32.73 L 28.45 35.08 M 46.71 17.11 L 47.95 20.91 M 73.29 17.11 L 72.05 20.91 M 94.79 32.73 L 91.55 35.08 M 103 58 H 99"/>
   <path class="dashboard__fill" d="M 12 58 A 48 48 0 0 1 108 58" pathLength="100"/>
 `;
 
