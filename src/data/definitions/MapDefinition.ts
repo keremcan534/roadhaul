@@ -529,9 +529,9 @@ export function shorelineXAt(shoreline: readonly Point2[], z: number): number {
       high = middle;
     }
   }
-  const [x0, z0] = shoreline[low]!;
-  const [x1, z1] = shoreline[high]!;
-  return x0 + ((x1 - x0) * (z - z0)) / (z1 - z0);
+  const from = shoreline[low]!;
+  const to = shoreline[high]!;
+  return from[0] + ((to[0] - from[0]) * (z - from[1])) / (to[1] - from[1]);
 }
 
 /** Whether (x, z) is in the sea west of `shoreline`, or within `margin` meters of its shore (east of it). */
@@ -714,8 +714,13 @@ export function polygonArea(outline: readonly Point2[]): number {
 export function polygonContains(outline: readonly Point2[], x: number, z: number): boolean {
   let inside = false;
   for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
-    const [ax, az] = outline[i]!;
-    const [bx, bz] = outline[j]!;
+    // Indexed, not destructured: the world asks this for every tree it plants.
+    const a = outline[i]!;
+    const b = outline[j]!;
+    const ax = a[0];
+    const az = a[1];
+    const bx = b[0];
+    const bz = b[1];
     if (az > z !== bz > z && x < ((bx - ax) * (z - az)) / (bz - az) + ax) {
       inside = !inside;
     }
@@ -814,10 +819,17 @@ export function rectangleCorners(rectangle: RectangleDefinition): [number, numbe
 
 /** Whether the point (x, z) lies inside the rectangle, grown by `margin` meters on every side. */
 export function rectangleContains(rectangle: RectangleDefinition, x: number, z: number, margin = 0): boolean {
-  const heading = (rectangle.headingDegrees * Math.PI) / 180;
+  const halfLength = rectangle.lengthMeters / 2 + margin;
+  const halfWidth = rectangle.widthMeters / 2 + margin;
   const dx = x - rectangle.x;
   const dz = z - rectangle.z;
+  // Beyond the circle round its corners it cannot be inside, whichever way it is turned: no trigonometry for the
+  // far-off rectangles, nearly every one when the world asks where a tree may stand.
+  if (dx * dx + dz * dz > (halfLength * halfLength + halfWidth * halfWidth) * 1.000001 + 1e-6) {
+    return false;
+  }
+  const heading = (rectangle.headingDegrees * Math.PI) / 180;
   const along = dx * Math.sin(heading) + dz * Math.cos(heading);
   const across = dx * Math.cos(heading) - dz * Math.sin(heading);
-  return Math.abs(along) <= rectangle.lengthMeters / 2 + margin && Math.abs(across) <= rectangle.widthMeters / 2 + margin;
+  return Math.abs(along) <= halfLength && Math.abs(across) <= halfWidth;
 }

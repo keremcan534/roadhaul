@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { RoadDefinition } from '../../../../src/data/definitions/MapDefinition';
 import { RoadPath } from '../../../../src/domain/world/RoadPath';
@@ -7,6 +7,7 @@ import {
   COUNTRY_TILE_METERS,
   FAR_CULL_METERS,
   FarCulling,
+  freezeTransforms,
   TileParts,
   tileKeyOf,
   tileRuns,
@@ -125,5 +126,35 @@ describe('world tiles', () => {
     }
     culling.update(1000, 0);
     expect(boxes.filter((object) => object.visible).map((object) => boxes.indexOf(object))).toEqual([10]);
+  });
+
+  it('freezes what never moves where it stands, and the scene stops walking it every frame', () => {
+    const scene = new Scene();
+    scene.matrixAutoUpdate = false;
+    const root = new Group();
+    root.position.set(100, 0, 0);
+    const tile = new Group();
+    tile.position.set(0, 0, 50);
+    const mesh = new Mesh(new BoxGeometry(), new MeshBasicMaterial());
+    mesh.position.set(5, 0, 0);
+    tile.add(mesh);
+    root.add(tile);
+    scene.add(root);
+
+    freezeTransforms(root);
+
+    // Where everything stands in the world, worked out once.
+    expect(new Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray()).toEqual([105, 0, 50]);
+    let walked = 0;
+    const walk = Group.prototype.updateMatrixWorld;
+    tile.updateMatrixWorld = function (force) {
+      walked++;
+      walk.call(this, force);
+    };
+    scene.updateMatrixWorld();
+    scene.updateMatrixWorld(true);
+    expect(walked).toBe(0);
+    expect(new Vector3().setFromMatrixPosition(mesh.matrixWorld).toArray()).toEqual([105, 0, 50]);
+    expect([root, tile, mesh].every((object) => !object.matrixAutoUpdate)).toBe(true);
   });
 });

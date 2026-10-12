@@ -24,6 +24,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import { Buckets } from '../../domain/world/buckets';
 import type { TreeSpecies } from '../../domain/world/countryside';
 import type { BuildingObstacle, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
 import { createRoadPoint, type RoadPath } from '../../domain/world/RoadPath';
@@ -113,6 +114,8 @@ const CROSSWALK_SETBACK_METERS = 2.2;
 const CROSSWALK_STRIPE = { width: 0.5, length: 2.6, gap: 0.55 } as const;
 /** Markings stop this far short of a junction, measured past the widest road's edge. */
 const JUNCTION_MARKING_GAP = 2;
+/** The junctions are filed in cells this big for asking whether a road's sample is near one (createRoads). */
+const JUNCTION_CELL_METERS = 40;
 /** One grass texture tile covers this many meters; the road textures repeat along the road. */
 const GRASS_TILE_METERS = 14;
 /** The meadow's lusher and drier blotches repeat every this many meters. */
@@ -625,11 +628,32 @@ export class TrackView {
     const circleY = ROAD_Y + (Math.max(0, ...levels) + 1) * ROAD_STACK;
     const markingY = circleY + MARKING_GAP;
     const junctionReach = Math.max(...roads.map((road) => road.widthMeters)) / 2 + JUNCTION_MARKING_GAP;
-    const clearOfJunctions = (x: number, z: number): boolean =>
-      network.junctions.every((junction) => Math.hypot(junction.x - x, junction.z - z) > junctionReach) &&
-      turningCircles.every(
-        (circle) => Math.hypot(circle.x - x, circle.z - z) > circle.radiusMeters + JUNCTION_MARKING_GAP,
-      );
+    // The junctions and turning circles filed by cell, each over as far as it keeps the markings away: every sample
+    // of every road asks, and only those filed in its cell can be near enough.
+    const nearJunctions = new Buckets(JUNCTION_CELL_METERS, world.halfSizeMeters);
+    network.junctions.forEach((junction, id) =>
+      nearJunctions.add(id, junction.x - junctionReach, junction.x + junctionReach, junction.z - junctionReach, junction.z + junctionReach),
+    );
+    const nearCircles = new Buckets(JUNCTION_CELL_METERS, world.halfSizeMeters);
+    turningCircles.forEach((circle, id) => {
+      const reach = circle.radiusMeters + JUNCTION_MARKING_GAP;
+      nearCircles.add(id, circle.x - reach, circle.x + reach, circle.z - reach, circle.z + reach);
+    });
+    const clearOfJunctions = (x: number, z: number): boolean => {
+      for (const id of nearJunctions.at(x, z)) {
+        const junction = network.junctions[id]!;
+        if (!(Math.hypot(junction.x - x, junction.z - z) > junctionReach)) {
+          return false;
+        }
+      }
+      for (const id of nearCircles.at(x, z)) {
+        const circle = turningCircles[id]!;
+        if (!(Math.hypot(circle.x - x, circle.z - z) > circle.radiusMeters + JUNCTION_MARKING_GAP)) {
+          return false;
+        }
+      }
+      return true;
+    };
 
     const shoulders: BufferGeometry[] = [];
     const surfaces: BufferGeometry[] = [];

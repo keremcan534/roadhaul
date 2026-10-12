@@ -11,6 +11,7 @@ import {
   Group,
   IcosahedronGeometry,
   InstancedMesh,
+  Matrix3,
   Matrix4,
   Mesh,
   MeshLambertMaterial,
@@ -274,17 +275,16 @@ export class SceneryView {
       tiles.add(sign.x, sign.z, parts.place(`sign:${sign.kind}`, () => roadSignGeometry(sign.kind), sign.x, sign.z, sign.heading), circle);
       signKinds.set(circle, sign.kind);
     }
-    parts.dispose();
     const paving: Tiles = new Tiles();
     for (const sidewalk of world.sidewalks) {
       addSidewalk(tiles, paving, world.roads[sidewalk.roadIndex]!, sidewalk);
     }
 
-    for (const [key, parts] of tiles.entries()) {
+    for (const [key, pieces] of tiles.entries()) {
       const circles = tiles.circlesOf(key);
       let from = 0;
-      const counts = parts.map((part) => part.getAttribute('position').count);
-      const mesh = new Mesh(this.track(mergeParts(parts)), propMaterial);
+      const counts = pieces.map((piece) => geometryOf(piece).getAttribute('position').count);
+      const mesh = new Mesh(this.track(mergeParts(pieces)), propMaterial);
       mesh.name = `scenery:${key}`;
       mesh.castShadow = castShadows;
       this.root.add(mesh);
@@ -300,6 +300,8 @@ export class SceneryView {
         from += count;
       });
     }
+    // The tiles hold their parts' vertices now.
+    parts.dispose();
     this.tileCount = tiles.size;
     this.knockDown = new Uint8Array(this.knockCircles.length);
     const debrisCapacity = options.debrisCapacity ?? 0;
@@ -540,16 +542,33 @@ const MAILBOX_CODE = knockableCode('mailbox');
 const SHEEP_NECK = { y: 0.78, z: 0.55 } as const;
 const COW_NECK = { y: 1.32, z: 1.0 } as const;
 
+/**
+ * A prop's part where it stands (Parts.place): the part, built once and
+ * shared, and the matrix that places it. Its vertices are moved there as
+ * they are merged into the tile's mesh, with no copy of its own between.
+ */
+interface Stamp {
+  readonly part: BufferGeometry;
+  readonly matrix: Matrix4;
+}
+
+/** What a tile merges: a geometry of its own, or a stamp of a shared part. */
+type Piece = BufferGeometry | Stamp;
+
+function geometryOf(piece: Piece): BufferGeometry {
+  return piece instanceof BufferGeometry ? piece : piece.part;
+}
+
 /** Geometry parts by square tile, keyed "column,row", each with the world's circle of what it draws (-1: nothing that falls). */
 class Tiles {
-  private readonly parts = new Map<string, BufferGeometry[]>();
+  private readonly parts = new Map<string, Piece[]>();
   private readonly circles = new Map<string, number[]>();
 
   get size(): number {
     return this.parts.size;
   }
 
-  add(x: number, z: number, geometry: BufferGeometry, circle = -1): void {
+  add(x: number, z: number, geometry: Piece, circle = -1): void {
     const key = `${Math.floor(x / TILE_METERS)},${Math.floor(z / TILE_METERS)}`;
     const list = this.parts.get(key);
     if (list === undefined) {
@@ -566,37 +585,50 @@ class Tiles {
     return this.circles.get(key) ?? [];
   }
 
-  entries(): IterableIterator<[string, BufferGeometry[]]> {
+  entries(): IterableIterator<[string, Piece[]]> {
     return this.parts.entries();
   }
 }
 
 /**
- * Merges `parts` into one indexed geometry (and releases them): their
- * attributes (the first part's set, which every part must have) end to end,
+ * Merges `parts` into one indexed geometry (and releases the geometries of
+ * their own): their attributes (the first part's set, which every part must
+ * have) end to end, a stamp's positions and normals moved where it stands,
  * their indices offset. Much quicker than mergeGeometries for thousands of
  * small parts, the scenery's cost at boot.
  */
-function mergeParts(parts: readonly BufferGeometry[]): BufferGeometry {
-  const names = Object.keys(parts[0]!.attributes);
+function mergeParts(parts: readonly Piece[]): BufferGeometry {
+  const names = Object.keys(geometryOf(parts[0]!).attributes);
   let vertices = 0;
   let indices = 0;
   for (const part of parts) {
-    const count = part.getAttribute('position').count;
+    const geometry = geometryOf(part);
+    const count = geometry.getAttribute('position').count;
     vertices += count;
-    indices += part.index?.count ?? count;
+    indices += geometry.index?.count ?? count;
   }
   const merged = new BufferGeometry();
   for (const name of names) {
-    const itemSize = parts[0]!.getAttribute(name).itemSize;
+    const itemSize = geometryOf(parts[0]!).getAttribute(name).itemSize;
     const array = new Float32Array(vertices * itemSize);
     let offset = 0;
     for (const part of parts) {
-      const attribute = part.getAttribute(name);
+      const attribute = geometryOf(part).getAttribute(name);
       if (attribute === undefined || attribute.itemSize !== itemSize) {
         throw new Error(`Scenery parts to merge differ in their "${name}" attribute.`);
       }
-      array.set(attribute.array, offset);
+      const source = attribute.array as Float32Array;
+      if (part instanceof BufferGeometry) {
+        array.set(source, offset);
+      } else if (name === 'position') {
+        placePoints(source, array, offset, part.matrix);
+      } else if (name === 'normal') {
+        placeNormals(source, array, offset, normalMatrix.getNormalMatrix(part.matrix));
+      } else if (name === 'tangent') {
+        throw new Error('Scenery parts are not stamped with tangents.');
+      } else {
+        array.set(source, offset);
+      }
       offset += attribute.count * itemSize;
     }
     merged.setAttribute(name, new BufferAttribute(array, itemSize));
@@ -605,8 +637,9 @@ function mergeParts(parts: readonly BufferGeometry[]): BufferGeometry {
   let at = 0;
   let base = 0;
   for (const part of parts) {
-    const count = part.getAttribute('position').count;
-    const source = part.index?.array;
+    const geometry = geometryOf(part);
+    const count = geometry.getAttribute('position').count;
+    const source = geometry.index?.array;
     if (source === undefined) {
       for (let i = 0; i < count; i++) {
         index[at++] = base + i;
@@ -617,10 +650,46 @@ function mergeParts(parts: readonly BufferGeometry[]): BufferGeometry {
       }
     }
     base += count;
-    part.dispose();
+    if (part instanceof BufferGeometry) {
+      part.dispose();
+    }
   }
   merged.setIndex(new BufferAttribute(index, 1));
   return merged;
+}
+
+/** Scratch for a stamp's normals (mergeParts). */
+const normalMatrix = new Matrix3();
+
+/** The points (x, y, z) of `from` moved by `matrix` into `to` from `offset`: as Vector3.applyMatrix4 does, to the bit. */
+function placePoints(from: Float32Array, to: Float32Array, offset: number, matrix: Matrix4): void {
+  const e = matrix.elements;
+  for (let i = 0; i < from.length; i += 3) {
+    const x = from[i]!;
+    const y = from[i + 1]!;
+    const z = from[i + 2]!;
+    const w = 1 / (e[3]! * x + e[7]! * y + e[11]! * z + e[15]!);
+    to[offset + i] = (e[0]! * x + e[4]! * y + e[8]! * z + e[12]!) * w;
+    to[offset + i + 1] = (e[1]! * x + e[5]! * y + e[9]! * z + e[13]!) * w;
+    to[offset + i + 2] = (e[2]! * x + e[6]! * y + e[10]! * z + e[14]!) * w;
+  }
+}
+
+/** The normals of `from` turned by `matrix` (a normal matrix) into `to` from `offset`: as Vector3.applyNormalMatrix does. */
+function placeNormals(from: Float32Array, to: Float32Array, offset: number, matrix: Matrix3): void {
+  const e = matrix.elements;
+  for (let i = 0; i < from.length; i += 3) {
+    const x0 = from[i]!;
+    const y0 = from[i + 1]!;
+    const z0 = from[i + 2]!;
+    const x = e[0]! * x0 + e[3]! * y0 + e[6]! * z0;
+    const y = e[1]! * x0 + e[4]! * y0 + e[7]! * z0;
+    const z = e[2]! * x0 + e[5]! * y0 + e[8]! * z0;
+    const scale = 1 / (Math.sqrt(x * x + y * y + z * z) || 1);
+    to[offset + i] = x * scale;
+    to[offset + i + 1] = y * scale;
+    to[offset + i + 2] = z * scale;
+  }
 }
 
 /** Paints every vertex of `geometry` `hex`, and maps its uv into `rect` of the atlas (a swatch's middle for a plain colour). */
@@ -646,13 +715,12 @@ function dress(geometry: BufferGeometry, hex: number, rect: PixelRect = PROP_ATL
 
 /**
  * The props' parts, each built and dressed once, then stamped wherever one
- * stands: a copy, shaped (scaled, leant), turned and moved. Much quicker
- * than building each anew, the scenery's cost at boot. Only the stamps are
- * kept; dispose() releases the originals.
+ * stands: shaped (scaled, leant), turned and moved as its tile is merged.
+ * Much quicker than building each anew, or copying each, the scenery's cost
+ * at boot. dispose() releases the parts once the tiles are merged.
  */
 class Parts {
   private readonly built = new Map<string, BufferGeometry>();
-  private readonly matrix = new Matrix4();
   /** A part's own shape before it is placed (shape()). */
   private readonly local = new Matrix4();
 
@@ -662,27 +730,21 @@ class Parts {
   }
 
   /**
-   * A copy of the part `key` (built the first time by `build`), shaped by
-   * `shape` when given, turned by `heading` about the vertical and moved to
-   * (x, 0, z).
+   * The part `key` (built the first time by `build`), shaped by `shape`
+   * when given, turned by `heading` about the vertical and moved to
+   * (x, 0, z): a stamp, its vertices moved there as its tile is merged.
    */
-  place(key: string, build: () => BufferGeometry, x: number, z: number, heading: number, shape?: Matrix4): BufferGeometry {
+  place(key: string, build: () => BufferGeometry, x: number, z: number, heading: number, shape?: Matrix4): Stamp {
     let part = this.built.get(key);
     if (part === undefined) {
       part = build();
       this.built.set(key, part);
     }
-    this.matrix.makeRotationY(heading).setPosition(x, 0, z);
+    const matrix = new Matrix4().makeRotationY(heading).setPosition(x, 0, z);
     if (shape !== undefined) {
-      this.matrix.multiply(shape);
+      matrix.multiply(shape);
     }
-    // Its attributes copied (a primitive's clone() would build the primitive anew first).
-    const stamp = new BufferGeometry();
-    for (const name of Object.keys(part.attributes)) {
-      stamp.setAttribute(name, part.getAttribute(name).clone());
-    }
-    stamp.setIndex(part.index?.clone() ?? null);
-    return stamp.applyMatrix4(this.matrix);
+    return { part, matrix };
   }
 
   dispose(): void {

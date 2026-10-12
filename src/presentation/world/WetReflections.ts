@@ -15,6 +15,7 @@ import {
   type Camera,
   type Scene,
 } from 'three';
+import { hypot2 } from '../../core/math/scalar';
 import {
   HEADLIGHT_COLOR,
   HEADLIGHT_PEAK,
@@ -346,7 +347,7 @@ export class WetReflections implements LampMirror {
     this.eye.set(world[12]!, world[13]!, world[14]!);
     const lookX = -world[8]!;
     const lookZ = -world[10]!;
-    const look = Math.hypot(lookX, lookZ);
+    const look = hypot2(lookX, lookZ);
     this.lookX = look > 1e-6 ? lookX / look : 0;
     this.lookZ = look > 1e-6 ? lookZ / look : 1;
     this.uniforms.blockerSize.value.set(0, 0, 0);
@@ -389,7 +390,7 @@ export class WetReflections implements LampMirror {
     }
     const dx = x - this.eye.x;
     const dz = z - this.eye.z;
-    const distance = Math.hypot(dx, dz);
+    const distance = hypot2(dx, dz);
     if (distance >= REACH_METERS || dx * this.lookX + dz * this.lookZ <= 0) {
       return;
     }
@@ -450,7 +451,7 @@ export class WetReflections implements LampMirror {
         const first = lamp * STREET_LAMP_STRIDE;
         const x = at[first]!;
         const z = at[first + 2]!;
-        const distance = Math.hypot(x - this.eye.x, z - this.eye.z);
+        const distance = hypot2(x - this.eye.x, z - this.eye.z);
         if (distance >= inner && distance < outer) {
           this.add('street', x, at[first + 1]!, z, at[first + 3]!, at[first + 4]!);
         }

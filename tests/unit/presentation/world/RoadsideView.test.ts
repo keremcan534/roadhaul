@@ -1,4 +1,4 @@
-import { Color, InstancedMesh, Matrix4, MeshBasicMaterial, Scene, Vector3 } from 'three';
+import { Color, InstancedMesh, Matrix4, MeshBasicMaterial, Quaternion, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
@@ -83,6 +83,32 @@ describe('RoadsideView', () => {
     view.update(x, z, 0);
     for (const plant of drawnPlants(scene, 'tuft')) {
       expect(Math.hypot(plant.x - x, plant.z - z)).toBeLessThan(120 + 40 * 1.5);
+    }
+  });
+
+  it('stands each plant upright, turned about its stem and sized, and sends only the plants drawn to the GPU', () => {
+    const scene = new Scene();
+    const view = new RoadsideView(scene, world);
+    view.update(spawn.x, spawn.z, 0);
+    const matrix = new Matrix4();
+    const position = new Vector3();
+    const rotation = new Quaternion();
+    const scale = new Vector3();
+    for (const kind of ROADSIDE_KINDS) {
+      const mesh = meshOf(scene, kind);
+      for (let index = 0; index < mesh.count; index++) {
+        mesh.getMatrixAt(index, matrix);
+        matrix.decompose(position, rotation, scale);
+        expect(position.y, kind).toBe(0);
+        // Turned about y alone, as wide as deep; bushes squat a fifth lower.
+        expect(Math.abs(rotation.x) + Math.abs(rotation.z), kind).toBeLessThan(1e-6);
+        expect(scale.z, kind).toBeCloseTo(scale.x, 5);
+        expect(scale.y / scale.x, kind).toBeCloseTo(kind === 'bush' ? 0.8 : 1, 5);
+        expect(scale.x, kind).toBeGreaterThanOrEqual(0.6 - 1e-6);
+        expect(scale.x, kind).toBeLessThanOrEqual(1.4 + 1e-6);
+      }
+      expect(mesh.instanceMatrix.updateRanges, kind).toEqual([{ start: 0, count: mesh.count * 16 }]);
+      expect(mesh.instanceColor!.updateRanges, kind).toEqual([{ start: 0, count: mesh.count * 3 }]);
     }
   });
 

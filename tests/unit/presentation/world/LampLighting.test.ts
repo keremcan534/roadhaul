@@ -17,6 +17,7 @@ import {
 } from 'three';
 import { describe, expect, it } from 'vitest';
 import {
+  LAMP_DATA,
   LAMP_PICK_AHEAD_METERS,
   LampLighting,
   MAX_STREET_LAMPS,
@@ -82,10 +83,23 @@ function cameraAt(x: number, y: number, z: number, lookAt: Vector3): Perspective
   return camera;
 }
 
-/** The `index`th vector of a flat array of them (the lamps' uniforms). */
-function vec3(array: Float32Array, index: number): Vector3 {
-  return new Vector3().fromArray(array, index * 3);
-}
+/** The packed lamps (LAMP_DATA) as the shaders read them: each one's xyz or w by name, as the shaders' macros do. */
+type LampUniforms = LampLighting['uniforms'];
+const xyzAt = (u: LampUniforms, slot: number): Vector3 => new Vector3().fromArray(u.lampData.value, slot * 4);
+const wAt = (u: LampUniforms, slot: number): number => u.lampData.value[slot * 4 + 3]!;
+const packed = {
+  truckLamp: (u: LampUniforms, i: number) => xyzAt(u, i),
+  trafficLamp: (u: LampUniforms, i: number) => xyzAt(u, LAMP_DATA.traffic + Math.floor(i / 2) * 4 + (i % 2)),
+  trafficStrength: (u: LampUniforms, v: number) => wAt(u, LAMP_DATA.traffic + v * 4),
+  trafficShaded: (u: LampUniforms, v: number) => wAt(u, LAMP_DATA.traffic + v * 4 + 1),
+  trafficForward: (u: LampUniforms, v: number) => xyzAt(u, LAMP_DATA.traffic + v * 4 + 2),
+  trafficRight: (u: LampUniforms, v: number) => xyzAt(u, LAMP_DATA.traffic + v * 4 + 3),
+  streetLamp: (u: LampUniforms, i: number) => xyzAt(u, LAMP_DATA.street + i * 2),
+  streetLampFade: (u: LampUniforms, i: number) => wAt(u, LAMP_DATA.street + i * 2),
+  streetLampFacing: (u: LampUniforms, i: number) => xyzAt(u, LAMP_DATA.street + i * 2 + 1),
+};
+/** The first `count` street lamps' fades. */
+const fades = (u: LampUniforms, count: number): number[] => Array.from({ length: count }, (_, i) => packed.streetLampFade(u, i));
 
 function expectClose(actual: Vector3, expected: Vector3): void {
   expect(actual.x).toBeCloseTo(expected.x, 5);
@@ -115,7 +129,7 @@ describe('LampLighting', () => {
       const shader = compiled(material);
       expect(occurrences(shader.fragmentShader, 'float lowBeam('), material.type).toBe(1);
       // The truck keeps the other vehicles' headlights off what lies beyond it.
-      expect(shader.fragmentShader).toContain('truckBlocks( geometryPosition, trafficLamps[ i ] )');
+      expect(shader.fragmentShader).toContain('truckBlocks( geometryPosition, trafficLamp( i ) )');
       // Each lamp through the material's own lighting, after three's lights.
       expect(shader.fragmentShader.indexOf('RE_Direct( lamp')).toBeGreaterThan(shader.fragmentShader.indexOf('#include <lights_fragment_begin>'));
       expect(shader.uniforms['lampLevel']).toBe(lighting.uniforms.lampLevel);
@@ -124,12 +138,12 @@ describe('LampLighting', () => {
     const shader = compiled(ground);
     expect(occurrences(shader.fragmentShader, 'float lowBeam(')).toBe(1);
     expect(shader.vertexShader).toContain('vLampView = mvPosition.xyz;');
-    expect(shader.fragmentShader).toContain('truckBlocks( vLampView, trafficLamps[ i ] )');
+    expect(shader.fragmentShader).toContain('truckBlocks( vLampView, trafficLamp( i ) )');
     // On the pre-lit colour turned back into the surface's own, before the rain's wet sheen touches it.
     expect(shader.fragmentShader.indexOf('prelitAlbedo * (')).toBeGreaterThan(shader.fragmentShader.indexOf('#include <envmap_fragment>'));
     expect(shader.fragmentShader).not.toContain('#define LAMPS_SCATTER');
     expect(shader.uniforms['prelitAlbedo']).toBe(prelit.albedo);
-    expect(shader.uniforms['truckLamps']).toBe(lighting.uniforms.truckLamps);
+    expect(shader.uniforms['lampData']).toBe(lighting.uniforms.lampData);
     expect(ground.customProgramCacheKey()).toMatch(/\|lamplit-ground$/);
     // Unlit materials that are not pre-lit (lamps, glass, the cab's inside) and custom shaders stay as they are.
     expect(compiled(plain).fragmentShader).not.toContain('lowBeam');
@@ -186,8 +200,8 @@ describe('LampLighting', () => {
 
     const view = camera.matrixWorldInverse;
     expect(u.lampLevel.value).toBe(1);
-    expectClose(vec3(u.truckLamps.value, 0), new Vector3(0.9, 0.8, 3.2).applyMatrix4(view));
-    expectClose(vec3(u.truckLamps.value, 1), new Vector3(-0.9, 0.8, 3.2).applyMatrix4(view));
+    expectClose(packed.truckLamp(u, 0), new Vector3(0.9, 0.8, 3.2).applyMatrix4(view));
+    expectClose(packed.truckLamp(u, 1), new Vector3(-0.9, 0.8, 3.2).applyMatrix4(view));
     expectClose(u.truckForward.value, new Vector3(0, 0, 1).transformDirection(view));
     // Facing +Z, its right is −X.
     expectClose(u.truckRight.value, new Vector3(-1, 0, 0).transformDirection(view));
@@ -207,6 +221,26 @@ describe('LampLighting', () => {
 
     lighting.update(TRUCK, null, camera, 0);
     expect(u.lampLevel.value).toBe(0);
+  });
+
+  it('spares three.js sending the lamps to the GPU by day, when the shaders skip them, and sends them all again at dusk', () => {
+    const lighting = new LampLighting();
+    const camera = cameraAt(-4, 6, -12, new Vector3(0, 1, 10));
+    const u: Record<string, { value: unknown; needsUpdate?: boolean }> = lighting.uniforms;
+    const others = Object.keys(u).filter((name) => name !== 'lampLevel');
+    expect(others).toEqual(expect.arrayContaining(['lampData', 'truckForward', 'streetLampCount']));
+
+    lighting.update(TRUCK, null, camera, 0);
+    // Only the level goes: it tells the shaders to skip the rest.
+    expect(u['lampLevel']!.needsUpdate).not.toBe(false);
+    for (const name of others) {
+      expect(u[name]!.needsUpdate, name).toBe(false);
+    }
+
+    lighting.update(TRUCK, null, camera, 0.2);
+    for (const name of Object.keys(u)) {
+      expect(u[name]!.needsUpdate, name).not.toBe(false);
+    }
   });
 
   it("moves the truck's body into the camera's view as the box that keeps the vehicles' headlights off what lies beyond it", () => {
@@ -242,7 +276,7 @@ describe('LampLighting', () => {
       at = new Vector3(x, 0, z);
       facing = new Vector3(facingX, 0, facingZ);
       lighting.update(TRUCK, traffic, camera, 1);
-      return lighting.uniforms.trafficShaded.value[0]!;
+      return packed.trafficShaded(lighting.uniforms, 0);
     };
 
     // Following the truck, close or far behind it; coming the other way ahead of it; beside it, just behind its nose.
@@ -272,12 +306,12 @@ describe('LampLighting', () => {
     expect(u.streetLampCount.value).toBe(8);
     const view = camera.matrixWorldInverse;
     // The nearest first: the one at the pick point, the one 20 m off last.
-    expectClose(vec3(u.streetLamps.value, 0), new Vector3(LAMP_PICK_AHEAD_METERS, 7.4, 3).applyMatrix4(view));
-    expectClose(vec3(u.streetLamps.value, 7), new Vector3(LAMP_PICK_AHEAD_METERS + 20, 7.4, 3).applyMatrix4(view));
-    expectClose(vec3(u.streetLampFacing.value, 0), new Vector3(0, 0, -1).transformDirection(view));
-    expect([...u.streetLampFade.value.slice(0, 7)]).toEqual([1, 1, 1, 1, 1, 1, 1]);
+    expectClose(packed.streetLamp(u, 0), new Vector3(LAMP_PICK_AHEAD_METERS, 7.4, 3).applyMatrix4(view));
+    expectClose(packed.streetLamp(u, 7), new Vector3(LAMP_PICK_AHEAD_METERS + 20, 7.4, 3).applyMatrix4(view));
+    expectClose(packed.streetLampFacing(u, 0), new Vector3(0, 0, -1).transformDirection(view));
+    expect(fades(u, 7)).toEqual([1, 1, 1, 1, 1, 1, 1]);
     // It makes way for the next one out, 2 m further: a fifth of the 10 m it takes.
-    expect(u.streetLampFade.value[7]).toBeCloseTo(0.2, 6);
+    expect(packed.streetLampFade(u, 7)).toBeCloseTo(0.2, 6);
 
     // Far off, the lamps fade out: none past 90 m.
     const farCamera = cameraAt(80, 5, 3, new Vector3(300, 0, 3));
@@ -285,9 +319,9 @@ describe('LampLighting', () => {
     // Round x = 100: the lamp at x = 42, 58 m off, whole; the one at x = 15, 85 m off, a sixth of the way from 90 m
     // to 60 m; those at x = 10 and 5, 90 m off and more, not at all.
     expect(u.streetLampCount.value).toBe(7);
-    const fades = u.streetLampFade.value.slice(0, 7);
-    expect(fades[0]).toBe(1);
-    expect(fades[6]).toBeCloseTo(1 / 6, 6);
+    const faded = fades(u, 7);
+    expect(faded[0]).toBe(1);
+    expect(faded[6]).toBeCloseTo(1 / 6, 6);
     lighting.update(TRUCK, null, cameraAt(300, 5, 3, new Vector3(500, 0, 3)), 1);
     expect(u.streetLampCount.value).toBe(0);
 
@@ -297,7 +331,7 @@ describe('LampLighting', () => {
     fewer.update(TRUCK, null, camera, 1);
     expect(fewer.uniforms.streetLampCount.value).toBe(3);
     // The third, 5 m off, half-way to making way for the next, 10 m off.
-    expect(fewer.uniforms.streetLampFade.value[2]).toBeCloseTo(0.5, 6);
+    expect(packed.streetLampFade(fewer.uniforms, 2)).toBeCloseTo(0.5, 6);
   });
 
   it('picks the lamps the camera sees: ahead of it rather than behind it', () => {
@@ -309,7 +343,7 @@ describe('LampLighting', () => {
     lighting.update(TRUCK, null, camera, 1);
 
     expect(lighting.uniforms.streetLampCount.value).toBe(1);
-    expectClose(vec3(lighting.uniforms.streetLamps.value, 0), new Vector3(25, 7.4, 0).applyMatrix4(camera.matrixWorldInverse));
+    expectClose(packed.streetLamp(lighting.uniforms, 0), new Vector3(25, 7.4, 0).applyMatrix4(camera.matrixWorldInverse));
   });
 
   it('lights by the headlights of the vehicles nearest the camera, as bright as the traffic says', () => {
@@ -341,12 +375,12 @@ describe('LampLighting', () => {
     expect(asked).toEqual([MAX_TRAFFIC_VEHICLES]);
     expect(u.trafficLampCount.value).toBe(4);
     const view = camera.matrixWorldInverse;
-    expectClose(vec3(u.trafficLamps.value, 0), new Vector3(0.8, 0.7, 40).applyMatrix4(view));
-    expectClose(vec3(u.trafficLamps.value, 3), new Vector3(9.2, 0.7, 40).applyMatrix4(view));
-    expectClose(vec3(u.trafficForward.value, 1), new Vector3(0, 0, -1).transformDirection(view));
-    expectClose(vec3(u.trafficRight.value, 1), new Vector3(1, 0, 0).transformDirection(view));
-    expect(u.trafficStrength.value[0]).toBe(1);
-    expect(u.trafficStrength.value[1]).toBeCloseTo(0.4, 6);
+    expectClose(packed.trafficLamp(u, 0), new Vector3(0.8, 0.7, 40).applyMatrix4(view));
+    expectClose(packed.trafficLamp(u, 3), new Vector3(9.2, 0.7, 40).applyMatrix4(view));
+    expectClose(packed.trafficForward(u, 1), new Vector3(0, 0, -1).transformDirection(view));
+    expectClose(packed.trafficRight(u, 1), new Vector3(1, 0, 0).transformDirection(view));
+    expect(packed.trafficStrength(u, 0)).toBe(1);
+    expect(packed.trafficStrength(u, 1)).toBeCloseTo(0.4, 6);
 
     // No traffic, or none on weaker devices.
     lighting.update(TRUCK, null, camera, 1);

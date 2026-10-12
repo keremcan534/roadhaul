@@ -157,10 +157,12 @@ export class RenderHost {
   /**
    * Compiles the shaders of everything in the scene now, hidden things too
    * (the night's lamps, the rain), as render() will draw them, and the colour
-   * pass's own (the sun's shafts only where they are drawn, not in software):
-   * once, at boot, so the first frames on the road do not stall compiling
-   * them (in software a program takes a good part of a second). The GPU
-   * compiles them while the menu shows.
+   * pass's own (the sun's shafts only where they are drawn, not in software),
+   * so the first frames on the road do not stall compiling them (in software
+   * a program takes a good part of a second). At boot: part-way, so the GPU
+   * compiles those while the rest of the world is built, and at its end for
+   * the rest (what compiled already is not compiled again). The commands go
+   * to the GPU at once, not when the boot's long task ends.
    */
   precompile(): void {
     if (this.post === null) {
@@ -168,6 +170,7 @@ export class RenderHost {
     } else {
       this.post.compile(this.scene, this.camera, !this.softwareRendering);
     }
+    this.renderer.getContext().flush();
   }
 
   render(): void {

@@ -18,8 +18,8 @@ function smooth(t: number): number {
 }
 
 /**
- * Value noise at (u, v) in 0..1 texture space, with `cells` lattice cells
- * across the texture. Wraps at the texture edges. Returns 0..1.
+ * Value noise at (u, v) in 0..1 texture space, with `cells` (a whole number)
+ * lattice cells across the texture. Wraps at the texture edges. Returns 0..1.
  */
 export function tileableNoise(u: number, v: number, cells: number, seed: number): number {
   const x = u * cells;
@@ -28,11 +28,23 @@ export function tileableNoise(u: number, v: number, cells: number, seed: number)
   const y0 = Math.floor(y);
   const tx = smooth(x - x0);
   const ty = smooth(y - y0);
-  const wrap = (i: number): number => ((i % cells) + cells) % cells;
-  const a = latticeValue(wrap(x0), wrap(y0), seed);
-  const b = latticeValue(wrap(x0 + 1), wrap(y0), seed);
-  const c = latticeValue(wrap(x0), wrap(y0 + 1), seed);
-  const d = latticeValue(wrap(x0 + 1), wrap(y0 + 1), seed);
+  // The lattice wraps round the texture. In whole-number arithmetic, written out here without a closure or a call:
+  // the boot draws its textures through here a few million times, and a floating-point remainder in a closure made
+  // this the slowest line of the boot.
+  let ix = (x0 | 0) % (cells | 0);
+  if (ix < 0) {
+    ix += cells;
+  }
+  let iy = (y0 | 0) % (cells | 0);
+  if (iy < 0) {
+    iy += cells;
+  }
+  const jx = ix + 1 === cells ? 0 : ix + 1;
+  const jy = iy + 1 === cells ? 0 : iy + 1;
+  const a = latticeValue(ix, iy, seed);
+  const b = latticeValue(jx, iy, seed);
+  const c = latticeValue(ix, jy, seed);
+  const d = latticeValue(jx, jy, seed);
   return a + (b - a) * tx + (c - a) * ty + (a - b - c + d) * tx * ty;
 }
 

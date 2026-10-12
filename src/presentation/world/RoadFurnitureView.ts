@@ -14,6 +14,8 @@ import {
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { hypot2 } from '../../core/math/scalar';
+import { Buckets } from '../../domain/world/buckets';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import type { GuardRail } from '../../domain/world/guardRails';
 import { createRoadPoint } from '../../domain/world/RoadPath';
@@ -31,6 +33,8 @@ const POST_OUT_METERS = 1.9;
 const JUNCTION_CLEARANCE_METERS = 18;
 /** …and this far from a guard rail's posts. */
 const RAIL_CLEARANCE_METERS = 3;
+/** The rails' posts are filed in cells this big for asking whether a delineator post would stand by one. */
+const RAIL_CELL_METERS = 20;
 /**
  * Only the posts within this distance of the truck are drawn (further out
  * they are specks), gathered again whenever it has moved this far.
@@ -235,7 +239,7 @@ export class RoadFurnitureView {
   update(truckX: number, truckZ: number, heading: number): void {
     this.headlights.truck.value.set(truckX, 0, truckZ);
     this.headlights.forward.value.set(Math.sin(heading), 0, Math.cos(heading));
-    if (!(Math.hypot(truckX - this.gatheredX, truckZ - this.gatheredZ) < POST_REGATHER_METERS)) {
+    if (!(hypot2(truckX - this.gatheredX, truckZ - this.gatheredZ) < POST_REGATHER_METERS)) {
       this.gather(truckX, truckZ);
     }
   }
@@ -273,8 +277,15 @@ export class RoadFurnitureView {
     this.reflectors.count = count * 2;
     this.posts.visible = count > 0;
     this.reflectors.visible = count > 0;
-    this.posts.instanceMatrix.needsUpdate = true;
-    this.reflectors.instanceMatrix.needsUpdate = true;
+    // Only the posts drawn go to the GPU: the buffers hold room for every post on the map.
+    if (count > 0) {
+      this.posts.instanceMatrix.clearUpdateRanges();
+      this.posts.instanceMatrix.addUpdateRange(0, count * 16);
+      this.posts.instanceMatrix.needsUpdate = true;
+      this.reflectors.instanceMatrix.clearUpdateRanges();
+      this.reflectors.instanceMatrix.addUpdateRange(0, count * 32);
+      this.reflectors.instanceMatrix.needsUpdate = true;
+    }
   }
 
   /**
@@ -362,8 +373,20 @@ function postGeometryOf(): BufferGeometry {
 function delineatorSpots(world: DrivingWorld): { x: number; z: number; heading: number }[] {
   const spots: { x: number; z: number; heading: number }[] = [];
   const railPosts = world.guardRails.flatMap((rail) => rail.points);
-  const byRail = (x: number, z: number): boolean =>
-    railPosts.some(([railX, railZ]) => Math.hypot(railX - x, railZ - z) < RAIL_CLEARANCE_METERS);
+  // The rails' posts filed by cell, each over its clearance: a post asks only those in its cell.
+  const nearRails = new Buckets(RAIL_CELL_METERS, world.halfSizeMeters);
+  railPosts.forEach((post, id) =>
+    nearRails.add(id, post[0] - RAIL_CLEARANCE_METERS, post[0] + RAIL_CLEARANCE_METERS, post[1] - RAIL_CLEARANCE_METERS, post[1] + RAIL_CLEARANCE_METERS),
+  );
+  const byRail = (x: number, z: number): boolean => {
+    for (const id of nearRails.at(x, z)) {
+      const post = railPosts[id]!;
+      if (Math.hypot(post[0] - x, post[1] - z) < RAIL_CLEARANCE_METERS) {
+        return true;
+      }
+    }
+    return false;
+  };
   const point = createRoadPoint();
   for (const road of world.roads) {
     if (road.kind !== 'rural' && road.kind !== 'highway') {

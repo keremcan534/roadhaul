@@ -81,14 +81,28 @@ export function forestContains(forest: Forest, x: number, z: number): boolean {
 export function distanceToForestEdge(forest: Forest, x: number, z: number): number {
   const outline = forest.outline;
   let best = Number.POSITIVE_INFINITY;
+  let bestSquared = Number.POSITIVE_INFINITY;
   for (let i = 0; i < outline.length; i++) {
-    const [ax, az] = outline[i]!;
-    const [bx, bz] = outline[(i + 1) % outline.length]!;
+    // Indexed, not destructured: the world asks this for every tree it plants.
+    const a = outline[i]!;
+    const b = outline[i + 1 === outline.length ? 0 : i + 1]!;
+    const ax = a[0];
+    const az = a[1];
+    const bx = b[0];
+    const bz = b[1];
     const dx = bx - ax;
     const dz = bz - az;
     const lengthSquared = dx * dx + dz * dz;
     const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / lengthSquared)) : 0;
-    best = Math.min(best, Math.hypot(x - (ax + dx * t), z - (az + dz * t)));
+    const ex = x - (ax + dx * t);
+    const ez = z - (az + dz * t);
+    const squared = ex * ex + ez * ez;
+    // Only a side about as near as the nearest so far needs its exact distance (Math.hypot, as it always was): the
+    // same answer for a fraction of the calls.
+    if (squared <= bestSquared * (1 + 1e-9)) {
+      best = Math.min(best, Math.hypot(ex, ez));
+      bestSquared = Math.min(bestSquared, squared);
+    }
   }
   return best;
 }

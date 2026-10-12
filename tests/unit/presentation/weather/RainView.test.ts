@@ -114,14 +114,14 @@ describe('RainView', () => {
     new RainView(scene, 1, lamps.uniforms);
     const material = (scene.getObjectByName('rain') as Mesh).material as ShaderMaterial;
 
-    expect(material.uniforms['truckLamps']).toBe(lamps.uniforms.truckLamps);
+    expect(material.uniforms['lampData']).toBe(lamps.uniforms.lampData);
     expect(material.uniforms['lampLevel']).toBe(lamps.uniforms.lampLevel);
     expect(material.vertexShader).toContain('#define RAIN_LAMPS');
     expect(material.vertexShader).toContain('vec3 lampScatter(');
     // Without them, plain rain.
     const plain = setup().rain.material as ShaderMaterial;
     expect(plain.vertexShader).not.toContain('#define RAIN_LAMPS');
-    expect(plain.uniforms['truckLamps']).toBeUndefined();
+    expect(plain.uniforms['lampData']).toBeUndefined();
   });
 
   it('releases its GPU resources on dispose', () => {

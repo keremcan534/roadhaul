@@ -98,6 +98,19 @@ const STREET_LAMP_FADE_METERS = [60, 90] as const;
 const STREET_LAMP_SWAP_METERS = 10;
 /** Numbers per street lamp in LampLighting's list: where it is (x, y, z) and the way it faces (x, z). */
 const STREET_LAMP_STRIDE = 5;
+/**
+ * The lamps as the shaders read them, one array of vec4s (`lampData`):
+ * three.js sends a material's uniform arrays to the GPU every time a draw
+ * switches to it, without asking whether they changed, so one array goes
+ * where nine went. First the truck's two lamps (xyz); from `traffic`, four
+ * per vehicle: its left and right lamps (xyz; w its strength, then 1 where
+ * the truck shades their light), the way it faces and its right (xyz); from
+ * `street`, two per street lamp: where it is (xyz, w its fade) and the way
+ * it faces (xyz). `size` vec4s in all.
+ */
+const TRAFFIC_DATA = 2;
+const STREET_DATA = TRAFFIC_DATA + MAX_TRAFFIC_VEHICLES * 4;
+export const LAMP_DATA = { traffic: TRAFFIC_DATA, street: STREET_DATA, size: STREET_DATA + MAX_STREET_LAMPS * 2 } as const;
 /** Vehicles light the scene within this distance of the pick point. */
 const TRAFFIC_REACH_METERS = 160;
 /**
@@ -236,25 +249,29 @@ uniform float lampLevel;
 uniform vec3 lampUp;
 uniform vec3 headlightColor;
 uniform float headlightPeak;
-uniform vec3 truckLamps[ 2 ];
 uniform vec3 truckForward;
 uniform vec3 truckRight;
 uniform int trafficLampCount;
-uniform vec3 trafficLamps[ ${MAX_TRAFFIC_VEHICLES * 2} ];
-uniform vec3 trafficForward[ ${MAX_TRAFFIC_VEHICLES} ];
-uniform vec3 trafficRight[ ${MAX_TRAFFIC_VEHICLES} ];
-uniform float trafficStrength[ ${MAX_TRAFFIC_VEHICLES} ];
 uniform vec3 streetLampColor;
 uniform float streetLampPeak;
 uniform int streetLampCount;
-uniform vec3 streetLamps[ ${MAX_STREET_LAMPS} ];
-uniform vec3 streetLampFacing[ ${MAX_STREET_LAMPS} ];
-uniform float streetLampFade[ ${MAX_STREET_LAMPS} ];
 uniform vec3 truckBox;
 uniform vec3 truckBoxAlong;
 uniform vec3 truckBoxAcross;
 uniform vec3 truckBoxSize;
-uniform float trafficShaded[ ${MAX_TRAFFIC_VEHICLES} ];
+// Where the lamps are and how they shine, packed (LAMP_DATA): the truck's lamp i (0, 1); the vehicles' lamp i (two
+// each), and vehicle v's strength, whether the truck shades its light, the way it faces and its right; street lamp i,
+// its fade and the way it faces.
+uniform vec4 lampData[ ${LAMP_DATA.size} ];
+#define truckLamp( i ) lampData[ i ].xyz
+#define trafficLamp( i ) lampData[ ${TRAFFIC_DATA} + ( ( i ) / 2 ) * 4 + ( i ) % 2 ].xyz
+#define trafficStrength( v ) lampData[ ${TRAFFIC_DATA} + ( v ) * 4 ].w
+#define trafficShaded( v ) lampData[ ${TRAFFIC_DATA} + ( v ) * 4 + 1 ].w
+#define trafficForward( v ) lampData[ ${TRAFFIC_DATA} + ( v ) * 4 + 2 ].xyz
+#define trafficRight( v ) lampData[ ${TRAFFIC_DATA} + ( v ) * 4 + 3 ].xyz
+#define streetLamp( i ) lampData[ ${STREET_DATA} + ( i ) * 2 ].xyz
+#define streetLampFade( i ) lampData[ ${STREET_DATA} + ( i ) * 2 ].w
+#define streetLampFacing( i ) lampData[ ${STREET_DATA} + ( i ) * 2 + 1 ].xyz
 ${BEAMS}
 
 // How much of the light from \`lamp\` the truck's body keeps off \`at\` (both in view space), 0..1: all of it where
@@ -293,26 +310,26 @@ vec3 lampScatter( vec3 at ) {
   float headlit = 0.0;
   float streetlit = 0.0;
   for ( int i = 0; i < 2; i ++ ) {
-    vec3 toLamp = truckLamps[ i ] - at;
+    vec3 toLamp = truckLamp( i ) - at;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     headlit += headlightPeak * lowBeam( - toLamp * inversesqrt( distanceSq ), truckForward, truckRight ) / ( distanceSq + 1.0 );
   }
   for ( int i = 0; i < ${MAX_TRAFFIC_VEHICLES * 2}; i ++ ) {
     if ( i >= trafficLampCount ) break;
-    vec3 toLamp = trafficLamps[ i ] - at;
+    vec3 toLamp = trafficLamp( i ) - at;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
-    float light = headlightPeak * trafficStrength[ i / 2 ]
-      * lowBeam( - toLamp * inversesqrt( distanceSq ), trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
-    if ( light > 0.0 && trafficShaded[ i / 2 ] > 0.0 ) light *= 1.0 - truckBlocks( at, trafficLamps[ i ] );
+    float light = headlightPeak * trafficStrength( i / 2 )
+      * lowBeam( - toLamp * inversesqrt( distanceSq ), trafficForward( i / 2 ), trafficRight( i / 2 ) ) / ( distanceSq + 1.0 );
+    if ( light > 0.0 && trafficShaded( i / 2 ) > 0.0 ) light *= 1.0 - truckBlocks( at, trafficLamp( i ) );
     headlit += light;
   }
   for ( int i = 0; i < ${MAX_STREET_LAMPS}; i ++ ) {
     if ( i >= streetLampCount ) break;
-    vec3 toLamp = streetLamps[ i ] - at;
+    vec3 toLamp = streetLamp( i ) - at;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     if ( distanceSq > ${f(STREET_LAMP_RANGE_METERS * STREET_LAMP_RANGE_METERS)} ) continue;
-    streetlit += streetLampPeak * streetLampFade[ i ]
-      * streetLampBeam( - toLamp * inversesqrt( distanceSq ), streetLampFacing[ i ] ) / ( distanceSq + 1.0 );
+    streetlit += streetLampPeak * streetLampFade( i )
+      * streetLampBeam( - toLamp * inversesqrt( distanceSq ), streetLampFacing( i ) ) / ( distanceSq + 1.0 );
   }
   return ( headlightColor * headlit + streetLampColor * streetlit ) * lampLevel;
 }
@@ -362,7 +379,7 @@ if ( lampLevel > 0.0 ) {
   float headlit = 0.0;
   float streetlit = 0.0;
   for ( int i = 0; i < 2; i ++ ) {
-    vec3 toLamp = truckLamps[ i ] - vLampView;
+    vec3 toLamp = truckLamp( i ) - vLampView;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     vec3 toward = toLamp * inversesqrt( distanceSq );
     float light = headlightPeak * lowBeam( - toward, truckForward, truckRight ) / ( distanceSq + 1.0 );
@@ -370,20 +387,20 @@ if ( lampLevel > 0.0 ) {
   }
   for ( int i = 0; i < ${MAX_TRAFFIC_VEHICLES * 2}; i ++ ) {
     if ( i >= trafficLampCount ) break;
-    vec3 toLamp = trafficLamps[ i ] - vLampView;
+    vec3 toLamp = trafficLamp( i ) - vLampView;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     vec3 toward = toLamp * inversesqrt( distanceSq );
-    float light = headlightPeak * trafficStrength[ i / 2 ] * lowBeam( - toward, trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
-    if ( light > 0.0 && trafficShaded[ i / 2 ] > 0.0 ) light *= 1.0 - truckBlocks( vLampView, trafficLamps[ i ] );
+    float light = headlightPeak * trafficStrength( i / 2 ) * lowBeam( - toward, trafficForward( i / 2 ), trafficRight( i / 2 ) ) / ( distanceSq + 1.0 );
+    if ( light > 0.0 && trafficShaded( i / 2 ) > 0.0 ) light *= 1.0 - truckBlocks( vLampView, trafficLamp( i ) );
     headlit += lampSqueeze( light * lampFacing( toward, true ) );
   }
   for ( int i = 0; i < ${MAX_STREET_LAMPS}; i ++ ) {
     if ( i >= streetLampCount ) break;
-    vec3 toLamp = streetLamps[ i ] - vLampView;
+    vec3 toLamp = streetLamp( i ) - vLampView;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     if ( distanceSq > ${f(STREET_LAMP_RANGE_METERS * STREET_LAMP_RANGE_METERS)} ) continue;
     vec3 toward = toLamp * inversesqrt( distanceSq );
-    float light = streetLampPeak * streetLampFade[ i ] * streetLampBeam( - toward, streetLampFacing[ i ] ) / ( distanceSq + 1.0 );
+    float light = streetLampPeak * streetLampFade( i ) * streetLampBeam( - toward, streetLampFacing( i ) ) / ( distanceSq + 1.0 );
     streetlit += lampSqueeze( light * lampFacing( toward, false ) );
   }
   outgoingLight += diffuseColor.rgb * prelitAlbedo * ( headlightColor * headlit + streetLampColor * streetlit ) * ( lampLevel * RECIPROCAL_PI );
@@ -400,7 +417,7 @@ if ( lampLevel > 0.0 ) {
   IncidentLight lamp;
   lamp.visible = true;
   for ( int i = 0; i < 2; i ++ ) {
-    vec3 toLamp = truckLamps[ i ] - geometryPosition;
+    vec3 toLamp = truckLamp( i ) - geometryPosition;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     lamp.direction = toLamp * inversesqrt( distanceSq );
     float light = lampLevel * headlightPeak * lowBeam( - lamp.direction, truckForward, truckRight ) / ( distanceSq + 1.0 );
@@ -410,22 +427,22 @@ if ( lampLevel > 0.0 ) {
   }
   for ( int i = 0; i < ${MAX_TRAFFIC_VEHICLES * 2}; i ++ ) {
     if ( i >= trafficLampCount ) break;
-    vec3 toLamp = trafficLamps[ i ] - geometryPosition;
+    vec3 toLamp = trafficLamp( i ) - geometryPosition;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     lamp.direction = toLamp * inversesqrt( distanceSq );
-    float light = lampLevel * headlightPeak * trafficStrength[ i / 2 ] * lowBeam( - lamp.direction, trafficForward[ i / 2 ], trafficRight[ i / 2 ] ) / ( distanceSq + 1.0 );
-    if ( light > 0.0 && trafficShaded[ i / 2 ] > 0.0 ) light *= 1.0 - truckBlocks( geometryPosition, trafficLamps[ i ] );
+    float light = lampLevel * headlightPeak * trafficStrength( i / 2 ) * lowBeam( - lamp.direction, trafficForward( i / 2 ), trafficRight( i / 2 ) ) / ( distanceSq + 1.0 );
+    if ( light > 0.0 && trafficShaded( i / 2 ) > 0.0 ) light *= 1.0 - truckBlocks( geometryPosition, trafficLamp( i ) );
     float facing = max( dot( geometryNormal, lamp.direction ), 1e-3 );
     lamp.color = headlightColor * ( lampSqueeze( light * facing ) / facing );
     RE_Direct( lamp, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
   }
   for ( int i = 0; i < ${MAX_STREET_LAMPS}; i ++ ) {
     if ( i >= streetLampCount ) break;
-    vec3 toLamp = streetLamps[ i ] - geometryPosition;
+    vec3 toLamp = streetLamp( i ) - geometryPosition;
     float distanceSq = max( dot( toLamp, toLamp ), 1e-4 );
     if ( distanceSq > ${f(STREET_LAMP_RANGE_METERS * STREET_LAMP_RANGE_METERS)} ) continue;
     lamp.direction = toLamp * inversesqrt( distanceSq );
-    float light = lampLevel * streetLampPeak * streetLampFade[ i ] * streetLampBeam( - lamp.direction, streetLampFacing[ i ] ) / ( distanceSq + 1.0 );
+    float light = lampLevel * streetLampPeak * streetLampFade( i ) * streetLampBeam( - lamp.direction, streetLampFacing( i ) ) / ( distanceSq + 1.0 );
     float facing = max( dot( geometryNormal, lamp.direction ), 1e-3 );
     lamp.color = streetLampColor * ( lampSqueeze( light * facing ) / facing );
     RE_Direct( lamp, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
@@ -472,29 +489,27 @@ export class LampLighting {
     lampWetness: { value: 0 },
     headlightColor: { value: new Color(HEADLIGHT_COLOR) },
     headlightPeak: { value: HEADLIGHT_PEAK },
-    // The arrays are flat Float32Arrays: three.js hands those to WebGL as they are, where an array of vectors is
-    // flattened into a copy for every draw call of every lit material.
-    truckLamps: { value: new Float32Array(2 * 3) },
     truckForward: { value: new Vector3(0, 0, -1) },
     truckRight: { value: new Vector3(1, 0, 0) },
     trafficLampCount: { value: 0 },
-    trafficLamps: { value: new Float32Array(MAX_TRAFFIC_VEHICLES * 2 * 3) },
-    trafficForward: { value: new Float32Array(MAX_TRAFFIC_VEHICLES * 3) },
-    trafficRight: { value: new Float32Array(MAX_TRAFFIC_VEHICLES * 3) },
-    trafficStrength: { value: new Float32Array(MAX_TRAFFIC_VEHICLES) },
     streetLampColor: { value: new Color(STREET_LAMP_COLOR) },
     streetLampPeak: { value: STREET_LAMP_PEAK },
     streetLampCount: { value: 0 },
-    streetLamps: { value: new Float32Array(MAX_STREET_LAMPS * 3) },
-    streetLampFacing: { value: new Float32Array(MAX_STREET_LAMPS * 3) },
-    streetLampFade: { value: new Float32Array(MAX_STREET_LAMPS) },
     truckBox: { value: new Vector3() },
     truckBoxAlong: { value: new Vector3(0, 0, -1) },
     truckBoxAcross: { value: new Vector3(1, 0, 0) },
     truckBoxSize: { value: new Vector3() },
-    trafficShaded: { value: new Float32Array(MAX_TRAFFIC_VEHICLES) },
+    // The lamps themselves, packed (LAMP_DATA), in a flat Float32Array: three.js hands that to WebGL as it is, where
+    // an array of vectors is flattened into a copy for every draw call of every lit material.
+    lampData: { value: new Float32Array(LAMP_DATA.size * 4) },
   };
   private readonly lit = new WeakSet<Material>();
+  /** Every uniform but lampLevel, which three.js need not send while the lamps are off (sendLamps). */
+  private readonly lampUniforms: { value: unknown; needsUpdate?: boolean }[] = Object.entries(this.uniforms)
+    .filter(([name]) => name !== 'lampLevel')
+    .map(([, uniform]) => uniform);
+  /** Whether those are sent as it stands (three.js sends a uniform unless it says needsUpdate: false). */
+  private lampsSent = true;
   private readonly streetLampsShown: number;
   private readonly trafficShown: number;
   /** Every street lamp's light in the world: x, y, z and the way it faces (x, z) per lamp. */
@@ -573,6 +588,7 @@ export class LampLighting {
   update(truck: Headlamps, traffic: TrafficHeadlamps | null, camera: Camera, level: number): void {
     const u = this.uniforms;
     u.lampLevel.value = Math.max(0, level);
+    this.sendLamps(level > 0);
     if (level <= 0) {
       return;
     }
@@ -580,9 +596,10 @@ export class LampLighting {
     const view = camera.matrixWorldInverse;
     u.lampUp.value.set(0, 1, 0).transformDirection(view);
 
+    const data = u.lampData.value;
     truck.headlamps(this.left, this.right, this.forward);
-    this.left.applyMatrix4(view).toArray(u.truckLamps.value, 0);
-    this.right.applyMatrix4(view).toArray(u.truckLamps.value, 3);
+    this.left.applyMatrix4(view).toArray(data, 0);
+    this.right.applyMatrix4(view).toArray(data, 4);
     this.facing(this.forward, view, u.truckForward.value, u.truckRight.value);
     truck.bodyBox(this.boxMiddle, this.boxForward, u.truckBoxSize.value);
     u.truckBox.value.copy(this.boxMiddle).applyMatrix4(view);
@@ -605,17 +622,38 @@ export class LampLighting {
       );
     }
     for (let v = 0; v < vehicles; v++) {
-      this.scratch.copy(this.trafficWorld[v * 2]!).applyMatrix4(view).toArray(u.trafficLamps.value, v * 6);
-      this.scratch.copy(this.trafficWorld[v * 2 + 1]!).applyMatrix4(view).toArray(u.trafficLamps.value, v * 6 + 3);
+      // Four vec4s a vehicle (LAMP_DATA): its lamps (w: its strength, whether the truck shades it), forward, right.
+      const at = (TRAFFIC_DATA + v * 4) * 4;
+      this.scratch.copy(this.trafficWorld[v * 2]!).applyMatrix4(view).toArray(data, at);
+      this.scratch.copy(this.trafficWorld[v * 2 + 1]!).applyMatrix4(view).toArray(data, at + 4);
+      data[at + 3] = this.trafficStrength[v]!;
+      data[at + 7] = this.truckAhead(this.trafficWorld[v * 2]!, this.trafficHeading[v]!) ? 1 : 0;
       this.facing(this.trafficHeading[v]!, view, this.scratch, this.scratchRight);
-      this.scratch.toArray(u.trafficForward.value, v * 3);
-      this.scratchRight.toArray(u.trafficRight.value, v * 3);
-      u.trafficStrength.value[v] = this.trafficStrength[v]!;
-      u.trafficShaded.value[v] = this.truckAhead(this.trafficWorld[v * 2]!, this.trafficHeading[v]!) ? 1 : 0;
+      this.scratch.toArray(data, at + 8);
+      this.scratchRight.toArray(data, at + 12);
     }
     u.trafficLampCount.value = vehicles * 2;
 
     u.streetLampCount.value = this.nearestStreetLamps(pickX, pickZ, view);
+  }
+
+  /**
+   * Whether three.js sends the lamps' uniforms (all but lampLevel) to the
+   * GPU: it sends every uniform of a material each time a draw switches to
+   * it, the lamps' arrays without asking whether they changed, about half of
+   * every lit material's. By day the shaders skip the lamps (lampLevel 0) and
+   * none of it is needed; the frame the lamps come on, every material sends
+   * them again before it draws (three.js switches to each afresh every
+   * frame). Only when that changes: no allocation.
+   */
+  private sendLamps(send: boolean): void {
+    if (send === this.lampsSent) {
+      return;
+    }
+    this.lampsSent = send;
+    for (let i = 0; i < this.lampUniforms.length; i++) {
+      this.lampUniforms[i]!.needsUpdate = send;
+    }
   }
 
   /**
@@ -694,14 +732,16 @@ export class LampLighting {
     const next = Math.sqrt(nextSq);
     for (let slot = 0; slot < count; slot++) {
       const first = nearest[slot]! * STREET_LAMP_STRIDE;
-      this.scratch.set(at[first]!, at[first + 1]!, at[first + 2]!).applyMatrix4(view).toArray(u.streetLamps.value, slot * 3);
-      this.scratch.set(at[first + 3]!, 0, at[first + 4]!).transformDirection(view).toArray(u.streetLampFacing.value, slot * 3);
+      // Two vec4s a lamp (LAMP_DATA): where it is (w: its fade) and the way it faces.
+      const data = (STREET_DATA + slot * 2) * 4;
+      this.scratch.set(at[first]!, at[first + 1]!, at[first + 2]!).applyMatrix4(view).toArray(u.lampData.value, data);
+      this.scratch.set(at[first + 3]!, 0, at[first + 4]!).transformDirection(view).toArray(u.lampData.value, data + 4);
       const distance = Math.sqrt(nearestSq[slot]!);
       let fade = 1 - Math.min(1, Math.max(0, (distance - near) / (far - near)));
       if (slot === count - 1) {
         fade = Math.min(fade, Math.max(0, (next - distance) / STREET_LAMP_SWAP_METERS));
       }
-      u.streetLampFade.value[slot] = fade;
+      u.lampData.value[data + 3] = fade;
     }
     return count;
   }

@@ -7,12 +7,11 @@ import {
   IcosahedronGeometry,
   InstancedBufferAttribute,
   InstancedMesh,
-  Matrix4,
   MeshBasicMaterial,
-  Quaternion,
   Vector3,
   type Scene,
 } from 'three';
+import { hypot2 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import { rectangleContains } from '../../data/definitions/MapDefinition';
 import type { Fraction } from '../../data/units';
@@ -61,8 +60,6 @@ const WIND_BEND: Readonly<Record<RoadsideKind, number>> = { tuft: 0.28, flower: 
 /** The wind's time runs round this many seconds, so it keeps its precision. */
 const WIND_PERIOD_SECONDS = 3600;
 
-const UP = new Vector3(0, 1, 0);
-
 export interface RoadsideViewOptions {
   /** Share of the plants grown and how far away they are drawn (the graphics preset's). Default: 1. */
   readonly density?: Fraction;
@@ -74,12 +71,14 @@ export interface RoadsideViewOptions {
 
 /**
  * The plants grown along the roads through one cell, by kind: where each
- * stands and how it is turned and sized (PLACE_FLOATS each: x, z, turn,
- * scale), and its tint. Their matrices are made only for the plants drawn.
+ * stands and how it is turned and sized (PLACE_FLOATS each: x, z, the
+ * cosine and sine of its turn times its scale, and its scale: the terms of
+ * its matrix, so gathering it is a copy), and its tint. Their matrices are
+ * made only for the plants drawn.
  */
 type CellPlants = Readonly<Record<RoadsideKind, { readonly places: Float32Array; readonly colors: Float32Array }>>;
 
-const PLACE_FLOATS = 4;
+const PLACE_FLOATS = 5;
 
 /** What a cell's plants must keep clear of: whether the sea is near, and the fields and buildings that reach into it. */
 interface CellSurroundings {
@@ -113,10 +112,6 @@ export class RoadsideView {
   private readonly wind = { value: 0 };
   private readonly drawScale: number;
   private readonly point = createRoadPoint();
-  private readonly matrix = new Matrix4();
-  private readonly rotation = new Quaternion();
-  private readonly position = new Vector3();
-  private readonly size = new Vector3();
   private gatheredX = Number.NaN;
   private gatheredZ = Number.NaN;
 
@@ -192,7 +187,7 @@ export class RoadsideView {
    */
   update(cameraX: number, cameraZ: number, deltaSeconds: number): void {
     this.wind.value = (this.wind.value + deltaSeconds) % WIND_PERIOD_SECONDS;
-    const moved = Math.hypot(cameraX - this.gatheredX, cameraZ - this.gatheredZ);
+    const moved = hypot2(cameraX - this.gatheredX, cameraZ - this.gatheredZ);
     if (moved < REGATHER_METERS) {
       return;
     }
@@ -240,11 +235,27 @@ export class RoadsideView {
         const { places, colors: tints } = cell[kind];
         const take = Math.min(places.length / PLACE_FLOATS, capacity - count);
         for (let i = 0; i < take; i++) {
-          const scale = places[i * PLACE_FLOATS + 3]!;
-          this.rotation.setFromAxisAngle(UP, places[i * PLACE_FLOATS + 2]!);
-          this.position.set(places[i * PLACE_FLOATS]!, 0, places[i * PLACE_FLOATS + 1]!);
-          this.size.set(scale, scale * flatten, scale);
-          this.matrix.compose(this.position, this.rotation, this.size).toArray(matrices, (count + i) * 16);
+          // Turned about y and scaled (y flattened for bushes): what Matrix4.compose gives, without its trigonometry.
+          const p = i * PLACE_FLOATS;
+          const m = (count + i) * 16;
+          const cosine = places[p + 2]!;
+          const sine = places[p + 3]!;
+          matrices[m] = cosine;
+          matrices[m + 1] = 0;
+          matrices[m + 2] = -sine;
+          matrices[m + 3] = 0;
+          matrices[m + 4] = 0;
+          matrices[m + 5] = places[p + 4]! * flatten;
+          matrices[m + 6] = 0;
+          matrices[m + 7] = 0;
+          matrices[m + 8] = sine;
+          matrices[m + 9] = 0;
+          matrices[m + 10] = cosine;
+          matrices[m + 11] = 0;
+          matrices[m + 12] = places[p]!;
+          matrices[m + 13] = 0;
+          matrices[m + 14] = places[p + 1]!;
+          matrices[m + 15] = 1;
           colors[(count + i) * 3] = tints[i * 3]!;
           colors[(count + i) * 3 + 1] = tints[i * 3 + 1]!;
           colors[(count + i) * 3 + 2] = tints[i * 3 + 2]!;
@@ -254,8 +265,15 @@ export class RoadsideView {
     }
     mesh.count = count;
     mesh.visible = count > 0;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor!.needsUpdate = true;
+    // Only the plants drawn go to the GPU, not the whole capacity.
+    if (count > 0) {
+      mesh.instanceMatrix.clearUpdateRanges();
+      mesh.instanceMatrix.addUpdateRange(0, count * 16);
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor!.clearUpdateRanges();
+      mesh.instanceColor!.addUpdateRange(0, count * 3);
+      mesh.instanceColor!.needsUpdate = true;
+    }
   }
 
   /** The plants along the roads through the cell `key`, grown now if they have not been yet; null where no road runs. */
@@ -302,7 +320,7 @@ export class RoadsideView {
             const turn = random.range(0, Math.PI * 2);
             const tone = shade * random.range(0.94, 1.06);
             if (this.free(x, z)) {
-              found[kind].push(x, z, turn, scale);
+              found[kind].push(x, z, Math.cos(turn) * scale, Math.sin(turn) * scale, scale);
               // Greens that vary, some grass drier; flowers keep their colours.
               if (kind === 'flower') {
                 tint[kind].push(tone, tone, tone);

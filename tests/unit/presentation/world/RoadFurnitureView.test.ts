@@ -126,6 +126,9 @@ describe('RoadFurnitureView', () => {
     expect(near.length).toBeLessThan(view.counts.posts / 3);
     expect(view.counts.drawnPosts).toBe(near.length);
     expect(reflectors.count).toBe(near.length * 2);
+    // Only those go to the GPU, not room for every post on the map.
+    expect(posts.instanceMatrix.updateRanges).toEqual([{ start: 0, count: near.length * 16 }]);
+    expect(reflectors.instanceMatrix.updateRanges).toEqual([{ start: 0, count: near.length * 32 }]);
     for (const post of near) {
       expect(Math.hypot(post.x - point.x, post.z - point.z)).toBeLessThanOrEqual(300);
     }

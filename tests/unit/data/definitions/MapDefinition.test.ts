@@ -490,4 +490,26 @@ describe('rectangles', () => {
     expect(rectangleContains(rectangle, ...at(0, 3), 1.01)).toBe(true);
     expect(rectangleContains(rectangle, ...at(6.1, 0), 1)).toBe(false);
   });
+
+  it('holds its corners, grown or not, and nothing past them: the quick look from afar answers as the full one', () => {
+    for (const margin of [0, 0.5, 3]) {
+      for (const [l, w] of [
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
+      ] as const) {
+        const cornerL = l * (5 + margin);
+        const cornerW = w * (2 + margin);
+        expect(rectangleContains(rectangle, ...at(cornerL * 0.999999, cornerW * 0.999999), margin)).toBe(true);
+        expect(rectangleContains(rectangle, ...at(cornerL * 1.0001, cornerW), margin)).toBe(false);
+        expect(rectangleContains(rectangle, ...at(cornerL, cornerW * 1.0001), margin)).toBe(false);
+      }
+    }
+    // Far off in any direction: out.
+    for (let turn = 0; turn < 16; turn++) {
+      const angle = (turn / 16) * Math.PI * 2;
+      expect(rectangleContains(rectangle, rectangle.x + 40 * Math.sin(angle), rectangle.z + 40 * Math.cos(angle), 3)).toBe(false);
+    }
+  });
 });

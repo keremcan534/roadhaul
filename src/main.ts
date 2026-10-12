@@ -330,6 +330,21 @@ async function start(strings: Strings): Promise<void> {
     cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
     seasons: seasonShading,
   });
+  /**
+   * Shades what is in the scene so far, each material once: the clouds' shadows and the morning mist on the land (not
+   * drawn in software, where every pixel's instructions count: the sky and its hills still show the mist), the lamps'
+   * light on everything, and the seasons. Before its shaders compile.
+   */
+  const shadeScene = (): void => {
+    if (!software) {
+      cloudShadows.shadeScene(renderHost.scene, prelit);
+      environment.mist.shadeScene(renderHost.scene);
+    }
+    if (lampLight) {
+      lampLighting.lightScene(renderHost.scene, prelit);
+    }
+    seasonShading.shadeScene(renderHost.scene);
+  };
   const track = new TrackView(renderHost.scene, driving.world, {
     anisotropy: renderHost.anisotropy,
     prelit,
@@ -378,6 +393,10 @@ async function start(strings: Strings): Promise<void> {
     prelit,
     seasons: seasonShading,
   });
+  // The GPU compiles the shaders of the land, the roads, the buildings, the trees, the lamps and the fields while the
+  // rest of the world is built: a phone takes seconds over them, which would otherwise all come at the end of the boot.
+  shadeScene();
+  renderHost.precompile();
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
   // At night the towns glow on the horizon, over their depots.
   environment.setTowns(driving.world.depots.map((depot) => depot.yard));
@@ -710,14 +729,7 @@ async function start(strings: Strings): Promise<void> {
       truck = new TruckView(renderHost.scene, definition, options);
       // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it), and the
       // clouds shade it.
-      if (!software) {
-        cloudShadows.shadeScene(renderHost.scene, prelit);
-        environment.mist.shadeScene(renderHost.scene);
-      }
-      if (lampLight) {
-        lampLighting.lightScene(renderHost.scene, prelit);
-      }
-      seasonShading.shadeScene(renderHost.scene);
+      shadeScene();
       cameraRig.setBody(definition.body);
       showCamera(onRoad());
     }
@@ -2069,17 +2081,8 @@ async function start(strings: Strings): Promise<void> {
         : config.simulation.maxFrameDeltaSeconds,
     },
   );
-  // Every view is in the scene: the clouds' shadows and the morning mist on the land (not drawn in software, where
-  // every pixel's instructions count: the sky and its hills still show the mist), the lamps' light on everything, and
-  // the GPU compiling the shaders now, behind the menu, not on the road.
-  if (!software) {
-    cloudShadows.shadeScene(renderHost.scene, prelit);
-    environment.mist.shadeScene(renderHost.scene);
-  }
-  if (lampLight) {
-    lampLighting.lightScene(renderHost.scene, prelit);
-  }
-  seasonShading.shadeScene(renderHost.scene);
+  // Every view is in the scene: the rest of it shaded, and its shaders compiled now, behind the menu, not on the road.
+  shadeScene();
   renderHost.precompile();
   loop.start();
   root.dataset.bootState = 'ready';
