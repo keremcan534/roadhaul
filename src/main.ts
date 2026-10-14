@@ -19,6 +19,7 @@ import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, type StartPlace } from './domain/world/startPlaces';
+import { damagePerformance } from './domain/vehicles/vehicleDamage';
 import {
   brakePedalOf,
   combineVehicleInputs,
@@ -196,6 +197,8 @@ const CLOCK_KEEP_SECONDS = 30;
 const HQ_TICK_SECONDS = 0.5;
 /** Debug (`?debug`): F runs the fleet and the rivals this many seconds on. */
 const FLEET_FAST_FORWARD_SECONDS = 600;
+/** The main menu checks the earnings boost's time left this often, ms. */
+const EARNINGS_BOOST_REFRESH_MS = 15_000;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
 /** From this thick (0..1, morningMist) the mist hides the road ahead: the driver is told. */
@@ -777,6 +780,7 @@ async function start(strings: Strings): Promise<void> {
     },
     onSettings: () => openSettings(),
     onShop: () => openShop(),
+    onEarningsBoost: () => startEarningsBoost(),
   });
   /**
    * The main menu as the save stands: the saved company's card (its truck
@@ -1010,7 +1014,31 @@ async function start(strings: Strings): Promise<void> {
   const showPurchaseOptions = (): void => {
     settingsDialog.showPurchaseOptions(monetization.storeEnabled, monetization.privacyOptionsRequired);
     mainMenu.shopVisible = monetization.storeEnabled;
+    showEarningsBoost();
   };
+  /** The main menu's earnings boost: on offer, or its time left (checked every so often: a minute ticks by). */
+  const showEarningsBoost = (): void => {
+    const boost = monetization.earningsBoost;
+    mainMenu.earningsBoost = {
+      percent: strings.percent(boost.share),
+      minutes: boost.minutes,
+      minutesLeft: boost.minutesLeft,
+      offered: boost.offered,
+      withAd: !monetization.adsRemoved,
+    };
+  };
+  const startEarningsBoost = (): void => {
+    void monetization.startEarningsBoost().then((started) => {
+      if (started.ok) {
+        const boost = monetization.earningsBoost;
+        toasts.show(strings.t('toast.boostStarted', { percent: strings.percent(boost.share), minutes: boost.minutes }), 'success');
+      } else if (started.error !== 'used') {
+        boostFailed(started.error);
+      }
+      showEarningsBoost();
+    });
+  };
+  window.setInterval(showEarningsBoost, EARNINGS_BOOST_REFRESH_MS);
   /** The controls as set now, for their page. */
   const controlsShown = () => ({
     steering: settings.steering,
@@ -1235,7 +1263,7 @@ async function start(strings: Strings): Promise<void> {
     }
     hq.close();
     showHud();
-    tilt.recenter();
+    tilt.level();
   };
   /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
   let pausedForMap = false;
@@ -1366,6 +1394,10 @@ async function start(strings: Strings): Promise<void> {
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
     result.showCompleted(delivery.mission, delivery, economy.credits);
+    // The earnings boost's share, already paid, as a line of its own.
+    if (monetization.earningsBoostPaid > 0) {
+      result.showEarningsBoost(strings.percent(monetization.earningsBoost.share), monetization.earningsBoostPaid);
+    }
     // A share of the pay again for a rewarded ad, if the player wants it (none in a build without ads).
     const bonus = monetization.deliveryBonusOffer;
     if (bonus > 0) {
@@ -1425,7 +1457,8 @@ async function start(strings: Strings): Promise<void> {
   });
   events.on('VehicleDamaged', ({ damage: total, addedDamage }) => {
     if (addedDamage >= 0.02) {
-      toasts.show(strings.t('toast.truckDamaged', { percent: strings.percent(total) }), 'warning');
+      const engine = strings.percent(1 - damagePerformance(total).torqueFactor);
+      toasts.show(strings.t('toast.truckDamaged', { percent: strings.percent(total), engine }), 'warning');
     }
   });
   events.on('TutorialStepChanged', ({ step, previous }) => {
@@ -1552,13 +1585,14 @@ async function start(strings: Strings): Promise<void> {
     mainMenu.visible = state === 'mainMenu';
     if (state === 'mainMenu') {
       showMainMenu();
+      showEarningsBoost();
     }
     if (!drivingNow) {
       hq.close();
       toasts.clear();
     } else {
-      // Into the game: straight ahead the way the phone is held, in D.
-      tilt.recenter();
+      // Into the game: straight ahead with the phone held level, in D.
+      tilt.level();
       touch.gear = 'drive';
       if (tilt.status === 'locked') {
         toasts.show(strings.t('toast.tiltLocked'), 'info');

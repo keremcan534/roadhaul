@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HARMLESS_IMPACT_SPEED, TRUCK_WRECKING_IMPACT_SPEED } from '../../../../src/domain/vehicles/vehicleDamage';
 import { EventBus } from '../../../../src/core/events/EventBus';
 import { MemoryStorage } from '../../../../src/core/storage/KeyValueStorage';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
@@ -102,7 +103,7 @@ function setup(storage = new MemoryStorage()) {
   const events = new EventBus<GameEvents>(logger);
   const content = ContentCatalog.create(contentFixture());
   const driving = new DrivingService(content, events, logger);
-  const economy = new EconomyService(events, { fuelPricePerLiter: 10, roadsideFuelPriceFactor: 2, fullRepairCost: 6000 }, logger);
+  const economy = new EconomyService(events, { fuelPricePerLiter: 10, roadsideFuelPriceFactor: 2, fullRepairShare: 0.3 }, logger);
   const damage = new DamageService(driving, economy, events, logger);
   const fuel = new FuelService(driving, damage, economy, events, { consumptionScale: 100, lowFuelFraction: 0.15 }, logger);
   driving.start('test_truck', 'test_map');
@@ -126,6 +127,9 @@ function setup(storage = new MemoryStorage()) {
     });
   return { events, economy, damage, fuel, monetization, ads, store, clock, storage, deliver };
 }
+
+/** An impact that does a quarter of the damage that wrecks a truck (past the harmless bump), m/s. */
+const QUARTER_DAMAGE_IMPACT = HARMLESS_IMPACT_SPEED + (TRUCK_WRECKING_IMPACT_SPEED - HARMLESS_IMPACT_SPEED) / 2;
 
 describe('MonetizationService without ads', () => {
   it('offers nothing and shows nothing: the web game, and builds without ads', async () => {
@@ -204,7 +208,7 @@ describe('the service discount', () => {
   it('repairs at half price after the ad, a few times a day', async () => {
     const context = setup();
     context.monetization.attachAds(context.ads);
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
 
     expect(context.monetization.serviceDiscountOffer).toEqual({ discount: 0.5, left: 2 });
     expect(await context.monetization.repairWithAd()).toEqual({ ok: true, value: 750 });
@@ -231,7 +235,7 @@ describe('the service discount', () => {
 
     expect(await context.monetization.repairWithAd()).toEqual({ ok: false, error: 'notDamaged' });
     expect(await context.monetization.refuelWithAd()).toEqual({ ok: false, error: 'tankFull' });
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
     context.economy.restore(100);
     expect(await context.monetization.repairWithAd()).toEqual({ ok: false, error: 'insufficientFunds' });
     expect(context.ads.rewarded).toBe(0);
@@ -242,10 +246,10 @@ describe('the service discount', () => {
     const context = setup(storage);
     context.monetization.attachAds(context.ads);
     for (let use = 0; use < 2; use++) {
-      context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+      context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
       expect((await context.monetization.repairWithAd()).ok).toBe(true);
     }
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
     expect(context.monetization.serviceDiscountOffer).toBeNull();
     expect(await context.monetization.repairWithAd()).toEqual({ ok: false, error: 'used' });
 
@@ -350,5 +354,52 @@ describe('purchases', () => {
     expect(context.monetization.storeEnabled).toBe(false);
     expect(await context.monetization.buy('premium_paints')).toBe('failed');
     expect(await context.monetization.restorePurchases()).toBe(false);
+  });
+});
+
+describe('the earnings boost', () => {
+  it("adds its share to every delivery's pay for an hour after the ad, kept across restarts", async () => {
+    const context = setup();
+    context.monetization.attachAds(context.ads);
+    const moves: GameEvents['MoneyChanged'][] = [];
+    context.events.on('MoneyChanged', (event) => moves.push(event));
+    expect(context.monetization.earningsBoost).toEqual({ share: 0.25, minutes: 60, minutesLeft: 0, offered: true });
+
+    const started = await context.monetization.startEarningsBoost();
+    expect(started).toEqual({ ok: true, value: context.clock.nowMs + 60 * 60_000 });
+    expect(context.ads.rewarded).toBe(1);
+    expect(context.monetization.earningsBoost).toMatchObject({ minutesLeft: 60, offered: false });
+
+    context.deliver(1000);
+    expect(context.economy.credits).toBe(11_250);
+    expect(context.monetization.earningsBoostPaid).toBe(250);
+    expect(moves.at(-1)).toMatchObject({ reason: 'adBoost' });
+    // On already: no second ad.
+    expect(await context.monetization.startEarningsBoost()).toEqual({ ok: false, error: 'used' });
+
+    // The game closed and opened again 30 minutes on: still on.
+    context.clock.nowMs += 30 * 60_000;
+    const again = setup(context.storage);
+    again.clock.nowMs = context.clock.nowMs;
+    again.monetization.attachAds(again.ads);
+    expect(again.monetization.earningsBoost.minutesLeft).toBe(30);
+    again.deliver(400);
+    expect(again.monetization.earningsBoostPaid).toBe(100);
+
+    // Past the hour: over, and on offer again.
+    again.clock.nowMs += 31 * 60_000;
+    again.deliver(400);
+    expect(again.monetization.earningsBoostPaid).toBe(0);
+    expect(again.monetization.earningsBoost).toMatchObject({ minutesLeft: 0, offered: true });
+  });
+
+  it('starts only after an ad watched to its end, and none is offered without an ad ready', async () => {
+    const context = setup();
+    context.monetization.attachAds(context.ads);
+    context.ads.next = 'skipped';
+    expect(await context.monetization.startEarningsBoost()).toEqual({ ok: false, error: 'skipped' });
+    expect(context.monetization.earningsBoost.minutesLeft).toBe(0);
+    context.ads.ready = false;
+    expect(context.monetization.earningsBoost.offered).toBe(false);
   });
 });

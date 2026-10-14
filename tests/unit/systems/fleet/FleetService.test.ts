@@ -155,7 +155,8 @@ describe('FleetService', () => {
     const incidents = delivered.filter((job) => job.incident).length;
     expect(incidents).toBe(1);
     expect(repaired).toHaveLength(incidents);
-    expect(repaired[0]).toEqual({ driverId: 'driver_kemal', instanceId: 'truck_002', cost: 3000 });
+    // Half a wrecked RoadHaul H1: half of a quarter of its 12 000 credits.
+    expect(repaired[0]).toEqual({ driverId: 'driver_kemal', instanceId: 'truck_002', cost: 1500 });
     // Out of the workshop as good as new.
     expect(game.garage.trucks[1]!.damage).toBeLessThan(0.5);
   });

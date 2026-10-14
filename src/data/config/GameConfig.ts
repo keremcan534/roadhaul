@@ -69,8 +69,8 @@ export interface GameConfig {
     readonly fuelPricePerLiter: Credits;
     /** Fuel brought to a truck stranded on the road costs this many times the pump price. */
     readonly roadsideFuelPriceFactor: number;
-    /** Repairing a truck from 100% damage costs this much; less damage costs proportionally less. */
-    readonly fullRepairCost: Credits;
+    /** Repairing a truck from 100% damage costs this share of its price; less damage costs proportionally less. */
+    readonly fullRepairShare: Fraction;
   };
   readonly fuel: {
     /**
@@ -237,6 +237,10 @@ export interface GameConfig {
     readonly interstitialEveryDeliveries: number;
     /** …and never two closer than this, seconds (a rewarded ad counts too). */
     readonly interstitialMinSeconds: number;
+    /** A rewarded ad from the main menu adds this share to every delivery's pay… */
+    readonly earningsBoostShare: Fraction;
+    /** …for this many minutes of the clock (the game open or not). */
+    readonly earningsBoostMinutes: number;
   };
   readonly debug: {
     readonly logLevel: LogLevel;
@@ -360,7 +364,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   economy: {
     fuelPricePerLiter: 12,
     roadsideFuelPriceFactor: 2,
-    fullRepairCost: 6000,
+    fullRepairShare: 0.25,
   },
   fuel: {
     consumptionScale: 10,
@@ -443,6 +447,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     interstitialFirstAfterDeliveries: 3,
     interstitialEveryDeliveries: 3,
     interstitialMinSeconds: 480,
+    earningsBoostShare: 0.25,
+    earningsBoostMinutes: 60,
   },
   debug: {
     logLevel: 'info',
@@ -582,7 +588,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     'economy.roadsideFuelPriceFactor',
     'must be at least 1',
   );
-  validator.positiveInteger(economy.fullRepairCost, 'economy.fullRepairCost');
+  validator.check(economy.fullRepairShare > 0 && economy.fullRepairShare <= 1, 'economy.fullRepairShare', 'must be greater than 0 and at most 1');
   validator.positiveNumber(fuel.consumptionScale, 'fuel.consumptionScale');
   validator.fraction(fuel.lowFuelFraction, 'fuel.lowFuelFraction');
   validator.check(
@@ -777,4 +783,10 @@ function validateMonetization(validator: Validator, monetization: GameConfig['mo
     'monetization.interstitialMinSeconds',
     'must be zero or more',
   );
+  validator.check(
+    monetization.earningsBoostShare > 0 && monetization.earningsBoostShare <= 1,
+    'monetization.earningsBoostShare',
+    'must be greater than 0 and at most 1',
+  );
+  validator.positiveInteger(monetization.earningsBoostMinutes, 'monetization.earningsBoostMinutes');
 }

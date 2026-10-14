@@ -458,10 +458,11 @@ export class FleetService {
     if (job.incident) {
       this.garage.wearTruck(instanceId, this.config.incidentDamage);
     }
-    const damage = this.garage.trucks.find((truck) => truck.instanceId === instanceId)?.damage ?? 0;
+    const truck = this.garage.trucks.find((candidate) => candidate.instanceId === instanceId);
+    const damage = truck?.damage ?? 0;
     let repairCost: Credits | null = null;
-    if (damage >= this.config.repairAtDamage) {
-      const cost = this.economy.repairCost(damage);
+    if (truck !== undefined && damage >= this.config.repairAtDamage) {
+      const cost = this.economy.repairCost(damage, truck.definition.purchasePrice);
       // Without the money for it, the truck goes on as it is: a damaged truck burns more.
       if (this.economy.spend(cost, 'repair').ok) {
         this.garage.mendTruck(instanceId);

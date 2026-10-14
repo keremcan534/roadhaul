@@ -28,6 +28,9 @@ async function companyWith(facilityIds: readonly string[], level = 5): Promise<G
   return game;
 }
 
+/** A truck's price, for what repairing it costs. */
+const TRUCK_PRICE = 12_000;
+
 describe('FacilityService', () => {
   it('offers every facility unbuilt, the first level of each, locking those above the company level', async () => {
     const game = await newCompany(1, 5000);
@@ -99,11 +102,13 @@ describe('FacilityService', () => {
   it('takes a share off repairs and diesel, for the truck being driven and the pump alike', async () => {
     const plain = await newCompany(5, 500_000);
     const built = await companyWith(['workshop', 'fuel_depot']);
-    const { fuelPricePerLiter, roadsideFuelPriceFactor, fullRepairCost } = DEFAULT_GAME_CONFIG.economy;
+    const { fuelPricePerLiter, roadsideFuelPriceFactor } = DEFAULT_GAME_CONFIG.economy;
+    // A full repair of a truck at this price.
+    const fullRepairCost = TRUCK_PRICE * DEFAULT_GAME_CONFIG.economy.fullRepairShare;
 
-    expect(plain.economy.repairCost(1)).toBe(fullRepairCost);
-    expect(built.economy.repairCost(1)).toBe(Math.ceil(fullRepairCost * 0.85 - 1e-9));
-    expect(built.economy.repairCost(0.5)).toBe(Math.ceil(fullRepairCost * 0.85 * 0.5 - 1e-9));
+    expect(plain.economy.repairCost(1, TRUCK_PRICE)).toBe(fullRepairCost);
+    expect(built.economy.repairCost(1, TRUCK_PRICE)).toBe(Math.ceil(fullRepairCost * 0.85 - 1e-9));
+    expect(built.economy.repairCost(0.5, TRUCK_PRICE)).toBe(Math.ceil(fullRepairCost * 0.85 * 0.5 - 1e-9));
     expect(plain.economy.fuelPricePerLiter()).toBe(fuelPricePerLiter);
     expect(built.economy.fuelPricePerLiter()).toBeCloseTo(fuelPricePerLiter * 0.9, 9);
     expect(built.economy.fuelPricePerLiter(true)).toBeCloseTo(fuelPricePerLiter * roadsideFuelPriceFactor * 0.9, 9);
@@ -220,13 +225,13 @@ describe('FacilityService', () => {
     expect(second.facilities.levelOf('workshop')).toBe(2);
     expect(second.facilities.levelOf('truck_yard')).toBe(1);
     expect(second.facilities.levelOf('fuel_depot')).toBe(0);
-    expect(second.economy.repairCost(1)).toBe(Math.ceil(DEFAULT_GAME_CONFIG.economy.fullRepairCost * 0.7 - 1e-9));
+    expect(second.economy.repairCost(1, TRUCK_PRICE)).toBe(Math.ceil(TRUCK_PRICE * DEFAULT_GAME_CONFIG.economy.fullRepairShare * 0.7 - 1e-9));
     expect(second.garage.capacity).toBe(first.garage.capacity);
 
     // A new company starts without any.
     second.session.startNewGame('Güney Nakliyat');
     expect(second.facilities.offers().every((offer) => offer.level === 0)).toBe(true);
-    expect(second.economy.repairCost(1)).toBe(DEFAULT_GAME_CONFIG.economy.fullRepairCost);
+    expect(second.economy.repairCost(1, TRUCK_PRICE)).toBe(TRUCK_PRICE * DEFAULT_GAME_CONFIG.economy.fullRepairShare);
   });
 
   it('takes a save as the content has it: a facility it no longer has dropped, a level past the top cut to it', async () => {
@@ -234,6 +239,6 @@ describe('FacilityService', () => {
     game.facilities.restore({ levels: { workshop: 9, casino: 2, fuel_depot: 1.5 } });
 
     expect(game.facilities.snapshot()).toEqual({ levels: { workshop: 3 } });
-    expect(game.economy.repairCost(1)).toBe(Math.ceil(DEFAULT_GAME_CONFIG.economy.fullRepairCost * 0.55 - 1e-9));
+    expect(game.economy.repairCost(1, TRUCK_PRICE)).toBe(Math.ceil(TRUCK_PRICE * DEFAULT_GAME_CONFIG.economy.fullRepairShare * 0.55 - 1e-9));
   });
 });

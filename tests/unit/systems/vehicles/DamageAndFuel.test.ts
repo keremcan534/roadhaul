@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { HARMLESS_IMPACT_SPEED, TRUCK_WRECKING_IMPACT_SPEED } from '../../../../src/domain/vehicles/vehicleDamage';
 import { EventBus } from '../../../../src/core/events/EventBus';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { DrivingService } from '../../../../src/systems/driving/DrivingService';
@@ -21,7 +22,7 @@ function setup(credits = 10_000) {
   const events = new EventBus<GameEvents>(logger);
   const content = ContentCatalog.create(contentFixture());
   const driving = new DrivingService(content, events, logger);
-  const economy = new EconomyService(events, { fuelPricePerLiter: 10, roadsideFuelPriceFactor: 2, fullRepairCost: 6000 }, logger);
+  const economy = new EconomyService(events, { fuelPricePerLiter: 10, roadsideFuelPriceFactor: 2, fullRepairShare: 0.3 }, logger);
   const damage = new DamageService(driving, economy, events, logger);
   const fuel = new FuelService(driving, damage, economy, events, { consumptionScale: 100, lowFuelFraction: 0.15 }, logger);
   driving.start('test_truck', 'test_map');
@@ -49,13 +50,16 @@ function driveFor(context: ReturnType<typeof setup>, seconds: number, throttle =
   }
 }
 
+/** An impact that does a quarter of the damage that wrecks a truck (past the harmless bump), m/s. */
+const QUARTER_DAMAGE_IMPACT = HARMLESS_IMPACT_SPEED + (TRUCK_WRECKING_IMPACT_SPEED - HARMLESS_IMPACT_SPEED) / 2;
+
 describe('DamageService', () => {
   it('damages the truck in collisions and weakens it, by band (spec §18)', () => {
     const context = setup();
     const damaged: GameEvents['VehicleDamaged'][] = [];
     context.events.on('VehicleDamaged', (event) => damaged.push(event));
 
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
 
     expect(context.damage.damage).toBeCloseTo(0.25, 9);
     expect(context.damage.band).toBe('damaged');
@@ -77,7 +81,7 @@ describe('DamageService', () => {
 
   it('repairs for money, restoring full strength', () => {
     const context = setup(2000);
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
 
     expect(context.damage.repair()).toEqual({ ok: true, value: 1500 });
 
@@ -88,7 +92,7 @@ describe('DamageService', () => {
 
   it('repairs only in a depot yard or at a rest area', () => {
     const context = setup();
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
     parkOnTheRoad(context.driving);
 
     expect(context.damage.atWorkshop).toBe(false);
@@ -102,7 +106,7 @@ describe('DamageService', () => {
 
   it('refuses a repair the company cannot afford', () => {
     const context = setup(100);
-    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: 14 });
+    context.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: QUARTER_DAMAGE_IMPACT });
 
     expect(context.damage.repair()).toEqual({ ok: false, error: 'insufficientFunds' });
     expect(context.damage.damage).toBeCloseTo(0.25, 9);

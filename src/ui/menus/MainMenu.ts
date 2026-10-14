@@ -22,6 +22,20 @@ export interface MainMenuActions {
   readonly onSettings: () => void;
   /** The shop: shown only where purchases can be made (shopVisible). */
   readonly onShop: () => void;
+  /** Starts the earnings boost (after its ad): offered only when it can be (earningsBoost). */
+  readonly onEarningsBoost: () => void;
+}
+
+/** The earnings boost, as the main menu offers it. */
+export interface EarningsBoostView {
+  /** Its share of the pay, as the language writes a percentage, and how long it lasts. */
+  readonly percent: string;
+  readonly minutes: number;
+  /** Minutes it has left; 0 when it is not on. */
+  readonly minutesLeft: number;
+  /** It can be started now; and whether an ad comes first (none once ads are removed). */
+  readonly offered: boolean;
+  readonly withAd: boolean;
 }
 
 /** What the main menu shows. */
@@ -68,6 +82,10 @@ export class MainMenu {
   private readonly newCompanyButton: HTMLButtonElement;
   private readonly message: HTMLParagraphElement;
   private readonly shopButton: HTMLButtonElement;
+  /** The earnings boost: its button while it can be started, its time left while it is on. */
+  private readonly boostButton: HTMLButtonElement;
+  private readonly boostLabel: HTMLSpanElement;
+  private readonly boostNote: HTMLParagraphElement;
   private shownPlaces: readonly StartPlace[] = [];
   private placeButtons: HTMLButtonElement[] = [];
   private picked = 0;
@@ -138,8 +156,17 @@ export class MainMenu {
       ),
       'plus',
     );
+    this.boostButton = withIcon(
+      button(document, 'button--secondary main-menu__boost', '', 'earnings-boost', () => this.actions.onEarningsBoost()),
+      'play',
+    );
+    this.boostLabel = element(document, 'span', 'main-menu__boost-label');
+    this.boostButton.append(this.boostLabel);
+    this.boostButton.hidden = true;
+    this.boostNote = element(document, 'p', 'main-menu__boost-note');
+    this.boostNote.hidden = true;
     const play = element(document, 'div', 'main-menu__buttons');
-    play.append(this.continueButton, this.newCompanyButton);
+    play.append(this.continueButton, this.newCompanyButton, this.boostButton, this.boostNote);
     this.message = element(document, 'p', 'main-menu__message');
     const small = element(document, 'div', 'main-menu__small');
     this.shopButton = withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.shop'), 'shop', actions.onShop), 'coins');
@@ -166,6 +193,21 @@ export class MainMenu {
   /** The shop's button, once the store is up (the Android app with Google Play; never the web game). */
   set shopVisible(visible: boolean) {
     this.shopButton.hidden = !visible;
+  }
+
+  /** The earnings boost: offered (after an ad, or none), on with its time left, or neither (nothing shown). */
+  set earningsBoost(boost: EarningsBoostView) {
+    const { strings } = this;
+    const on = boost.minutesLeft > 0;
+    this.boostButton.hidden = on || !boost.offered;
+    this.boostNote.hidden = !on;
+    if (!this.boostButton.hidden) {
+      const label = strings.t(boost.withAd ? 'menu.boost.offer' : 'menu.boost.offerFree', { percent: boost.percent, minutes: boost.minutes });
+      setText(this.boostLabel, label);
+    }
+    if (on) {
+      setText(this.boostNote, strings.t('menu.boost.on', { percent: boost.percent, minutes: boost.minutesLeft }));
+    }
   }
 
   /**

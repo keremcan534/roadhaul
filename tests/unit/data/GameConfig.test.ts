@@ -63,7 +63,7 @@ describe('GameConfig', () => {
   it('checks prices, fuel tuning and the company levels', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
-      economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairCost: 99.5 },
+      economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairShare: 1.5 },
       fuel: { consumptionScale: -1, lowFuelFraction: 2 },
       company: { levelXp: [100, 50, 60, 70, 80] },
     };
@@ -71,7 +71,7 @@ describe('GameConfig', () => {
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
       'economy.fuelPricePerLiter',
       'economy.roadsideFuelPriceFactor',
-      'economy.fullRepairCost',
+      'economy.fullRepairShare',
       'fuel.consumptionScale',
       'fuel.lowFuelFraction',
       'company.levelXp',

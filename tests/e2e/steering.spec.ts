@@ -54,7 +54,7 @@ test('steers by turning the phone once tilt is picked in the controls', async ({
   expect(problems).toEqual([]);
 });
 
-test('takes the phone as it is held as straight ahead when the tilt button is tapped', async ({ page }) => {
+test('steers from level, and takes the phone as it is held as straight ahead when the tilt button is tapped', async ({ page }) => {
   test.slow(); // It drives up to speed and turns (each wait up to 20 s, drawn in software).
   const problems = watchForProblems(page);
   await seedSettings(page, { steering: 'tilt', tiltSensitivity: 'high' });
@@ -73,24 +73,25 @@ test('takes the phone as it is held as straight ahead when the tilt button is ta
     return Math.abs(headingChange(before, await freshHeading()));
   };
 
-  // Held turned 20° to the right from the start: that is straight ahead. The truck rolls on slowly, straight down its
-  // lane until the last check. Turned before, it could reach the verge's lamp posts: under a software renderer the
-  // overlay may show a turn a couple of seconds late, and the truck turns on meanwhile.
-  await tiltPhone(page, 20);
+  // Held level: straight ahead. The truck rolls on slowly, straight down its lane until the last check. Turned for
+  // long, it could reach the verge's lamp posts: under a software renderer the overlay may show a turn a couple of
+  // seconds late, and the truck turns on meanwhile.
+  await tiltPhone(page, 0);
   await page.keyboard.down('ArrowUp');
   await expect.poll(() => shownSpeed(page), { timeout: 20_000 }).toBeGreaterThan(15);
   await page.keyboard.up('ArrowUp');
   expect(await drift()).toBeLessThan(3);
 
-  // The tilt button tapped with the phone turned 8° further right, a third of full lock: that is straight ahead now.
+  // Held turned 8° right a moment (a third of full lock), then the tilt button tapped: that is straight ahead now.
+  await tiltPhone(page, 8);
+  await page.waitForTimeout(600);
   await page.locator('.tilt-button').click();
-  await tiltPhone(page, 28);
   expect(await drift()).toBeLessThan(3);
   expect(await shownSpeed(page), 'still rolling, so the heading could have turned').toBeGreaterThan(3);
 
-  // Back where straight ahead was before the tap: a gentle left turn now.
+  // Back to level, where straight ahead was before the tap: a gentle left turn now.
   const straight = await shownHeading(page);
-  await tiltPhone(page, 20);
+  await tiltPhone(page, 0);
   await expect.poll(async () => headingChange(straight, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(3);
   expect(problems).toEqual([]);
 });

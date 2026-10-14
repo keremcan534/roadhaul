@@ -47,7 +47,7 @@ export class DamageService {
 
   /** What a full repair costs now. */
   get repairCost(): Credits {
-    return this.economy.repairCost(this.currentDamage);
+    return this.economy.repairCost(this.currentDamage, this.driving.definition.purchasePrice);
   }
 
   /** Takes over a loaded or new truck's damage. */

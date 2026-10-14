@@ -24,7 +24,9 @@ describe('truck damage', () => {
 
   it('grows with the square of the impact speed: a 50 km/h crash costs about a quarter', () => {
     expect(truckDamageFromImpact(TRUCK_WRECKING_IMPACT_SPEED)).toBeCloseTo(1, 12);
-    expect(truckDamageFromImpact(14)).toBeCloseTo(0.25, 12);
+    expect(truckDamageFromImpact(14)).toBeCloseTo((11.5 / 25.5) ** 2, 12);
+    // A bump (a kerb, a post nudged while parking) does no harm.
+    expect(truckDamageFromImpact(2.4)).toBe(0);
     expect(truckDamageFromImpact(1.5)).toBeLessThan(0.005);
     expect(truckDamageFromImpact(100)).toBe(1);
     expect(truckDamageFromImpact(-3)).toBe(0);

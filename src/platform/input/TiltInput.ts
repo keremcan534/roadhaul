@@ -9,9 +9,10 @@ interface MotionSensorAccess {
 
 /**
  * Steering by turning the phone (TiltSteering), fed by the browser's
- * `devicemotion` events. It listens only while enabled, and writes `state`
- * (steering only) for the entry point to merge with the other controls.
- * Rotating the screen between portrait and landscape recentres it.
+ * `devicemotion` events and the screen's orientation. It listens only while
+ * enabled, and writes `state` (steering only) for the entry point to merge
+ * with the other controls. Held level, the truck runs straight; rotating the
+ * screen between portrait and landscape keeps that.
  */
 export class TiltInput {
   /** Steering from the phone's tilt; the pedals stay at rest. */
@@ -85,8 +86,8 @@ export class TiltInput {
   disable(): void {
     if (this.listening) {
       this.target.removeEventListener('devicemotion', this.onMotion);
-      this.screenOrientation()?.removeEventListener('change', this.recenter);
-      this.target.removeEventListener('orientationchange', this.recenter);
+      this.screenOrientation()?.removeEventListener('change', this.level);
+      this.target.removeEventListener('orientationchange', this.level);
       this.listening = false;
     }
     this.steering.reset();
@@ -94,9 +95,14 @@ export class TiltInput {
     this.setStatus('off');
   }
 
-  /** The phone as it is held now becomes straight ahead. */
+  /** From the player's tap: the phone as it is held now becomes straight ahead. */
   readonly recenter = (): void => {
     this.steering.recenter();
+  };
+
+  /** Straight ahead is the screen held level again (into the game, out of the menus, the screen turned). */
+  readonly level = (): void => {
+    this.steering.level();
   };
 
   /** Per frame: eases the steering toward the phone. */
@@ -110,9 +116,10 @@ export class TiltInput {
   private listen(): void {
     this.steering.reset();
     this.target.addEventListener('devicemotion', this.onMotion);
-    // A turn between portrait and landscape changes which way is up on the screen. Older iOS only has orientationchange.
-    this.screenOrientation()?.addEventListener('change', this.recenter);
-    this.target.addEventListener('orientationchange', this.recenter);
+    // A turn between portrait and landscape: a recentre made in the other is no longer level. Older iOS only has
+    // orientationchange.
+    this.screenOrientation()?.addEventListener('change', this.level);
+    this.target.addEventListener('orientationchange', this.level);
     this.listening = true;
     this.setStatus('waiting');
   }
@@ -122,7 +129,7 @@ export class TiltInput {
     if (gravity === null || gravity.x === null || gravity.y === null || gravity.z === null) {
       return; // Browsers without a sensor may send one empty event.
     }
-    const steers = this.steering.read(gravity.x, gravity.y, gravity.z);
+    const steers = this.steering.read(gravity.x, gravity.y, gravity.z, this.screenAngle());
     if (steers !== (this.current === 'on')) {
       if (!steers) {
         this.state.steer = 0;
@@ -133,6 +140,12 @@ export class TiltInput {
 
   private sensor(): MotionSensorAccess | undefined {
     return (this.target as unknown as { DeviceMotionEvent?: MotionSensorAccess }).DeviceMotionEvent;
+  }
+
+  /** How far the screen is turned from the phone's natural orientation: 0, 90, 180 or 270 degrees. */
+  private screenAngle(): number {
+    const angle = this.screenOrientation()?.angle ?? (this.target as unknown as { orientation?: number }).orientation ?? 0;
+    return ((angle % 360) + 360) % 360;
   }
 
   /** Older iOS has no screen.orientation. */

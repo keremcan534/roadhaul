@@ -12,6 +12,13 @@ const ORIENTATIONS = {
   'upside down': [0, -1],
 } as const;
 type Orientation = keyof typeof ORIENTATIONS;
+/** The screen's turn from the phone's natural orientation for each (the screen orientation API's angle). */
+const SCREEN_ANGLES: Readonly<Record<Orientation, number>> = {
+  portrait: 0,
+  'landscape, top to the left': 90,
+  'landscape, top to the right': 270,
+  'upside down': 180,
+};
 
 interface Hold {
   readonly orientation?: Orientation;
@@ -28,7 +35,7 @@ interface Hold {
  * rest it reads "up": turning the phone clockwise swings that anticlockwise
  * in the phone's own axes, and tipping it back moves it out of the screen.
  */
-function reading({ orientation = 'portrait', turn = 0, back = 0, flipped = false }: Hold): [number, number, number] {
+function reading({ orientation = 'portrait', turn = 0, back = 0, flipped = false }: Hold): [number, number, number, number] {
   const [upX, upY] = ORIENTATIONS[orientation];
   const cos = Math.cos(turn * RADIANS);
   const sin = Math.sin(turn * RADIANS);
@@ -38,10 +45,11 @@ function reading({ orientation = 'portrait', turn = 0, back = 0, flipped = false
     sign * inPlane * (upX * cos - upY * sin),
     sign * inPlane * (upX * sin + upY * cos),
     sign * G * Math.sin(back * RADIANS),
+    SCREEN_ANGLES[orientation],
   ];
 }
 
-/** Calibrates at `straight`, then reads `now`: the steering it asks for. */
+/** Reads `straight`, then `now`: the steering it asks for. */
 function steerFor(straight: Hold, now: Hold, steering = new TiltSteering('normal')): number {
   expect(steering.read(...reading(straight))).toBe(true);
   expect(steering.read(...reading({ ...straight, ...now }))).toBe(true);
@@ -95,13 +103,13 @@ describe('TiltSteering', () => {
     const steering = new TiltSteering('normal');
     steering.read(...reading(held));
     const rock = 3 * RADIANS;
-    steering.read(0, -G * Math.sin(rock), G * Math.cos(rock));
+    steering.read(0, -G * Math.sin(rock), G * Math.cos(rock), 90);
     steering.update(10);
     expect(Math.abs(steering.steer)).toBeGreaterThan(0);
     expect(Math.abs(steering.steer)).toBeLessThan(0.25);
   });
 
-  it('waits for the phone to leave the flat before calibrating', () => {
+  it('waits for the phone to leave the flat before steering', () => {
     const steering = new TiltSteering('normal');
     expect(steering.read(...reading({ back: 85 }))).toBe(false);
     expect(steering.isCalibrated).toBe(false);
@@ -142,20 +150,46 @@ describe('TiltSteering', () => {
     expect(steering.isCalibrated).toBe(false);
   });
 
-  it('takes the phone as it is held when recentred as straight ahead', () => {
-    const steering = new TiltSteering('normal');
-    steering.read(...reading({ turn: 10 }));
-    steering.read(...reading({ turn: 10 }));
-    steering.update(10);
-    expect(steering.steer).toBe(0);
+  it('steers from level whatever the phone read first, so no reading on the way can set it askew', () => {
+    // The phone picked up turned 15° (or tapped into the game so): that is a turn, not straight ahead.
+    for (const orientation of Object.keys(ORIENTATIONS) as Orientation[]) {
+      const steering = new TiltSteering('normal');
+      steering.read(...reading({ orientation, turn: 15 }));
+      steering.update(10);
+      expect(steering.steer, orientation).toBeCloseTo(13 / 30, 5);
+      steering.read(...reading({ orientation }));
+      steering.update(10);
+      expect(steering.steer, orientation).toBe(0);
+    }
+  });
 
-    steering.read(...reading({ turn: -20 }));
+  it('takes the phone as it is held, averaged over a moment, as straight ahead when recentred, and back to level', () => {
+    const steering = new TiltSteering('normal');
+    const held = { orientation: 'landscape, top to the left', turn: -10 } as const;
+    for (let frame = 0; frame < 30; frame++) {
+      steering.read(...reading(held));
+      steering.update(1 / 60);
+    }
     steering.recenter();
-    steering.read(...reading({ turn: -20 }));
     steering.update(10);
     expect(steering.steer).toBe(0);
-    steering.read(...reading({ turn: -3 }));
+    steering.read(...reading({ ...held, turn: 7 }));
     steering.update(10);
     expect(steering.steer).toBeCloseTo(0.5, 5);
+    // Level again (into the game, out of the menus): -10° is a turn left.
+    steering.level();
+    steering.read(...reading(held));
+    steering.update(10);
+    expect(steering.steer).toBeCloseTo(-8 / 30, 5);
+  });
+
+  it('never takes more than 20° from level as straight ahead', () => {
+    const steering = new TiltSteering('normal');
+    steering.read(...reading({ turn: 45 }));
+    steering.update(10);
+    steering.recenter();
+    steering.read(...reading({ turn: 20 }));
+    steering.update(10);
+    expect(steering.steer).toBe(0);
   });
 });

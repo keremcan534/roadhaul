@@ -172,6 +172,11 @@ export class ResultDialog {
     this.way.insertBefore(block, this.way.lastElementChild);
   }
 
+  /** Adds what the earnings boost (`percent` more) paid on the delivery to the open result. */
+  showEarningsBoost(percent: string, paid: Credits): void {
+    this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.earningsBoost', { percent }), this.strings.signedMoney(paid));
+  }
+
   /** Adds the leader's bonus the delivery earned in `city` to the open result. */
   showLeaderBonus(city: string, bonus: Credits): void {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.leaderBonus', { city }), this.strings.signedMoney(bonus));

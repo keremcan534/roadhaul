@@ -12,7 +12,7 @@ function setup() {
   const events = new EventBus<GameEvents>(logger);
   const changes: GameEvents['MoneyChanged'][] = [];
   events.on('MoneyChanged', (change) => changes.push(change));
-  const economy = new EconomyService(events, { fuelPricePerLiter: 12, roadsideFuelPriceFactor: 2, fullRepairCost: 6000 }, logger);
+  const economy = new EconomyService(events, { fuelPricePerLiter: 12, roadsideFuelPriceFactor: 2, fullRepairShare: 0.3 }, logger);
   economy.restore(1000);
   return { events, economy, changes };
 }
@@ -78,7 +78,7 @@ describe('EconomyService', () => {
     expect(economy.fuelCost(10, true)).toBe(240);
     expect(economy.litersAffordable(100)).toBe(8);
     expect(economy.litersAffordable(100, true)).toBe(4);
-    expect(economy.repairCost(0.25)).toBe(1500);
+    expect(economy.repairCost(0.25, 20_000)).toBe(1500);
   });
 
   it('stops listening when disposed', () => {

@@ -417,6 +417,18 @@ The player asked whether the world could be improved without hurting the perform
 | Life | ✅ | The grazers turn slowly as they graze and shuffle a step forward and back, within their solid circles (their shadows follow). Two ships, a coaster and a fishing boat, sail round a route along the coast at sea (an ellipse 250 m and more off the shore), riding the swell: one draw call each while in view |
 | A new region | ⬜ | One 7.2 km map with four cities: a second region, loaded on its own (spec §21) |
 
+### The player's list: tilt, a boost, repairs and the rain (between steps 28 and 29)
+
+The player found steering by tilt off ("telefonu yamuk tutuyormuşum gibi sayıyo hep"), asked for an hour of +25% pay for an ad from the main menu, for the price of damage and repairs to be balanced and explained ("hasar alınca noluyo anlamadım"), and found the rain and the engine still sounding bad.
+
+| Item | Status | Notes |
+|---|---|---|
+| Tilt steering from level | ✅ | Straight ahead was the phone's first reading after tilt came on, entering the game or closing the panel: held askew or shaken by the tap at that moment, it stayed askew. Now straight ahead is the screen held level, from the screen orientation's angle; the tilt button recentres on the turn averaged over a moment, at most 20°, and entering the game, closing the panel or turning the screen go back to level |
+| An hour of +25% pay for an ad | ✅ | From the main menu, the player's choice: after a rewarded ad watched to its end (none once ads are removed), every delivery for 60 minutes of the clock pays 25% more, a line of its own on the receipt; its time left on the menu, kept on the device |
+| Repairs priced by the truck | ✅ | A full repair cost 6000 credits whatever the truck, half the starter truck's price, most of a contract for one 50 km/h crash. It is now a quarter of the truck's price (3000 for the H1, 5500 for the H2, 9500 for the H3), and a bump under about 9 km/h does no harm (a 50 km/h crash: 20% damage, 600 credits on the H1). The truck page says what the damage does (engine −, brakes −, fuel +) or, undamaged, what crashes would, and where to repair; the damage toast says how much engine was lost |
+| Rain that sounds like rain | ✅ | The rain was a steady band of hiss at 1.5–7 kHz, where a phone's speaker is harshest. Now a soft low wash, drops pattering on the cab (a seeded loop of short ticks, made once) and the tyres' spray off the wet road at speed |
+| The engine | Open | Two rounds of work on it already; what still sounds wrong is to hear from the player |
+
 ## Next step: 29 Device testing
 
 Suggested request:

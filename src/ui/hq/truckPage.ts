@@ -1,6 +1,8 @@
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { isCargoAboard } from '../../domain/missions/MissionInstance';
 import type { ServicePoint } from '../../domain/world/DrivingWorld';
+import { FULL_DAMAGE_EXTRA } from '../../domain/vehicles/fuelConsumption';
+import { damagePerformance } from '../../domain/vehicles/vehicleDamage';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { MissionService } from '../../systems/missions/MissionService';
@@ -121,6 +123,20 @@ export function truckPage(
     'meter--damage',
     repair,
   );
+  // What the damage does now, or what crashes would: weaker engine and brakes, more fuel (vehicleDamage, fuelConsumption).
+  const performance = damagePerformance(damage.damage);
+  const effects = el(
+    'p',
+    'truck-gauge__note',
+    undamaged
+      ? strings.t('hq.damageExplained')
+      : `${strings.t('hq.damageEffects', {
+          engine: strings.percent(1 - performance.torqueFactor),
+          brakes: strings.percent(1 - performance.brakeFactor),
+          fuel: strings.percent(FULL_DAMAGE_EXTRA * damage.damage),
+        })}${damage.atWorkshop ? '' : ` · ${strings.t('hq.serviceAway')}`}`,
+  );
+  damageRow.append(effects);
   gauges.append(fuelRow, damageRow);
   // Half price after a rewarded ad, for what the pump and the workshop where the truck stands can do now.
   const discounts = serviceDiscounts(document, strings, services.monetization, {

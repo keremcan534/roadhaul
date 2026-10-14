@@ -25,6 +25,7 @@ export const MONEY_REASONS = [
   'buyout',
   'facility',
   'adBonus',
+  'adBoost',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 
@@ -101,8 +102,8 @@ export class EconomyService {
   }
 
   /** What repairing `damage` (0..1) costs the company (a workshop takes a share off). */
-  repairCost(damage: Fraction): Credits {
-    return repairCost(damage, this.config.fullRepairCost * (1 - this.perks.perks.repairDiscount));
+  repairCost(damage: Fraction, truckPrice: Credits): Credits {
+    return repairCost(damage, truckPrice * this.config.fullRepairShare * (1 - this.perks.perks.repairDiscount));
   }
 
   dispose(): void {

@@ -30,9 +30,22 @@ import { NO_STORE, type PurchaseOutcome, type PurchaseStore, type StoreProduct }
 const OWNED_KEY = 'roadhaul.purchases';
 /** Today's rewarded service discounts. */
 const ALLOWANCE_KEY = 'roadhaul.serviceDiscounts';
+/** When the rewarded earnings boost ends, epoch ms. */
+const EARNINGS_BOOST_KEY = 'roadhaul.earningsBoost';
+const MS_PER_MINUTE = 60_000;
 
 /** Why a rewarded boost gave nothing: no ad to show, the ad closed before its end, or none left to give. */
 export type BoostError = 'unavailable' | 'skipped' | 'used';
+
+/** The rewarded earnings boost: its share of every delivery's pay, and how long it lasts or has left. */
+export interface EarningsBoost {
+  readonly share: Fraction;
+  readonly minutes: number;
+  /** Minutes left, rounded up; 0 when it is not on. */
+  readonly minutesLeft: number;
+  /** It can be started now (not on, and an ad ready or none needed). */
+  readonly offered: boolean;
+}
 
 /** A rewarded ad's discount on a repair or a fill-up, and how many are left today. */
 export interface ServiceDiscountOffer {
@@ -43,8 +56,9 @@ export interface ServiceDiscountOffer {
 /**
  * Ads and purchases (spec §35–36): the one owner of both, so gameplay never talks to an SDK.
  *
- * - Rewarded ads are only ever the player's choice: a bonus on a delivery's pay, or a discount on a repair or a
- *   fill-up (a few a day). Everything a boost needs is checked before its ad: no ad is watched for nothing.
+ * - Rewarded ads are only ever the player's choice: a bonus on a delivery's pay, a discount on a repair or a
+ *   fill-up (a few a day), or from the main menu a boost on every delivery's pay for an hour. Everything a boost
+ *   needs is checked before its ad: no ad is watched for nothing.
  * - Interstitials come only between contracts, as the delivery's result closes, and seldom (adRules.interstitialDue).
  * - `remove_ads` stops the interstitials and gives the boosts without an ad; `premium_paints` opens the garage's
  *   premium colours (GarageService asks `owns`). What was bought is kept on the device and read again from the store
@@ -61,6 +75,9 @@ export class MonetizationService implements PremiumPaintSource {
   private ownedIds: readonly ProductId[];
   /** The bonus the delivery just made may still earn, while its result is open. */
   private pendingBonus: Credits = 0;
+  /** When the earnings boost ends, epoch ms (0: never started), and what it paid on the delivery just made. */
+  private boostEndsAtMs: number;
+  private boostPaid: Credits = 0;
   /** An ad or a purchase is under way: another waits for it to end. */
   private busy = false;
   private readonly unsubscribe: Unsubscribe;
@@ -77,9 +94,15 @@ export class MonetizationService implements PremiumPaintSource {
   ) {
     this.ownedIds = this.read(OWNED_KEY, parseOwned) ?? [];
     this.allowance = this.read(ALLOWANCE_KEY, parseAllowance);
+    this.boostEndsAtMs = this.read(EARNINGS_BOOST_KEY, (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)) ?? 0;
     this.unsubscribe = events.on('MissionCompleted', ({ reward }) => {
       this.pacing = pacingAfterDelivery(this.pacing);
       this.pendingBonus = deliveryBonus(reward.total, config);
+      // The earnings boost, while it is on: its share of the delivery's pay on top.
+      this.boostPaid = this.boostOn() && reward.total > 0 ? Math.round(reward.total * config.earningsBoostShare) : 0;
+      if (this.boostPaid > 0) {
+        this.economy.earn(this.boostPaid, 'adBoost');
+      }
     });
   }
 
@@ -193,6 +216,36 @@ export class MonetizationService implements PremiumPaintSource {
     return ok(bonus);
   }
 
+  /** The earnings boost: whether it can be started, and how long it has left. */
+  get earningsBoost(): EarningsBoost {
+    const left = Math.max(0, this.boostEndsAtMs - this.clock.now());
+    return {
+      share: this.config.earningsBoostShare,
+      minutes: this.config.earningsBoostMinutes,
+      minutesLeft: Math.ceil(left / MS_PER_MINUTE),
+      offered: left <= 0 && this.canReward(),
+    };
+  }
+
+  /** What the earnings boost paid on the delivery just made: 0 when it was not on. */
+  get earningsBoostPaid(): Credits {
+    return this.boostPaid;
+  }
+
+  /** Watches the ad (none with ads removed) and starts the earnings boost: when it ends, epoch ms. */
+  async startEarningsBoost(): Promise<Result<number, BoostError>> {
+    if (this.boostOn()) {
+      return err('used');
+    }
+    const watched = await this.reward();
+    if (!watched.ok) {
+      return watched;
+    }
+    this.boostEndsAtMs = this.clock.now() + this.config.earningsBoostMinutes * MS_PER_MINUTE;
+    this.write(EARNINGS_BOOST_KEY, this.boostEndsAtMs);
+    return ok(this.boostEndsAtMs);
+  }
+
   /** A rewarded ad's discount on a repair or a fill-up in a yard or at a rest area: null when none can be offered. */
   get serviceDiscountOffer(): ServiceDiscountOffer | null {
     const left = allowanceLeft(this.allowance, this.clock.now(), this.config.serviceDiscountsPerDay);
@@ -276,6 +329,10 @@ export class MonetizationService implements PremiumPaintSource {
 
   dispose(): void {
     this.unsubscribe();
+  }
+
+  private boostOn(): boolean {
+    return this.boostEndsAtMs > this.clock.now();
   }
 
   /** A boost can be offered: ads in this build, and an ad ready (or none needed). */

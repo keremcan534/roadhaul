@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
 
-/** A level 2 company with 30,000 credits, its truck half wrecked: a full repair would cost 3,000. */
+/** A level 2 company with 30,000 credits, its truck half wrecked: a full repair would cost 1,500 (half of a quarter of the H1's 12,000). */
 function battered(): string {
   const save = JSON.parse(savedCompany({ credits: 30_000, xp: 1000 })) as { garage: { vehicles: { damage: number }[] } };
   save.garage.vehicles[0]!.damage = 0.5;
@@ -16,7 +16,7 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
   const repair = page.locator('[data-action="repair"]');
 
   await openPanel(page, 'truck');
-  await expect(repair).toHaveText('Repair · 3,000 credits');
+  await expect(repair).toHaveText('Repair · 1,500 credits');
 
   // Nothing built yet: every facility can be, its first level for a company at level 2.
   await openPanel(page, 'company');
@@ -47,7 +47,7 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
   await testInfo.attach('company', { body: await page.screenshot(), contentType: 'image/png' });
 
   await openPanel(page, 'truck');
-  await expect(repair).toHaveText('Repair · 2,100 credits');
+  await expect(repair).toHaveText('Repair · 1,050 credits');
 
   // Kept in the save: the company comes back with its workshop.
   await page.reload();
@@ -56,6 +56,6 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
   await openPanel(page, 'company');
   await expect(workshop).toHaveAttribute('data-level', '2');
   await openPanel(page, 'truck');
-  await expect(repair).toHaveText('Repair · 2,100 credits');
+  await expect(repair).toHaveText('Repair · 1,050 credits');
   expect(problems).toEqual([]);
 });

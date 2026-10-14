@@ -6,8 +6,10 @@ import type { PerformanceFactors } from './performance';
 export const DAMAGE_BANDS = ['minor', 'damaged', 'severe', 'critical'] as const;
 export type DamageBand = (typeof DAMAGE_BANDS)[number];
 
-/** Impact speed (m/s into the obstacle) that would wreck the truck in one hit; a 50 km/h crash costs about a quarter. */
+/** Impact speed (m/s into the obstacle) that would wreck the truck in one hit; a 50 km/h crash costs about a fifth. */
 export const TRUCK_WRECKING_IMPACT_SPEED = 28;
+/** Bumps slower than this (m/s, about 9 km/h: a kerb, a post nudged while parking) do the truck no harm. */
+export const HARMLESS_IMPACT_SPEED = 2.5;
 /** A wrecked truck keeps this share of its engine torque… */
 export const WRECKED_TORQUE_FACTOR = 0.65;
 /** …and of its braking. It still drives: damage must never strand the player (spec §18). */
@@ -23,9 +25,12 @@ export function damageBand(damage: Fraction): DamageBand {
   return damage <= 0.8 ? 'severe' : 'critical';
 }
 
-/** Truck damage from one collision. It grows with the square of the impact speed, like the crash energy. */
+/**
+ * Truck damage from one collision: none for a bump, then growing with the square of the impact speed past it, like
+ * the crash energy.
+ */
 export function truckDamageFromImpact(impactSpeedMetersPerSecond: number): Fraction {
-  const severity = Math.max(0, impactSpeedMetersPerSecond) / TRUCK_WRECKING_IMPACT_SPEED;
+  const severity = Math.max(0, impactSpeedMetersPerSecond - HARMLESS_IMPACT_SPEED) / (TRUCK_WRECKING_IMPACT_SPEED - HARMLESS_IMPACT_SPEED);
   return clamp01(severity * severity);
 }
 

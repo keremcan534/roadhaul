@@ -45,7 +45,15 @@ export type SoundStatus = 'off' | 'waiting' | 'on';
 const MASTER_VOLUME = 0.8;
 const ROAD_VOLUME = 0.22;
 const BRAKE_VOLUME = 0.1;
-const RAIN_VOLUME = 0.14;
+/** The rain: its soft wash, the drops pattering on the cab, and the tyres' spray off a wet road at speed. */
+const RAIN_WASH_VOLUME = 0.07;
+const RAIN_DROPS_VOLUME = 0.32;
+const SPRAY_VOLUME = 0.09;
+/** The tyres throw their loudest spray from this speed, m/s (about 70 km/h). */
+const SPRAY_FULL_SPEED = 20;
+/** The drops' loop: this long, seconds, with about this many drops a second on it. */
+const DROPS_SECONDS = 4;
+const DROPS_PER_SECOND = 70;
 const HORN_VOLUME = 0.2;
 const THUNDER_VOLUME = 0.9;
 /** Thunder's rumble swells again this many times as the sound comes in from farther along the channel. */
@@ -72,6 +80,8 @@ interface Graph {
   readonly road: GainNode;
   readonly brake: GainNode;
   readonly rain: GainNode;
+  readonly drops: GainNode;
+  readonly spray: GainNode;
   readonly horn: GainNode;
   readonly alarm: GainNode;
 }
@@ -177,8 +187,11 @@ export class GameAudio {
     follow(graph.roadFilter.frequency, 300 + 25 * Math.abs(state.speed), now);
     follow(graph.road.gain, driving ? roadNoiseLevel(state.speed) * ROAD_VOLUME : 0, now);
     follow(graph.brake.gain, driving ? brakeNoiseLevel(state.brakePedal, state.speed) * BRAKE_VOLUME : 0, now);
-    // The rain is heard behind the menus too, softer.
-    follow(graph.rain.gain, clamp01(state.rain) * RAIN_VOLUME * (driving ? 1 : 0.5), now);
+    // The rain is heard behind the menus too, softer; the spray only from tyres turning on a wet road.
+    const rain = clamp01(state.rain) * (driving ? 1 : 0.5);
+    follow(graph.rain.gain, rain * RAIN_WASH_VOLUME, now);
+    follow(graph.drops.gain, rain * RAIN_DROPS_VOLUME, now);
+    follow(graph.spray.gain, driving ? clamp01(state.rain) * clamp01(Math.abs(state.speed) / SPRAY_FULL_SPEED) * SPRAY_VOLUME : 0, now);
     follow(graph.horn.gain, driving && this.hornPressed ? HORN_VOLUME : 0, now);
     // Beep, beep: on for the first half of each beat while in reverse.
     const beeping = driving && state.reversing && (now * ALARM_BEATS_PER_SECOND) % 1 < 0.5;
@@ -397,6 +410,33 @@ function noiseBuffer(context: AudioContext): AudioBuffer {
   return buffer;
 }
 
+/**
+ * Rain on the cab, made once (seeded): drops landing at random, each a short tick of noise dying away in a few
+ * milliseconds, some heavy and dull, most light and brighter. Looped, it patters without a pattern to hear.
+ */
+function dropsBuffer(context: AudioContext): AudioBuffer {
+  const rate = context.sampleRate;
+  const buffer = context.createBuffer(1, Math.round(rate * DROPS_SECONDS), rate);
+  const samples = buffer.getChannelData(0);
+  const random = new SeededRandom(41);
+  const drops = Math.round(DROPS_SECONDS * DROPS_PER_SECOND);
+  for (let drop = 0; drop < drops; drop++) {
+    const start = Math.floor(random.next() * samples.length);
+    const weight = random.next();
+    const strength = 0.15 + 0.85 * weight * weight;
+    const length = Math.round(rate * (0.004 + 0.01 * weight));
+    // A heavier drop is duller: a stronger one-pole low-pass on its noise.
+    const smoothing = 0.35 + 0.5 * weight;
+    let value = 0;
+    for (let i = 0; i < length; i++) {
+      value += (random.range(-1, 1) - value) * (1 - smoothing);
+      const index = (start + i) % samples.length;
+      samples[index] = samples[index]! + value * strength * Math.exp((-5 * i) / length);
+    }
+  }
+  return buffer;
+}
+
 /** Everything that plays for the whole session, silent until update() turns it up. */
 function buildGraph(context: AudioContext): Graph {
   const master = gainNode(context, MASTER_VOLUME);
@@ -421,8 +461,19 @@ function buildGraph(context: AudioContext): Graph {
   noiseLoop().connect(roadFilter).connect(road).connect(master);
   const brake = gainNode(context, 0);
   noiseLoop().connect(filterNode(context, 'bandpass', 2500, 0.8)).connect(brake).connect(master);
+  // The rain: a soft wash, low and dull (a phone's speaker makes a bright one a hiss)…
   const rain = gainNode(context, 0);
-  noiseLoop().connect(filterNode(context, 'highpass', 1500)).connect(filterNode(context, 'lowpass', 7000)).connect(rain).connect(master);
+  noiseLoop().connect(filterNode(context, 'highpass', 350)).connect(filterNode(context, 'lowpass', 2200, 0.6)).connect(rain).connect(master);
+  // …its drops pattering on the cab…
+  const drops = gainNode(context, 0);
+  const patter = context.createBufferSource();
+  patter.buffer = dropsBuffer(context);
+  patter.loop = true;
+  patter.connect(filterNode(context, 'highpass', 500)).connect(filterNode(context, 'lowpass', 4500, 0.6)).connect(drops).connect(master);
+  patter.start();
+  // …and the tyres' spray off the wet road.
+  const spray = gainNode(context, 0);
+  noiseLoop().connect(filterNode(context, 'bandpass', 1400, 0.6)).connect(filterNode(context, 'lowpass', 3000, 0.6)).connect(spray).connect(master);
 
   // The horn: two notes, softened.
   const horn = gainNode(context, 0);
@@ -444,5 +495,5 @@ function buildGraph(context: AudioContext): Graph {
   alarmNote.connect(alarm).connect(master);
   alarmNote.start();
 
-  return { master, noise, engine, roadFilter, road, brake, rain, horn, alarm };
+  return { master, noise, engine, roadFilter, road, brake, rain, drops, spray, horn, alarm };
 }

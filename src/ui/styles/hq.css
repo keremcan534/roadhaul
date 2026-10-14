@@ -930,6 +930,14 @@
   letter-spacing: 0.02em;
 }
 
+/* What the damage does: a small line under the workshop's button. */
+.truck-gauge__note {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
 .truck-page__cargo {
   display: flex;
   align-items: center;
