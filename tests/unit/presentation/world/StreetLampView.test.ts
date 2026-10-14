@@ -132,6 +132,43 @@ describe('StreetLampView', () => {
     expect(casting({ castShadows: true })).toHaveLength(1);
   });
 
+  it('draws into the shadow map only the posts standing that can cast round the truck, given where shadows reach', () => {
+    const scene = new Scene();
+    // The shadows reach the first lamp only; the stamp says when they have moved.
+    const reach = { shadowStamp: 0, reaches: 10, shadowReaches: (x: number) => x === reach.reaches };
+    const view = new StreetLampView(scene, LAMPS, { castShadows: true, shadowReach: reach, circles: [5, 9] });
+    const posts = scene.getObjectByName('street-lamps:posts') as InstancedMesh;
+    const shadows = scene.getObjectByName('street-lamps:posts:shadow') as InstancedMesh;
+    expect(posts.castShadow).toBe(false);
+    expect(shadows.castShadow).toBe(true);
+    const gathered = (): number[] => {
+      (shadows.onBeforeShadow as () => void)();
+      const xs = Array.from({ length: shadows.count }, (_, i) => {
+        const matrix = new Matrix4();
+        shadows.getMatrixAt(i, matrix);
+        return matrix.elements[12]!;
+      });
+      (shadows.onAfterShadow as () => void)();
+      return xs;
+    };
+
+    view.updateShadows();
+    expect(gathered()).toEqual([10]);
+    // Nothing gathered again until the shadows move...
+    reach.reaches = 36;
+    view.updateShadows();
+    expect(gathered()).toEqual([10]);
+    reach.shadowStamp++;
+    view.updateShadows();
+    expect(gathered()).toEqual([36]);
+    // ...or a lamp is knocked over: it casts nothing.
+    const knocked = new Uint8Array(10);
+    knocked[9] = 1;
+    view.showKnocked(knocked, 1);
+    view.updateShadows();
+    expect(gathered()).toEqual([]);
+  });
+
   it('takes a lamp knocked over out of its place, its glow and its light, and puts it back once it stands', () => {
     const scene = new Scene();
     // The lamps' circles in the world: 5 and 9.

@@ -7,6 +7,7 @@ import {
   shorelineXAt,
   type BoatKind,
   type BuildingDefinition,
+  type BuildingForm,
   type CitySignDefinition,
   type DepotDefinition,
   type FieldCrop,
@@ -70,6 +71,7 @@ import {
   type SignGround,
   type TownGate,
 } from './roadSigns';
+import { stackContainers } from './containerStacks';
 import { growSideRoads, layFarmland } from './sideRoads';
 import { growVillages, type Village } from './villages';
 import { ASPHALT, GRASS, type Surface } from './Surface';
@@ -276,6 +278,10 @@ export interface CollisionBody {
   readonly totalMassKg: number;
 }
 
+/** A building's four sides, by the way each faces: toward -X, +X, -Z or +Z. */
+export const BUILDING_SIDES = ['-x', '+x', '-z', '+z'] as const;
+export type BuildingSide = (typeof BUILDING_SIDES)[number];
+
 export interface BuildingObstacle {
   readonly minX: number;
   readonly maxX: number;
@@ -284,6 +290,10 @@ export interface BuildingObstacle {
   readonly heightMeters: number;
   /** Out in the country, grown with it (CountryPlan): a farm's, a hamlet's or a village's, in no town. */
   readonly country?: boolean;
+  /** A silo, a chimney or a headframe standing in the box (BuildingDefinition.form); absent: a block. */
+  readonly form?: BuildingForm;
+  /** Shops along its ground floor, facing its street (BuildingDefinition.shops). */
+  readonly shops?: boolean;
 }
 
 const TREE_TRUNK_RADIUS = 0.45;
@@ -596,6 +606,8 @@ export class DrivingWorld implements DebrisSolids {
     this.villages = growVillages(plan, map.villages ?? [], countrySeed);
     growSideRoads(plan, countrySeed + 1, map.scenery.sideRoadsPerKilometer ?? 0);
     layFarmland(plan, countrySeed + 2);
+    const depotYards = map.depots.map((depot) => depot.yard);
+    stackContainers(plan, depotYards, [...depotYards, ...map.restAreas.map((area) => area.lot)], map.buildings, countrySeed + 3);
     this.roads = plan.roads;
     this.roadGrid = new RoadGrid(this.roads, TREE_ROAD_CLEARANCE);
     this.network = new RoadNetwork(this.roads);
@@ -939,6 +951,31 @@ export class DrivingWorld implements DebrisSolids {
   }
 
   /** The depot of `cityId` on this map, if it has one. */
+  /**
+   * The side of `box` that faces a road within `reachMeters` of its wall, the nearest such, or null: where a shop's
+   * window, a warehouse's doors or a house's door is. Looks out from each wall's middle a meter at a time.
+   */
+  frontOf(box: BuildingObstacle, reachMeters: number): BuildingSide | null {
+    const middleX = (box.minX + box.maxX) / 2;
+    const middleZ = (box.minZ + box.maxZ) / 2;
+    let front: BuildingSide | null = null;
+    let nearest = reachMeters + 1;
+    for (const side of BUILDING_SIDES) {
+      const outX = side === '-x' ? -1 : side === '+x' ? 1 : 0;
+      const outZ = side === '-z' ? -1 : side === '+z' ? 1 : 0;
+      const wallX = outX < 0 ? box.minX : outX > 0 ? box.maxX : middleX;
+      const wallZ = outZ < 0 ? box.minZ : outZ > 0 ? box.maxZ : middleZ;
+      for (let distance = 1; distance < nearest; distance++) {
+        if (this.roadGrid.onRoad(wallX + outX * distance, wallZ + outZ * distance)) {
+          nearest = distance;
+          front = side;
+          break;
+        }
+      }
+    }
+    return front;
+  }
+
   depotOf(cityId: string): DepotDefinition | undefined {
     return this.depots.find((depot) => depot.cityId === cityId);
   }
@@ -1873,6 +1910,8 @@ function buildingObstacle(building: BuildingDefinition): BuildingObstacle {
     minZ: building.z - building.depthMeters / 2,
     maxZ: building.z + building.depthMeters / 2,
     heightMeters: building.heightMeters,
+    ...(building.form === undefined ? {} : { form: building.form }),
+    ...(building.shops === true ? { shops: true } : {}),
   };
 }
 

@@ -340,6 +340,35 @@ describe('TrafficView', () => {
     expect(casting).toEqual(TRAFFIC_VEHICLES.map((type) => `traffic:${type.id}`));
   });
 
+  it('draws into the shadow map only the vehicles that can cast round the truck, given where shadows reach', () => {
+    const scene = new Scene();
+    const sim = traffic();
+    const near = sim.addVehicle(0, north, 50, 10);
+    sim.addVehicle(0, north, 150, 10);
+    sim.update(1 / 60, truck, footprint);
+    const reach = {
+      shadowStamp: 0,
+      shadowReaches: (x: number, z: number) => Math.hypot(x - sim.x[near]!, z - sim.z[near]!) < 1,
+    };
+    const view = new TrafficView(scene, TRAFFIC_VEHICLES, 8, { castShadows: true, shadowReach: reach });
+    const name = `traffic:${TRAFFIC_VEHICLES[0]!.id}`;
+    const cars = scene.getObjectByName(name) as InstancedMesh;
+    const shadows = scene.getObjectByName(`${name}:shadow`) as InstancedMesh;
+
+    view.update(sim, 1);
+    expect(cars.count).toBe(2);
+    expect(cars.castShadow).toBe(false);
+    (shadows.onBeforeShadow as () => void)();
+    expect(shadows.count).toBe(1);
+    const matrix = new Matrix4();
+    shadows.getMatrixAt(0, matrix);
+    expect(matrix.elements[12]).toBeCloseTo(sim.x[near]!, 3);
+    expect(matrix.elements[14]).toBeCloseTo(sim.z[near]!, 3);
+    (shadows.onAfterShadow as () => void)();
+    expect(shadows.count).toBe(0);
+    view.dispose();
+  });
+
   it('says where the headlamps of the vehicles nearest a point are, nearest first, fading out rather than popping', () => {
     const view = new TrafficView(new Scene(), TRAFFIC_VEHICLES, 8);
     const sim = traffic();

@@ -1,3 +1,4 @@
+import { SeededRandom } from '../../core/random/SeededRandom';
 import { fractalNoise, grain } from './noise';
 import { blendPixel, createImage, fillRect, mixRgb, shade, type PixelImage, type Rgb } from './pixelImage';
 import { drawText, measureText } from './strokeFont';
@@ -103,6 +104,85 @@ export function asphaltImage(size = 256, seed = 23): PixelImage {
     }
     return mottling * speck * wear;
   });
+  return image;
+}
+
+/** The road's wear (roadWearImage) runs this far along a road before it repeats, meters. */
+export const ROAD_WEAR_METERS = 80;
+
+/**
+ * The road's wear, which the asphalt is multiplied by (TrackView): a road's width across, ROAD_WEAR_METERS along it,
+ * tiling along. Patches cut out of a lane and filled, darker, edged with sealant; cracks wandering along the joint
+ * between the lanes and across a lane; tyre marks smudged along the wheel tracks, fading in and out. White where the
+ * road is as laid.
+ */
+export function roadWearImage(size = 256, seed = 61): PixelImage {
+  const image = createImage(size, size, [255, 255, 255]);
+  const { data } = image;
+  const random = new SeededRandom(seed);
+  const pixelsPerMeter = size / ROAD_WEAR_METERS;
+  const darken = (x: number, y: number, factor: number): void => {
+    if (x < 0 || x >= size) {
+      return;
+    }
+    const row = ((Math.floor(y) % size) + size) % size;
+    const i = (row * size + x) * 4;
+    for (let channel = 0; channel < 3; channel++) {
+      // Where they cross, no darker than this: a crack over a patch's edge is not a hole.
+      data[i + channel] = Math.max(105, Math.round(data[i + channel]! * factor));
+    }
+  };
+  for (let patch = 0; patch < 7; patch++) {
+    const near = random.next() < 0.5;
+    const u0 = (near ? 0.06 : 0.54) + random.range(0, 0.12);
+    const u1 = Math.min(near ? 0.46 : 0.94, u0 + random.range(0.12, 0.34));
+    const y0 = Math.floor(random.range(0, size));
+    const length = Math.floor(random.range(3, 9) * pixelsPerMeter);
+    const fill = random.range(0.8, 0.9);
+    const x0 = Math.floor(u0 * size);
+    const x1 = Math.floor(u1 * size);
+    for (let y = y0; y < y0 + length; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const edge = y === y0 || y === y0 + length - 1 || x === x0 || x === x1;
+        darken(x, y, edge ? 0.62 : fill);
+      }
+    }
+  }
+  // Cracks along the lanes' joint…
+  for (let crack = 0; crack < 5; crack++) {
+    let x = random.range(0.47, 0.53) * size;
+    let y = random.range(0, size);
+    for (let step = Math.floor(random.range(10, 30) * pixelsPerMeter); step > 0; step--) {
+      darken(Math.round(x), y, 0.55);
+      darken(Math.round(x) + 1, y, 0.85);
+      x += random.range(-0.7, 0.7);
+      y += 1;
+    }
+  }
+  // …and across a lane.
+  for (let crack = 0; crack < 6; crack++) {
+    let x = random.range(0.05, 0.6) * size;
+    let y = random.range(0, size);
+    for (let step = Math.floor(random.range(0.15, 0.35) * size); step > 0; step--) {
+      darken(Math.round(x), y, 0.6);
+      x += 1;
+      y += random.range(-0.6, 0.6);
+    }
+  }
+  // Tyre marks along the wheel tracks (asphaltImage's), about a quarter of a meter wide.
+  const tracks = [0.16, 0.34, 0.66, 0.84];
+  const half = Math.round(0.012 * size);
+  for (let mark = 0; mark < 5; mark++) {
+    const u = tracks[random.int(0, tracks.length - 1)]! + random.range(-0.015, 0.015);
+    const y0 = random.range(0, size);
+    const length = random.range(8, 20) * pixelsPerMeter;
+    for (let step = 0; step < length; step++) {
+      const fade = Math.sin((step / length) * Math.PI);
+      for (let dx = -half; dx <= half; dx++) {
+        darken(Math.round(u * size) + dx, y0 + step, 1 - 0.22 * fade * (1 - Math.abs(dx) / (half + 1)));
+      }
+    }
+  }
   return image;
 }
 

@@ -226,6 +226,28 @@ describe('DrivingWorld', () => {
     expect(world.surfaceAt(160, 12)).toBe(GRASS);
   });
 
+  it('keeps a building\'s form (a silo, a chimney, a headframe) with its box, which collides as any other', () => {
+    const world = new DrivingWorld(
+      mapFixture({ buildings: [{ x: 0, z: 40, widthMeters: 8, depthMeters: 8, heightMeters: 30, form: 'chimney' }] }),
+    );
+    const chimney = world.buildings.find((box) => box.form !== undefined)!;
+    expect(chimney).toMatchObject({ minX: -4, maxX: 4, minZ: 36, maxZ: 44, heightMeters: 30, form: 'chimney' });
+    // The map's own: its chimney, its silo and its headframe.
+    const forms = new DrivingWorld(MAPS[0]!).buildings.filter((box) => box.country !== true).map((box) => box.form).filter(Boolean);
+    expect(forms.sort()).toEqual(['chimney', 'headframe', 'silo']);
+  });
+
+  it('finds the side of a building that faces a road, within reach', () => {
+    // The fixture's road runs along the X axis (z = 0), 10 m wide: the building's -Z wall stands 30 m from its edge.
+    const world = new DrivingWorld(mapFixture({ buildings: [{ x: 20, z: 40, widthMeters: 10, depthMeters: 10, heightMeters: 6 }] }));
+    const box = world.buildings[0]!;
+    expect(world.frontOf(box, 30)).toBe('-z');
+    expect(world.frontOf(box, 25)).toBeNull();
+    // The map's shops keep their word.
+    const shops = new DrivingWorld(MAPS[0]!).buildings.filter((building) => building.shops === true);
+    expect(shops.length).toBeGreaterThan(20);
+  });
+
   describe('against traffic', () => {
     // Heading +X, the front circle's centre is `front` meters ahead of the rear axle at x = 0.
     const touching = front + footprint.radius + 0.9 - 0.2;

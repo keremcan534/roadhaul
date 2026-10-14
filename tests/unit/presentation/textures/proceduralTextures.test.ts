@@ -3,6 +3,8 @@ import { fractalNoise, grain, tileableNoise } from '../../../../src/presentation
 import { createImage, type PixelImage } from '../../../../src/presentation/textures/pixelImage';
 import {
   asphaltImage,
+  ROAD_WEAR_METERS,
+  roadWearImage,
   cloudPuffImage,
   cloudShadowImage,
   concreteImage,
@@ -155,6 +157,20 @@ describe('stroke font', () => {
 });
 
 describe('procedural images', () => {
+  it('wears the road here and there, and leaves most of it as laid', () => {
+    const image = roadWearImage();
+    const values: number[] = [];
+    for (let i = 0; i < image.data.length; i += 4) values.push(image.data[i]!);
+    const laid = values.filter((value) => value === 255).length / values.length;
+    expect(laid).toBeGreaterThan(0.7);
+    // Patches, their sealed edges, cracks and tyre marks: darker, never black.
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(105);
+    expect(Math.min(...values)).toBeLessThan(170);
+    // The same wear every time, a road's width across and  m along.
+    expect(roadWearImage().data).toEqual(image.data);
+    expect(ROAD_WEAR_METERS).toBeGreaterThan(40);
+  });
+
   it('maps the clouds\' shadows in grey that tiles, big blobs of it high and low', () => {
     const size = 64;
     const image = cloudShadowImage(size);

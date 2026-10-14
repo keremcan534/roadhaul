@@ -567,6 +567,18 @@ describe('growSideRoads', () => {
     }
   });
 
+  it('gives the farms\' silos their form, and the houses, barns and sheds none', () => {
+    const buildings = grow(country, 11, 5).buildings;
+    const silos = buildings.filter((building) => building.form === 'silo');
+    expect(silos.length).toBeGreaterThan(0);
+    expect(buildings.every((building) => building.form === undefined || building.form === 'silo')).toBe(true);
+    // A silo is the tall, narrow one.
+    for (const silo of silos) {
+      expect(Math.max(silo.widthMeters, silo.depthMeters)).toBeLessThanOrEqual(7);
+      expect(silo.heightMeters).toBeGreaterThanOrEqual(13);
+    }
+  });
+
   it('keeps to its junctions, dead ends and clearances whatever the seed', () => {
     for (let seed = 1; seed <= 4; seed++) {
       const grown = grownOf(grow(country, seed, 5));

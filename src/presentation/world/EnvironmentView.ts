@@ -44,6 +44,7 @@ import {
 import { unlitByLamps } from './LampLighting';
 import { Mist, MIST_GLSL, MIST_SKY_METERS } from './Mist';
 import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
+import type { ShadowReach } from './ShadowSubset';
 
 const ZENITH = 0x3f7fc7;
 const HORIZON = 0xc4dcef;
@@ -109,6 +110,14 @@ const CLOUD_DRIFT = (Math.PI * 2) / 2400;
 const SHADOW_EXTENT_METERS = 50;
 const SHADOW_DISTANCE_METERS = 150;
 const SUN_DISTANCE_METERS = 300;
+/**
+ * The shadows' square moved this far, or the sun turned by this much (its cosine), changes shadowStamp: the casters
+ * standing still are gathered again (ShadowReach), with twice that for a margin.
+ */
+const SHADOW_STAMP_METERS = 4;
+const SHADOW_STAMP_TURN_COS = Math.cos((0.5 * Math.PI) / 180);
+/** How far a shadow falls is figured with the sun at least this high (its sine): a low sun's are faint and long. */
+const SHADOW_MIN_SUN_HEIGHT = 0.05;
 /** How dark a shadow is in full sun, like the soft ones under trees; below this much sunlight there are none. */
 const SHADOW_OPACITY = 0.5;
 const MIN_SHADOW_SUNLIGHT = 0.2;
@@ -359,7 +368,7 @@ export interface SceneLight {
  * pre-lit ground with it, the picture's grade (`grade`) and the sun's glare
  * and shafts, for the renderer's colour pass.
  */
-export class EnvironmentView {
+export class EnvironmentView implements ShadowReach {
   private readonly backdrop = new Group();
   private readonly lights: readonly (HemisphereLight | DirectionalLight)[];
   private readonly skyLight: HemisphereLight;
@@ -434,6 +443,11 @@ export class EnvironmentView {
   private readonly shadowUp = new Vector3();
   private shadowFocusX = 0;
   private shadowFocusZ = 0;
+  /** Where the shadows were, and the sun, when shadowStamp last changed. */
+  private stampedX = Number.NaN;
+  private stampedZ = Number.NaN;
+  private readonly stampedSun = new Vector3();
+  shadowStamp = 0;
   /** Scratch colours for the look. */
   private readonly tint = new Color();
   private readonly groundLight = new Color();
@@ -1130,6 +1144,37 @@ export class EnvironmentView {
     const c = x * sun.x + z * sun.z;
     target.copy(across).multiplyScalar(a).addScaledVector(up, b).addScaledVector(sun, c);
     this.sunLight.position.copy(target).addScaledVector(sun, SHADOW_DISTANCE_METERS);
+    const moved = Math.abs(x - this.stampedX) + Math.abs(z - this.stampedZ);
+    if (!(moved < SHADOW_STAMP_METERS) || sun.dot(this.stampedSun) < SHADOW_STAMP_TURN_COS) {
+      this.stampedX = x;
+      this.stampedZ = z;
+      this.stampedSun.copy(sun);
+      this.shadowStamp++;
+    }
+  }
+
+  /**
+   * Whether a post standing at (`x`, `z`), `heightMeters` tall, can cast onto the ground that shows the shadows,
+   * grown by `marginMeters` (ShadowReach): its shadow on the flat ground, from its foot away from the sun as far as
+   * its height over the sun's slope, comes within a circle round the square's corners. Allocation-free.
+   */
+  shadowReaches(x: number, z: number, heightMeters: number, marginMeters: number): boolean {
+    if (this.shadowGround === null) {
+      return false;
+    }
+    const sun = this.keyDirection;
+    const fall = heightMeters / Math.max(SHADOW_MIN_SUN_HEIGHT, sun.y);
+    // The shadow runs from the foot (0) to its tip (1); its point nearest the middle of the square.
+    const dx = -sun.x * fall;
+    const dz = -sun.z * fall;
+    const fx = this.shadowFocusX - x;
+    const fz = this.shadowFocusZ - z;
+    const length = dx * dx + dz * dz;
+    const t = length > 0 ? Math.min(1, Math.max(0, (fx * dx + fz * dz) / length)) : 0;
+    const ex = fx - t * dx;
+    const ez = fz - t * dz;
+    const reach = SHADOW_EXTENT_METERS * Math.SQRT2 + marginMeters;
+    return ex * ex + ez * ez <= reach * reach;
   }
 
   /**

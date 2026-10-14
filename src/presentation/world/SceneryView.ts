@@ -52,6 +52,7 @@ import {
 } from '../textures/propImages';
 import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
+import { SHADOW_GATHER_MARGIN_METERS, ShadowSubset, type ShadowReach } from './ShadowSubset';
 import { FarCulling, freezeTransforms } from './worldTiles';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
@@ -126,10 +127,24 @@ const ROCK_TINTS = [0x8d8a82, 0x98948b, 0x7f7d78, 0xa29d92] as const;
 const ROCK_SHAPES = 9;
 const WOOL_TINTS = [0xece8de, 0xe2ddd1, 0xd9d3c4, 0xf3f0e8] as const;
 const HIDE_TINTS = [0x8a5a3a, 0x6b4128, 0x2b2622, 0xd8d2c6, 0xa0703f] as const;
+/** A cow's height, and how far its body reaches from its middle, for whether it casts into the shadow map. */
+const GRAZER_HEIGHT_METERS = 1.8;
+const GRAZER_REACH_METERS = 1.5;
+
+/** A herd's animals that cast into the shadow map (ShadowSubset): their bodies, their heads, and which they are. */
+interface HerdShadows {
+  readonly bodies: ShadowSubset;
+  readonly heads: ShadowSubset;
+  /** The herd's slots that cast, the first `nearCount`. */
+  readonly near: Uint16Array;
+  nearCount: number;
+}
 
 export interface SceneryViewOptions {
   /** The props cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
+  /** Where those shadows reach: with it, only the animals that can cast there are drawn into the shadow map. */
+  readonly shadowReach?: ShadowReach;
   /** Sharper paving at grazing angles. */
   readonly anisotropy?: number;
   /**
@@ -171,6 +186,10 @@ export class SceneryView {
     readonly heads: InstancedMesh;
     readonly members: readonly number[];
   }[];
+  /** Per herd, those that cast into the shadow map, as of the shadows' stamp last gathered; empty without shadows. */
+  private readonly herdShadows: readonly HerdShadows[];
+  private readonly shadowReach: ShadowReach | null;
+  private shadowStamp = -1;
   private readonly tileCount: number;
   /** The tiles, hidden while far from the camera (showAround). */
   private readonly culling = new FarCulling();
@@ -368,6 +387,20 @@ export class SceneryView {
     this.herds = (['sheep', 'cow'] as const)
       .filter((kind) => world.grazers.some((grazer) => grazer.kind === kind))
       .map((kind) => this.createHerd(kind, castShadows));
+    this.shadowReach = castShadows ? (options.shadowReach ?? null) : null;
+    this.herdShadows =
+      this.shadowReach === null
+        ? []
+        : this.herds.map((herd) => {
+            const shadows: HerdShadows = {
+              bodies: this.track(new ShadowSubset(herd.bodies, herd.members.length)),
+              heads: this.track(new ShadowSubset(herd.heads, herd.members.length)),
+              near: new Uint16Array(herd.members.length),
+              nearCount: 0,
+            };
+            this.root.add(shadows.bodies.mesh, shadows.heads.mesh);
+            return shadows;
+          });
     this.animate();
     this.root.name = 'scenery';
     freezeTransforms(this.root);
@@ -389,13 +422,19 @@ export class SceneryView {
     this.culling.update(x, z);
   }
 
-  /** Lets the animals graze on for `deltaSeconds` (0 holds them still). Allocation-free. */
+  /**
+   * Lets the animals graze on for `deltaSeconds` (0 holds them still), and draws into the shadow map those that cast
+   * there. Allocation-free.
+   */
   update(deltaSeconds: number): void {
-    if (deltaSeconds <= 0 || this.herds.length === 0) {
+    if (this.herds.length === 0) {
       return;
     }
-    this.time += deltaSeconds;
-    this.animate();
+    if (deltaSeconds > 0) {
+      this.time += deltaSeconds;
+      this.animate();
+    }
+    this.castHerdShadows(deltaSeconds > 0);
   }
 
   /**
@@ -501,9 +540,11 @@ export class SceneryView {
   }
 
   /**
-   * Each head at its neck, lowered to graze and bobbing as it crops the
-   * grass; every so often lifted, turned to look round, and lowered again.
-   * Each animal keeps its own time, so a herd never moves as one.
+   * Each animal turning slowly as it grazes and shuffling a step forward and
+   * back (within its place in the world, where it is solid), and its head at
+   * its neck, lowered to graze and bobbing as it crops the grass; every so
+   * often lifted, turned to look round, and lowered again. Each animal keeps
+   * its own time, so a herd never moves as one.
    */
   private animate(): void {
     for (const herd of this.herds) {
@@ -518,13 +559,55 @@ export class SceneryView {
         const graze = 0.1 * Math.sin((own * 2 * Math.PI) / GRAZE_PERIOD_SECONDS);
         const pitch = (0.75 + graze) * (1 - up) - 0.15 * up;
         const yaw = up * 0.5 * Math.sin(own * 1.3);
-        this.turn.setFromAxisAngle(UP, grazer.heading);
-        this.matrix.compose(this.position.set(grazer.x, 0, grazer.z), this.turn, this.unit);
+        const heading = grazer.heading + GRAZE_TURN_RADIANS * Math.sin(own * GRAZE_TURN_RATE);
+        const step = GRAZE_STEP_METERS * Math.sin(own * GRAZE_STEP_RATE + index);
+        this.turn.setFromAxisAngle(UP, heading);
+        this.position.set(grazer.x + Math.sin(heading) * step, 0, grazer.z + Math.cos(heading) * step);
+        this.matrix.compose(this.position, this.turn, this.unit);
+        herd.bodies.setMatrixAt(slot, this.matrix);
         this.neck.makeRotationFromEuler(this.euler.set(pitch, yaw, 0));
         this.neck.setPosition(0, neckAt.y, neckAt.z);
         herd.heads.setMatrixAt(slot, this.matrix.multiply(this.neck));
       }
       herd.heads.instanceMatrix.needsUpdate = true;
+      herd.bodies.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /**
+   * The animals that can cast into the shadow map: gathered again when the shadows have moved far enough
+   * (ShadowReach.shadowStamp), copied again whenever they moved (`grazed`).
+   */
+  private castHerdShadows(grazed: boolean): void {
+    const reach = this.shadowReach;
+    if (reach === null) {
+      return;
+    }
+    const regather = reach.shadowStamp !== this.shadowStamp;
+    if (!regather && !grazed) {
+      return;
+    }
+    this.shadowStamp = reach.shadowStamp;
+    for (let h = 0; h < this.herds.length; h++) {
+      const herd = this.herds[h]!;
+      const shadows = this.herdShadows[h]!;
+      if (regather) {
+        shadows.nearCount = 0;
+        for (let slot = 0; slot < herd.members.length; slot++) {
+          const grazer = this.grazers[herd.members[slot]!]!;
+          if (reach.shadowReaches(grazer.x, grazer.z, GRAZER_HEIGHT_METERS, GRAZER_REACH_METERS + SHADOW_GATHER_MARGIN_METERS)) {
+            shadows.near[shadows.nearCount++] = slot;
+          }
+        }
+      }
+      shadows.bodies.begin();
+      shadows.heads.begin();
+      for (let i = 0; i < shadows.nearCount; i++) {
+        shadows.bodies.copy(shadows.near[i]!);
+        shadows.heads.copy(shadows.near[i]!);
+      }
+      shadows.bodies.end();
+      shadows.heads.end();
     }
   }
 
@@ -538,6 +621,14 @@ const UP = new Vector3(0, 1, 0);
 const SPEED_SIGN_CODE = knockableCode('speedSign');
 const ROAD_SIGN_CODE = knockableCode('roadSign');
 const MAILBOX_CODE = knockableCode('mailbox');
+/**
+ * As it grazes an animal turns this far either way of its heading, about once in two minutes, and shuffles this far
+ * forward and back, about once a minute: within its solid circle in the world.
+ */
+const GRAZE_TURN_RADIANS = 0.6;
+const GRAZE_TURN_RATE = (2 * Math.PI) / 130;
+const GRAZE_STEP_METERS = 0.4;
+const GRAZE_STEP_RATE = (2 * Math.PI) / 70;
 /** Where a sheep's and a cow's neck is on its body (the head turns there), meters up and forward. */
 const SHEEP_NECK = { y: 0.78, z: 0.55 } as const;
 const COW_NECK = { y: 1.32, z: 1.0 } as const;

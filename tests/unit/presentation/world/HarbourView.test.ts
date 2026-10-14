@@ -118,13 +118,34 @@ describe('HarbourView', () => {
     expect(glowsOf(plain)).toBeUndefined();
   });
 
-  it('costs a draw call for the quays, the kerbs, the cranes and each boat, and one for the glows', () => {
+  it('costs a draw call for the quays, the kerbs, the cranes, each boat and each ship passing, and one for the glows', () => {
     const scene = new Scene();
     new HarbourView(scene, sea);
 
-    expect(drawCallCount(scene)).toBe(3 + sea.boats.length + 1);
+    const passing = scene.getObjectByName('harbour')!.children.filter((child) => child.name.startsWith('passing-')).length;
+    expect(passing).toBe(2);
+    expect(drawCallCount(scene)).toBe(3 + sea.boats.length + passing + 1);
     const bounds = new Box3().setFromObject(named(scene, 'quay-kerbs'));
     expect(bounds.max.y).toBeLessThan(1);
+  });
+
+  it('sails ships along the coast, out at sea, facing the way they go', () => {
+    const scene = new Scene();
+    const view = new HarbourView(scene, sea);
+    const ships = scene.getObjectByName('harbour')!.children.filter((child) => child.name.startsWith('passing-'));
+    const westmost = Math.min(...sea.shoreline.map(([x]) => x));
+    for (const ship of ships) {
+      const from = ship.position.clone();
+      view.update(1);
+      const travelled = ship.position.clone().sub(from).setY(0);
+      // About its speed (3.5 to 5.5 m/s) for a second, well off the shore.
+      expect(travelled.length(), ship.name).toBeGreaterThan(3.3);
+      expect(travelled.length(), ship.name).toBeLessThan(5.6);
+      expect(ship.position.x, ship.name).toBeLessThan(westmost - 240);
+      // Its bow (+Z turned by its heading) along the way it went.
+      const bow = { x: Math.sin(ship.rotation.y), z: Math.cos(ship.rotation.y) };
+      expect((bow.x * travelled.x + bow.z * travelled.z) / travelled.length(), ship.name).toBeGreaterThan(0.99);
+    }
   });
 
   it('releases every GPU resource and leaves the scene on dispose', () => {

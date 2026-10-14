@@ -1,5 +1,5 @@
 import { SeededRandom } from '../../core/random/SeededRandom';
-import { FIELD_CROPS, type FieldDefinition, type Point2, type RoadSide } from '../../data/definitions/MapDefinition';
+import { FIELD_CROPS, type BuildingForm, type FieldDefinition, type Point2, type RoadSide } from '../../data/definitions/MapDefinition';
 import { JUNCTION_REACH_METERS, ROAD_CLEARANCE_METERS, type CountryPlan } from './countryPlan';
 import { fieldArea } from './fields';
 import { createRoadPoint, RoadPath } from './RoadPath';
@@ -66,10 +66,11 @@ interface BuildingSize {
   readonly length: readonly [number, number];
   readonly width: readonly [number, number];
   readonly height: readonly [number, number];
+  readonly form?: BuildingForm;
 }
 const FARMHOUSE: BuildingSize = { length: [11, 14], width: [8, 10], height: [6, 7.5] };
 const BARN: BuildingSize = { length: [20, 28], width: [11, 15], height: [7, 9.5] };
-const SILO: BuildingSize = { length: [6, 7], width: [6, 7], height: [13, 17] };
+const SILO: BuildingSize = { length: [6, 7], width: [6, 7], height: [13, 17], form: 'silo' };
 const SHED: BuildingSize = { length: [9, 12], width: [6, 8], height: [4, 5] };
 const HOUSE: BuildingSize = { length: [9, 12], width: [8, 10], height: [5, 7] };
 /** This share of the lanes that end end at a farmstead; it has a silo and a shed these shares of the time. */
@@ -516,7 +517,7 @@ class SideRoadGrowth {
     const width = random.range(size.width[0], size.width[1]);
     const height = random.range(size.height[0], size.height[1]);
     const [sizeX, sizeZ] = Math.abs(ux) >= Math.abs(uz) ? [length, width] : [width, length];
-    return this.plan.tryBuilding(x, z, sizeX, sizeZ, height);
+    return this.plan.tryBuilding(x, z, sizeX, sizeZ, height, size.form);
   }
 }
 

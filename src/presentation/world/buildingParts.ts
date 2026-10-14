@@ -1,6 +1,7 @@
 import { BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, Vector3 } from 'three';
 import type { SeededRandom } from '../../core/random/SeededRandom';
-import type { BuildingObstacle } from '../../domain/world/DrivingWorld';
+import { CONTAINER_GAP_METERS, CONTAINER_METERS } from '../../domain/world/containerStacks';
+import type { BuildingObstacle, BuildingSide } from '../../domain/world/DrivingWorld';
 
 /**
  * The parts buildings are dressed in beyond their walls (TrackView): roofs,
@@ -194,6 +195,317 @@ export function rooftopGeometry(box: BuildingObstacle, random: SeededRandom, bea
     }
   }
   return parts;
+}
+
+/**
+ * A building with a form of its own (BuildingObstacle.form), standing in its box in place of walls and a roof: a
+ * silo, a chimney or a mine's headframe. Coloured, no uv.
+ */
+export function formGeometry(box: BuildingObstacle): BufferGeometry[] {
+  switch (box.form) {
+    case 'silo':
+      return siloGeometry(box);
+    case 'chimney':
+      return chimneyGeometry(box);
+    case 'headframe':
+      return headframeGeometry(box);
+    case 'containers':
+      return containersGeometry(box);
+    default:
+      return [];
+  }
+}
+
+const SILO_STEEL = 0xb9bec2;
+const SILO_CONCRETE = 0xcfc8b8;
+const SILO_RING_METERS = 1.6;
+const FOOTING_COLOR = 0x8f8a80;
+
+/**
+ * A silo: a ribbed drum, galvanised or concrete (by where it stands), a cone
+ * roof with its cap, a ladder's rails up its side, on a concrete footing.
+ */
+function siloGeometry(box: BuildingObstacle): BufferGeometry[] {
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const radius = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 2 - 0.3;
+  const rise = radius * 0.55;
+  const drum = box.heightMeters - rise;
+  const wall = Math.floor(cx + cz) % 2 === 0 ? SILO_STEEL : SILO_CONCRETE;
+  const ring = new Color(wall).multiplyScalar(0.84).getHex();
+  const parts = [
+    coloured(new CylinderGeometry(radius + 0.3, radius + 0.35, 0.5, 20).translate(cx, 0.25, cz), FOOTING_COLOR),
+    coloured(new CylinderGeometry(radius, radius, drum, 20, 1, true).translate(cx, drum / 2, cz), wall),
+    coloured(new CylinderGeometry(0.35, radius + 0.15, rise, 20).translate(cx, drum + rise / 2, cz), 0xa3a9ae),
+    coloured(new CylinderGeometry(0.45, 0.45, 0.5, 10).translate(cx, drum + rise + 0.15, cz), 0x8d9398),
+  ];
+  for (let y = SILO_RING_METERS; y < drum - 0.4; y += SILO_RING_METERS) {
+    parts.push(coloured(new CylinderGeometry(radius + 0.05, radius + 0.05, 0.1, 20, 1, true).translate(cx, y, cz), ring));
+  }
+  for (const side of [-0.25, 0.25]) {
+    parts.push(coloured(new BoxGeometry(0.06, drum, 0.06).translate(cx + radius + 0.18, drum / 2, cz + side), 0x6f757a));
+  }
+  return parts;
+}
+
+/**
+ * A works' chimney: a brick shaft narrowing as it rises, red and white
+ * bands near its top for aircraft, a dark cap, on a concrete base.
+ */
+function chimneyGeometry(box: BuildingObstacle): BufferGeometry[] {
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const height = box.heightMeters;
+  const foot = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 2 - 1;
+  const top = foot * 0.6;
+  const radiusAt = (y: number): number => foot + ((top - foot) * y) / height;
+  const band = 1.1;
+  const parts = [
+    coloured(new BoxGeometry(2 * foot + 1.4, 2.2, 2 * foot + 1.4).translate(cx, 1.1, cz), FOOTING_COLOR),
+    coloured(new CylinderGeometry(top, foot, height, 16, 1, true).translate(cx, height / 2, cz), 0x8b4a37),
+    coloured(new CylinderGeometry(top + 0.15, top + 0.15, 0.6, 16).translate(cx, height + 0.1, cz), 0x3b3530),
+  ];
+  [0xe8e4dc, 0xb5322a, 0xe8e4dc].forEach((hex, i) => {
+    const y = height - 1.2 - band * (i + 0.5);
+    const radius = radiusAt(y) + 0.04;
+    parts.push(coloured(new CylinderGeometry(radius, radius + 0.02, band, 16, 1, true).translate(cx, y, cz), hex));
+  });
+  return parts;
+}
+
+const HEADFRAME_STEEL = 0x7a3b2b;
+const HEADFRAME_BAY_METERS = 5;
+
+/**
+ * A mine's headframe over its shaft: a braced steel tower of four legs, two
+ * raking struts back to the ground, a platform, and the two sheave wheels
+ * the hoist's ropes run over.
+ */
+function headframeGeometry(box: BuildingObstacle): BufferGeometry[] {
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const half = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 4;
+  const tower = box.heightMeters - 4;
+  const parts: BufferGeometry[] = [coloured(new BoxGeometry(4 * half, 0.6, 4 * half).translate(cx, 0.3, cz), FOOTING_COLOR)];
+  const steel = (geometry: BufferGeometry): void => {
+    parts.push(coloured(geometry, HEADFRAME_STEEL));
+  };
+  // A member from (x0, y0, z0) to (x1, y1, z1), `thickness` square.
+  const member = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, thickness: number): void => {
+    const from = new Vector3(x0, y0, z0);
+    const along = new Vector3(x1, y1, z1).sub(from);
+    const length = along.length();
+    // Built along z, then turned so its z runs along the member (never upright: the posts are boxes of their own).
+    const geometry = new BoxGeometry(thickness, thickness, length);
+    geometry.lookAt(along);
+    steel(geometry.translate(x0 + along.x / 2, y0 + along.y / 2, z0 + along.z / 2));
+  };
+  const corners: readonly [number, number][] = [
+    [-half, -half],
+    [half, -half],
+    [half, half],
+    [-half, half],
+  ];
+  for (const [x, z] of corners) {
+    steel(new BoxGeometry(0.5, tower, 0.5).translate(cx + x, tower / 2, cz + z));
+  }
+  for (let y = HEADFRAME_BAY_METERS; y <= tower; y += HEADFRAME_BAY_METERS) {
+    for (let side = 0; side < 4; side++) {
+      const [x0, z0] = corners[side]!;
+      const [x1, z1] = corners[(side + 1) % 4]!;
+      member(cx + x0, y, cz + z0, cx + x1, y, cz + z1, 0.3);
+      // An X across each face of the bay below (the lowest from just off the footing).
+      const low = Math.max(y - HEADFRAME_BAY_METERS, 0.6);
+      member(cx + x0, low, cz + z0, cx + x1, y, cz + z1, 0.16);
+      member(cx + x1, low, cz + z1, cx + x0, y, cz + z0, 0.16);
+    }
+  }
+  // The raking struts, from the tower's top back to the ground toward the winding house (-x).
+  for (const z of [-half, half]) {
+    member(cx - half, tower, cz + z, cx - 3.4 * half, 0.3, cz + z * 1.4, 0.55);
+  }
+  steel(new BoxGeometry(2 * half + 2, 0.4, 2 * half + 2).translate(cx, tower, cz));
+  for (const z of [-0.9, 0.9]) {
+    parts.push(coloured(new CylinderGeometry(1.9, 1.9, 0.3, 20).rotateX(Math.PI / 2).translate(cx, tower + 2.3, cz + z), 0x3d3a37));
+    parts.push(coloured(new CylinderGeometry(0.45, 0.45, 0.4, 10).rotateX(Math.PI / 2).translate(cx, tower + 2.3, cz + z), 0x9a9690));
+  }
+  steel(new BoxGeometry(0.4, 2.3, 2.6).translate(cx, tower + 1.15, cz));
+  return parts;
+}
+
+/** The length of `box`'s wall on `side`. */
+function wallLength(box: BuildingObstacle, side: BuildingSide): number {
+  return side === '-x' || side === '+x' ? box.maxZ - box.minZ : box.maxX - box.minX;
+}
+
+/**
+ * Parts built against a wall in its own frame (along it x, up y, out from it z, the wall's middle at the origin)
+ * turned and moved onto `side` of `box`.
+ */
+function onWall(box: BuildingObstacle, side: BuildingSide, parts: BufferGeometry[]): BufferGeometry[] {
+  const turn = side === '+z' ? 0 : side === '-z' ? Math.PI : side === '+x' ? Math.PI / 2 : -Math.PI / 2;
+  const x = side === '-x' ? box.minX : side === '+x' ? box.maxX : (box.minX + box.maxX) / 2;
+  const z = side === '-z' ? box.minZ : side === '+z' ? box.maxZ : (box.minZ + box.maxZ) / 2;
+  return parts.map((part) => part.rotateY(turn).translate(x, 0, z));
+}
+
+/** A box in a wall's frame: `width` along it about `along`, from `bottom` up `height`, `depth` out from `out`. */
+function wallBox(along: number, width: number, bottom: number, height: number, out: number, depth: number, hex: number): BufferGeometry {
+  return coloured(new BoxGeometry(width, height, depth).translate(along, bottom + height / 2, out + depth / 2), hex);
+}
+
+/** Shop fascias and awnings: original, plain colours. */
+const FASCIA_PAINTS = [0x2f5d8a, 0x8a2f2f, 0x3f6b45, 0x2b2e31, 0x7a5a2f, 0x5c3f6b] as const;
+const AWNING_PAINTS = [0xb5322a, 0x2f6d8a, 0x3f7b4a, 0xc76f2a] as const;
+const AWNING_STRIPE = 0xece8de;
+const SHOP_GLASS = 0x34424e;
+const SHOP_FRAME = 0x2b2e31;
+/** A shop is about this wide along its building's front, meters. */
+const SHOP_WIDTH_METERS = 9;
+
+/**
+ * Shops along the ground floor of a town building's `side` facing its street: each a glazed front on a low riser
+ * under a lintel, its door at one end, a painted fascia board over it (no lettering), and most under a striped
+ * awning. Over the facade's ground-floor windows (3.5 m a floor). Coloured, no uv.
+ */
+export function shopfrontGeometry(box: BuildingObstacle, side: BuildingSide, random: SeededRandom): BufferGeometry[] {
+  const length = wallLength(box, side);
+  const shops = Math.max(1, Math.round(length / SHOP_WIDTH_METERS));
+  const each = length / shops;
+  const parts: BufferGeometry[] = [];
+  for (let shop = 0; shop < shops; shop++) {
+    const along = -length / 2 + each * (shop + 0.5);
+    const width = each - 0.9;
+    parts.push(
+      wallBox(along, width + 0.2, 0, 0.35, 0, 0.14, SHOP_FRAME),
+      wallBox(along, width, 0.35, 2.2, 0, 0.06, SHOP_GLASS),
+      wallBox(along + width / 2 - 0.75, 1, 0.35, 2.2, 0.06, 0.05, 0x1f2428),
+      wallBox(along, width + 0.2, 2.55, 0.15, 0, 0.14, SHOP_FRAME),
+      wallBox(along, width + 0.2, 2.7, 0.6, 0, 0.16, FASCIA_PAINTS[random.int(0, FASCIA_PAINTS.length - 1)]!),
+    );
+    if (random.next() < 0.7) {
+      const paint = AWNING_PAINTS[random.int(0, AWNING_PAINTS.length - 1)]!;
+      const stripes = 6;
+      const stripe = width / stripes;
+      for (let i = 0; i < stripes; i++) {
+        const awning = new BoxGeometry(stripe, 0.05, 1.3).rotateX(0.35).translate(along - width / 2 + stripe * (i + 0.5), 2.42, 0.72);
+        parts.push(coloured(awning, i % 2 === 0 ? paint : AWNING_STRIPE));
+      }
+    }
+  }
+  return onWall(box, side, parts);
+}
+
+/**
+ * Loading doors in a warehouse's or a barn's `side` facing its road: roller shutters in steel frames, a canopy over
+ * each, and a yellow bollard either side. Coloured, no uv.
+ */
+export function loadingDoorsGeometry(box: BuildingObstacle, side: BuildingSide): BufferGeometry[] {
+  const length = wallLength(box, side);
+  const doors = Math.min(4, Math.max(1, Math.floor(length / 10)));
+  const width = Math.min(4.2, length / doors - 2);
+  const height = Math.min(4.8, box.heightMeters - 1.5);
+  if (width < 2 || height < 2.5) {
+    return [];
+  }
+  const parts: BufferGeometry[] = [];
+  for (let door = 0; door < doors; door++) {
+    const along = -length / 2 + (length / doors) * (door + 0.5);
+    parts.push(
+      wallBox(along, width, 0, height, 0, 0.08, 0x5d6a74),
+      wallBox(along - width / 2 - 0.1, 0.2, 0, height, 0, 0.14, 0x3a3f44),
+      wallBox(along + width / 2 + 0.1, 0.2, 0, height, 0, 0.14, 0x3a3f44),
+      wallBox(along, width + 0.4, height, 0.3, 0, 0.14, 0x3a3f44),
+      wallBox(along, width + 1, height + 0.55, 0.12, 0, 1.4, 0x7d8894),
+    );
+    for (const end of [-1, 1]) {
+      parts.push(wallBox(along + end * (width / 2 + 0.6), 0.25, 0, 1, 0.5, 0.25, 0xd8b02a));
+    }
+  }
+  return onWall(box, side, parts);
+}
+
+const DOOR_PAINTS = [0x5a3a28, 0x2f4f6b, 0x3f5f3f, 0x7a2f2f] as const;
+
+/**
+ * A country house's front door on its `side` facing the lane: a panelled door on a stone step under a small
+ * canopy, somewhere along the wall. Coloured, no uv.
+ */
+export function frontDoorGeometry(box: BuildingObstacle, side: BuildingSide, random: SeededRandom): BufferGeometry[] {
+  const length = wallLength(box, side);
+  const along = random.range(-length / 4, length / 4);
+  return onWall(box, side, [
+    wallBox(along, 1.7, 0, 0.3, 0, 0.8, 0x8f8a80),
+    wallBox(along, 1, 0.3, 2.15, 0, 0.08, DOOR_PAINTS[random.int(0, DOOR_PAINTS.length - 1)]!),
+    wallBox(along, 1.6, 2.6, 0.1, 0, 0.9, 0x6b5545),
+  ]);
+}
+
+/**
+ * A brick chimney stack rising through a pitched roof `rise` high: over the ridge, a quarter of the way along from
+ * one end, with its cap. Coloured, no uv.
+ */
+export function chimneyStackGeometry(box: BuildingObstacle, rise: number, random: SeededRandom): BufferGeometry[] {
+  const width = box.maxX - box.minX;
+  const depth = box.maxZ - box.minZ;
+  const end = random.next() < 0.5 ? -0.25 : 0.25;
+  const x = (box.minX + box.maxX) / 2 + (width >= depth ? end * width : 0);
+  const z = (box.minZ + box.maxZ) / 2 + (width >= depth ? 0 : end * depth);
+  const bottom = box.heightMeters - 0.3;
+  const top = box.heightMeters + rise * 0.8 + 0.9;
+  return [
+    coloured(new BoxGeometry(0.6, top - bottom, 0.6).translate(x, (top + bottom) / 2, z), 0x8b4a37),
+    coloured(new BoxGeometry(0.8, 0.12, 0.8).translate(x, top + 0.06, z), 0x5a5048),
+  ];
+}
+
+/** Shipping containers' paint: original, plain colours of no line in particular. */
+const CONTAINER_PAINTS = [0x9c3b2e, 0x2f5d8a, 0x3f6b45, 0x8a8f94, 0xc76f2a, 0xd9d6cf, 0x6b4a33] as const;
+
+/**
+ * A stack of shipping containers filling its box: end to end along its length, side by side across it, as many high
+ * as it is tall; now and then a column one short, each container its own paint (from where it stands, so the same
+ * every drive), with a darker band along its foot where its frame is.
+ */
+function containersGeometry(box: BuildingObstacle): BufferGeometry[] {
+  const sizeX = box.maxX - box.minX;
+  const sizeZ = box.maxZ - box.minZ;
+  const alongX = sizeX >= sizeZ;
+  const length = alongX ? sizeX : sizeZ;
+  const width = alongX ? sizeZ : sizeX;
+  const { length: unit, width: across, height } = CONTAINER_METERS;
+  const ends = Math.max(1, Math.round((length + CONTAINER_GAP_METERS) / (unit + CONTAINER_GAP_METERS)));
+  const sides = Math.max(1, Math.round((width + CONTAINER_GAP_METERS) / (across + CONTAINER_GAP_METERS)));
+  const tiers = Math.max(1, Math.round(box.heightMeters / height));
+  const parts: BufferGeometry[] = [];
+  const seed = Math.floor(box.minX * 7 + box.minZ * 13);
+  for (let end = 0; end < ends; end++) {
+    for (let side = 0; side < sides; side++) {
+      const column = hash(seed + end * 31 + side * 17);
+      const high = tiers > 1 && column % 5 === 0 ? tiers - 1 : tiers;
+      for (let tier = 0; tier < high; tier++) {
+        const paint = CONTAINER_PAINTS[hash(column + tier * 101) % CONTAINER_PAINTS.length]!;
+        const a = -length / 2 + unit / 2 + end * (unit + CONTAINER_GAP_METERS);
+        const b = -width / 2 + across / 2 + side * (across + CONTAINER_GAP_METERS);
+        const x = (box.minX + box.maxX) / 2 + (alongX ? a : b);
+        const z = (box.minZ + box.maxZ) / 2 + (alongX ? b : a);
+        const y = tier * height;
+        const shell = alongX ? new BoxGeometry(unit, height - 0.04, across) : new BoxGeometry(across, height - 0.04, unit);
+        parts.push(coloured(shell.translate(x, y + height / 2, z), paint));
+        const rail = alongX ? new BoxGeometry(unit + 0.02, 0.16, across + 0.02) : new BoxGeometry(across + 0.02, 0.16, unit + 0.02);
+        parts.push(coloured(rail.translate(x, y + 0.08, z), new Color(paint).multiplyScalar(0.55).getHex()));
+      }
+    }
+  }
+  return parts;
+}
+
+/** A small integer hash: the same number for the same input, scattered. */
+function hash(value: number): number {
+  let h = Math.imul(value ^ 0x9e3779b9, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
 }
 
 /** A solar water heater standing at (x, y, z), its panel tilted toward `bearing`: frame, blue panel, white tank on legs. */

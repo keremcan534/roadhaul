@@ -675,6 +675,38 @@ describe('EnvironmentView', () => {
     expect(scene.children).toEqual([]);
   });
 
+  it('tells which casters about the map can cast onto the shadows round the truck, and when to gather them again', () => {
+    const plain = new EnvironmentView(new Scene());
+    plain.focusShadows(0, 0);
+    expect(plain.shadowReaches(0, 0, 8, 0)).toBe(false);
+
+    const view = new EnvironmentView(new Scene(), { shadowMapSize: 1024 });
+    view.applySky(skyAt(48), placed(toward(30, 200)));
+    view.focusShadows(500, 500);
+    // Beside the truck, yes; a kilometre off, no.
+    expect(view.shadowReaches(510, 495, 8, 0)).toBe(true);
+    expect(view.shadowReaches(1500, 500, 8, 0)).toBe(false);
+    // Past the square's corners toward the sun: a low post no, a tall one throws its shadow in; and the margin counts.
+    const sun = view.sky.sunDirection.value;
+    const towardSun = new Vector3(sun.x, 0, sun.z).normalize();
+    const beyond = 50 * Math.SQRT2 + 5;
+    const x = 500 + towardSun.x * beyond;
+    const z = 500 + towardSun.z * beyond;
+    expect(view.shadowReaches(x, z, 0.5, 0)).toBe(false);
+    expect(view.shadowReaches(x, z, 30, 0)).toBe(true);
+    expect(view.shadowReaches(x, z, 0.5, 10)).toBe(true);
+
+    // The stamp keeps for small moves, and changes once the shadows have moved a few meters or the sun has turned.
+    const stamp = view.shadowStamp;
+    view.focusShadows(501, 500);
+    expect(view.shadowStamp).toBe(stamp);
+    view.focusShadows(506, 500);
+    expect(view.shadowStamp).toBeGreaterThan(stamp);
+    const moved = view.shadowStamp;
+    view.applySky(skyAt(48), placed(toward(30, 230)));
+    expect(view.shadowStamp).toBeGreaterThan(moved);
+  });
+
   it('turns the baked shadow decals away from the key light', () => {
     const view = new EnvironmentView(new Scene());
     const prelit = new PrelitMaterials();

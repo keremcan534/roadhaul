@@ -58,6 +58,17 @@ const BOAT_MOTION: Readonly<Record<BoatKind, { readonly heave: number; readonly 
   fishing: { heave: 0.16, roll: 0.05, pitch: 0.015 },
 };
 
+/**
+ * Ships passing offshore, round and round a route along the coast (an ellipse at sea, PASSING_ROUTE): each a kind,
+ * its speed (m/s), where on the route it starts (0..1 round it) and which way it goes.
+ */
+const PASSING_SHIPS: readonly { readonly kind: BoatKind; readonly speed: number; readonly start: number; readonly sunwise: boolean }[] = [
+  { kind: 'coaster', speed: 5.5, start: 0.15, sunwise: true },
+  { kind: 'fishing', speed: 3.5, start: 0.6, sunwise: false },
+];
+/** The route keeps this far off the shore's westmost point, this wide, and this far short of the map's ends, meters. */
+const PASSING_ROUTE = { offshore: 250, width: 600, endMargin: 300 } as const;
+
 export interface HarbourViewOptions {
   /** Texture anisotropy for the quay (renderer capability). */
   readonly anisotropy?: number;
@@ -81,6 +92,9 @@ export class HarbourView {
   private readonly root = new Group();
   private readonly resources: { dispose(): void }[] = [];
   private readonly boats: { readonly mesh: Mesh; readonly boat: Boat; readonly phase: number }[] = [];
+  /** The ships passing offshore, each where it is round the route (an angle round the ellipse), and the route. */
+  private readonly passing: { readonly mesh: Mesh; readonly kind: BoatKind; readonly speed: number; angle: number; readonly turn: number }[] = [];
+  private readonly route: { readonly x: number; readonly z: number; readonly radiusX: number; readonly radiusZ: number } | null;
   private readonly glows: LampGlows | null;
   private time = 0;
 
@@ -112,6 +126,22 @@ export class HarbourView {
       this.boats.push({ mesh, boat, phase: index * 1.7 });
       this.root.add(mesh);
     });
+    this.route = passingRoute(sea);
+    if (this.route !== null) {
+      for (const ship of PASSING_SHIPS) {
+        let geometry = shapes.get(ship.kind);
+        if (geometry === undefined) {
+          geometry = this.track(boatGeometry(ship.kind));
+          shapes.set(ship.kind, geometry);
+        }
+        const mesh = new Mesh(geometry, material);
+        mesh.name = `passing-${ship.kind}`;
+        mesh.rotation.order = 'YXZ';
+        this.passing.push({ mesh, kind: ship.kind, speed: ship.speed, angle: ship.start * Math.PI * 2, turn: ship.sunwise ? 1 : -1 });
+        this.root.add(mesh);
+      }
+      this.sail(0);
+    }
     const lights = lampsOf(sea);
     if (options.lampGlows !== false && lights.length > 0) {
       this.glows = new LampGlows(lights.length, GLOW_SIZE_METERS);
@@ -127,9 +157,10 @@ export class HarbourView {
     scene.add(this.root);
   }
 
-  /** Rocks the boats at their moorings `deltaSeconds` on. Allocation-free. */
+  /** Rocks the boats at their moorings, and sails the ships passing offshore, `deltaSeconds` on. Allocation-free. */
   update(deltaSeconds: number): void {
     this.time = (this.time + deltaSeconds) % 3600;
+    this.sail(deltaSeconds);
     for (let i = 0; i < this.boats.length; i++) {
       const { mesh, boat, phase } = this.boats[i]!;
       const motion = BOAT_MOTION[boat.kind];
@@ -137,6 +168,33 @@ export class HarbourView {
       mesh.position.y = Math.sin(t * 0.9) * motion.heave;
       mesh.rotation.z = Math.sin(t * 0.7 + 0.5) * motion.roll;
       mesh.rotation.x = Math.sin(t * 0.55 + 1.3) * motion.pitch;
+    }
+  }
+
+  /**
+   * Moves the ships passing offshore `deltaSeconds` on round their route, at their speed (the ellipse's angle at a
+   * rate that keeps their pace along it), facing the way they go and riding the swell.
+   */
+  private sail(deltaSeconds: number): void {
+    const route = this.route;
+    if (route === null) {
+      return;
+    }
+    for (let i = 0; i < this.passing.length; i++) {
+      const ship = this.passing[i]!;
+      const sin = Math.sin(ship.angle);
+      const cos = Math.cos(ship.angle);
+      const pace = Math.sqrt(route.radiusX * route.radiusX * sin * sin + route.radiusZ * route.radiusZ * cos * cos);
+      ship.angle = (ship.angle + (ship.turn * ship.speed * deltaSeconds) / pace) % (Math.PI * 2);
+      const { mesh } = ship;
+      mesh.position.set(route.x + route.radiusX * Math.cos(ship.angle), 0, route.z + route.radiusZ * Math.sin(ship.angle));
+      // Heading along the ellipse's tangent, the way the ship goes round it.
+      mesh.rotation.y = Math.atan2(-ship.turn * route.radiusX * Math.sin(ship.angle), ship.turn * route.radiusZ * Math.cos(ship.angle));
+      const motion = BOAT_MOTION[ship.kind];
+      const t = this.time + i * 2.3;
+      mesh.position.y = Math.sin(t * 0.8) * motion.heave;
+      mesh.rotation.z = Math.sin(t * 0.6 + 0.5) * motion.roll;
+      mesh.rotation.x = Math.sin(t * 0.5 + 1.3) * motion.pitch;
     }
   }
 
@@ -321,6 +379,31 @@ const BOAT_LIGHTS: Readonly<Record<BoatKind, readonly Vector3[]>> = {
 };
 
 /** A boat of `kind` in its own frame: bow toward +Z, the waterline at y 0, the hull going on below it. */
+/**
+ * The passing ships' route: an ellipse at sea along the whole coast, its landward side PASSING_ROUTE.offshore off the
+ * shore's westmost point and its ends short of the map's (as far as the shoreline runs). Null without a shoreline.
+ */
+function passingRoute(sea: Sea): { x: number; z: number; radiusX: number; radiusZ: number } | null {
+  if (sea.shoreline.length < 2) {
+    return null;
+  }
+  let westmost = Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  for (const point of sea.shoreline) {
+    westmost = Math.min(westmost, point[0]);
+    south = Math.min(south, point[1]);
+    north = Math.max(north, point[1]);
+  }
+  const inner = westmost - PASSING_ROUTE.offshore;
+  return {
+    x: inner - PASSING_ROUTE.width / 2,
+    z: (south + north) / 2,
+    radiusX: PASSING_ROUTE.width / 2,
+    radiusZ: Math.max(0, (north - south) / 2 - PASSING_ROUTE.endMargin),
+  };
+}
+
 function boatGeometry(kind: BoatKind): BufferGeometry {
   // Not indexed, like the extruded hull, so the parts merge.
   const parts: BufferGeometry[] = [];

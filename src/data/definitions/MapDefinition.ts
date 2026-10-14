@@ -25,6 +25,13 @@ export interface RoadDefinition {
 }
 
 /** A solid, axis-aligned block (depot hall, office, warehouse). */
+/**
+ * What a building is when not a block with windows: a farm's or a works' silo, a chimney, a mine's headframe, a stack
+ * of shipping containers.
+ */
+export const BUILDING_FORMS = ['silo', 'chimney', 'headframe', 'containers'] as const;
+export type BuildingForm = (typeof BUILDING_FORMS)[number];
+
 export interface BuildingDefinition {
   /** Centre of the footprint. */
   readonly x: number;
@@ -34,6 +41,10 @@ export interface BuildingDefinition {
   /** Size along Z. */
   readonly depthMeters: number;
   readonly heightMeters: number;
+  /** Its form, standing in its footprint; absent: a block with walls, windows and a roof. */
+  readonly form?: BuildingForm;
+  /** Shops along its ground floor, on the side facing its street, whatever its size; absent: none. */
+  readonly shops?: boolean;
 }
 
 /** A rectangle on the ground, rotated so its length runs along `headingDegrees` (0° = +Z, 90° = +X). */
@@ -334,6 +345,12 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       validator.positiveNumber(building.depthMeters, `${buildingPath}.depthMeters`);
       validator.positiveNumber(building.heightMeters, `${buildingPath}.heightMeters`);
       validator.check(inside(building.x, building.z), buildingPath, 'must be inside the map');
+      validator.check(
+        building.form === undefined || (BUILDING_FORMS as readonly string[]).includes(building.form),
+        `${buildingPath}.form`,
+        `must be one of ${BUILDING_FORMS.join(', ')}`,
+      );
+      validator.check(building.shops === undefined || typeof building.shops === 'boolean', `${buildingPath}.shops`, 'must be true or false');
     });
   }
   if (validator.check(Array.isArray(map.depots), `${path}.depots`, 'must be a list')) {

@@ -90,6 +90,28 @@ describe('validateMapDefinition', () => {
     expect(issuePaths(map)).toEqual(['map.roads[0].controlPoints[1]', 'map.buildings[0]', 'map.spawn']);
   });
 
+  it('knows the forms a building can take', () => {
+    const map = mapFixture({
+      buildings: [
+        { x: 0, z: 40, widthMeters: 8, depthMeters: 8, heightMeters: 16, form: 'silo' },
+        { x: 30, z: 40, widthMeters: 8, depthMeters: 8, heightMeters: 30, form: 'pyramid' as never },
+      ],
+    });
+
+    expect(issuePaths(map)).toEqual(['map.buildings[1].form']);
+  });
+
+  it('knows whether a building has shops', () => {
+    const map = mapFixture({
+      buildings: [
+        { x: 0, z: 40, widthMeters: 20, depthMeters: 20, heightMeters: 9, shops: true },
+        { x: 30, z: 40, widthMeters: 20, depthMeters: 20, heightMeters: 9, shops: 'yes' as never },
+      ],
+    });
+
+    expect(issuePaths(map)).toEqual(['map.buildings[1].shops']);
+  });
+
   it('validates sizes and scenery settings', () => {
     const map = mapFixture({
       buildings: [{ x: 0, z: 0, widthMeters: 0, depthMeters: 10, heightMeters: -1 }],

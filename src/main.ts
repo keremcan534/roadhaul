@@ -348,9 +348,12 @@ async function start(strings: Strings): Promise<void> {
   // each thing's circle in the world (the same in every drive of the map) and draw it lying about.
   const debrisCapacity = config.crashes.enabled ? config.crashes.maxDebris : 0;
   const circlesOf = (things: readonly object[]): number[] => things.map((thing) => driving.world.circleIndexOf(thing));
+  // The sun's shadows fall only round the truck: of the lamps, grazers and traffic spread over the whole map, only
+  // those that can cast there are drawn into the shadow map (ShadowSubset).
   const streetLamps = new StreetLampView(renderHost.scene, driving.world.streetLamps, {
     lampGlows,
     castShadows,
+    shadowReach: environment,
     circles: circlesOf(driving.world.streetLamps),
     debrisCapacity,
   });
@@ -392,6 +395,7 @@ async function start(strings: Strings): Promise<void> {
   // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
   const scenery = new SceneryView(renderHost.scene, driving.world, {
     castShadows,
+    shadowReach: environment,
     anisotropy: renderHost.anisotropy,
     debrisCapacity,
   });
@@ -442,6 +446,7 @@ async function start(strings: Strings): Promise<void> {
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
     castShadows,
+    shadowReach: environment,
     sky: environment.sky,
     wrecks: debrisCapacity,
   });
@@ -1898,6 +1903,7 @@ async function start(strings: Strings): Promise<void> {
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
         streetLamps.showKnocked(world.knocked, world.knockVersion);
+        streetLamps.updateShadows();
         farmland.showKnocked(world.knocked, world.knockVersion);
         scenery.showKnocked(world.knocked, world.knockVersion);
         const debris = crashes.simulation;

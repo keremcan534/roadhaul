@@ -26,7 +26,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import { Buckets } from '../../domain/world/buckets';
 import type { TreeSpecies } from '../../domain/world/countryside';
-import type { BuildingObstacle, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
+import type { BuildingObstacle, BuildingSide, DrivingWorld, TreeObstacle } from '../../domain/world/DrivingWorld';
 import { createRoadPoint, type RoadPath } from '../../domain/world/RoadPath';
 import { fractalNoise } from '../textures/noise';
 import type { PixelImage } from '../textures/pixelImage';
@@ -37,6 +37,8 @@ import {
   meadowImage,
   officeFacadeImage,
   officeWindowLightsImage,
+  ROAD_WEAR_METERS,
+  roadWearImage,
   roofTilesImage,
   softBoxShadowImage,
   softShadowImage,
@@ -45,12 +47,17 @@ import {
 } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import {
+  chimneyStackGeometry,
   flatRoofGeometry,
+  formGeometry,
+  frontDoorGeometry,
   gableRoofGeometry,
   hipRoofGeometry,
+  loadingDoorsGeometry,
   plinthGeometry,
   roofStyleOf,
   rooftopGeometry,
+  shopfrontGeometry,
 } from './buildingParts';
 import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
@@ -123,6 +130,13 @@ const MEADOW_TILE_METERS = 110;
 const ASPHALT_TILE_METERS = 10;
 const GRAVEL_TILE_METERS = 4;
 /** One facade texture tile covers 2 bays × 2 floors. */
+/**
+ * A building's front faces a road this near its wall (DrivingWorld.frontOf), with its shops (the map's), loading
+ * doors (a warehouse's, a barn's) or door (a country house's); this share of the small pitched-roofed ones have a
+ * chimney.
+ */
+const FRONT_REACH_METERS = 30;
+const CHIMNEY_SHARE = 0.6;
 const FACADE_TILE_WIDTH = 8;
 const FACADE_TILE_HEIGHT = 7;
 /** The lit-window maps cover this many facade tiles each way; walls start at different tiles of them. */
@@ -319,6 +333,7 @@ uniform float rainfall;
 uniform float rainTime;
 uniform vec3 wetSky;
 uniform vec3 wetZenith;
+uniform sampler2D roadWear;
 varying vec3 vToEye;
 varying vec2 vGround;
 ${PUDDLE_GLSL}
@@ -401,13 +416,17 @@ export class TrackView {
   /** Facades whose windows light up at night. */
   private readonly facades: MeshLambertMaterial[] = [];
   private lamps = 0;
-  /** How wet the asphalt is (0..1) and how hard it rains, the sky it mirrors and where it holds puddles: its shader's uniforms. */
+  /**
+   * How wet the asphalt is (0..1) and how hard it rains, the sky it mirrors and where it holds puddles, and its wear
+   * (roadWearImage): its shader's uniforms.
+   */
   private readonly wet: {
     readonly wetness: { value: number };
     readonly rainfall: { value: number };
     readonly wetSky: { readonly value: Color };
     readonly wetZenith: { readonly value: Color };
     readonly puddleMap: { readonly value: Texture };
+    readonly roadWear: { readonly value: Texture };
   };
   /** The wind in the trees' crowns: its clock (seconds) and strength. */
   private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
@@ -431,6 +450,7 @@ export class TrackView {
       wetSky: options.sky?.horizon ?? { value: new Color(WET_SKY) },
       wetZenith: options.sky?.zenith ?? { value: new Color(WET_ZENITH) },
       puddleMap: { value: this.texture(createPuddleMap()) },
+      roadWear: { value: this.texture(toTexture(roadWearImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 })) },
     };
     const anisotropy = options.anisotropy ?? 1;
     this.root.add(this.createGround(world, anisotropy, options.groundDetail ?? true));
@@ -452,7 +472,7 @@ export class TrackView {
       this.root.add(forest);
     }
     if (world.buildings.length > 0) {
-      this.root.add(...this.createBuildings(world.buildings));
+      this.root.add(...this.createBuildings(world.buildings, (box, reach) => world.frontOf(box, reach)));
     }
     if (this.countryTiles.size > 0) {
       const country = new Group();
@@ -938,7 +958,10 @@ export class TrackView {
    * country grew (BuildingObstacle.country): those, the most triangles, go
    * into the country's tiles, drawn only near the camera (showAround).
    */
-  private createBuildings(buildings: readonly BuildingObstacle[]): Mesh[] {
+  private createBuildings(
+    buildings: readonly BuildingObstacle[],
+    frontOf: (box: BuildingObstacle, reachMeters: number) => BuildingSide | null,
+  ): Mesh[] {
     /** A layer's parts: the whole map's, and the country's by tile (the details only). */
     const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry> } => ({ town: [], country: new TileParts() });
     const offices = layer();
@@ -947,6 +970,8 @@ export class TrackView {
     const details = layer();
     const shadows = layer();
     const random = new SeededRandom(311);
+    // The fronts' shops, doors and the chimneys draw their own numbers: the roofs' are the same as ever.
+    const dressing = new SeededRandom(733);
     // Solar water heaters face the sun.
     const sunBearing = Math.atan2(SUN_DIRECTION.x, SUN_DIRECTION.z);
     buildings.forEach((box, index) => {
@@ -962,25 +987,68 @@ export class TrackView {
         }
       };
       const tint = new Color(BUILDING_TINTS[index % BUILDING_TINTS.length]!);
-      add(width * depth >= WAREHOUSE_MIN_AREA ? warehouses : offices, wallsGeometry(box, tint, index));
-      for (const part of plinthGeometry(box)) {
-        add(details, part);
-      }
-      switch (roofStyleOf(box, random)) {
-        case 'hip':
-          add(
-            tiledRoofs,
-            hipRoofGeometry(box, Math.min(width, depth) * random.range(0.2, 0.28), new Color(ROOF_TILE_TINTS[index % ROOF_TILE_TINTS.length]!)),
-          );
-          break;
-        case 'gable':
-          add(details, gableRoofGeometry(box, Math.min(width, depth) * 0.12, tint));
-          break;
-        case 'flat':
-          for (const part of [...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing)]) {
+      // A silo, a chimney or a headframe stands in its box with no walls or roof. Its roof is still picked, so the
+      // buildings after it draw the same numbers as ever.
+      const block = box.form === undefined;
+      const small = width * depth < WAREHOUSE_MIN_AREA;
+      if (block) {
+        add(small || box.shops === true ? offices : warehouses, wallsGeometry(box, tint, index));
+        for (const part of plinthGeometry(box)) {
+          add(details, part);
+        }
+        // Its front, where it faces a road: a town's shops, a warehouse's or a barn's loading doors, a house's door.
+        const front = frontOf(box, FRONT_REACH_METERS);
+        if (front !== null) {
+          const dressed =
+            box.shops === true
+              ? shopfrontGeometry(box, front, dressing)
+              : !small
+                ? loadingDoorsGeometry(box, front)
+                : box.country === true
+                  ? frontDoorGeometry(box, front, dressing)
+                  : [];
+          for (const part of dressed) {
             add(details, part);
           }
+        }
+      } else {
+        for (const part of formGeometry(box)) {
+          add(details, part);
+        }
+      }
+      switch (roofStyleOf(box, random)) {
+        case 'hip': {
+          const rise = Math.min(width, depth) * random.range(0.2, 0.28);
+          if (block) {
+            add(tiledRoofs, hipRoofGeometry(box, rise, new Color(ROOF_TILE_TINTS[index % ROOF_TILE_TINTS.length]!)));
+            if (small && dressing.next() < CHIMNEY_SHARE) {
+              for (const part of chimneyStackGeometry(box, rise, dressing)) {
+                add(details, part);
+              }
+            }
+          }
           break;
+        }
+        case 'gable':
+          if (block) {
+            const rise = Math.min(width, depth) * 0.12;
+            add(details, gableRoofGeometry(box, rise, tint));
+            if (small && dressing.next() < CHIMNEY_SHARE) {
+              for (const part of chimneyStackGeometry(box, rise, dressing)) {
+                add(details, part);
+              }
+            }
+          }
+          break;
+        case 'flat': {
+          const parts = [...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing)];
+          if (block) {
+            for (const part of parts) {
+              add(details, part);
+            }
+          }
+          break;
+        }
       }
       add(shadows, buildingShadowQuad(x, z, width + 3, depth + 3, box.heightMeters));
     });
@@ -1117,6 +1185,7 @@ export class TrackView {
       shader.uniforms['wetSky'] = wet.wetSky;
       shader.uniforms['wetZenith'] = wet.wetZenith;
       shader.uniforms['puddleMap'] = wet.puddleMap;
+      shader.uniforms['roadWear'] = wet.roadWear;
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vToEye;\nvarying vec2 vGround;')
         .replace(
@@ -1125,6 +1194,11 @@ export class TrackView {
         );
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `#include <common>\n${WET_ROAD_PARS}`)
+        // Its wear: patches, cracks and tyre marks along the road (u across it, v along it a tile at a time).
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>\ndiffuseColor.rgb *= texture2D( roadWear, vec2( vMapUv.x, vMapUv.y * ${f(ASPHALT_TILE_METERS / ROAD_WEAR_METERS)} ) ).r;`,
+        )
         .replace('#include <opaque_fragment>', `${WET_ROAD}\n#include <opaque_fragment>`);
     };
     return material;

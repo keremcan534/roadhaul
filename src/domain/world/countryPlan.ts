@@ -2,6 +2,7 @@ import {
   rectangleContains,
   rectangleCorners,
   type BuildingDefinition,
+  type BuildingForm,
   type FieldDefinition,
   type ParkDefinition,
   type Point2,
@@ -260,7 +261,7 @@ export class CountryPlan {
    * circles, buildings, fields and parks, and of whatever the land holds.
    * Returns whether it stands.
    */
-  tryBuilding(x: number, z: number, sizeX: number, sizeZ: number, height: number): boolean {
+  tryBuilding(x: number, z: number, sizeX: number, sizeZ: number, height: number, form?: BuildingForm): boolean {
     const minX = x - sizeX / 2;
     const maxX = x + sizeX / 2;
     const minZ = z - sizeZ / 2;
@@ -294,7 +295,7 @@ export class CountryPlan {
     }
     const reach = BUILDING_REACH_METERS;
     this.buildingBuckets.add(this.buildings.length, minX - reach, maxX + reach, minZ - reach, maxZ + reach);
-    this.buildings.push({ x, z, widthMeters: sizeX, depthMeters: sizeZ, heightMeters: height });
+    this.buildings.push({ x, z, widthMeters: sizeX, depthMeters: sizeZ, heightMeters: height, ...(form === undefined ? {} : { form }) });
     return true;
   }
 

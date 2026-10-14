@@ -32,6 +32,7 @@ import { LampGlows } from '../vehicles/LampGlows';
 import type { LampMirror } from '../world/WetReflections';
 import type { SkyUniforms } from '../world/EnvironmentView';
 import type { TrafficHeadlamps } from '../world/LampLighting';
+import { ShadowSubset, type ShadowReach } from '../world/ShadowSubset';
 import { reflectSky } from '../world/skyReflection';
 
 /** Parts in white take the vehicle's paint (the instance colour); the rest keep their own colour (`paint` 0). */
@@ -92,12 +93,20 @@ const SHADOW_OPACITY = 0.5;
 /** A wreck is battered: its paint this much darker, its body squashed this much (across, down, along). */
 const WRECK_PAINT = 0.62;
 const WRECK_SQUASH = [0.96, 0.84, 0.93] as const;
+/**
+ * The tallest vehicle's height, and a margin for the shadows' square drawn a frame behind the traffic, for whether a
+ * vehicle casts into the shadow map (ShadowReach), meters.
+ */
+const VEHICLE_HEIGHT_METERS = 4;
+const VEHICLE_SHADOW_MARGIN_METERS = 3;
 
 export interface TrafficViewOptions {
   /** False leaves the lamps without their glow at night (weaker devices). Default: true. */
   readonly lampGlows?: boolean;
   /** The vehicles cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
+  /** Where those shadows reach: with it, only the vehicles that can cast there are drawn into the shadow map. */
+  readonly shadowReach?: ShadowReach;
   /** The sky their paint and glass mirror (EnvironmentView.sky); without it they mirror nothing. */
   readonly sky?: SkyUniforms;
   /** Room for this many wrecks tumbling about besides the traffic (CrashService's debris). Default: none. */
@@ -163,6 +172,10 @@ varying vec3 vGlow;
 export class TrafficView implements TrafficHeadlamps {
   private readonly root = new Group();
   private readonly meshes: InstancedMesh[];
+  /** Per kind, the vehicles that cast into the shadow map (none without shadowReach), and how far each reaches. */
+  private readonly shadowCasters: readonly ShadowSubset[];
+  private readonly shadowReach: ShadowReach | null;
+  private readonly castReach: readonly number[];
   private readonly material: MeshLambertMaterial;
   /** The vehicle (by serial) each instance of each mesh showed last frame, to repaint only when it changes. */
   private readonly shown: Int32Array[];
@@ -221,6 +234,12 @@ export class TrafficView implements TrafficHeadlamps {
       this.root.add(mesh);
       return mesh;
     });
+    this.shadowReach = options.castShadows === true ? (options.shadowReach ?? null) : null;
+    this.shadowCasters = this.shadowReach === null ? [] : this.meshes.map((mesh) => new ShadowSubset(mesh, drawn));
+    for (const caster of this.shadowCasters) {
+      this.root.add(caster.mesh);
+    }
+    this.castReach = types.map((type) => type.lengthMeters / 2 + VEHICLE_SHADOW_MARGIN_METERS);
     this.shadowTexture = toTexture(softBoxShadowImage(), { srgb: false });
     this.shadows = new InstancedMesh(
       new PlaneGeometry(1, 1).rotateX(-Math.PI / 2).translate(0, 0.06, 0),
@@ -285,6 +304,9 @@ export class TrafficView implements TrafficHeadlamps {
     let lamps = 0;
     let shadows = 0;
     this.placedCount = 0;
+    for (let type = 0; type < this.shadowCasters.length; type++) {
+      this.shadowCasters[type]!.begin();
+    }
     if (traffic !== null) {
       for (let i = 0; i < traffic.capacity; i++) {
         if (traffic.active[i] !== 1) {
@@ -300,6 +322,7 @@ export class TrafficView implements TrafficHeadlamps {
         const z = traffic.previousZ[i]! + (traffic.z[i]! - traffic.previousZ[i]!) * alpha;
         const heading = traffic.previousHeading[i]! + (traffic.heading[i]! - traffic.previousHeading[i]!) * alpha;
         mesh.setMatrixAt(slot, this.matrix.makeRotationY(heading).setPosition(x, 0, z));
+        this.castShadow(type, slot, x, z);
         const shadowSize = this.shadowSizes[type]!;
         this.shadows.setMatrixAt(shadows++, this.shadowMatrix.makeScale(shadowSize[0], 1, shadowSize[1]).premultiply(this.matrix));
         const shown = this.shown[type]!;
@@ -318,6 +341,9 @@ export class TrafficView implements TrafficHeadlamps {
     }
     if (debris !== null && paints !== null) {
       shadows = this.placeWrecks(debris, paints, alpha, shadows);
+    }
+    for (let type = 0; type < this.shadowCasters.length; type++) {
+      this.shadowCasters[type]!.end();
     }
     for (let type = 0; type < this.meshes.length; type++) {
       const mesh = this.meshes[type]!;
@@ -356,6 +382,7 @@ export class TrafficView implements TrafficHeadlamps {
       const instance = counts[type]!++;
       const matrix = this.wreckPose.matrixOf(debris, slot, alpha, debris.halfY[slot]!, 0, WRECK_SQUASH[0], WRECK_SQUASH[1], WRECK_SQUASH[2]);
       mesh.setMatrixAt(instance, matrix);
+      this.castShadow(type, instance, matrix.elements[12]!, matrix.elements[14]!);
       mesh.setColorAt(instance, this.paint.setHex(paints.paintOf(slot)).multiplyScalar(WRECK_PAINT));
       mesh.instanceColor!.needsUpdate = true;
       // A vehicle taking this instance after it repaints itself.
@@ -473,8 +500,19 @@ export class TrafficView implements TrafficHeadlamps {
     }
   }
 
+  /** Instance `slot` of kind `type`, standing at (`x`, `z`), into the shadow map if it can cast there. */
+  private castShadow(type: number, slot: number, x: number, z: number): void {
+    const caster = this.shadowCasters[type];
+    if (caster !== undefined && this.shadowReach!.shadowReaches(x, z, VEHICLE_HEIGHT_METERS, this.castReach[type]!)) {
+      caster.copy(slot);
+    }
+  }
+
   dispose(): void {
     this.scene.remove(this.root);
+    for (const caster of this.shadowCasters) {
+      caster.dispose();
+    }
     for (const mesh of [...this.meshes, this.lamps, this.shadows]) {
       mesh.geometry.dispose();
       mesh.dispose();

@@ -102,7 +102,7 @@ describe('SceneryView', () => {
     expect(material.uniforms['resolution']!.value.toArray()).toEqual([1, 1]);
   });
 
-  it('puts every animal out to graze, and moves only their heads', () => {
+  it('puts every animal out to graze, turning and shuffling within its place as it crops the grass', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, world);
     const sheep = world.grazers.filter((grazer) => grazer.kind === 'sheep').length;
@@ -113,19 +113,25 @@ describe('SceneryView', () => {
     expect(view.counts.animals).toBe(world.grazers.length);
     expect(bodies.count).toBe(sheep);
     expect((scene.getObjectByName('scenery:cow') as InstancedMesh).count).toBe(cows);
-    // Each body where its animal stands.
+    // Each body where its animal stands, give or take its shuffle (within its solid circle in the world).
     const matrix = new Matrix4();
-    bodies.getMatrixAt(0, matrix);
     const first = world.grazers.find((grazer) => grazer.kind === 'sheep')!;
-    expect(matrix.elements[12]).toBeCloseTo(first.x, 4);
-    expect(matrix.elements[14]).toBeCloseTo(first.z, 4);
+    const near = (): number => {
+      bodies.getMatrixAt(0, matrix);
+      return Math.hypot(matrix.elements[12]! - first.x, matrix.elements[14]! - first.z);
+    };
+    expect(near()).toBeLessThanOrEqual(0.41);
 
     const still = { bodies: matricesOf(bodies), heads: matricesOf(heads) };
     view.update(0);
     expect(matricesOf(heads)).toEqual(still.heads);
-    view.update(0.8);
-    expect(matricesOf(heads)).not.toEqual(still.heads);
     expect(matricesOf(bodies)).toEqual(still.bodies);
+    for (let second = 0; second < 30; second++) {
+      view.update(1);
+      expect(near()).toBeLessThanOrEqual(0.41);
+    }
+    expect(matricesOf(heads)).not.toEqual(still.heads);
+    expect(matricesOf(bodies)).not.toEqual(still.bodies);
   });
 
   it('draws the tiles near the camera only', () => {
@@ -145,6 +151,33 @@ describe('SceneryView', () => {
     }
     // The wires and the animals go on as they are.
     expect(meshes(scene, 'scenery:wires').every((mesh) => mesh.visible)).toBe(true);
+  });
+
+  it('draws into the shadow map only the animals that can cast round the truck, given where shadows reach', () => {
+    const scene = new Scene();
+    const first = world.grazers[0]!;
+    const reach = { shadowStamp: 0, shadowReaches: (x: number, z: number) => x === first.x && z === first.z };
+    const view = new SceneryView(scene, world, { castShadows: true, shadowReach: reach });
+    const kind = first.kind;
+    const bodies = scene.getObjectByName(`scenery:${kind}`) as InstancedMesh;
+    const shadowBodies = scene.getObjectByName(`scenery:${kind}:shadow`) as InstancedMesh;
+    const shadowHeads = scene.getObjectByName(`scenery:${kind}-heads:shadow`) as InstancedMesh;
+    expect(bodies.castShadow).toBe(false);
+
+    view.update(0.5);
+    for (const mesh of [shadowBodies, shadowHeads]) {
+      (mesh.onBeforeShadow as () => void)();
+      expect(mesh.count, mesh.name).toBe(1);
+      (mesh.onAfterShadow as () => void)();
+    }
+    // The same body as drawn, as it stands this moment.
+    const drawn = new Matrix4();
+    const cast = new Matrix4();
+    const slot = world.grazers.filter((grazer) => grazer.kind === kind).indexOf(first);
+    bodies.getMatrixAt(slot, drawn);
+    shadowBodies.getMatrixAt(0, cast);
+    expect(cast.elements).toEqual(drawn.elements);
+    view.dispose();
   });
 
   it('costs a draw a tile, one for the wires and two a kind of animal, and casts shadows only when asked', () => {

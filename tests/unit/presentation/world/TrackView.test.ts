@@ -403,7 +403,7 @@ describe('TrackView', () => {
     expect(soil.uniforms).toHaveProperty('snowCover');
   });
 
-  it('draws four textured walls and a roof for every building', () => {
+  it('draws four textured walls and a roof for every building but the silos, chimneys and headframes', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     let wallVertices = 0;
@@ -418,7 +418,7 @@ describe('TrackView', () => {
       }
     });
 
-    expect(wallVertices).toBe(world.buildings.length * 16);
+    expect(wallVertices).toBe(world.buildings.filter((box) => box.form === undefined).length * 16);
   });
 
   it('lights windows at night, a different pattern on each wall', () => {

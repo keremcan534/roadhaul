@@ -18,6 +18,7 @@ import type { StreetLamp } from '../../domain/world/DrivingWorld';
 import { DebrisInstances } from '../effects/DebrisInstances';
 import { LampGlows } from '../vehicles/LampGlows';
 import type { StreetLampLight } from './LampLighting';
+import { SHADOW_GATHER_MARGIN_METERS, ShadowSubset, type ShadowReach } from './ShadowSubset';
 
 /** The post's height and how far its arm reaches out over the road, meters. */
 const POST_HEIGHT = 7.6;
@@ -38,6 +39,11 @@ export interface StreetLampViewOptions {
   /** The posts cast the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
   /**
+   * Where those shadows reach: with it, only the posts that can cast there are drawn into the shadow map
+   * (updateShadows), not every post on the map.
+   */
+  readonly shadowReach?: ShadowReach;
+  /**
    * Each lamp's solid circle in the world (DrivingWorld.circleIndexOf), so
    * the lamps knocked over leave their places (showKnocked); and how many
    * bodies of debris there can be at once, to draw the lamps lying about
@@ -50,6 +56,8 @@ export interface StreetLampViewOptions {
 /** A lamp knocked over (showKnocked) stands nowhere: its copies shrunk to nothing. */
 const NOWHERE = new Matrix4().makeScale(0, 0, 0);
 const LAMP_CODE = knockableCode('lamp');
+/** At most this many posts cast into the shadow map at once: the streets' lamps 26 m apart, both sides. */
+const SHADOW_POSTS = 48;
 
 /**
  * The street lamps along the city roads: a post with an arm and a head over
@@ -76,6 +84,11 @@ export class StreetLampView {
   private shownKnocks = -1;
   /** The posts of the lamps knocked over, lying about. */
   private readonly fallen: DebrisInstances | null = null;
+  /** The posts that cast into the shadow map, as of the shadows' stamp and the knocks last gathered (updateShadows). */
+  private readonly postShadows: ShadowSubset | null = null;
+  private readonly shadowReach: ShadowReach | null;
+  private shadowStamp = -1;
+  private shadowKnocks = -1;
   private readonly matrix = new Matrix4();
   private lampsPlaced: readonly StreetLamp[] = [];
 
@@ -86,6 +99,7 @@ export class StreetLampView {
   ) {
     this.root.name = 'street-lamps';
     this.lensMaterial = this.track(new MeshBasicMaterial({ color: LENS_OFF }));
+    this.shadowReach = options.shadowReach ?? null;
     this.lights = lamps.map((lamp) => {
       const facingX = Math.sin(lamp.heading);
       const facingZ = Math.cos(lamp.heading);
@@ -112,7 +126,13 @@ export class StreetLampView {
       this.lensMaterial,
       lamps,
     );
+    posts.name = 'street-lamps:posts';
+    lenses.name = 'street-lamps:lenses';
     this.root.add(posts, lenses);
+    if (options.castShadows === true && this.shadowReach !== null) {
+      this.postShadows = this.track(new ShadowSubset(posts, SHADOW_POSTS));
+      this.root.add(this.postShadows.mesh);
+    }
     this.posts = posts;
     this.lenses = lenses;
     if (this.circles.length === lamps.length && (options.debrisCapacity ?? 0) > 0) {
@@ -178,6 +198,28 @@ export class StreetLampView {
     }
     this.posts.instanceMatrix.needsUpdate = true;
     this.lenses.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * Gathers the posts standing that can cast into the shadow map, when the shadows have moved far enough
+   * (ShadowReach.shadowStamp) or a lamp was knocked over or stood back up. Cheap when nothing changed.
+   */
+  updateShadows(): void {
+    const subset = this.postShadows;
+    const reach = this.shadowReach;
+    if (subset === null || reach === null || (reach.shadowStamp === this.shadowStamp && this.shownKnocks === this.shadowKnocks)) {
+      return;
+    }
+    this.shadowStamp = reach.shadowStamp;
+    this.shadowKnocks = this.shownKnocks;
+    subset.begin();
+    for (let lamp = 0; lamp < this.lampsPlaced.length; lamp++) {
+      const placed = this.lampsPlaced[lamp]!;
+      if (this.dark[lamp] === 0 && reach.shadowReaches(placed.x, placed.z, POST_HEIGHT, STREET_LAMP_REACH_METERS + SHADOW_GATHER_MARGIN_METERS)) {
+        subset.copy(lamp);
+      }
+    }
+    subset.end();
   }
 
   /** Draws the lamps lying knocked over among `debris`, `alpha` of the way through the fixed step. Allocation-free. */
