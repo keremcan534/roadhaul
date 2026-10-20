@@ -257,7 +257,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
 | Controls settings | data | `src/data/config/controls.ts` | The ways of steering (wheel, tilt, buttons), tilt sensitivities, control sizes and tilt steering's states | none | none |
-| TiltSteering | platform | `src/platform/input/TiltSteering.ts` | Turning the phone like a steering wheel → steering: straight ahead is the screen held level (the screen orientation's angle), or a recentre from a tap (averaged, at most 20°), any screen orientation, either gravity sign, steady down to a flat phone, dead zone, easing (pure, unit-tested) | controls settings | none |
+| TiltSteering | platform | `src/platform/input/TiltSteering.ts` | Turning the phone like a steering wheel → steering: straight ahead is the screen held level (the screen orientation's angle), or a recentre from a tap (averaged, at most 20°), any screen orientation, either gravity sign, steady down to a flat phone, a 3° dead zone, a response curve gentle near the middle, easing (pure, unit-tested) | controls settings | none |
 | TiltInput | platform | `src/platform/input/TiltInput.ts` | Feeds TiltSteering from `devicemotion` while tilt is picked; asks iOS for the motion sensor from a tap; back to level when the screen turns, into the game and out of the panel | TiltSteering, VehicleInput | none |
 
 ### 2D maps (player feedback)

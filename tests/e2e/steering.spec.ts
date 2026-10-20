@@ -66,7 +66,7 @@ test('steers from level, and takes the phone as it is held as straight ahead whe
     await expect(overlay).not.toHaveText((await overlay.textContent()) ?? '', { timeout: 5_000 });
     return shownHeading(page);
   };
-  /** Heading change over a second or so, degrees: about none while the truck runs straight, 9° or more with a third of full lock. */
+  /** Heading change over a second or so, degrees: about none while the truck runs straight, a few degrees or more with a quarter of full lock. */
   const drift = async (): Promise<number> => {
     const before = await freshHeading();
     await page.waitForTimeout(1_000);
@@ -82,8 +82,8 @@ test('steers from level, and takes the phone as it is held as straight ahead whe
   await page.keyboard.up('ArrowUp');
   expect(await drift()).toBeLessThan(3);
 
-  // Held turned 8° right a moment (a third of full lock), then the tilt button tapped: that is straight ahead now.
-  await tiltPhone(page, 8);
+  // Held turned 12° right a moment (past a quarter of full lock), then the tilt button tapped: straight ahead now.
+  await tiltPhone(page, 12);
   await page.waitForTimeout(600);
   await page.locator('.tilt-button').click();
   expect(await drift()).toBeLessThan(3);

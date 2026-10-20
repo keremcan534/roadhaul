@@ -49,6 +49,15 @@ function reading({ orientation = 'portrait', turn = 0, back = 0, flipped = false
   ];
 }
 
+/**
+ * The steering a turn of the phone asks for: nothing within the 3° dead zone, then along the response curve (55% of it
+ * with the cube of the turn) to full lock at `fullLock` degrees (normal sensitivity's 32°).
+ */
+function lock(turn: number, fullLock = 32): number {
+  const share = Math.min(1, Math.max(0, Math.abs(turn) - 3) / (fullLock - 3));
+  return Math.sign(turn) * (share * 0.45 + share ** 3 * 0.55);
+}
+
 /** Reads `straight`, then `now`: the steering it asks for. */
 function steerFor(straight: Hold, now: Hold, steering = new TiltSteering('normal')): number {
   expect(steering.read(...reading(straight))).toBe(true);
@@ -65,9 +74,10 @@ describe('TiltSteering', () => {
         for (const back of [0, 35, 55]) {
           const held = { orientation, back, flipped };
           expect(steerFor(held, {}), `straight, ${back}° back`).toBe(0);
-          // Normal sensitivity: 2° dead zone, full lock at 32°, so 17° is half lock.
-          expect(steerFor(held, { turn: 17 }), `clockwise, ${back}° back`).toBeCloseTo(0.5, 5);
-          expect(steerFor(held, { turn: -17 }), `anticlockwise, ${back}° back`).toBeCloseTo(-0.5, 5);
+          // Normal sensitivity: halfway to full lock steers gently, under a third.
+          expect(steerFor(held, { turn: 17 }), `clockwise, ${back}° back`).toBeCloseTo(lock(17), 5);
+          expect(steerFor(held, { turn: -17 }), `anticlockwise, ${back}° back`).toBeCloseTo(lock(-17), 5);
+          expect(lock(17)).toBeLessThan(0.3);
           expect(steerFor(held, { turn: 40 })).toBe(1);
           expect(steerFor(held, { turn: -70 })).toBe(-1);
         }
@@ -77,20 +87,33 @@ describe('TiltSteering', () => {
 
   it('ignores small turns and tipping the phone back or forward', () => {
     const held = { orientation: 'landscape, top to the left', back: 40 } as const;
-    expect(steerFor(held, { turn: 1.5 })).toBe(0);
-    expect(steerFor(held, { turn: -1.5 })).toBe(0);
+    expect(steerFor(held, { turn: 2.5 })).toBe(0);
+    expect(steerFor(held, { turn: -2.5 })).toBe(0);
     expect(steerFor(held, { back: 10 })).toBe(0);
     expect(steerFor(held, { back: 75 })).toBe(0);
     expect(steerFor(held, { back: 90 })).toBe(0);
   });
 
+  it('steers gently for a small turn, and smoothly more to full lock', () => {
+    const held = { orientation: 'landscape, top to the left', back: 40 } as const;
+    // Held a few degrees askew, the truck barely turns: a correction, not a weave.
+    expect(steerFor(held, { turn: 5 })).toBeLessThan(0.04);
+    let before = 0;
+    for (let turn = 4; turn <= 32; turn += 2) {
+      const now = steerFor(held, { turn });
+      expect(now, `${turn}°`).toBeGreaterThan(before);
+      before = now;
+    }
+    expect(before).toBe(1);
+  });
+
   it('turns less for full lock the more sensitive it is set', () => {
     const held = { orientation: 'landscape, top to the right', back: 30 } as const;
-    expect(steerFor(held, { turn: 17 }, new TiltSteering('low'))).toBeCloseTo(15 / 43, 5);
-    expect(steerFor(held, { turn: 17 }, new TiltSteering('high'))).toBeCloseTo(15 / 20, 5);
+    expect(steerFor(held, { turn: 17 }, new TiltSteering('low'))).toBeCloseTo(lock(17, 45), 5);
+    expect(steerFor(held, { turn: 17 }, new TiltSteering('high'))).toBeCloseTo(lock(17, 22), 5);
     const steering = new TiltSteering('low');
     steering.sensitivity = 'normal';
-    expect(steerFor(held, { turn: 17 }, steering)).toBeCloseTo(0.5, 5);
+    expect(steerFor(held, { turn: 17 }, steering)).toBeCloseTo(lock(17), 5);
   });
 
   it('stays steady down to a phone held flat', () => {
@@ -130,7 +153,7 @@ describe('TiltSteering', () => {
       expect(steering.read(...values)).toBe(false);
     }
     steering.update(10);
-    expect(steering.steer).toBeCloseTo(0.5, 5);
+    expect(steering.steer).toBeCloseTo(lock(17), 5);
   });
 
   it('eases toward the phone, and lets go at once', () => {
@@ -156,7 +179,7 @@ describe('TiltSteering', () => {
       const steering = new TiltSteering('normal');
       steering.read(...reading({ orientation, turn: 15 }));
       steering.update(10);
-      expect(steering.steer, orientation).toBeCloseTo(13 / 30, 5);
+      expect(steering.steer, orientation).toBeCloseTo(lock(15), 5);
       steering.read(...reading({ orientation }));
       steering.update(10);
       expect(steering.steer, orientation).toBe(0);
@@ -175,12 +198,12 @@ describe('TiltSteering', () => {
     expect(steering.steer).toBe(0);
     steering.read(...reading({ ...held, turn: 7 }));
     steering.update(10);
-    expect(steering.steer).toBeCloseTo(0.5, 5);
+    expect(steering.steer).toBeCloseTo(lock(17), 5);
     // Level again (into the game, out of the menus): -10° is a turn left.
     steering.level();
     steering.read(...reading(held));
     steering.update(10);
-    expect(steering.steer).toBeCloseTo(-8 / 30, 5);
+    expect(steering.steer).toBeCloseTo(lock(-10), 5);
   });
 
   it('never takes more than 20° from level as straight ahead', () => {

@@ -3,8 +3,14 @@ import type { TiltSensitivity } from '../../data/config/controls';
 
 /** How far the phone turns, degrees either way, for full lock. */
 const FULL_LOCK_DEGREES: Readonly<Record<TiltSensitivity, number>> = { low: 45, normal: 32, high: 22 };
-/** Turns smaller than this steer nothing, so the truck runs straight in slightly shaky hands. */
-const DEAD_ZONE = degreesToRadians(2);
+/** Turns smaller than this steer nothing, so the truck runs straight in slightly shaky or slightly askew hands. */
+const DEAD_ZONE = degreesToRadians(3);
+/**
+ * The response curve: this share of the steering grows with the cube of the turn, the rest in step with it. A small
+ * turn steers gently (a quarter of the way to full lock steers about an eighth), for the fine corrections a lane needs at
+ * speed and a hand's tremor that does not weave the truck; full lock is still where it was.
+ */
+const EXPO = 0.55;
 /** Readings weaker than this, m/s², are not gravity: a broken sensor, or the phone falling. */
 const MIN_GRAVITY = 4;
 /**
@@ -21,7 +27,7 @@ const MIN_PLANE_FRACTION = 0.25;
  */
 const FLAT_FLOOR = 0.5;
 /** How fast the steering follows the phone, 1/s: direct, but smooth through hand tremor. */
-const FOLLOW_RATE = 14;
+const FOLLOW_RATE = 10;
 /** Steering this close to the reading has arrived. */
 const SNAP = 1e-3;
 /** A recentre takes the phone's turn averaged over about this long, seconds, and never more than this far from level. */
@@ -142,7 +148,8 @@ export class TiltSteering {
     }
     const steering = this.turn - this.offset;
     const beyond = Math.abs(steering) - DEAD_ZONE;
-    this.target = beyond <= 0 ? 0 : Math.sign(steering) * Math.min(1, beyond / (this.fullLock - DEAD_ZONE));
+    const share = Math.min(1, beyond / (this.fullLock - DEAD_ZONE));
+    this.target = beyond <= 0 ? 0 : Math.sign(steering) * (share * (1 - EXPO) + share * share * share * EXPO);
     return true;
   }
 
