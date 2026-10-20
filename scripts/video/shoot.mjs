@@ -355,6 +355,10 @@ export async function shootStills(browser, baseUrl, dir, { lang = 'en', delivery
     await page.keyboard.press('KeyM');
     // The map and its key, without its title, its buttons and the garage's notes: the video frames the region.
     await page.addStyleTag({ content: '.world-map__bar,.world-map__tools,.toasts{visibility:hidden!important}' });
+    // Fitted to a wide screen, the region fills only the middle of its height: a turn of the wheel brings it closer.
+    const map = await page.locator('.world-map__canvas').boundingBox();
+    await page.mouse.move(map.x + map.width / 2, map.y + map.height / 2);
+    await page.mouse.wheel(0, -175);
     await settle();
     await snap('map');
     const found = { brand: brandSvg, icons, tap, pay, paints, paint, upgrade };
