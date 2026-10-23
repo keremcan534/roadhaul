@@ -1,7 +1,7 @@
 import { clamp01 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { KnockableKind } from '../../domain/crash/knockables';
-import { EngineSound } from './EngineSound';
+import { type EngineLoop, EngineSound } from './EngineSound';
 import { brakeNoiseLevel, crashLevel, createThunderSound, roadNoiseLevel, thunderSound } from './soundModel';
 
 /** What the sound follows, written by the entry point every frame into one reused object. */
@@ -88,10 +88,11 @@ interface Graph {
 
 /**
  * The game's sound, spec §37's first version: the engine, the brakes, the
- * horn, the road, wind, rain and thunder, and the interface. All of it is made with
- * the Web Audio API from oscillators and noise: no sound files, nothing to
- * download, original by construction. The engine (EngineSound) follows the
- * rpm and the load, the tyres and wind the speed, the rain the weather.
+ * horn, the road, wind, rain and thunder, and the interface. The engine
+ * (EngineSound) plays loops of a real diesel's recording, fetched with the
+ * game (engineLoops.ts) and following the rpm and the load; everything else
+ * is made with the Web Audio API from oscillators and noise. The tyres and
+ * wind follow the speed, the rain the weather.
  *
  * Browsers start sound only after the player touches the page, so unlock()
  * is called from every touch or key press until it has. update() only moves
@@ -109,10 +110,14 @@ export class GameAudio {
   /** Where in the noise each burst starts, so no two sound quite alike. */
   private readonly random = new SeededRandom(11);
 
-  /** `createContext` returns null where the browser has no Web Audio. */
+  /**
+   * `createContext` returns null where the browser has no Web Audio;
+   * `loadEngineLoops` fetches the engine's sound for a context (none if it cannot).
+   */
   constructor(
     private readonly createContext: () => AudioContext | null,
     enabled: boolean,
+    private readonly loadEngineLoops: (context: AudioContext) => Promise<readonly EngineLoop[]>,
   ) {
     this.on = enabled;
   }
@@ -148,7 +153,9 @@ export class GameAudio {
       if (this.context === null) {
         return;
       }
-      this.graph = buildGraph(this.context);
+      const graph = buildGraph(this.context);
+      this.graph = graph;
+      void this.loadEngineLoops(this.context).then((loops) => graph.engine.play(loops));
     }
     if (this.context.state === 'suspended') {
       void this.context.resume();
@@ -453,7 +460,7 @@ function buildGraph(context: AudioContext): Graph {
     return source;
   };
 
-  const engine = new EngineSound(context, master, noise);
+  const engine = new EngineSound(context, master);
 
   // Tyres and wind, the brakes rubbing, and rain.
   const roadFilter = filterNode(context, 'lowpass', 300);

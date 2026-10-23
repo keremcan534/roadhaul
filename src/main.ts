@@ -50,6 +50,7 @@ import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
+import { loadEngineLoops } from './presentation/audio/engineLoops';
 import { RenderHost } from './presentation/RenderHost';
 import { TruckView, truckViewKey } from './presentation/vehicles/TruckView';
 import { CrashEffects } from './presentation/effects/CrashEffects';
@@ -522,7 +523,15 @@ async function start(strings: Strings): Promise<void> {
     }
   };
   // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
-  const audio = new GameAudio(() => (typeof AudioContext === 'undefined' ? null : new AudioContext()), settings.sound);
+  const audio = new GameAudio(
+    () => (typeof AudioContext === 'undefined' ? null : new AudioContext()),
+    settings.sound,
+    (context) =>
+      loadEngineLoops(context).catch((error: unknown) => {
+        logger.warn('The engine sound did not load: the truck runs silent.', error);
+        return [];
+      }),
+  );
   // A touch screen's phone buzzes as hard as a blow jolts the view, unless the player switched it off (Settings).
   const canVibrate = navigator.maxTouchPoints > 0 && typeof navigator.vibrate === 'function';
   const haptics = new Haptics(navigator);

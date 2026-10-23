@@ -53,6 +53,9 @@ function openSourceLicenses(): Plugin {
     });
     parts.push(
       `Oswald (the interface's type)\n\n${readFileSync(new URL('./src/ui/fonts/OFL.txt', import.meta.url), 'utf8').trim()}`,
+      "The engine's sound\n\n" +
+        'Made from "Diesel Truck Idling Front" by ibirdfilm, https://freesound.org/people/ibirdfilm/sounds/128160/, ' +
+        'dedicated to the public domain (CC0 1.0): https://creativecommons.org/publicdomain/zero/1.0/',
       'AndroidX and Guava (the Android app)\n\n' +
         'The Android app also contains AndroidX libraries, Copyright The Android Open Source Project, and Guava, ' +
         'Copyright The Guava Authors, licensed under the Apache License, Version 2.0: ' +
