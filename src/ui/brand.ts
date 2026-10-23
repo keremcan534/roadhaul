@@ -2,8 +2,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
  * RoadHaul's mark, 100 units square: an R whose leg is a road running
- * toward the viewer, its centre line dashed. Original art (spec §85);
- * scripts/androidIcons.mjs draws the same shapes for the launcher icon.
+ * toward the viewer, its centre line dashed. Original art (spec §85).
  */
 const MARK_INK =
   'M18 12a2 2 0 0 1 2-2h20v80H20a2 2 0 0 1-2-2zM40 10h16a24 24 0 0 1 0 48H40V43h14a9 9 0 0 0 0-18H40zM42.5 58H65l31 32H44.5z';

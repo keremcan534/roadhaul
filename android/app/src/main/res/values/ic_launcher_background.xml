@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The brand's amber (the accent in src/ui/styles.css), under the adaptive icon's mark (scripts/androidIcons.mjs). -->
-    <color name="ic_launcher_background">#F2A33A</color>
-    <!-- The game's background (asphalt), behind the icon while the app starts. -->
+    <!-- The game's background (asphalt), behind the icon while the app starts. The adaptive icon's back layer is
+         a picture, the dusk sky (mipmap ic_launcher_background, scripts/androidIcons.mjs). -->
     <color name="splash_background">#16191D</color>
 </resources>

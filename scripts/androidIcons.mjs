@@ -1,48 +1,65 @@
-// Draws the Android app's launcher icons: RoadHaul's mark (an R whose leg is
-// a road running toward the viewer, src/ui/brand.ts) in asphalt on the
-// game's amber. Original art, drawn in code like the game's textures, so the
-// app ships no borrowed images (spec §85).
+// Draws the Android app's launcher icons: the game's own starter truck (rh_h1, drawn by TruckView) at dusk, lamps
+// on, its windscreen mirroring a blue sky: the Google Play icon's shot, from the same camera. Original art, drawn in
+// code from the game's own model, so the app ships no borrowed images (spec §85).
 //
 //   node scripts/androidIcons.mjs
 //
-// writes into android/app/src/main/res:
-//   mipmap-*/ic_launcher_foreground.png  the adaptive icon's layer (Android 8+),
-//                                        on @color/ic_launcher_background
-//   mipmap-*/ic_launcher.png             a rounded square, for older launchers
-//   mipmap-*/ic_launcher_round.png       a circle, for older launchers
-// and fastlane/metadata/android/en-US/images/icon.png: Google Play's 512 px
-// listing icon, the plate filling the square (the store rounds its corners).
+// The truck is drawn by scripts/icon/launcherIcon.ts (a three.js page, served here by Vite) in headless Chrome, in
+// software (SwiftShader), once and large; every icon is that picture boxed down. Writes into android/app/src/main/res:
+//   mipmap-*/ic_launcher_foreground.png  the adaptive icon's front layer (Android 8+): the truck, its cab inside the
+//                                        safe circle that every launcher's mask keeps
+//   mipmap-*/ic_launcher_background.png  its back layer: the dusk sky
+//   mipmap-*/ic_launcher.png             the two layers on a rounded square, for older launchers
+//   mipmap-*/ic_launcher_round.png       the two layers on a circle, for older launchers
+// Google Play's 512 px icon is not drawn here: it is the same shot, closer (docs/RELEASE.md).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
+import { chromium } from '@playwright/test';
+import { createServer } from 'vite';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const RES = join(ROOT, 'android/app/src/main/res');
-const STORE_ICON = join(ROOT, 'fastlane/metadata/android/en-US/images/icon.png');
-
-const AMBER = [0xf2, 0xa3, 0x3a];
-const ASPHALT = [0x16, 0x19, 0x1d];
-/** A part painted with this shows the plate under it (the road's dashes, the R's counter). */
-const PLATE = 'plate';
+const PORT = 4332;
 
 /** Launcher sizes in pixels for each density: legacy icons are 48 dp, adaptive layers 108 dp. */
 const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
+/** The truck is drawn this many pixels to the layer's unit: every icon's size divides it evenly. */
+const PIXELS_PER_UNIT = 24;
+const SIZE = 108 * PIXELS_PER_UNIT;
+/** The cab reaches this far from the layer's middle, of its 108 units: inside the safe circle (33), with a margin. */
+const CAB_RADIUS = 32;
+// A legacy icon shows the middle 72 units of the adaptive square: the part a launcher's mask keeps. Its plate fills
+// all but a 4% margin, like Android's own.
+const LEGACY_REGION = 72 * PIXELS_PER_UNIT;
+const LEGACY_LEFT = 18 * PIXELS_PER_UNIT;
+const MARGIN = 0.04;
 
-// The mark, in its own 100-unit square (src/ui/brand.ts), painted in order.
-const MARK = [
-  { color: ASPHALT, shape: roundedRect(18, 10, 40.5, 90, 2) }, // The R's stem.
-  { color: ASPHALT, shape: (x, y) => (x >= 40 && x <= 56 && y >= 10 && y <= 58) || (x >= 56 && circle(56, 34, 24)(x, y)) }, // Its bowl.
-  { color: PLATE, shape: (x, y) => (x >= 40 && x <= 54 && y >= 25 && y <= 43) || (x >= 54 && circle(54, 34, 9)(x, y)) }, // The counter.
-  { color: ASPHALT, shape: polygon([42.5, 58], [65, 58], [96, 90], [44.5, 90]) }, // The leg: a road.
-  { color: PLATE, shape: polygon([53.99, 60.5], [56.09, 60.5], [58.67, 65], [56.04, 65]) }, // Its centre line.
-  { color: PLATE, shape: polygon([57.87, 69], [60.98, 69], [65, 76], [61.06, 76]) },
-  { color: PLATE, shape: polygon([63.12, 80.5], [67.59, 80.5], [73.05, 90], [67.45, 90]) },
+/**
+ * The dusk sky behind the truck, as the store icon's scene paints it down its frame (0 at the top, 1 at the
+ * bottom): a gradient of these colours, blended as a canvas blends them.
+ */
+const SKY = [
+  [0, [0x1d, 0x2a, 0x5c]],
+  [0.5, [0x6b, 0x4f, 0x8f]],
+  [0.78, [0xff, 0xb2, 0x5a]],
+  [1, [0xff, 0xb2, 0x5a]],
 ];
-// Where the mark sits in the adaptive layer's 108-unit square: its middle, (57, 50), at the square's, and small
-// enough that everything stays inside the 33-unit safe circle round (54, 54) that every launcher's mask keeps.
-const MARK_SCALE = 0.6;
-const MARK_CENTER = [57, 50];
+
+/** The sky's colour `t` of the way down the store icon's frame (clamped to it). */
+function skyAt(t) {
+  const at = Math.min(1, Math.max(0, t));
+  for (let i = 1; i < SKY.length; i++) {
+    const [stop, color] = SKY[i];
+    if (at <= stop) {
+      const [previousStop, previous] = SKY[i - 1];
+      const k = (at - previousStop) / (stop - previousStop);
+      return previous.map((channel, c) => channel + (color[c] - channel) * k);
+    }
+  }
+  return SKY[SKY.length - 1][1];
+}
 
 function roundedRect(x0, y0, x1, y1, r) {
   return (x, y) => {
@@ -56,66 +73,82 @@ function circle(cx, cy, r) {
   return (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
 }
 
-function polygon(...points) {
-  return (x, y) => {
-    let inside = false;
-    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-      const [xi, yi] = points[i];
-      const [xj, yj] = points[j];
-      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  };
+/** Draws the truck's layer: SIZE × SIZE premultiplied RGBA pixels, and where the store icon's frame lies in them. */
+async function drawTruck() {
+  const server = await createServer({
+    configFile: false,
+    root: join(ROOT, 'scripts/icon'),
+    cacheDir: join(ROOT, 'node_modules/.vite-icon'),
+    logLevel: 'warn',
+    optimizeDeps: { noDiscovery: true },
+    server: { host: '127.0.0.1', port: PORT, strictPort: true, fs: { allow: [ROOT] } },
+  });
+  await server.listen();
+  // Google Chrome (Playwright's own browsers may not be installed), drawing in software: the same pixels whatever the GPU.
+  const browser = await chromium.launch({
+    channel: 'chrome',
+    args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+  });
+  try {
+    const page = await browser.newPage({ viewport: { width: 400, height: 400 } });
+    page.on('pageerror', (error) => console.error('In the icon page:', error.message));
+    await page.goto(`http://127.0.0.1:${PORT}/?size=${SIZE}&cab=${CAB_RADIUS}`);
+    await page.waitForFunction(() => window.launcherIcon !== undefined, null, { timeout: 300_000 });
+    const picture = await page.evaluate(() => window.launcherIcon);
+    return { pixels: new Uint8Array(Buffer.from(picture.pixels, 'base64')), frame: picture.frame };
+  } finally {
+    await browser.close();
+    await server.close();
+  }
 }
 
 /**
- * Renders `size` × `size` pixels, 4 × 4 samples each. `background(u, v)`
- * says whether a point (0..1 across the image) is on the icon's plate;
- * `zoom` shows the middle 108 / zoom units of the adaptive square.
+ * The sky behind the layer, row by row (SIZE rows, RGB): the store icon's gradient where its frame lies in the layer,
+ * so the horizon's glow stays behind the truck's lamps; above the frame it keeps its top blue, below it the glow.
  */
-function render(size, background, zoom) {
-  const pixels = Buffer.alloc(size * size * 4);
-  const samples = 4;
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
+function skyRows(frame) {
+  const rows = new Float32Array(SIZE * 3);
+  for (let row = 0; row < SIZE; row++) {
+    // The frame's normalized height (1 at its top, -1 at its bottom) of the row's middle.
+    const height = frame.y + frame.half * (1 - (2 * (row + 0.5)) / SIZE);
+    rows.set(skyAt((1 - height) / 2), row * 3);
+  }
+  return rows;
+}
+
+/**
+ * Averages the square `region` pixels wide at (left, top) of a SIZE-wide picture down to `size` pixels; `region` is a
+ * multiple of `size`. `pixel(x, y, out)` writes a pixel's premultiplied RGBA (0..255). Returns straight RGBA bytes.
+ */
+function boxDown(pixel, left, top, region, size) {
+  const factor = region / size;
+  const samples = factor * factor;
+  const out = Buffer.alloc(size * size * 4);
+  const sample = [0, 0, 0, 0];
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
       let r = 0;
       let g = 0;
       let b = 0;
       let a = 0;
-      for (let sy = 0; sy < samples; sy++) {
-        for (let sx = 0; sx < samples; sx++) {
-          const u = (px + (sx + 0.5) / samples) / size;
-          const v = (py + (sy + 0.5) / samples) / size;
-          const x = 54 + (u - 0.5) * (108 / zoom);
-          const y = 54 + (v - 0.5) * (108 / zoom);
-          const markX = MARK_CENTER[0] + (x - 54) / MARK_SCALE;
-          const markY = MARK_CENTER[1] + (y - 54) / MARK_SCALE;
-          const plate = background(u, v) ? AMBER : null;
-          let color = plate;
-          for (const part of MARK) {
-            if (part.shape(markX, markY)) {
-              color = part.color === PLATE ? plate : part.color;
-            }
-          }
-          if (color !== null) {
-            r += color[0];
-            g += color[1];
-            b += color[2];
-            a += 1;
-          }
+      for (let sy = 0; sy < factor; sy++) {
+        for (let sx = 0; sx < factor; sx++) {
+          pixel(left + x * factor + sx, top + y * factor + sy, sample);
+          r += sample[0];
+          g += sample[1];
+          b += sample[2];
+          a += sample[3];
         }
       }
-      const i = (py * size + px) * 4;
+      const i = (y * size + x) * 4;
       // Straight (not premultiplied) alpha, as PNG stores it.
-      pixels[i] = a > 0 ? Math.round(r / a) : 0;
-      pixels[i + 1] = a > 0 ? Math.round(g / a) : 0;
-      pixels[i + 2] = a > 0 ? Math.round(b / a) : 0;
-      pixels[i + 3] = Math.round((a / (samples * samples)) * 255);
+      out[i] = a > 0 ? Math.round(Math.min(255, (r / a) * 255)) : 0;
+      out[i + 1] = a > 0 ? Math.round(Math.min(255, (g / a) * 255)) : 0;
+      out[i + 2] = a > 0 ? Math.round(Math.min(255, (b / a) * 255)) : 0;
+      out[i + 3] = Math.round(a / samples);
     }
   }
-  return encodePng(size, pixels);
+  return out;
 }
 
 function encodePng(size, rgba) {
@@ -156,22 +189,50 @@ function crc32(bytes) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-/** The legacy icons' plates fill all but a 4% margin, like Android's own. */
-const MARGIN = 0.04;
-const squarePlate = (u, v) => roundedRect(MARGIN, MARGIN, 1 - MARGIN, 1 - MARGIN, 0.2)(u, v);
-const roundPlate = (u, v) => circle(0.5, 0.5, 0.5 - MARGIN)(u, v);
+const { pixels: truck, frame } = await drawTruck();
+const sky = skyRows(frame);
+
+/** The truck alone. */
+const truckPixel = (x, y, out) => {
+  const i = (y * SIZE + x) * 4;
+  out[0] = truck[i];
+  out[1] = truck[i + 1];
+  out[2] = truck[i + 2];
+  out[3] = truck[i + 3];
+};
+/** The sky alone. */
+const skyPixel = (x, y, out) => {
+  out[0] = sky[y * 3];
+  out[1] = sky[y * 3 + 1];
+  out[2] = sky[y * 3 + 2];
+  out[3] = 255;
+};
+/** The truck on the sky, where `plate(u, v)` (0..1 across the legacy icon) says the icon is; nothing elsewhere. */
+const iconPixel = (plate) => (x, y, out) => {
+  if (!plate((x + 0.5 - LEGACY_LEFT) / LEGACY_REGION, (y + 0.5 - LEGACY_LEFT) / LEGACY_REGION)) {
+    out.fill(0);
+    return;
+  }
+  const i = (y * SIZE + x) * 4;
+  const behind = 1 - truck[i + 3] / 255;
+  out[0] = truck[i] + sky[y * 3] * behind;
+  out[1] = truck[i + 1] + sky[y * 3 + 1] * behind;
+  out[2] = truck[i + 2] + sky[y * 3 + 2] * behind;
+  out[3] = 255;
+};
+const squarePlate = roundedRect(MARGIN, MARGIN, 1 - MARGIN, 1 - MARGIN, 0.2);
+const roundPlate = circle(0.5, 0.5, 0.5 - MARGIN);
 
 for (const [density, scale] of Object.entries(DENSITIES)) {
   const folder = join(RES, `mipmap-${density}`);
   mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, 'ic_launcher_foreground.png'), render(108 * scale, () => false, 1));
-  // A legacy icon shows the middle 72 units of the adaptive square: the part a launcher's mask keeps.
-  writeFileSync(join(folder, 'ic_launcher.png'), render(48 * scale, squarePlate, 1.5));
-  writeFileSync(join(folder, 'ic_launcher_round.png'), render(48 * scale, roundPlate, 1.5));
+  const layer = 108 * scale;
+  const legacy = 48 * scale;
+  writeFileSync(join(folder, 'ic_launcher_foreground.png'), encodePng(layer, boxDown(truckPixel, 0, 0, SIZE, layer)));
+  writeFileSync(join(folder, 'ic_launcher_background.png'), encodePng(layer, boxDown(skyPixel, 0, 0, SIZE, layer)));
+  writeFileSync(join(folder, 'ic_launcher.png'), encodePng(legacy, boxDown(iconPixel(squarePlate), LEGACY_LEFT, LEGACY_LEFT, LEGACY_REGION, legacy)));
+  writeFileSync(join(folder, 'ic_launcher_round.png'), encodePng(legacy, boxDown(iconPixel(roundPlate), LEGACY_LEFT, LEGACY_LEFT, LEGACY_REGION, legacy)));
 }
+const shown = Math.round((108 / frame.half) * 10) / 10;
+console.log(`The cab inside ${CAB_RADIUS} units of the layer's middle (the safe circle: 33); the store icon's frame ${shown} units wide.`);
 console.log(`Launcher icons written to ${RES}.`);
-
-// The store's icon shows the same middle 72 units as a legacy one, on a square plate.
-mkdirSync(dirname(STORE_ICON), { recursive: true });
-writeFileSync(STORE_ICON, render(512, () => true, 1.5));
-console.log(`Google Play icon written to ${STORE_ICON}.`);
