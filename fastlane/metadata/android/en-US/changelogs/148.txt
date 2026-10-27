@@ -1,0 +1,1 @@
+A gentler on-screen steering wheel: small movements now steer softly for easy lane corrections, full lock takes a little more turning, and a thumb slipping near the centre no longer swings the truck. A real diesel engine sound, recorded from a truck and kept soft.
