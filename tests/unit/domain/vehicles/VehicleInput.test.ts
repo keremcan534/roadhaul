@@ -4,6 +4,7 @@ import {
   combineVehicleInputs,
   createVehicleInput,
   drivePedalOf,
+  steeringCurve,
 } from '../../../../src/domain/vehicles/VehicleInput';
 
 describe('combineVehicleInputs', () => {
@@ -55,5 +56,28 @@ describe('combineVehicleInputs', () => {
     expect([drivePedalOf(0.6, 0.2, 'drive', false), brakePedalOf(0.6, 0.2, 'drive', false)]).toEqual([0.6, 0.2]);
     // Still rolling against the lever: the gas brakes too, and nothing drives.
     expect([drivePedalOf(0.6, 0.2, 'reverse', false), brakePedalOf(0.6, 0.2, 'reverse', false)]).toEqual([0, 0.6]);
+  });
+});
+
+describe('steeringCurve', () => {
+  it('steers gently near the middle and reaches full lock at the end', () => {
+    expect(steeringCurve(0)).toBe(0);
+    expect(steeringCurve(1)).toBeCloseTo(1, 12);
+    expect(steeringCurve(-1)).toBeCloseTo(-1, 12);
+    // A quarter of the way steers about an eighth; half way, about a third.
+    expect(steeringCurve(0.25)).toBeCloseTo(0.121, 3);
+    expect(steeringCurve(0.5)).toBeCloseTo(0.294, 3);
+    expect(steeringCurve(-0.5)).toBeCloseTo(-0.294, 3);
+  });
+
+  it('rises all the way, and keeps to -1 … +1 for any input', () => {
+    let previous = -Infinity;
+    for (let share = -1; share <= 1; share += 0.05) {
+      const steer = steeringCurve(share);
+      expect(steer).toBeGreaterThan(previous);
+      previous = steer;
+    }
+    expect(steeringCurve(3)).toBeCloseTo(1, 12);
+    expect(steeringCurve(Number.NaN)).toBe(0);
   });
 });

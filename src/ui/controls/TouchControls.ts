@@ -1,9 +1,17 @@
 import { clamp, dampFactor } from '../../core/math/scalar';
 import type { ControlSize, SteeringMode, TiltStatus } from '../../data/config/controls';
-import { createVehicleInput, type GearLever, type VehicleInput } from '../../domain/vehicles/VehicleInput';
+import { createVehicleInput, type GearLever, steeringCurve, type VehicleInput } from '../../domain/vehicles/VehicleInput';
 
-/** The on-screen wheel turns this far each way for full steering lock: a quarter turn, easy for a thumb. */
-const MAX_WHEEL_ANGLE = (90 * Math.PI) / 180;
+/**
+ * The on-screen wheel turns this far each way for full steering lock: a third of a turn, so a thumb's small slip is a
+ * small part of it. It steers along the response curve (steeringCurve): gently near the middle, all the lock at the end.
+ */
+const MAX_WHEEL_ANGLE = (120 * Math.PI) / 180;
+/**
+ * The wheel's rim, as a share of its width. A finger on or outside it turns the wheel as far as it goes round the
+ * centre; nearer the hub, by its path along the rim's circle, so a small slip by the hub is no big turn.
+ */
+const WHEEL_RIM_SHARE = 0.4;
 /** How fast a released wheel returns to centre, 1/s. */
 const WHEEL_RETURN_RATE = 7;
 /** The speed dial's arc is full at this speed. */
@@ -269,7 +277,7 @@ export class TouchControls {
       if (Math.abs(this.wheelAngle) < 0.002) {
         this.wheelAngle = 0;
       }
-      this.state.steer = this.wheelAngle / MAX_WHEEL_ANGLE;
+      this.state.steer = steeringCurve(this.wheelAngle / MAX_WHEEL_ANGLE);
     }
     if (this.wheelAngle !== this.drawnWheelAngle) {
       this.drawnWheelAngle = this.wheelAngle;
@@ -333,10 +341,16 @@ export class TouchControls {
   }
 
   private bindWheel(): void {
+    // The finger's distance from the centre over the rim's radius, at the latest angleOf(): 1 on the rim or beyond.
+    let rimShare = 1;
     const angleOf = (event: PointerEvent): number => {
       const rect = this.wheel.getBoundingClientRect();
+      const x = event.clientX - (rect.left + rect.width / 2);
+      const y = event.clientY - (rect.top + rect.height / 2);
+      // offsetWidth, not the box's: a turned wheel's box is wider than the wheel.
+      rimShare = Math.min(1, Math.sqrt(x * x + y * y) / Math.max(1, this.wheel.offsetWidth * WHEEL_RIM_SHARE));
       // Screen y grows downwards, so the angle grows clockwise, matching steer-right = positive.
-      return Math.atan2(event.clientY - (rect.top + rect.height / 2), event.clientX - (rect.left + rect.width / 2));
+      return Math.atan2(y, x);
     };
     const release = (): void => {
       this.wheelPointer = null;
@@ -363,8 +377,8 @@ export class TouchControls {
       // Unwrap across ±180° so a full swipe round the rim keeps turning the same way.
       delta = delta > Math.PI ? delta - 2 * Math.PI : delta < -Math.PI ? delta + 2 * Math.PI : delta;
       this.lastPointerAngle = angle;
-      this.wheelAngle = clamp(this.wheelAngle + delta, -MAX_WHEEL_ANGLE, MAX_WHEEL_ANGLE);
-      this.state.steer = this.wheelAngle / MAX_WHEEL_ANGLE;
+      this.wheelAngle = clamp(this.wheelAngle + delta * rimShare, -MAX_WHEEL_ANGLE, MAX_WHEEL_ANGLE);
+      this.state.steer = steeringCurve(this.wheelAngle / MAX_WHEEL_ANGLE);
     });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
       this.wheel.addEventListener(type, (event) => {

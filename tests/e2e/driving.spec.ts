@@ -101,6 +101,11 @@ test('drives with the on-screen gas pedal and steering wheel', async ({ page }) 
   await page.mouse.up();
   await expect.poll(() => wheelRotation(page), { timeout: 5_000 }).toBeLessThan(0.05);
 
+  // The same sweep by the hub turns it far less: a thumb's slip there is no big turn.
+  await turnWheel(page, Math.PI / 2, 0.1);
+  expect(await wheelRotation(page)).toBeLessThan(0.5);
+  await page.mouse.up();
+
   expect(problems).toEqual([]);
 });
 

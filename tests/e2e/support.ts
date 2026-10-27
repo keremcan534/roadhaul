@@ -197,14 +197,14 @@ export function headingChange(from: number, to: number): number {
 }
 
 /**
- * Grabs the on-screen wheel at the top of its rim and drags it round by
- * `radians` (positive is clockwise), then keeps holding it. Release with
- * `page.mouse.up()`.
+ * Grabs the on-screen wheel at the top of its rim (or `reach`, a share of its
+ * width, from its centre) and drags it round by `radians` (positive is
+ * clockwise), then keeps holding it. Release with `page.mouse.up()`.
  */
-export async function turnWheel(page: Page, radians: number): Promise<void> {
+export async function turnWheel(page: Page, radians: number, reach = 0.42): Promise<void> {
   const wheel = await centreOf(page, '.steering-wheel');
   const box = await page.locator('.steering-wheel').boundingBox();
-  const radius = (box?.width ?? 100) * 0.42;
+  const radius = (box?.width ?? 100) * reach;
   await page.mouse.move(wheel.x, wheel.y - radius);
   await page.mouse.down();
   for (let step = 1; step <= 10; step++) {

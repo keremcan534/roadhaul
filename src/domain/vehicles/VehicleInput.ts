@@ -29,6 +29,19 @@ export function createVehicleInput(): VehicleInput {
 }
 
 /**
+ * The touch steering's response curve: this share of the steering grows with the cube of the turn, the rest in step
+ * with it. A small turn steers gently (a quarter of the way to full lock steers about an eighth), for the fine
+ * corrections a lane needs at speed and a thumb or a hand that is not quite still; full lock is still where it was.
+ */
+const STEERING_EXPO = 0.55;
+
+/** The steering (-1 … +1) for a control turned `share` of the way to full lock (-1 … +1), along the response curve. */
+export function steeringCurve(share: number): number {
+  const turn = clamp(finiteOr(share, 0), -1, 1);
+  return turn * (1 - STEERING_EXPO + STEERING_EXPO * turn * turn);
+}
+
+/**
  * Merges two devices into `out` without allocating. Steering adds up and
  * pedals take the stronger press. Every value is clamped and made finite.
  * The lever is the one of the device whose pedals are pressed; with both or

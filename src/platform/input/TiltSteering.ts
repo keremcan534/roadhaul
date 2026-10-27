@@ -1,16 +1,11 @@
 import { clamp, dampFactor, degreesToRadians } from '../../core/math/scalar';
 import type { TiltSensitivity } from '../../data/config/controls';
+import { steeringCurve } from '../../domain/vehicles/VehicleInput';
 
 /** How far the phone turns, degrees either way, for full lock. */
 const FULL_LOCK_DEGREES: Readonly<Record<TiltSensitivity, number>> = { low: 45, normal: 32, high: 22 };
 /** Turns smaller than this steer nothing, so the truck runs straight in slightly shaky or slightly askew hands. */
 const DEAD_ZONE = degreesToRadians(3);
-/**
- * The response curve: this share of the steering grows with the cube of the turn, the rest in step with it. A small
- * turn steers gently (a quarter of the way to full lock steers about an eighth), for the fine corrections a lane needs at
- * speed and a hand's tremor that does not weave the truck; full lock is still where it was.
- */
-const EXPO = 0.55;
 /** Readings weaker than this, m/s², are not gravity: a broken sensor, or the phone falling. */
 const MIN_GRAVITY = 4;
 /**
@@ -149,7 +144,7 @@ export class TiltSteering {
     const steering = this.turn - this.offset;
     const beyond = Math.abs(steering) - DEAD_ZONE;
     const share = Math.min(1, beyond / (this.fullLock - DEAD_ZONE));
-    this.target = beyond <= 0 ? 0 : Math.sign(steering) * (share * (1 - EXPO) + share * share * share * EXPO);
+    this.target = beyond <= 0 ? 0 : Math.sign(steering) * steeringCurve(share);
     return true;
   }
 
