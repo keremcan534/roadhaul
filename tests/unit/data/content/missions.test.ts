@@ -13,9 +13,10 @@ const startingTruck = vehicles.find((vehicle) => vehicle.id === DEFAULT_GAME_CON
 
 /** Checks the shipped contracts as a set: the balance a field-by-field validator cannot see. */
 describe('the shipped missions', () => {
-  it('number twenty-four: the MVP\'s twenty (spec §43) and four to and from Copperdale', () => {
-    expect(missions).toHaveLength(24);
-    expect(missions.slice(20).every((mission) => [mission.originCityId, mission.destinationCityId].includes('city_d'))).toBe(true);
+  it('number thirty: the MVP\'s twenty (spec §43), four to and from Copperdale and six for the later trucks', () => {
+    expect(missions).toHaveLength(30);
+    expect(missions.slice(24).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 4)).toBe(true);
+    expect(missions.slice(20, 24).every((mission) => [mission.originCityId, mission.destinationCityId].includes('city_d'))).toBe(true);
   });
 
   it('cover every difficulty', () => {
@@ -30,13 +31,13 @@ describe('the shipped missions', () => {
     expect(openAtStart.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('give every truck the garage sells work that only it can do', () => {
+  it('give every truck the garage sells work that no cheaper truck can do', () => {
     for (const vehicle of vehicles.filter((candidate) => candidate !== startingTruck)) {
-      const onlyThisTruck = missions.filter((mission) => {
-        const trucks = trucksFor(mission);
-        return trucks.length === 1 && trucks[0] === vehicle;
+      const cheapestIsThisTruck = missions.filter((mission) => {
+        const cheapest = [...trucksFor(mission)].sort((a, b) => a.purchasePrice - b.purchasePrice)[0];
+        return cheapest === vehicle;
       });
-      expect(onlyThisTruck.length, vehicle.id).toBeGreaterThanOrEqual(2);
+      expect(cheapestIsThisTruck.length, vehicle.id).toBeGreaterThanOrEqual(2);
     }
   });
 

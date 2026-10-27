@@ -1,9 +1,11 @@
 import type { CargoDefinition } from '../definitions/CargoDefinition';
 
 /**
- * The MVP cargo set (spec §11: 6–8 types). Five travel in a plain box and fit
- * the starting truck; chilled and frozen goods need a refrigerated body and
- * building materials a flatbed, which arrive with the garage (step 19).
+ * The cargo set (spec §11). Five travel in a plain box and fit the starting
+ * truck; chilled and frozen goods need a refrigerated body and building
+ * materials a flatbed, which arrive with the garage (step 19). Fuel and milk
+ * need the tanker, gravel and copper ore the tipper (the trucks of levels 4
+ * and 5).
  */
 export const CARGO: readonly CargoDefinition[] = [
   {
@@ -77,5 +79,41 @@ export const CARGO: readonly CargoDefinition[] = [
     timeSensitivity: 0.3,
     temperature: 'none',
     requiredBody: 'flatbed',
+  },
+  {
+    id: 'fuel',
+    category: 'hazardous',
+    rewardMultiplier: 1.8,
+    damageSensitivity: 0.9,
+    timeSensitivity: 0.5,
+    temperature: 'none',
+    requiredBody: 'tanker',
+  },
+  {
+    id: 'milk',
+    category: 'food',
+    rewardMultiplier: 1.2,
+    damageSensitivity: 0.4,
+    timeSensitivity: 0.85,
+    temperature: 'none',
+    requiredBody: 'tanker',
+  },
+  {
+    id: 'gravel',
+    category: 'construction',
+    rewardMultiplier: 0.85,
+    damageSensitivity: 0.05,
+    timeSensitivity: 0.25,
+    temperature: 'none',
+    requiredBody: 'tipper',
+  },
+  {
+    id: 'copper_ore',
+    category: 'construction',
+    rewardMultiplier: 1.05,
+    damageSensitivity: 0.05,
+    timeSensitivity: 0.3,
+    temperature: 'none',
+    requiredBody: 'tipper',
   },
 ];

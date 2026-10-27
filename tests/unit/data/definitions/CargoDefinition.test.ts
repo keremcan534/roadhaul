@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Validator } from '../../../../src/core/validation/Validator';
 import { CARGO } from '../../../../src/data/content/cargo';
-import type { BodyType } from '../../../../src/data/definitions/BodyType';
+import { BODY_TYPES, type BodyType } from '../../../../src/data/definitions/BodyType';
 import { validateCargoDefinition, type CargoDefinition } from '../../../../src/data/definitions/CargoDefinition';
 import { cargoFixture } from '../../../support/contentFixtures';
 
@@ -18,14 +18,13 @@ describe('validateCargoDefinition', () => {
     }
   });
 
-  it('ships 6 to 8 cargo types, some of them for each body (spec §11)', () => {
-    expect(CARGO.length).toBeGreaterThanOrEqual(6);
-    expect(CARGO.length).toBeLessThanOrEqual(8);
-    expect(new Set(CARGO.map((cargo) => cargo.requiredBody))).toEqual(new Set(['box', 'refrigerated', 'flatbed']));
+  it("ships the MVP's 6 to 8 cargo types (spec §11) and the tanker's and tipper's, some of them for each body", () => {
+    expect(CARGO).toHaveLength(12);
+    expect(new Set(CARGO.map((cargo) => cargo.requiredBody))).toEqual(new Set(BODY_TYPES));
   });
 
   it('requires a known body', () => {
-    expect(issues(cargoFixture({ requiredBody: 'tanker' as BodyType })).map((issue) => issue.path)).toEqual([
+    expect(issues(cargoFixture({ requiredBody: 'trailer' as BodyType })).map((issue) => issue.path)).toEqual([
       'cargo.requiredBody',
     ]);
   });

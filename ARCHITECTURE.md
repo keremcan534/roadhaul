@@ -317,7 +317,7 @@ main menu ─► the road ─► Jobs: the job board over it ─► accept ─�
                               └── result (pay, or why it failed) ◄── stop in the bay: unload ◄─────┘ drive to the delivery depot
 ```
 
-- **Data.** Each city has a depot (`DepotDefinition` in the map): a paved yard beside the road with a loading bay. Cargo names the truck body it needs (`BodyType`: box, refrigerated, flatbed). Content validation checks that every mission's cities have depots and that some truck can haul it.
+- **Data.** Each city has a depot (`DepotDefinition` in the map): a paved yard beside the road with a loading bay. Cargo names the truck body it needs (`BodyType`: box, refrigerated, flatbed, tanker, tipper). Content validation checks that every mission's cities have depots and that some truck can haul it.
 - **Domain** (`src/domain/missions`):
   - `loadingBay`: the whole truck must stand inside the bay, either way round, below about 1 km/h;
   - `MissionInstance`: the plain, saveable state of an accepted contract, with the stages accepted → travellingToPickup → loaded → delivering → completed or failed (abandoned, or cargo damaged beyond the client's tolerance);
@@ -362,7 +362,7 @@ Roadmap steps 14–17 give deliveries consequences (spec §13–18):
 
 Roadmap steps 19–20 close the first-success loop (spec §80): deliver, earn, upgrade, take a bigger contract.
 
-- **Trucks.** H1 (light box), H2 (medium refrigerated) and H3 (heavy flatbed) are tuned against per-class ranges (`vehicleTuning.test.ts`). The dealer sells H2 and H3 from company levels 2 and 3. Ten of the twenty contracts need them: chilled cargo, heavier boxes, building materials.
+- **Trucks.** H1 (light box), H2 (medium refrigerated) and H3 (heavy flatbed) are tuned against per-class ranges (`vehicleTuning.test.ts`). The dealer sells H2 and H3 from company levels 2 and 3. Ten of the twenty contracts need them: chilled cargo, heavier boxes, building materials. From level 4 the H4 (tanker: fuel, milk) and H5 (tipper: gravel, copper ore), at level 5 the H6 (a 16 t reefer); six more contracts are theirs.
 - **`GarageService`** owns the company's trucks and the active one. Buying adds a full, unupgraded truck to the garage. Switching is refused during a contract. Otherwise the new truck takes the old one's place on the map (`DrivingService.switchVehicle`), with its own fuel, damage and upgrades. The browser entry rebuilds the `TruckView` on `ActiveVehicleChanged`.
 - **Upgrades** (spec §16) are definitions with levels. Each level has a cost, a company level and stat modifiers, and replaces the level below. `statBonuses` sums the fitted levels of a truck. The garage applies them to the active truck:
   - engine, brakes, grip and stability through the `'upgrades'` performance modifier, which multiplies with damage;

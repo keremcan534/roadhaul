@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
+import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
 import type { VehicleClass, VehicleDefinition } from '../../../../src/data/definitions/VehicleDefinition';
 import { VehicleDynamics } from '../../../../src/domain/vehicles/VehicleDynamics';
 import { GRASS } from '../../../../src/domain/world/Surface';
@@ -128,8 +129,10 @@ describe('the truck roster', () => {
     VEHICLES.filter((truck) => truck.vehicleClass === vehicleClass);
   const [light, medium, heavy] = (['light', 'medium', 'heavy'] as const).map((vehicleClass) => byClass(vehicleClass)[0]!);
 
-  it('has one truck of each class', () => {
-    expect(VEHICLES.map((truck) => truck.vehicleClass).sort()).toEqual(['heavy', 'light', 'medium']);
+  it('has a truck of each class: one light, one medium, and the heavy ones of the later levels', () => {
+    expect(byClass('light')).toHaveLength(1);
+    expect(byClass('medium')).toHaveLength(1);
+    expect(byClass('heavy').length).toBeGreaterThanOrEqual(1);
   });
 
   it('trades speed for payload: each bigger class carries more and costs more but pulls away more slowly when full', () => {
@@ -146,6 +149,14 @@ describe('the truck roster', () => {
   });
 
   it('gives each body type a truck', () => {
-    expect(new Set(VEHICLES.map((truck) => truck.bodyType))).toEqual(new Set(['box', 'refrigerated', 'flatbed']));
+    expect(new Set(VEHICLES.map((truck) => truck.bodyType))).toEqual(new Set(BODY_TYPES));
+  });
+
+  it('sells each later truck at its level or later, the flagship last and dearest', () => {
+    const flagship = VEHICLES.at(-1)!;
+    for (const truck of VEHICLES.slice(0, -1)) {
+      expect(truck.purchasePrice, truck.id).toBeLessThan(flagship.purchasePrice);
+      expect(truck.requiredCompanyLevel ?? 1, truck.id).toBeLessThanOrEqual(flagship.requiredCompanyLevel ?? 1);
+    }
   });
 });

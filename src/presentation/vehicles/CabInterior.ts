@@ -24,6 +24,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { clamp, dampFactor, degreesToRadians, smoothstep } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import type { BodyType } from '../../data/definitions/BodyType';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import {
@@ -123,6 +124,15 @@ const PIPS: Readonly<Record<number, readonly (readonly [number, number])[]>> = {
   4: [[-1, -1], [-1, 1], [1, -1], [1, 1]],
   5: [[-1, -1], [-1, 1], [0, 0], [1, -1], [1, 1]],
   6: [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 0], [1, 1]],
+};
+
+/** The truck's own body along the inner edge of the mirrors' pictures: a box's white, a deck's wood, a tank's steel. */
+const MIRROR_BODY_COLORS: Readonly<Record<BodyType, number>> = {
+  box: 0xe6e7e3,
+  refrigerated: 0xe6e7e3,
+  flatbed: 0x6e5238,
+  tanker: 0xb4bac1,
+  tipper: 0x7d6f5e,
 };
 
 /**
@@ -495,7 +505,7 @@ export class CabInterior {
 
     // The side mirrors' pictures, over their glass: the road running away behind, the truck's own side along the
     // inner edge, the sky. Only the driver sees them.
-    const mirrorMaterial = this.track(mirrorPicture(options.sky, definition.bodyType === 'flatbed' ? 0x6e5238 : 0xe6e7e3, this.mirrorTravel));
+    const mirrorMaterial = this.track(mirrorPicture(options.sky, MIRROR_BODY_COLORS[definition.bodyType], this.mirrorTravel));
     for (const side of [1, -1] as const) {
       const { mirror } = cab;
       const geometry = this.track(new PlaneGeometry(mirror.width, mirror.height).rotateY(Math.PI).translate(side * mirror.x, mirror.y, mirror.z - 0.002));

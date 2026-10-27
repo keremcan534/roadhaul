@@ -14,6 +14,9 @@ describe('GarageService', () => {
       ['rh_h1', 12000, false, 1],
       ['rh_h2', 22000, true, 0],
       ['rh_h3', 38000, true, 0],
+      ['rh_h4', 48000, true, 0],
+      ['rh_h5', 44000, true, 0],
+      ['rh_h6', 62000, true, 0],
     ]);
     expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'locked' });
     expect(game.economy.credits).toBe(50_000);

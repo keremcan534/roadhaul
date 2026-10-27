@@ -11,9 +11,11 @@ import type { MissionDefinition } from '../definitions/MissionDefinition';
  *
  * The first ten fit the starting box truck. Four are open from the start and
  * company levels unlock the rest, harder and better paid (spec §14, §42: a
- * level-up in the first half hour). The last ten need the trucks the garage
+ * level-up in the first half hour). The next ten need the trucks the garage
  * sells: chilled cargo and loads over 5 t need the H2's refrigerated box,
- * building materials the H3's flatbed.
+ * building materials the H3's flatbed. The last six are the later trucks':
+ * fuel and milk for the H4's tank, gravel and copper ore for the H5's tipper,
+ * and chilled loads over 10 t for the H6.
  */
 export const MISSIONS: readonly MissionDefinition[] = [
   {
@@ -298,5 +300,77 @@ export const MISSIONS: readonly MissionDefinition[] = [
     damageTolerance: 0.15,
     difficulty: 'hard',
     requiredCompanyLevel: 3,
+  },
+  {
+    id: 'fuel_depot',
+    originCityId: 'city_b',
+    destinationCityId: 'city_a',
+    cargoId: 'fuel',
+    cargoWeightTons: 12,
+    baseReward: 4200,
+    timeLimitSeconds: 420,
+    damageTolerance: 0.12,
+    difficulty: 'hard',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'dairy_run',
+    originCityId: 'city_c',
+    destinationCityId: 'city_a',
+    cargoId: 'milk',
+    cargoWeightTons: 10,
+    baseReward: 2500,
+    timeLimitSeconds: 330,
+    damageTolerance: 0.2,
+    difficulty: 'normal',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'gravel_pit',
+    originCityId: 'city_d',
+    destinationCityId: 'city_b',
+    cargoId: 'gravel',
+    cargoWeightTons: 18,
+    baseReward: 3900,
+    timeLimitSeconds: 370,
+    damageTolerance: 0.35,
+    difficulty: 'normal',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'copper_haul',
+    originCityId: 'city_d',
+    destinationCityId: 'city_a',
+    cargoId: 'copper_ore',
+    cargoWeightTons: 20,
+    baseReward: 5700,
+    timeLimitSeconds: 330,
+    damageTolerance: 0.3,
+    difficulty: 'hard',
+    requiredCompanyLevel: 4,
+  },
+  {
+    id: 'deep_freeze',
+    originCityId: 'city_c',
+    destinationCityId: 'city_d',
+    cargoId: 'frozen_food',
+    cargoWeightTons: 15,
+    baseReward: 5400,
+    timeLimitSeconds: 570,
+    damageTolerance: 0.15,
+    difficulty: 'hard',
+    requiredCompanyLevel: 5,
+  },
+  {
+    id: 'vaccine_convoy',
+    originCityId: 'city_b',
+    destinationCityId: 'city_a',
+    cargoId: 'medical_supplies',
+    cargoWeightTons: 12,
+    baseReward: 5100,
+    timeLimitSeconds: 450,
+    damageTolerance: 0.08,
+    difficulty: 'expert',
+    requiredCompanyLevel: 5,
   },
 ];

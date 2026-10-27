@@ -21,7 +21,7 @@ test('shows the garage with its upgrades, and fits a first upgrade that shows on
   await expect(page.locator('.hq__truck-name')).toHaveText('RoadHaul H1 · Box body');
 
   await openPanel(page, 'garage');
-  await expect(page.locator('.truck-card')).toHaveCount(3);
+  await expect(page.locator('.truck-card')).toHaveCount(6);
   await expect(page.locator('.truck-card[data-vehicle-id="rh_h1"] .truck-card__status')).toHaveText('Driving it now');
   await expect(page.locator('.truck-card[data-vehicle-id="rh_h2"]')).toContainText('Unlocks at level 2');
   await expect(page.locator('.truck-card[data-vehicle-id="rh_h3"]')).toContainText('Unlocks at level 3');
@@ -122,6 +122,29 @@ test('delivers a contract only the refrigerated truck can do', async ({ page }) 
   await expect(page.locator('.result-dialog')).toBeHidden();
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await expect(page.locator('[data-action="dock-jobs"]')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+test('delivers gravel in the tipper, a contract no cheaper truck can do', async ({ page }) => {
+  const problems = watchForProblems(page);
+  const trucks = [
+    { instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150 },
+    { instanceId: 'truck_002', definitionId: 'rh_h5', fuelLiters: 400 },
+  ];
+  const save = JSON.parse(savedCompany({ trucks, activeTruck: 'truck_002', xp: 6500 })) as { company: { level: number } };
+  save.company.level = 4;
+  await continueSavedCompany(page, JSON.stringify(save), '?lang=en&debug');
+
+  await openPanel(page, 'jobs');
+  await takeContract(page, 'gravel_pit');
+  await page.keyboard.press('KeyT');
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
+  await page.keyboard.down('ArrowUp');
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'delivering', { timeout: 10_000 });
+  await page.keyboard.up('ArrowUp');
+  await page.keyboard.press('KeyT');
+  await expect(page.locator('.result-dialog')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('.result-dialog')).toContainText('Gravel Pit');
   expect(problems).toEqual([]);
 });
 

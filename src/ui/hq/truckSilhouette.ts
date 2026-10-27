@@ -7,12 +7,15 @@ const GLASS = '#1d2a36';
 const DECK = '#7a5a3c';
 const BRICKS = '#a94f35';
 const COOLER = '#9aa3ab';
+const STEEL = '#b9c0c7';
+const GRAVEL = '#8b8178';
 
 /**
  * A side view of a truck model, facing right, as the 3D truck is built
  * (TruckView): a cab-over cab in `color`, its body (a box with a stripe in
- * `color`, a refrigerated box with its cooling unit, or a flatbed with its
- * load of bricks), and one rear axle, or two on a heavy truck. For the
+ * `color`, a refrigerated box with its cooling unit, a flatbed with its load of
+ * bricks, a tank banded in `color`, or a tipper's tub in `color` heaped with
+ * gravel), and one rear axle, or two on a heavy truck. For the
  * garage's cards and the truck page.
  */
 export function truckSilhouette(document: Document, definition: VehicleDefinition, color: number): SVGSVGElement {
@@ -38,6 +41,21 @@ export function truckSilhouette(document: Document, definition: VehicleDefinitio
         `<rect x="3" y="5" width="68" height="28" rx="1.5" fill="${BOX_WHITE}"/>` +
         `<rect x="3" y="23" width="68" height="3.5" fill="${paint}"/>` +
         `<rect x="66" y="2" width="8" height="10" rx="1" fill="${COOLER}"/>`;
+      break;
+    case 'tanker':
+      body =
+        `<rect x="3" y="29" width="68" height="4" fill="${CHASSIS}"/>` +
+        `<rect x="4" y="11" width="66" height="19" rx="9" fill="${STEEL}"/>` +
+        `<rect x="13" y="11" width="3" height="19" fill="${paint}"/><rect x="35.5" y="11" width="3" height="19" fill="${paint}"/>` +
+        `<rect x="58" y="11" width="3" height="19" fill="${paint}"/>` +
+        `<rect x="10" y="8.5" width="54" height="2.5" fill="${CHASSIS}"/>`;
+      break;
+    case 'tipper':
+      body =
+        `<path d="M16 15q20 -9 50 0z" fill="${GRAVEL}"/>` +
+        `<path d="M3 15h68v18H5z" fill="${paint}"/>` +
+        `<rect x="67" y="6" width="4" height="10" fill="${paint}"/>` +
+        `<path d="M15 16v16M27 16v16M39 16v16M51 16v16M63 16v16" stroke="${CHASSIS}" stroke-width="1.2"/>`;
       break;
     case 'box':
       body =

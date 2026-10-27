@@ -42,7 +42,7 @@ describe('validateVehicleDefinition', () => {
   });
 
   it('requires a known body type', () => {
-    const vehicle = vehicleFixture({ bodyType: 'tanker' as VehicleDefinition['bodyType'] });
+    const vehicle = vehicleFixture({ bodyType: 'trailer' as VehicleDefinition['bodyType'] });
 
     expect(issues(vehicle).map((issue) => issue.path)).toEqual(['vehicle.bodyType']);
   });

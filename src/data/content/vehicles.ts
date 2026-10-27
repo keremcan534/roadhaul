@@ -1,12 +1,16 @@
 import type { VehicleDefinition } from '../definitions/VehicleDefinition';
 
 /**
- * Truck roster (spec §15): three original designs, one per class. Never use
- * real manufacturer names, logos or designs.
+ * Truck roster (spec §15): original designs. Never use real manufacturer
+ * names, logos or designs.
  *
  * - H1: the light box truck every company starts with.
  * - H2: a medium refrigerated truck for chilled and frozen cargo, and heavier boxes.
  * - H3: a heavy flatbed for building materials.
+ * - H4: a heavy tanker for fuel and milk (level 4).
+ * - H5: a heavy tipper for gravel and ore, the most it carries of any (level 4).
+ * - H6: the long-haul flagship, a heavy refrigerated truck: the biggest chilled and boxed loads, and the fastest
+ *   heavy truck (level 5).
  *
  * The driving numbers are tuned against the per-class behaviour ranges in
  * tests/unit/domain/vehicles/vehicleTuning.test.ts.
@@ -130,6 +134,129 @@ export const VEHICLES: readonly VehicleDefinition[] = [
       steerSpeedDegreesPerSecond: 70,
       brakeForceNewtons: 90000,
       tireGrip: 0.72,
+      maxLateralAccelerationG: 0.52,
+      maxReverseSpeedKmh: 12,
+    },
+  },
+  {
+    id: 'rh_h4',
+    vehicleClass: 'heavy',
+    factoryColor: 0x2e7d4f,
+    bodyType: 'tanker',
+    maxPayloadTons: 15,
+    fuelCapacityLiters: 400,
+    baseFuelLitersPerKm: 0.37,
+    maxSpeedKmh: 85,
+    purchasePrice: 48000,
+    requiredCompanyLevel: 4,
+    body: {
+      massKg: 10500,
+      lengthMeters: 10.2,
+      widthMeters: 2.55,
+      heightMeters: 3.4,
+      wheelbaseMeters: 5.8,
+      wheelRadiusMeters: 0.52,
+      dragAreaSquareMeters: 6.3,
+    },
+    powertrain: {
+      maxTorqueNm: 1900,
+      maxPowerKw: 300,
+      idleRpm: 600,
+      maxRpm: 2400,
+      shiftUpRpm: 1900,
+      shiftDownRpm: 1100,
+      gearRatios: [7.2, 4.6, 3, 2, 1.4, 1, 0.78],
+      reverseGearRatio: 6.8,
+      finalDriveRatio: 4,
+      shiftTimeSeconds: 0.5,
+    },
+    handling: {
+      maxSteerAngleDegrees: 36,
+      steerSpeedDegreesPerSecond: 70,
+      brakeForceNewtons: 92000,
+      tireGrip: 0.72,
+      maxLateralAccelerationG: 0.52,
+      maxReverseSpeedKmh: 12,
+    },
+  },
+  {
+    id: 'rh_h5',
+    vehicleClass: 'heavy',
+    factoryColor: 0xe0a51c,
+    bodyType: 'tipper',
+    maxPayloadTons: 20,
+    fuelCapacityLiters: 400,
+    baseFuelLitersPerKm: 0.4,
+    maxSpeedKmh: 80,
+    purchasePrice: 44000,
+    requiredCompanyLevel: 4,
+    body: {
+      massKg: 12000,
+      lengthMeters: 9.4,
+      widthMeters: 2.55,
+      heightMeters: 3.3,
+      wheelbaseMeters: 5.4,
+      wheelRadiusMeters: 0.54,
+      dragAreaSquareMeters: 6.8,
+    },
+    powertrain: {
+      maxTorqueNm: 2100,
+      maxPowerKw: 320,
+      idleRpm: 600,
+      maxRpm: 2400,
+      shiftUpRpm: 1900,
+      shiftDownRpm: 1100,
+      gearRatios: [7.6, 4.8, 3.1, 2.05, 1.4, 1, 0.8],
+      reverseGearRatio: 7.2,
+      finalDriveRatio: 4.2,
+      shiftTimeSeconds: 0.5,
+    },
+    handling: {
+      maxSteerAngleDegrees: 37,
+      steerSpeedDegreesPerSecond: 70,
+      brakeForceNewtons: 105000,
+      tireGrip: 0.74,
+      maxLateralAccelerationG: 0.52,
+      maxReverseSpeedKmh: 12,
+    },
+  },
+  {
+    id: 'rh_h6',
+    vehicleClass: 'heavy',
+    factoryColor: 0x26324f,
+    bodyType: 'refrigerated',
+    maxPayloadTons: 16,
+    fuelCapacityLiters: 500,
+    baseFuelLitersPerKm: 0.36,
+    maxSpeedKmh: 90,
+    purchasePrice: 62000,
+    requiredCompanyLevel: 5,
+    body: {
+      massKg: 11500,
+      lengthMeters: 11,
+      widthMeters: 2.55,
+      heightMeters: 3.9,
+      wheelbaseMeters: 6.2,
+      wheelRadiusMeters: 0.52,
+      dragAreaSquareMeters: 7,
+    },
+    powertrain: {
+      maxTorqueNm: 2200,
+      maxPowerKw: 350,
+      idleRpm: 600,
+      maxRpm: 2400,
+      shiftUpRpm: 1900,
+      shiftDownRpm: 1100,
+      gearRatios: [7.2, 4.6, 3, 2, 1.4, 1, 0.78],
+      reverseGearRatio: 6.8,
+      finalDriveRatio: 4,
+      shiftTimeSeconds: 0.45,
+    },
+    handling: {
+      maxSteerAngleDegrees: 37,
+      steerSpeedDegreesPerSecond: 72,
+      brakeForceNewtons: 100000,
+      tireGrip: 0.74,
       maxLateralAccelerationG: 0.52,
       maxReverseSpeedKmh: 12,
     },

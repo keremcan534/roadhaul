@@ -81,6 +81,8 @@ const STACK_OVER_ROOF = 0.42;
 const PALLET_COLOR = 0x9c7a4f;
 const BRICK_COLOR = 0xa94f35;
 const STRAP_COLOR = 0xffa21c;
+/** The colour of a tipper's load, a heap of gravel or ore. */
+const GRAVEL_COLOR = 0x8b8178;
 
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
@@ -346,7 +348,7 @@ export class TruckView {
       );
     }
     // On the roof: a fairing up to the box and extenders across the gap to it, the cooling unit of a refrigerated
-    // body, or a flatbed's beacons.
+    // body, or the beacons of an open body (a flatbed, a tanker or a tipper).
     if (bodyType === 'box') {
       const fairingFront = cabRear + cabLength * 0.72;
       const rise = H - 0.06 - cabTop;
@@ -533,6 +535,79 @@ export class TruckView {
           }
         }
       }
+    } else if (bodyType === 'tanker') {
+      // A polished tank of oval section on saddles, bands in the truck's colour round it, a walkway with
+      // handrails and manhole covers along its top, a ladder up the back, and underrun rails along the sides.
+      const tankLength = bodyLength - 0.3;
+      const tankZ = rearZ + 0.1 + tankLength / 2;
+      const radius = Math.min(halfW - 0.05, (H - deckY - 0.62) / 2);
+      const widen = (halfW - 0.06) / radius;
+      const tankY = deckY + 0.16 + radius;
+      const tankTop = tankY + radius;
+      const tube = (material: PartMaterial, r: number, length: number, z: number): void =>
+        add(material, new CylinderGeometry(r, r, length, 28).rotateX(Math.PI / 2).scale(widen, 1, 1).translate(0, tankY, z));
+      tube('metal', radius, tankLength, tankZ);
+      for (const z of [tankZ - tankLength / 2 + 0.25, tankZ, tankZ + tankLength / 2 - 0.25]) {
+        tube('paint', radius + 0.015, 0.14, z);
+        box('dark', [W * 0.72, 0.34, 0.24], [0, deckY + 0.05, z]);
+      }
+      box('dark', [W * 0.5, 0.16, bodyLength], [0, deckY - 0.08, rearZ + bodyLength / 2]);
+      box('dark', [0.55, 0.04, tankLength * 0.86], [0, tankTop + 0.02, tankZ]);
+      for (let i = -1; i <= 1; i++) {
+        add('dark', new CylinderGeometry(0.24, 0.24, 0.1, 16).translate(0, tankTop + 0.05, tankZ + i * tankLength * 0.3));
+      }
+      for (const side of [1, -1] as const) {
+        box('metal', [0.03, 0.03, tankLength * 0.8], [side * 0.32, tankTop + 0.42, tankZ]);
+        for (let i = 0; i < 4; i++) {
+          box('metal', [0.03, 0.4, 0.03], [side * 0.32, tankTop + 0.22, tankZ + (i / 3 - 0.5) * tankLength * 0.8]);
+        }
+        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, rearZ + bodyLength / 2]);
+      }
+      const ladderX = -halfW * 0.45;
+      for (const dx of [-0.17, 0.17]) {
+        box('metal', [0.04, tankTop - deckY, 0.04], [ladderX + dx, (deckY + tankTop) / 2, rearZ + 0.02]);
+      }
+      for (let y = deckY + 0.25; y < tankTop; y += 0.3) {
+        box('metal', [0.34, 0.03, 0.03], [ladderX, y, rearZ + 0.02]);
+      }
+      sideMarkers(halfW + 0.01, deckY - 0.1);
+    } else if (bodyType === 'tipper') {
+      // An open steel tub in the truck's colour with ribs down its sides, its front wall up to the cab's roof, a
+      // tailgate, and the ram that tips it under its front.
+      const tubLength = bodyLength - 0.1;
+      const tubZ = rearZ + tubLength / 2;
+      const tubHeight = Math.min(1.4, (H - deckY) * 0.7);
+      const floorTop = deckY + 0.12;
+      box('dark', [W * 0.5, 0.16, bodyLength], [0, deckY - 0.08, rearZ + bodyLength / 2]);
+      box('paint', [W, 0.12, tubLength], [0, deckY + 0.06, tubZ]);
+      box('paint', [W, tubHeight, 0.1], [0, deckY + tubHeight / 2, rearZ + 0.05]);
+      box('paint', [W, H - deckY, 0.1], [0, deckY + (H - deckY) / 2, boxFront - 0.05]);
+      box('dark', [W + 0.04, 0.1, 0.16], [0, H - 0.05, boxFront - 0.05]);
+      for (const side of [1, -1] as const) {
+        box('paint', [0.08, tubHeight, tubLength], [side * (halfW - 0.04), deckY + tubHeight / 2, tubZ]);
+        box('dark', [0.12, 0.08, tubLength], [side * (halfW - 0.04), deckY + tubHeight, tubZ]);
+        for (let z = rearZ + 0.4; z < boxFront - 0.3; z += 1.2) {
+          box('dark', [0.06, tubHeight, 0.08], [side * (halfW + 0.01), deckY + tubHeight / 2, z]);
+        }
+        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, rearZ + bodyLength / 2]);
+      }
+      add('chrome', new CylinderGeometry(0.1, 0.1, 0.5, 12).translate(0, deckY - 0.2, boxFront - 0.45));
+      sideMarkers(halfW + 0.01, deckY - 0.1);
+      // The load: a heap of gravel or ore filling the tub, shown while loaded (setLoaded).
+      const fillHeight = tubHeight * 0.6;
+      const heapRadius = (W - 0.3) / 2;
+      loadParts.push(
+        colored(new BoxGeometry(W - 0.2, fillHeight, tubLength - 0.25).translate(0, floorTop + fillHeight / 2, tubZ), GRAVEL_COLOR),
+      );
+      loadParts.push(
+        colored(
+          new CylinderGeometry(heapRadius, heapRadius, tubLength - 0.6, 14)
+            .rotateX(Math.PI / 2)
+            .scale(1, 0.4, 1)
+            .translate(0, floorTop + fillHeight, tubZ),
+          GRAVEL_COLOR,
+        ),
+      );
     } else {
       // Cargo box: livery on both sides, doors at the back, plain white roof and front, metal corner posts.
       const boxHeight = H - deckY;

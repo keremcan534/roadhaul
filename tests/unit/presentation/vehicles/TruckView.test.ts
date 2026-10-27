@@ -456,7 +456,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(mark(-0.1).x).toBeLessThan(ahead.x - 0.05);
   });
 
-  it('shows a flatbed\'s load only while it is loaded, and never a closed body\'s', () => {
+  it('shows the load on a flatbed or in a tipper only while it is loaded, and never a closed body\'s or a tank\'s', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
     const visibleMeshes = (): number => {
@@ -469,7 +469,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     const empty = visibleMeshes();
 
     view.setLoaded(true);
-    expect(visibleMeshes()).toBe(truck.bodyType === 'flatbed' ? empty + 1 : empty);
+    expect(visibleMeshes()).toBe(truck.bodyType === 'flatbed' || truck.bodyType === 'tipper' ? empty + 1 : empty);
     view.setLoaded(false);
     expect(visibleMeshes()).toBe(empty);
   });
