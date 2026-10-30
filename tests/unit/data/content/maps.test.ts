@@ -41,8 +41,10 @@ describe.each(MAPS)('map $id', (map) => {
     }
   });
 
-  it('keeps buildings off the road', () => {
+  it('keeps buildings off the road: 5 m from its edge, a town\'s behind its pavement', () => {
     for (const building of world.buildings) {
+      // A town's district builds up to its pavements (2.6 m) and a little more.
+      const clearance = building.district === undefined ? 5 : 3;
       for (const road of world.roads) {
         let closest = Infinity;
         for (let i = 0; i < road.pointCount; i++) {
@@ -50,9 +52,20 @@ describe.each(MAPS)('map $id', (map) => {
           const dz = road.z(i) - Math.max(building.minZ, Math.min(road.z(i), building.maxZ));
           closest = Math.min(closest, Math.hypot(dx, dz));
         }
-        expect(closest).toBeGreaterThan(road.widthMeters / 2 + 5);
+        expect(closest).toBeGreaterThan(road.widthMeters / 2 + clearance);
       }
     }
+  });
+
+  it('builds Havenport up: its old town, its flats, its offices and towers, and its docks', () => {
+    const grown = (district: string) => world.buildings.filter((building) => building.district === district);
+    expect(grown('oldTown').length).toBeGreaterThan(60);
+    expect(grown('apartments').length).toBeGreaterThan(25);
+    expect(grown('offices').length).toBeGreaterThan(12);
+    expect(grown('harbour').length).toBeGreaterThan(3);
+    // A skyline: towers well above the rest.
+    expect(grown('offices').some((building) => building.heightMeters > 50)).toBe(true);
+    expect(grown('oldTown').every((building) => building.heightMeters < 18)).toBe(true);
   });
 
   it('joins all its roads into one network', () => {

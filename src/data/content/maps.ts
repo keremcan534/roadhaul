@@ -44,9 +44,11 @@ export const MAPS: readonly MapDefinition[] = [
         closed: false,
         controlPoints: [
           [-1700, -760],
-          [-1700, -500],
+          [-1700, -560],
+          [-1700, -405],
           [-1700, -250],
-          [-1700, 0],
+          [-1700, -95],
+          [-1700, 60],
           [-1700, 200],
         ],
       },
@@ -57,10 +59,93 @@ export const MAPS: readonly MapDefinition[] = [
         closed: false,
         controlPoints: [
           [-2100, -250],
-          [-1900, -250],
+          [-1950, -250],
           [-1700, -250],
           [-1550, -250],
+          [-1450, -250],
           [-1400, -250],
+        ],
+      },
+      {
+        id: 'a_quay_street',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-1950, -560],
+          [-1950, -405],
+          [-1950, -250],
+          [-1950, -95],
+          [-1950, 60],
+        ],
+      },
+      {
+        id: 'a_market_street',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-2050, -560],
+          [-1950, -560],
+          [-1825, -560],
+          [-1700, -560],
+          [-1575, -560],
+          [-1450, -560],
+        ],
+      },
+      {
+        id: 'a_cross_street',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-1950, -405],
+          [-1825, -405],
+          [-1700, -405],
+          [-1575, -405],
+          [-1450, -405],
+        ],
+      },
+      {
+        id: 'a_church_street',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-1950, -95],
+          [-1825, -95],
+          [-1700, -95],
+          [-1575, -95],
+          [-1450, -95],
+        ],
+      },
+      {
+        id: 'a_south_street',
+        kind: 'street',
+        widthMeters: 10,
+        closed: false,
+        controlPoints: [
+          [-2050, 60],
+          [-1950, 60],
+          [-1825, 60],
+          [-1700, 60],
+          [-1575, 60],
+          [-1450, 60],
+        ],
+      },
+      {
+        id: 'a_avenue',
+        kind: 'street',
+        widthMeters: 12,
+        closed: false,
+        controlPoints: [
+          [-1450, -640],
+          [-1450, -560],
+          [-1450, -405],
+          [-1450, -250],
+          [-1450, -95],
+          [-1450, 60],
+          [-1450, 140],
         ],
       },
       {
@@ -354,7 +439,7 @@ export const MAPS: readonly MapDefinition[] = [
       { x: -1560, z: -300, widthMeters: 30, depthMeters: 26, heightMeters: 11, shops: true },
       { x: -1760, z: -190, widthMeters: 30, depthMeters: 24, heightMeters: 16, shops: true },
       { x: -1760, z: -120, widthMeters: 28, depthMeters: 26, heightMeters: 10, shops: true },
-      { x: -1665, z: 60, widthMeters: 22, depthMeters: 30, heightMeters: 9, shops: true },
+      { x: -1665, z: 102, widthMeters: 22, depthMeters: 30, heightMeters: 9, shops: true },
       // …the home depot's office and warehouse…
       { x: -1745, z: -450, widthMeters: 12, depthMeters: 20, heightMeters: 6 },
       { x: -1790, z: -440, widthMeters: 30, depthMeters: 40, heightMeters: 11 },
@@ -819,6 +904,15 @@ export const MAPS: readonly MapDefinition[] = [
       { id: 'ironford_park', area: { x: 1795, z: -510, headingDegrees: 0, lengthMeters: 100, widthMeters: 110 } },
       { id: 'amberfield_green', area: { x: 270, z: 1560, headingDegrees: 90, lengthMeters: 90, widthMeters: 60 } },
       { id: 'copperdale_square', area: { x: 100, z: -2450, headingDegrees: 0, lengthMeters: 56, widthMeters: 84 } },
+    ],
+    // Havenport's districts, grown along its streets (districts.ts): the old town between the harbour and the high
+    // street, blocks of flats between the high street and the avenue, offices and towers east of the avenue, and the
+    // harbour's sheds north of the quay.
+    districts: [
+      { id: 'havenport_old_town', kind: 'oldTown', area: { x: -1872, z: -250, headingDegrees: 0, lengthMeters: 660, widthMeters: 330 } },
+      { id: 'havenport_flats', kind: 'apartments', area: { x: -1575, z: -250, headingDegrees: 0, lengthMeters: 780, widthMeters: 240 } },
+      { id: 'havenport_business', kind: 'offices', area: { x: -1345, z: -250, headingDegrees: 0, lengthMeters: 780, widthMeters: 200 } },
+      { id: 'havenport_docks', kind: 'harbour', area: { x: -2075, z: -480, headingDegrees: 0, lengthMeters: 260, widthMeters: 130 } },
     ],
     // Villages in the open country round and between the towns: each grows its street, houses, green and roads out
     // to the nearest roads (villages.ts).

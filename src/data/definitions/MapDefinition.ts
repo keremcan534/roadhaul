@@ -45,6 +45,8 @@ export interface BuildingDefinition {
   readonly form?: BuildingForm;
   /** Shops along its ground floor, on the side facing its street, whatever its size; absent: none. */
   readonly shops?: boolean;
+  /** The kind of district it was grown in (districts.ts): its walls, front and roof follow it; absent: none. */
+  readonly district?: DistrictKind;
 }
 
 /** A rectangle on the ground, rotated so its length runs along `headingDegrees` (0° = +Z, 90° = +X). */
@@ -228,6 +230,33 @@ export interface ParkDefinition {
   readonly area: RectangleDefinition;
 }
 
+/**
+ * What a town's district is built of (districts.ts):
+ *
+ * - oldTown: narrow houses of three to five floors shoulder to shoulder,
+ *   shops on the ground floor, under tiled roofs.
+ * - apartments: blocks of five to eight floors, set back a little, with
+ *   yards between them.
+ * - offices: offices of six to twelve floors and a few towers above them.
+ * - harbour: sheds and warehouses of one or two tall floors.
+ */
+export const DISTRICT_KINDS = ['oldTown', 'apartments', 'offices', 'harbour'] as const;
+export type DistrictKind = (typeof DISTRICT_KINDS)[number];
+
+/**
+ * A district of a town: the buildings of its kind line the town's streets
+ * inside its area (those that run north-south or east-west), facing them,
+ * and fill the blocks behind them. Grown from the map's seed, before the
+ * country, round whatever the map has placed there.
+ */
+export interface DistrictDefinition {
+  /** Stable snake_case id. */
+  readonly id: string;
+  readonly kind: DistrictKind;
+  /** Square to the map (headingDegrees 0). */
+  readonly area: RectangleDefinition;
+}
+
 /** A park is at least this long and wide, meters: room for its paths, fountain and trees. */
 export const MIN_PARK_SIDE_METERS = 40;
 
@@ -279,6 +308,8 @@ export interface MapDefinition {
   readonly parks?: readonly ParkDefinition[];
   /** Villages the map grows, with their roads; absent: none. */
   readonly villages?: readonly VillageDefinition[];
+  /** The towns' districts the map grows (before the country); absent: none. */
+  readonly districts?: readonly DistrictDefinition[];
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
@@ -433,6 +464,23 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
   if (map.forests !== undefined && validator.check(Array.isArray(map.forests), `${path}.forests`, 'must be a list')) {
     const seen = new Set<string>();
     map.forests.forEach((forest, index) => validateForest(forest, `${path}.forests[${index}]`, validator, inside, seen));
+  }
+  if (map.districts !== undefined && validator.check(Array.isArray(map.districts), `${path}.districts`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.districts.forEach((district, index) => {
+      const districtPath = `${path}.districts[${index}]`;
+      if (!validator.check(typeof district === 'object' && district !== null, districtPath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(district.id, `${districtPath}.id`)) {
+        validator.check(!seen.has(district.id), `${districtPath}.id`, `duplicate district id "${district.id}"`);
+        seen.add(district.id);
+      }
+      validator.oneOf(district.kind, DISTRICT_KINDS, `${districtPath}.kind`);
+      if (validateRectangle(district.area, `${districtPath}.area`, validator, inside)) {
+        validator.check(district.area.headingDegrees === 0, `${districtPath}.area.headingDegrees`, 'must be 0: square to the map');
+      }
+    });
   }
   if (map.parks !== undefined && validator.check(Array.isArray(map.parks), `${path}.parks`, 'must be a list')) {
     const seen = new Set<string>();

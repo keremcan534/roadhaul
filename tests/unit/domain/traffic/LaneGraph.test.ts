@@ -338,6 +338,11 @@ describe('LaneGraph', () => {
       // (Foxhollow's at both ends).
       expect(ends.filter((road) => own.has(road.id)).map((road) => road.id)).toEqual([
         'a_harbour_road',
+        // Havenport's streets that end short of the harbour, and the avenue at both ends.
+        'a_market_street',
+        'a_south_street',
+        'a_avenue',
+        'a_avenue',
         'e_main_street',
         'e_harbour_road',
         'gull_point_road',

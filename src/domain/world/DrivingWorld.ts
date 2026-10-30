@@ -18,6 +18,7 @@ import {
   type RectangleDefinition,
   type RestAreaDefinition,
   type SeaDefinition,
+  type DistrictKind,
 } from '../../data/definitions/MapDefinition';
 import { footprintBuild, kickBody, rideUp, type BodyBuild } from '../vehicles/bodyMotion';
 import type { VehicleFootprint } from '../vehicles/VehicleFootprint';
@@ -73,6 +74,7 @@ import {
 } from './roadSigns';
 import { stackContainers } from './containerStacks';
 import { growSideRoads, layFarmland } from './sideRoads';
+import { growDistricts } from './districts';
 import { growVillages, type Village } from './villages';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 import {
@@ -294,6 +296,8 @@ export interface BuildingObstacle {
   readonly form?: BuildingForm;
   /** Shops along its ground floor, facing its street (BuildingDefinition.shops). */
   readonly shops?: boolean;
+  /** The kind of a town's district it was grown in (districts.ts); absent: none. */
+  readonly district?: DistrictKind;
 }
 
 const TREE_TRUNK_RADIUS = 0.45;
@@ -603,6 +607,8 @@ export class DrivingWorld implements DebrisSolids {
     const plan = new CountryPlan(land, mapRoads);
     this.mapRoadCount = mapRoads.length;
     const countrySeed = growthSeed(map.scenery.seed);
+    // The towns' districts first, round what the map placed; then the country round them.
+    growDistricts(plan, map.districts ?? [], countrySeed + 4);
     this.villages = growVillages(plan, map.villages ?? [], countrySeed);
     growSideRoads(plan, countrySeed + 1, map.scenery.sideRoadsPerKilometer ?? 0);
     layFarmland(plan, countrySeed + 2);
@@ -611,7 +617,11 @@ export class DrivingWorld implements DebrisSolids {
     this.roads = plan.roads;
     this.roadGrid = new RoadGrid(this.roads, TREE_ROAD_CLEARANCE);
     this.network = new RoadNetwork(this.roads);
-    this.buildings = [...mapBuildings, ...plan.buildings.map((building) => ({ ...buildingObstacle(building), country: true }))];
+    // What grew: the towns' districts' buildings, and the country's.
+    this.buildings = [
+      ...mapBuildings,
+      ...plan.buildings.map((building) => ({ ...buildingObstacle(building), ...(building.district === undefined ? { country: true } : {}) })),
+    ];
     this.fields = [...mapFields, ...plan.fields.map((field) => this.placeField(field))];
     const parkLayouts = [...mapParks, ...plan.parks].map((park) => layoutPark(park, map.scenery.seed));
     this.parks = parkLayouts.map((layout) => layout.park);
@@ -1912,6 +1922,7 @@ function buildingObstacle(building: BuildingDefinition): BuildingObstacle {
     heightMeters: building.heightMeters,
     ...(building.form === undefined ? {} : { form: building.form }),
     ...(building.shops === true ? { shops: true } : {}),
+    ...(building.district === undefined ? {} : { district: building.district }),
   };
 }
 

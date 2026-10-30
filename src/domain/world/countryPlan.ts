@@ -1,13 +1,4 @@
-import {
-  rectangleContains,
-  rectangleCorners,
-  type BuildingDefinition,
-  type BuildingForm,
-  type FieldDefinition,
-  type ParkDefinition,
-  type Point2,
-  type RectangleDefinition,
-} from '../../data/definitions/MapDefinition';
+import { rectangleContains, rectangleCorners, type BuildingDefinition, type BuildingForm, type FieldDefinition, type ParkDefinition, type Point2, type RectangleDefinition, type DistrictKind } from '../../data/definitions/MapDefinition';
 import { Buckets } from './buckets';
 import { cellOf } from './gridCells';
 import { LandRouter } from './landRoutes';
@@ -261,7 +252,24 @@ export class CountryPlan {
    * circles, buildings, fields and parks, and of whatever the land holds.
    * Returns whether it stands.
    */
-  tryBuilding(x: number, z: number, sizeX: number, sizeZ: number, height: number, form?: BuildingForm): boolean {
+  tryBuilding(
+    x: number,
+    z: number,
+    sizeX: number,
+    sizeZ: number,
+    height: number,
+    form?: BuildingForm,
+    /**
+     * A town's building: its district, shops on its ground floor, how near a road's edge it may stand and how near
+     * another building (meters).
+     */
+    town?: {
+      readonly district: DistrictKind;
+      readonly shops: boolean;
+      readonly roadClearanceMeters: number;
+      readonly gapMeters: number;
+    },
+  ): boolean {
     const minX = x - sizeX / 2;
     const maxX = x + sizeX / 2;
     const minZ = z - sizeZ / 2;
@@ -271,13 +279,14 @@ export class CountryPlan {
     if (this.someCircle((cx, cz) => boxDistance(cx, cz) < TURNING_CIRCLE_RADIUS_METERS + BUILDING_CIRCLE_CLEARANCE_METERS)) {
       return false;
     }
+    const gap = town?.gapMeters ?? BUILDING_GAP_METERS;
     if (
       this.buildings.some(
         (other) =>
-          minX < other.x + other.widthMeters / 2 + BUILDING_GAP_METERS &&
-          maxX > other.x - other.widthMeters / 2 - BUILDING_GAP_METERS &&
-          minZ < other.z + other.depthMeters / 2 + BUILDING_GAP_METERS &&
-          maxZ > other.z - other.depthMeters / 2 - BUILDING_GAP_METERS,
+          minX < other.x + other.widthMeters / 2 + gap &&
+          maxX > other.x - other.widthMeters / 2 - gap &&
+          minZ < other.z + other.depthMeters / 2 + gap &&
+          maxZ > other.z - other.depthMeters / 2 - gap,
       )
     ) {
       return false;
@@ -286,16 +295,25 @@ export class CountryPlan {
     if (this.parks.some((park) => overlaps(park.area, area, PARK_BUILDING_CLEARANCE_METERS))) {
       return false;
     }
+    const clearance = town?.roadClearanceMeters ?? BUILDING_ROAD_CLEARANCE_METERS;
     const clear = (px: number, pz: number): boolean =>
-      !this.mapRoadGrid.nearRoad(px, pz, BUILDING_ROAD_CLEARANCE_METERS) &&
-      !this.nearNewRoad(px, pz, BUILDING_ROAD_CLEARANCE_METERS + SAMPLE_MARGIN_METERS) &&
+      !this.mapRoadGrid.nearRoad(px, pz, clearance) &&
+      !this.nearNewRoad(px, pz, clearance + SAMPLE_MARGIN_METERS) &&
       this.fieldBuckets.at(px, pz).every((id) => !rectangleContains(this.fieldAreas[id]!, px, pz, FIELD_BUILDING_CLEARANCE_METERS));
     if (!clear(x, z) || !alongRim(area, clear) || !this.land.isOpenForBuilding(area)) {
       return false;
     }
     const reach = BUILDING_REACH_METERS;
     this.buildingBuckets.add(this.buildings.length, minX - reach, maxX + reach, minZ - reach, maxZ + reach);
-    this.buildings.push({ x, z, widthMeters: sizeX, depthMeters: sizeZ, heightMeters: height, ...(form === undefined ? {} : { form }) });
+    this.buildings.push({
+      x,
+      z,
+      widthMeters: sizeX,
+      depthMeters: sizeZ,
+      heightMeters: height,
+      ...(form === undefined ? {} : { form }),
+      ...(town === undefined ? {} : { district: town.district, ...(town.shops ? { shops: true } : {}) }),
+    });
     return true;
   }
 

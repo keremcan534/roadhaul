@@ -41,10 +41,16 @@ describe('TrackView', () => {
     new TrackView(scene, world);
     const forest = scene.getObjectByName('forest')!;
     const country = scene.getObjectByName('country')!;
+    const town = scene.getObjectByName('town')!;
     const treeTiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 500)},${Math.floor(tree.z / 500)}`));
 
     // The ground, the map's own roads and the towns' buildings.
-    expect(drawCallCount(scene) - drawCallCount(forest) - drawCallCount(country)).toBeLessThanOrEqual(12);
+    expect(drawCallCount(scene) - drawCallCount(forest) - drawCallCount(country) - drawCallCount(town)).toBeLessThanOrEqual(12);
+    // A tile of a town's districts: its buildings' details, in one draw.
+    expect(town.children.length).toBeGreaterThan(1);
+    for (const tile of town.children) {
+      expect(drawCallCount(tile), tile.name).toBe(1);
+    }
     // A tile of the country: its roads' shoulders and asphalt, and its houses' plinths and the rest of their roofs.
     expect(country.children.length).toBeGreaterThan(4);
     for (const tile of country.children) {

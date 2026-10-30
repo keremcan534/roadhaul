@@ -1,4 +1,4 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, Vector3 } from 'three';
+import { BoxGeometry, BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, PlaneGeometry, Vector3 } from 'three';
 import type { SeededRandom } from '../../core/random/SeededRandom';
 import { CONTAINER_GAP_METERS, CONTAINER_METERS } from '../../domain/world/containerStacks';
 import type { BuildingObstacle, BuildingSide } from '../../domain/world/DrivingWorld';
@@ -47,6 +47,20 @@ export function coloured(geometry: BufferGeometry, hex: number): BufferGeometry 
 export function roofStyleOf(box: BuildingObstacle, random: SeededRandom): RoofStyle {
   const area = (box.maxX - box.minX) * (box.maxZ - box.minZ);
   const roll = random.next();
+  switch (box.district) {
+    // The old town under tiled hips, a bigger house now and then flat behind its parapet.
+    case 'oldTown':
+      return area < 320 || roll < 0.3 ? 'hip' : 'flat';
+    // Blocks of flats flat-roofed with their water tanks and heaters, a few lower ones under tiles.
+    case 'apartments':
+      return roll < 0.2 ? 'hip' : 'flat';
+    case 'offices':
+      return 'flat';
+    case 'harbour':
+      return roll < 0.6 ? 'gable' : 'flat';
+    default:
+      break;
+  }
   if (box.country === true) {
     // Out in the country: houses under tiled hips, barns and halls under pitched roofs, and nothing on them.
     return area < 350 ? 'hip' : 'gable';
@@ -129,8 +143,14 @@ export function gableRoofGeometry(box: BuildingObstacle, rise: number, wall: Col
   return mergeFlat([roof.build(), ends.build()]);
 }
 
-/** The stone plinth round a building's foot: four slabs standing a little proud of the walls. Coloured, no uv. */
+/**
+ * The stone plinth round a building's foot: four slabs standing a little proud of the walls. A town's block's is one
+ * box a little bigger than its footprint: the same from the street, a quarter of the triangles. Coloured, no uv.
+ */
 export function plinthGeometry(box: BuildingObstacle): BufferGeometry[] {
+  if (box.district !== undefined) {
+    return [outerBox(box, PLINTH.depth, 0, PLINTH.height, PLINTH.color)];
+  }
   return edgeBoxes(box, PLINTH.depth, PLINTH.height, 0, PLINTH.color, 0);
 }
 
@@ -139,6 +159,10 @@ export function plinthGeometry(box: BuildingObstacle): BufferGeometry[] {
  * Coloured, no uv.
  */
 export function flatRoofGeometry(box: BuildingObstacle): BufferGeometry[] {
+  // A town's block: its roof never seen from the street, its parapet one box over the top of its walls.
+  if (box.district !== undefined) {
+    return [outerBox(box, PARAPET.width / 2, box.heightMeters - 0.25, PARAPET.height + 0.25, PARAPET_COLOR)];
+  }
   const width = box.maxX - box.minX;
   const depth = box.maxZ - box.minZ;
   const slab = coloured(
@@ -420,8 +444,10 @@ export function shopfrontGeometry(box: BuildingObstacle, side: BuildingSide, ran
       const stripes = 6;
       const stripe = width / stripes;
       for (let i = 0; i < stripes; i++) {
-        const awning = new BoxGeometry(stripe, 0.05, 1.3).rotateX(0.35).translate(along - width / 2 + stripe * (i + 0.5), 2.42, 0.72);
-        parts.push(coloured(awning, i % 2 === 0 ? paint : AWNING_STRIPE));
+        // Its top and its underside (seen from the pavement): its edges are too thin to see.
+        const awning = new PlaneGeometry(stripe, 1.3).rotateX(-Math.PI / 2 + 0.35).translate(along - width / 2 + stripe * (i + 0.5), 2.45, 0.72);
+        const under = new PlaneGeometry(stripe, 1.3).rotateX(Math.PI / 2 + 0.35).translate(along - width / 2 + stripe * (i + 0.5), 2.4, 0.72);
+        parts.push(coloured(awning, i % 2 === 0 ? paint : AWNING_STRIPE), coloured(under, i % 2 === 0 ? paint : AWNING_STRIPE));
       }
     }
   }
@@ -553,6 +579,13 @@ function solarHeater(x: number, y: number, z: number, bearing: number): BufferGe
 }
 
 /** Four boxes along `box`'s edges, `thickness` deep and `height` tall from `y`, their centres `inset` in from the walls. */
+/** One box over `box`'s footprint, `proud` meters past its walls all round, from `y` up `height`. Coloured, no uv. */
+function outerBox(box: BuildingObstacle, proud: number, y: number, height: number, color: number): BufferGeometry {
+  const width = box.maxX - box.minX + 2 * proud;
+  const depth = box.maxZ - box.minZ + 2 * proud;
+  return coloured(new BoxGeometry(width, height, depth).translate((box.minX + box.maxX) / 2, y + height / 2, (box.minZ + box.maxZ) / 2), color);
+}
+
 function edgeBoxes(box: BuildingObstacle, thickness: number, height: number, y: number, color: number, inset: number): BufferGeometry[] {
   const width = box.maxX - box.minX;
   const depth = box.maxZ - box.minZ;
