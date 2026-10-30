@@ -12,6 +12,8 @@ import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import { CasinoService } from '../systems/casino/CasinoService';
+import { CrateService } from '../systems/rewards/CrateService';
+import { LevelRewardService } from '../systems/company/LevelRewardService';
 import { ReviewService } from '../systems/review/ReviewService';
 import { AchievementService, type CompanyMeasures } from '../systems/achievements/AchievementService';
 import { SeededRandom } from '../core/random/SeededRandom';
@@ -170,6 +172,24 @@ export class GameBootstrapper {
         ServiceKeys.casino,
         new CasinoService(config.casino, economy, () => luck.next(), events, logger.withCategory('Casino')),
       );
+      // The crates' draws: a run of their own, so the slot machine's spins do not change what a crate holds.
+      const crateLuck = new SeededRandom((clock.now() * 7 + 13) % 2_147_483_647);
+      const crates = container.register(
+        ServiceKeys.crates,
+        new CrateService(
+          config.crates,
+          catalog,
+          economy,
+          () => crateLuck.next(),
+          config.dailyReward.credits.length,
+          events,
+          logger.withCategory('Crates'),
+        ),
+      );
+      const levelRewards = container.register(
+        ServiceKeys.levelRewards,
+        new LevelRewardService(config.company.levelRewards, company, economy, crates, events, logger.withCategory('Levels')),
+      );
       const dailyContracts = container.register(
         ServiceKeys.dailyContracts,
         new DailyContracts(catalog, driving, clock, config.missions.dailyContracts, perks),
@@ -240,6 +260,7 @@ export class GameBootstrapper {
           config.fleet.garageSlots,
           perks,
           monetization,
+          crates,
         ),
       );
       container.register(
@@ -321,6 +342,8 @@ export class GameBootstrapper {
             driversHired: fleet.hired.length,
             facilityLevels: catalog.facilities.all.reduce((sum, facility) => sum + facilities.levelOf(facility.id), 0),
             creditsEarned: company.stats.creditsEarned,
+            bestPerfectStreak: crates.bestPerfectStreak,
+            cratesOpened: crates.opened,
           }),
           events,
           logger.withCategory('Achievements'),
@@ -344,6 +367,8 @@ export class GameBootstrapper {
           facilities,
           dailyReward,
           achievements,
+          crates,
+          levelRewards,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),

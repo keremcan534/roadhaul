@@ -1668,3 +1668,27 @@
 .paint-picker__swatch.is-for-sale {
   opacity: 0.55;
 }
+
+/* ---- Crate colours: a dot of their rarity's colour in the corner; until a crate gives one, dimmed ---- */
+
+.paint-picker__swatch.is-crate {
+  --rarity-colour: #4fa8ff;
+
+  border-color: var(--rarity-colour);
+  background:
+    radial-gradient(circle at 80% 20%, var(--rarity-colour) 0 4px, transparent 5px),
+    linear-gradient(180deg, rgb(255 255 255 / 16%), transparent 48%),
+    var(--rh-swatch);
+}
+
+.paint-picker__swatch.is-crate[data-rarity='epic'] {
+  --rarity-colour: #b06bff;
+}
+
+.paint-picker__swatch.is-crate[data-rarity='legendary'] {
+  --rarity-colour: #ffcb45;
+}
+
+.paint-picker__swatch.is-crate.is-locked {
+  opacity: 0.4;
+}

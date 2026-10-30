@@ -47,10 +47,19 @@ export function claimDaily(offer: DailyOffer, today: number): DailyStreak {
   return { lastClaimDay: today, streak: offer.streak };
 }
 
-/** What day `day` (from 1) of the streak pays a company at `companyLevel`. */
-export function dailyCredits(table: readonly Credits[], day: number, companyLevel: number, levelBonus: Fraction): Credits {
+/**
+ * What day `day` (from 1) of the streak pays a company at `companyLevel`: `levelBonus` more for each level above the
+ * first, up to `bonusLevels` of them.
+ */
+export function dailyCredits(
+  table: readonly Credits[],
+  day: number,
+  companyLevel: number,
+  levelBonus: Fraction,
+  bonusLevels: number,
+): Credits {
   const base = table[Math.min(Math.max(day, 1), table.length) - 1] ?? 0;
-  return Math.round((base * (1 + levelBonus * Math.max(companyLevel - 1, 0))) / 10) * 10;
+  return Math.round((base * (1 + levelBonus * Math.min(Math.max(companyLevel - 1, 0), bonusLevels))) / 10) * 10;
 }
 
 function dayOfStreak(streak: number, days: number): number {

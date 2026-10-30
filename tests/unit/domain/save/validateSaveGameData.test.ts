@@ -77,7 +77,28 @@ describe('validateSaveGameData', () => {
       'facilities',
       'daily',
       'achievements',
+      'crates',
+      'levelRewards',
     ]);
+  });
+
+  it('checks the crates: known tiers held in whole numbers, crate colours given, the streaks', () => {
+    const crates = { held: { gold: 2 }, opened: 3, paints: [], perfectStreak: 1, bestPerfectStreak: 4 };
+    expect(paths(withPart('crates', crates))).toEqual([]);
+    expect(paths(withPart('crates', { ...crates, held: { diamond: 1, silver: -1 } }))).toEqual([
+      'crates.held.diamond',
+      'crates.held.silver',
+    ]);
+    // test_gold is a colour the garage sells: no crate gives it.
+    expect(paths(withPart('crates', { ...crates, paints: ['test_gold', 7] }))).toEqual(['crates.paints[0]', 'crates.paints[1]']);
+    expect(paths(withPart('crates', { ...crates, opened: 1.5, perfectStreak: -1 }))).toEqual(['crates.opened', 'crates.perfectStreak']);
+    expect(paths(withPart('crates', null))).toEqual(['crates']);
+  });
+
+  it('checks the level rewards: collected up to a level the company can have', () => {
+    expect(paths(withPart('levelRewards', { rewardedLevel: 1 }))).toEqual([]);
+    expect(paths(withPart('levelRewards', { rewardedLevel: 0 }))).toEqual(['levelRewards.rewardedLevel']);
+    expect(paths(withPart('levelRewards', { rewardedLevel: MAX_LEVEL + 1 }))).toEqual(['levelRewards.rewardedLevel']);
   });
 
   it('checks the goals: known metrics counted in whole numbers, and the ids collected', () => {

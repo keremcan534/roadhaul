@@ -1,4 +1,5 @@
 import type { SlotWinKind } from '../domain/casino/slotMachine';
+import type { CrateTier } from '../data/config/GameConfig';
 import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { KnockableKind } from '../domain/crash/knockables';
@@ -11,6 +12,9 @@ import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
+
+/** What earned a crate. */
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -169,6 +173,23 @@ export interface GameEvents {
   AchievementClaimed: {
     readonly achievementId: string;
     readonly reward: Credits;
+  };
+  /** A crate came to the company (CrateService): for a perfect streak, a company level or the daily streak. */
+  CrateEarned: {
+    readonly tier: CrateTier;
+    readonly source: CrateSource;
+  };
+  /** A crate was opened: the credits it paid, and the crate colour it gave (null for none). */
+  CrateOpened: {
+    readonly tier: CrateTier;
+    readonly credits: Credits;
+    readonly paintId: string | null;
+  };
+  /** A company level's reward was collected (LevelRewardService): its credits paid, its crate given. */
+  LevelRewardCollected: {
+    readonly level: number;
+    readonly credits: Credits;
+    readonly crate: CrateTier;
   };
   /** XP or reputation changed. */
   CompanyProgressed: {

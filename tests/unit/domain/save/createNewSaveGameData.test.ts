@@ -53,6 +53,8 @@ describe('createNewSaveGameData', () => {
       facilities: { levels: {} },
       daily: { lastClaimDay: null, streak: 0 },
       achievements: { counters: {}, claimed: [] },
+      crates: { held: {}, opened: 0, paints: [], perfectStreak: 0, bestPerfectStreak: 0 },
+      levelRewards: { rewardedLevel: 1 },
     });
   });
 

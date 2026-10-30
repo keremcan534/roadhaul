@@ -14,8 +14,10 @@ export interface PaintPickerState {
  * factory colour first (free), then the paints; colours for bigger companies
  * shown locked. Tapping a swatch picks it, and `onPick` shows it on the
  * truck; the button under them paints the truck, for the price it names, so
- * a stray tap never costs anything. The premium colours come last, marked:
+ * a stray tap never costs anything. The premium colours come next, marked:
  * free once bought, and until then a tap on one opens the shop (`onPremium`).
+ * The crate colours last, marked by their rarity: shown locked until a
+ * crate gives one, then free.
  */
 export function paintPicker(
   document: Document,
@@ -55,10 +57,21 @@ export function paintPicker(
           : strings.t('hq.garage.paintNow', { price: strings.money(price) });
     apply.disabled = !state.canAfford(price);
   };
-  const swatch = (paintId: string | null, color: number, price: number, lockedAt: number | null, premium = false): void => {
+  const swatch = (
+    paintId: string | null,
+    color: number,
+    price: number,
+    lockedAt: number | null,
+    premium = false,
+    crate?: string,
+  ): void => {
     const node = document.createElement('button');
     node.type = 'button';
     node.className = premium ? 'paint-picker__swatch is-premium' : 'paint-picker__swatch';
+    if (crate !== undefined) {
+      node.classList.add('is-crate');
+      node.dataset.rarity = crate;
+    }
     node.dataset.paintId = paintId ?? 'factory';
     node.style.setProperty('--rh-swatch', `#${color.toString(16).padStart(6, '0')}`);
     node.setAttribute('role', 'radio');
@@ -84,6 +97,20 @@ export function paintPicker(
     swatches.append(node);
   };
 
+  /** A crate colour no crate has given yet: shown, marked, for nothing yet. */
+  const fromCrate = (paintId: string, color: number, rarity: string): void => {
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.className = 'paint-picker__swatch is-crate is-locked';
+    node.dataset.paintId = paintId;
+    node.dataset.rarity = rarity;
+    node.disabled = true;
+    node.style.setProperty('--rh-swatch', `#${color.toString(16).padStart(6, '0')}`);
+    node.setAttribute('aria-label', `${nameOf(paintId)} · ${strings.t(`rarity.${rarity}`)} · ${strings.t('hq.garage.crate')}`);
+    node.title = node.getAttribute('aria-label')!;
+    swatches.append(node);
+  };
+
   /** A premium colour not bought yet: shown, and a tap on it opens the shop. */
   const forSale = (paintId: string, color: number): void => {
     const node = document.createElement('button');
@@ -99,10 +126,20 @@ export function paintPicker(
 
   swatch(null, truck.definition.factoryColor, 0, null);
   for (const offer of state.offers) {
+    const rarity = offer.paint.crate;
     if (offer.premium && offer.locked) {
       forSale(offer.paint.id, offer.paint.color);
+    } else if (rarity !== undefined && offer.locked) {
+      fromCrate(offer.paint.id, offer.paint.color, rarity);
     } else {
-      swatch(offer.paint.id, offer.paint.color, offer.paint.price, offer.locked ? offer.requiredCompanyLevel : null, offer.premium);
+      swatch(
+        offer.paint.id,
+        offer.paint.color,
+        offer.paint.price,
+        offer.locked ? offer.requiredCompanyLevel : null,
+        offer.premium,
+        rarity,
+      );
     }
   }
   root.append(label, swatches, apply);

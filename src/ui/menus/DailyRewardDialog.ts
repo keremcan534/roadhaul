@@ -104,6 +104,11 @@ export class DailyRewardDialog {
           icon(document, day < shown.day ? 'trophy' : 'coins', 'daily__day-icon'),
           element(document, 'span', 'daily__day-amount', amount),
         );
+        // The last day brings a crate too (CrateService).
+        if (day === shown.amounts.length) {
+          card.classList.add('has-crate');
+          card.append(icon(document, 'crate', 'daily__day-crate'));
+        }
         if (day === shown.day) {
           card.append(this.coins(document));
         }

@@ -136,7 +136,26 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 12,
     migrate: (save) => ({ ...save, version: 13, achievements: { counters: countersFrom(save), claimed: [] } }),
   },
+  {
+    // v14 adds the crates (none yet, no streak) and the levels' rewards: the levels the company already has were
+    // reached before there were any, so they count as collected; the ones its XP reaches above them (the levels
+    // beyond the fifth came with v14) wait to be collected.
+    from: 13,
+    migrate: (save) => ({
+      ...save,
+      version: 14,
+      crates: { held: {}, opened: 0, paints: [], perfectStreak: 0, bestPerfectStreak: 0 },
+      levelRewards: { rewardedLevel: savedLevel(save) },
+    }),
+  },
 ];
+
+/** The company level a v13 save holds, or 1. */
+function savedLevel(save: SaveJson): number {
+  const company = save['company'];
+  const level = isJsonObject(company) ? company['level'] : null;
+  return typeof level === 'number' && Number.isInteger(level) && level >= 1 ? level : 1;
+}
 
 /** What a v12 save already shows of what the goals count. */
 function countersFrom(save: SaveJson): Record<string, number> {

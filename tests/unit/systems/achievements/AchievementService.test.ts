@@ -31,6 +31,8 @@ function setup() {
     driversHired: 0,
     facilityLevels: 0,
     creditsEarned: 0,
+    bestPerfectStreak: 0,
+    cratesOpened: 0,
   };
   const goals = new AchievementService(content, economy, () => measures, events, logger);
   goals.restore({ counters: {}, claimed: [] });
@@ -40,7 +42,7 @@ function setup() {
     measures = { ...measures, ...changes };
   };
   const deliver = (cargoDamage: number): void =>
-    events.emit('MissionCompleted', { cargoDamage } as unknown as GameEvents['MissionCompleted']);
+    events.emit('MissionCompleted', { cargoDamage, reward: { onTime: true } } as unknown as GameEvents['MissionCompleted']);
   return { goals, economy, events, reached, measure, deliver };
 }
 

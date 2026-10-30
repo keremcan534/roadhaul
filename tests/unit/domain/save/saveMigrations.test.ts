@@ -23,6 +23,10 @@ const NO_FACILITIES = { levels: {} };
 const NO_DAILY = { lastClaimDay: null, streak: 0 };
 /** The goals of a company from a build before v13, which recorded nothing of them. */
 const NO_GOALS = { counters: {}, claimed: [] };
+/** The crates of a company from a build before v14: none, no streak. */
+const NO_CRATES = { held: {}, opened: 0, paints: [], perfectStreak: 0, bestPerfectStreak: 0 };
+/** The level rewards of a company from a build before v14 (level 2, as every save here): its levels count as collected. */
+const LEVELS_COLLECTED = { rewardedLevel: 2 };
 
 /** A garage as v7 has it: every truck in its factory colour. */
 function inFactoryColours<T extends { vehicles: readonly object[] }>(garage: T): T {
@@ -56,7 +60,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 13,
+        version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {}, paintId: null }],
@@ -137,9 +141,9 @@ describe('save migrations', () => {
     };
     expect(moved).toEqual({
       ok: true,
-      value: { ...v3, version: 13, world: { mapId: 'north_valley', truck: null }, ...added },
+      value: { ...v3, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, world: { mapId: 'north_valley', truck: null }, ...added },
     });
-    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 13, ...added } });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, ...added } });
   });
 
   it('starts the events of a v4 save with no progress, keeping the rest', () => {
@@ -159,7 +163,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...v4,
-        version: 13,
+        version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED,
         events: { runs: [] },
         tutorial: { step: 'done' },
         garage: inFactoryColours(v4.garage),
@@ -185,7 +189,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v5, context)).toEqual({
       ok: true,
-      value: { ...v5, version: 13, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage), fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS },
+      value: { ...v5, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage), fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS },
     });
   });
 
@@ -211,7 +215,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...v6,
-        version: 13,
+        version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED,
         garage: inFactoryColours(v6.garage),
         fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY,
         achievements: { counters: { upgradesFitted: 1 }, claimed: [] },
@@ -246,9 +250,9 @@ describe('save migrations', () => {
 
     expect(migrateSave(v7, context)).toEqual({
       ok: true,
-      value: { ...v7, version: 13, missions: { active: { ...v7.missions.active, contract: null } }, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS },
+      value: { ...v7, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, missions: { active: { ...v7.missions.active, contract: null } }, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS },
     });
-    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 13, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
+    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v8 company a fleet with nobody hired yet, and keeps the rest as it was', () => {
@@ -269,7 +273,7 @@ describe('save migrations', () => {
       tutorial: { step: 'done' },
     };
 
-    expect(migrateSave(v8, context)).toEqual({ ok: true, value: { ...v8, version: 13, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
+    expect(migrateSave(v8, context)).toEqual({ ok: true, value: { ...v8, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v9 company rivals that start out afresh, and keeps the rest, its fleet too, as it was', () => {
@@ -304,7 +308,7 @@ describe('save migrations', () => {
       },
     };
 
-    expect(migrateSave(v9, context)).toEqual({ ok: true, value: { ...v9, version: 13, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
+    expect(migrateSave(v9, context)).toEqual({ ok: true, value: { ...v9, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v10 company no facilities yet, and keeps the rest, its fleet and rivals too, as it was', () => {
@@ -315,7 +319,7 @@ describe('save migrations', () => {
       rivals: { ...NEW_RIVALS, tendersPosted: 2, jobsPlanned: 7 },
     };
 
-    expect(migrateSave(v10, context)).toEqual({ ok: true, value: { ...v10, version: 13, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
+    expect(migrateSave(v10, context)).toEqual({ ok: true, value: { ...v10, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v12 company goals counted from what its save shows, none collected, and keeps the rest as it was', () => {
@@ -337,7 +341,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v12, context)).toEqual({
       ok: true,
-      value: { ...v12, version: 13, achievements: { counters: { dailyStreak: 4, upgradesFitted: 6, rivalsBoughtOut: 1 }, claimed: [] } },
+      value: { ...v12, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, achievements: { counters: { dailyStreak: 4, upgradesFitted: 6, rivalsBoughtOut: 1 }, claimed: [] } },
     });
   });
 
@@ -350,7 +354,18 @@ describe('save migrations', () => {
       facilities: { levels: { workshop: 2 } },
     };
 
-    expect(migrateSave(v11, context)).toEqual({ ok: true, value: { ...v11, version: 13, daily: NO_DAILY, achievements: NO_GOALS } });
+    expect(migrateSave(v11, context)).toEqual({ ok: true, value: { ...v11, version: 14, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, daily: NO_DAILY, achievements: NO_GOALS } });
+  });
+
+  it('gives a v13 company no crates yet, counts the levels it has as collected, and keeps the rest as it was', () => {
+    const v13 = { ...V1_SAVE, version: 13, company: { level: 5, xp: 41_000, reputation: 80 }, achievements: NO_GOALS };
+
+    // Its XP reaches level 8 now; the levels above the fifth wait to be collected.
+    expect(migrateSave(v13, context)).toEqual({
+      ok: true,
+      value: { ...v13, version: 14, crates: NO_CRATES, levelRewards: { rewardedLevel: 5 } },
+    });
+    expect(migrateSave({ ...v13, company: 'odd' }, context)).toMatchObject({ ok: true, value: { levelRewards: { rewardedLevel: 1 } } });
   });
 
   it('migrates odd data without throwing, leaving it to validation', () => {

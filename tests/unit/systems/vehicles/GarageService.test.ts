@@ -230,6 +230,31 @@ describe('GarageService paint shop', () => {
     expect(game.economy.credits).toBe(1000);
   });
 
+  it('shows the crate colours locked until a crate gives one, then paints it free, and keeps it in the save', async () => {
+    const game = await newCompany(1, 1000);
+    const crateColours = (): string[] =>
+      game.garage
+        .paintShop()
+        .filter((offer) => offer.crate)
+        .map((offer) => `${offer.paint.id}${offer.locked ? ' (locked)' : ''}`);
+    expect(crateColours()).toContain('aurora_green (locked)');
+    expect(game.garage.paint('truck_001', 'aurora_green')).toEqual({ ok: false, error: 'locked' });
+
+    // A gold crate until one holds a colour (the crates' luck is the game's own).
+    let paintId: string | null = null;
+    while (paintId === null) {
+      game.crates.grant('gold', 'level');
+      const opened = game.crates.open('gold');
+      paintId = opened.ok ? opened.value.paintId : null;
+    }
+    expect(crateColours()).toContain(paintId);
+    const credits = game.economy.credits;
+    const painted = game.garage.paint('truck_001', paintId);
+    expect(painted.ok && painted.value.paint?.id).toBe(paintId);
+    expect(game.economy.credits).toBe(credits);
+    expect(game.session.snapshot().crates.paints).toEqual([paintId]);
+  });
+
   it('saves the paint at once, and a continued company still has it', async () => {
     const first = await newCompany(1, 5000);
     first.garage.paint('truck_001', 'forest_green');

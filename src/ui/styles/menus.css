@@ -2366,3 +2366,1065 @@
     animation: none;
   }
 }
+
+/* ---- The delivery's stars, on the result (ResultDialog.celebrate) ---- */
+
+.result-dialog__hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.result-dialog__stars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 14px;
+}
+
+.result-star {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  animation: result-star-in 520ms cubic-bezier(0.2, 1.6, 0.4, 1) var(--delay, 0ms) both;
+}
+
+.result-star__icon {
+  width: 38px;
+  height: 38px;
+  color: rgb(255 255 255 / 16%);
+}
+
+/* The middle star stands taller, like a podium. */
+.result-star:nth-child(2) .result-star__icon {
+  width: 48px;
+  height: 48px;
+}
+
+.result-star.is-lit .result-star__icon {
+  color: var(--rh-sign-yellow);
+  filter: drop-shadow(0 0 8px rgb(255 211 77 / 65%));
+}
+
+.result-star__label {
+  color: var(--rh-muted);
+  font: 500 10px/1.1 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.result-star.is-lit .result-star__label {
+  color: var(--rh-sign-yellow);
+}
+
+.result-dialog__tally {
+  margin: 2px 0 0;
+  color: var(--rh-sign-yellow);
+  font: 600 30px/1 var(--rh-display);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 16px rgb(255 211 77 / 40%);
+  animation: daily-total 600ms var(--rh-ease) 120ms both;
+}
+
+.result-dialog__perfect {
+  margin: 0;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f2a33a, #ffd34d, #f2a33a);
+  color: #241500;
+  font: 600 13px/1.3 var(--rh-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: result-perfect-in 600ms cubic-bezier(0.2, 1.6, 0.4, 1) 1300ms both;
+}
+
+/* The perfect streak, and the crate it earned. */
+.result-dialog__streak {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 7px 12px;
+  border-left: 3px solid var(--rh-sign-yellow);
+  background: var(--rh-surface-2);
+}
+
+.result-dialog__streak.is-hint {
+  border-left-color: var(--rh-line-strong);
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.result-dialog__streak-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--rh-sign-yellow);
+}
+
+.result-dialog__streak-count {
+  color: var(--rh-sign-yellow);
+  font: 500 15px/1.2 var(--rh-display);
+  letter-spacing: 0.04em;
+}
+
+.result-dialog__streak-next {
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.result-dialog__streak-count + .result-dialog__streak-next {
+  margin-left: auto;
+}
+
+.result-dialog__crate {
+  --crate-colour: #c98a4b;
+  --crate-rgb: 201 138 75;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--crate-colour);
+  border-radius: var(--rh-radius);
+  background: radial-gradient(120% 140% at 0% 50%, rgb(var(--crate-rgb) / 30%), transparent 70%), var(--rh-surface-2);
+  animation: daily-pop 520ms var(--rh-ease) 1500ms both;
+}
+
+.result-dialog__crate-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  color: var(--crate-colour);
+  --rh-icon-accent: var(--rh-sign-yellow);
+}
+
+.result-dialog__crate-name {
+  flex: 1;
+  font: 500 15px/1.2 var(--rh-display);
+  letter-spacing: 0.03em;
+}
+
+.result-dialog__crate-open {
+  min-height: 38px;
+}
+
+.result-dialog__crate[data-tier='silver'],
+.crates__tile[data-tier='silver'],
+.crates__stage[data-tier='silver'],
+.level-up__reward--crate[data-tier='silver'] {
+  --crate-colour: #c4ced8;
+  --crate-rgb: 196 206 216;
+}
+
+.result-dialog__crate[data-tier='gold'],
+.crates__tile[data-tier='gold'],
+.crates__stage[data-tier='gold'],
+.level-up__reward--crate[data-tier='gold'] {
+  --crate-colour: #ffcb45;
+  --crate-rgb: 255 203 69;
+}
+
+@keyframes result-star-in {
+  0% {
+    transform: scale(0.2) rotate(-40deg);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+}
+
+@keyframes result-perfect-in {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* A phone on its side: the title, the stars (without their words) and what was earned on one line, so the receipt
+   still fits without scrolling. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .result-dialog__panel.has-hero {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 18px;
+  }
+
+  .result-dialog__panel.has-hero > * {
+    grid-column: 1 / -1;
+  }
+
+  .result-dialog__panel.has-hero > .panel__title {
+    grid-column: 1;
+  }
+
+  .result-dialog__panel.has-hero > .result-dialog__hero {
+    grid-column: 2;
+    flex-flow: row wrap;
+    justify-content: flex-end;
+    column-gap: 14px;
+  }
+
+  .result-dialog__stars {
+    align-items: center;
+    gap: 6px;
+  }
+
+  .result-star__label {
+    display: none;
+  }
+
+  .result-star__icon {
+    width: 26px;
+    height: 26px;
+  }
+
+  .result-star:nth-child(2) .result-star__icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .result-dialog__tally {
+    margin: 0;
+    font-size: 24px;
+  }
+
+  .result-dialog__perfect {
+    padding: 2px 9px;
+    font-size: 11px;
+  }
+}
+
+/* The daily reward's last day brings a crate: a little one on its card. */
+.daily__day-crate {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  color: #c4ced8;
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 60%));
+  --rh-icon-accent: var(--rh-sign-yellow);
+}
+
+/* ---- The crates (src/ui/menus/CrateDialog.ts) ---- */
+
+.crates {
+  /* Over the company panel and the result. */
+  z-index: 15;
+  background: radial-gradient(90% 80% at 50% 40%, rgb(30 22 10 / 78%), rgb(6 6 8 / 90%));
+}
+
+.crates__panel {
+  position: relative;
+  width: min(100%, 480px);
+  overflow-x: hidden;
+  border-color: rgb(242 163 58 / 45%);
+}
+
+.crates__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.crates__head .panel__title {
+  margin: 0;
+}
+
+.crates__icon {
+  width: 30px;
+  height: 30px;
+  color: #c98a4b;
+}
+
+.crates__intro,
+.crates__hint,
+.crates__empty,
+.crates__paints {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.crates__intro {
+  text-align: left;
+}
+
+.crates__hint {
+  color: var(--rh-accent-hi);
+  font: 500 14px/1.2 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  animation: daily-glow 1.4s ease-in-out infinite;
+}
+
+.crates__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.crates__tile {
+  --crate-colour: #c98a4b;
+  --crate-rgb: 201 138 75;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  cursor: pointer;
+  font: inherit;
+}
+
+.crates__tile.is-chosen {
+  border-color: var(--crate-colour);
+  background: radial-gradient(100% 100% at 50% 0%, rgb(var(--crate-rgb) / 28%), transparent 75%), var(--rh-surface-3);
+}
+
+.crates__tile.is-empty {
+  opacity: 0.5;
+}
+
+.crates__tile-icon {
+  width: 26px;
+  height: 26px;
+  color: var(--crate-colour);
+  --rh-icon-accent: var(--rh-sign-yellow);
+}
+
+.crates__tile-name {
+  font: 500 12px/1.1 var(--rh-display);
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.crates__tile-count {
+  color: var(--rh-fg-2);
+  font: 600 13px/1.1 var(--rh-numeric);
+}
+
+/* The stage: the crate in its tier's glow, light wheeling behind it once it bursts. */
+.crates__stage {
+  --crate-colour: #c98a4b;
+  --crate-rgb: 201 138 75;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 176px;
+  isolation: isolate;
+}
+
+.crates__stage[hidden] {
+  display: none;
+}
+
+.crates__rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: -1;
+  width: 300px;
+  height: 300px;
+  margin: -150px 0 0 -150px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgb(var(--crate-rgb) / 55%) 0deg 10deg, transparent 10deg 30deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 20%, transparent);
+  mask-image: radial-gradient(closest-side, #000 20%, transparent);
+  opacity: 0.25;
+  animation: crate-rays 14s linear infinite;
+}
+
+.crates__stage[data-state='burst'] .crates__rays,
+.crates__stage[data-state='opened'] .crates__rays {
+  opacity: 0.9;
+  animation-duration: 6s;
+}
+
+.crates__stage[data-rarity='rare'] {
+  --crate-colour: #4fa8ff;
+  --crate-rgb: 79 168 255;
+}
+
+.crates__stage[data-rarity='epic'] {
+  --crate-colour: #b06bff;
+  --crate-rgb: 176 107 255;
+}
+
+.crates__stage[data-rarity='legendary'] {
+  --crate-colour: #ffcb45;
+  --crate-rgb: 255 203 69;
+}
+
+/* The crate: a wooden chest in its tier's metal, banded, a lock on the front. */
+.crate-box {
+  position: relative;
+  display: block;
+  width: 120px;
+  height: 104px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  filter: drop-shadow(0 8px 14px rgb(0 0 0 / 55%)) drop-shadow(0 0 18px rgb(var(--crate-rgb) / 45%));
+}
+
+.crate-box:disabled {
+  cursor: default;
+}
+
+.crate-box__lid,
+.crate-box__body {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  border: 3px solid var(--crate-colour);
+  background:
+    linear-gradient(90deg, transparent 18%, var(--crate-colour) 18% 26%, transparent 26% 74%, var(--crate-colour) 74% 82%, transparent 82%),
+    repeating-linear-gradient(180deg, #7a4a24 0 12px, #6a3f1e 12px 14px);
+}
+
+.crate-box__lid {
+  top: 0;
+  height: 36px;
+  border-radius: 10px 10px 3px 3px;
+  transform-origin: 50% 100%;
+}
+
+.crate-box__body {
+  bottom: 0;
+  height: 70px;
+  border-radius: 3px 3px 8px 8px;
+}
+
+.crate-box__lock {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 22px;
+  height: 26px;
+  margin-left: -11px;
+  border-radius: 4px 4px 11px 11px;
+  background: radial-gradient(circle at 50% 40%, #241500 18%, transparent 20%), linear-gradient(180deg, #ffe08a, var(--rh-sign-yellow) 50%, #c98a12);
+  box-shadow: 0 0 8px rgb(255 211 77 / 60%);
+}
+
+.crates__stage[data-tier='silver'] .crate-box__lid,
+.crates__stage[data-tier='silver'] .crate-box__body {
+  background:
+    linear-gradient(90deg, transparent 18%, var(--crate-colour) 18% 26%, transparent 26% 74%, var(--crate-colour) 74% 82%, transparent 82%),
+    repeating-linear-gradient(180deg, #5b6470 0 12px, #4c545e 12px 14px);
+}
+
+.crates__stage[data-tier='gold'] .crate-box__lid,
+.crates__stage[data-tier='gold'] .crate-box__body {
+  background:
+    linear-gradient(90deg, transparent 18%, var(--crate-colour) 18% 26%, transparent 26% 74%, var(--crate-colour) 74% 82%, transparent 82%),
+    repeating-linear-gradient(180deg, #3a2a52 0 12px, #2f2244 12px 14px);
+}
+
+/* Waiting, the crate bobs inside its button, which stays still to be tapped. */
+.crates__stage[data-state='closed'] .crate-box:not(:disabled) > span {
+  animation: crate-bob 1.6s ease-in-out infinite;
+}
+
+.crates__stage[data-state='shake-0'] .crate-box {
+  animation: crate-shake 300ms ease-in-out;
+}
+
+.crates__stage[data-state='shake-1'] .crate-box {
+  animation: crate-shake-hard 300ms ease-in-out;
+}
+
+.crates__stage[data-state='shake-2'] .crate-box {
+  animation: crate-shake-harder 300ms ease-in-out;
+}
+
+.crates__stage[data-state='burst'] .crate-box__lid,
+.crates__stage[data-state='opened'] .crate-box__lid {
+  animation: crate-lid 600ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+.crates__stage[data-state='opened'] .crate-box {
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 300ms,
+    transform 300ms;
+}
+
+.crates__burst {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.crates__stage[data-state='burst'] .daily__coin,
+.crates__stage[data-state='opened'] .daily__coin {
+  animation: daily-coin 900ms cubic-bezier(0.15, 0.8, 0.3, 1) var(--delay, 0ms) both;
+}
+
+.crates__spark {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff, var(--crate-colour) 60%, transparent 70%);
+  opacity: 0;
+  animation: daily-coin 1000ms cubic-bezier(0.15, 0.8, 0.3, 1) var(--delay, 0ms) both;
+}
+
+/* What it held, over the opened crate. */
+.crates__reward {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.crates__credits {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--rh-sign-yellow);
+  font: 600 34px/1 var(--rh-display);
+  text-shadow: 0 0 18px rgb(255 211 77 / 50%);
+  animation: daily-total 600ms var(--rh-ease) both;
+}
+
+.crates__credits-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.crates__paint {
+  --rarity-colour: #4fa8ff;
+  --rarity-rgb: 79 168 255;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  padding: 8px 14px 8px 8px;
+  border: 1px solid var(--rarity-colour);
+  border-radius: var(--rh-radius);
+  background: radial-gradient(120% 140% at 0% 50%, rgb(var(--rarity-rgb) / 32%), transparent 70%), var(--rh-surface-3);
+  box-shadow: 0 0 22px rgb(var(--rarity-rgb) / 45%);
+  animation: daily-pop 600ms var(--rh-ease) 160ms both;
+}
+
+.crates__paint[data-rarity='epic'] {
+  --rarity-colour: #b06bff;
+  --rarity-rgb: 176 107 255;
+}
+
+.crates__paint[data-rarity='legendary'] {
+  --rarity-colour: #ffcb45;
+  --rarity-rgb: 255 203 69;
+}
+
+.crates__swatch {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 3px solid rgb(255 255 255 / 85%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgb(255 255 255 / 55%), transparent 45%), var(--rh-swatch);
+}
+
+.crates__paint-words {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.crates__rarity {
+  color: var(--rarity-colour);
+  font: 600 12px/1.1 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.crates__paint-name {
+  font: 500 16px/1.2 var(--rh-display);
+}
+
+.crates__paint-tip {
+  color: var(--rh-fg-2);
+  font-size: 12px;
+}
+
+.crates__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crates__choices .button {
+  flex: 1 1 140px;
+}
+
+.crates__choices .button[hidden] {
+  display: none;
+}
+
+@keyframes crate-rays {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes crate-bob {
+  50% {
+    transform: translateY(-5px) scale(1.03);
+  }
+}
+
+@keyframes crate-shake {
+  25% {
+    transform: rotate(-5deg);
+  }
+
+  75% {
+    transform: rotate(5deg);
+  }
+}
+
+@keyframes crate-shake-hard {
+  20% {
+    transform: rotate(-9deg) scale(1.04);
+  }
+
+  60% {
+    transform: rotate(9deg) scale(1.06);
+  }
+}
+
+@keyframes crate-shake-harder {
+  15% {
+    transform: translateY(-6px) rotate(-13deg) scale(1.08);
+  }
+
+  50% {
+    transform: translateY(-10px) rotate(13deg) scale(1.12);
+  }
+
+  85% {
+    transform: translateY(-4px) rotate(-8deg) scale(1.1);
+  }
+}
+
+@keyframes crate-lid {
+  0% {
+    transform: none;
+  }
+
+  100% {
+    transform: translateY(-70px) rotate(-28deg);
+    opacity: 0;
+  }
+}
+
+/* A short screen: a smaller stage. */
+@media (max-height: 500px) {
+  .crates__stage {
+    min-height: 132px;
+  }
+
+  .crate-box {
+    width: 96px;
+    height: 84px;
+  }
+
+  .crate-box__lid {
+    height: 29px;
+  }
+
+  .crate-box__body {
+    height: 56px;
+  }
+
+  .crates__intro {
+    display: none;
+  }
+}
+
+/* ---- A new company level (src/ui/menus/LevelUpDialog.ts) ---- */
+
+.level-up {
+  /* Over everything but the crates it opens. */
+  z-index: 16;
+  overflow: hidden;
+  background: radial-gradient(80% 70% at 50% 40%, rgb(52 30 6 / 94%), rgb(6 6 8 / 97%));
+}
+
+.level-up__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 460px);
+  max-height: 100%;
+  overflow-y: auto;
+  padding: 16px;
+  box-sizing: border-box;
+  text-align: center;
+  isolation: isolate;
+}
+
+.level-up__rays {
+  position: absolute;
+  top: 120px;
+  left: 50%;
+  z-index: -1;
+  width: 520px;
+  height: 520px;
+  margin: -260px 0 0 -260px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgb(255 211 77 / 30%) 0deg 8deg, transparent 8deg 24deg);
+  -webkit-mask-image: radial-gradient(closest-side, #000 10%, transparent);
+  mask-image: radial-gradient(closest-side, #000 10%, transparent);
+  animation: crate-rays 18s linear infinite;
+  pointer-events: none;
+}
+
+.level-up__title {
+  margin: 0;
+  color: var(--rh-sign-yellow);
+  font: 600 28px/1 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 0 18px rgb(255 211 77 / 55%);
+  animation: result-perfect-in 500ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+/* The badge: a shield of gold with the level's number, landing with a bounce. */
+.level-up__badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 132px;
+  box-sizing: border-box;
+  padding-bottom: 14px;
+  clip-path: polygon(50% 0, 100% 14%, 100% 62%, 50% 100%, 0 62%, 0 14%);
+  background: radial-gradient(circle at 35% 25%, #fff3c4, var(--rh-sign-yellow) 40%, #c98a12 90%);
+  color: #2b1800;
+  animation: level-badge-in 800ms cubic-bezier(0.2, 1.5, 0.4, 1) 150ms both;
+}
+
+.level-up__badge-word {
+  font: 600 13px/1 var(--rh-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.level-up__number {
+  font: 700 64px/0.95 var(--rh-display);
+}
+
+.level-up__name {
+  margin: 0;
+  font: 500 22px/1.2 var(--rh-display);
+  letter-spacing: 0.04em;
+  animation: daily-total 600ms var(--rh-ease) 600ms both;
+}
+
+.level-up__heading {
+  margin: 4px 0 0;
+  color: var(--rh-fg-2);
+  font: 500 12px/1.2 var(--rh-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.level-up__rewards {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.level-up__reward {
+  --crate-colour: var(--rh-sign-yellow);
+  --crate-rgb: 255 211 77;
+
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 10px 8px;
+  border: 1px solid rgb(var(--crate-rgb) / 70%);
+  border-radius: var(--rh-radius);
+  background: radial-gradient(100% 100% at 50% 0%, rgb(var(--crate-rgb) / 25%), transparent 75%), var(--rh-surface-2);
+  animation: daily-pop 520ms var(--rh-ease) 800ms both;
+}
+
+.level-up__reward--crate {
+  --crate-colour: #c98a4b;
+  --crate-rgb: 201 138 75;
+
+  animation-delay: 950ms;
+}
+
+
+.level-up__reward-icon {
+  width: 34px;
+  height: 34px;
+  color: var(--crate-colour);
+  --rh-icon-accent: var(--rh-sign-yellow);
+}
+
+.level-up__reward-value {
+  font: 600 17px/1.15 var(--rh-display);
+}
+
+.is-collected .level-up__reward {
+  border-color: var(--rh-good);
+}
+
+.level-up__burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.is-collected .level-up__burst .daily__coin {
+  animation: daily-coin 900ms cubic-bezier(0.15, 0.8, 0.3, 1) var(--delay, 0ms) both;
+}
+
+.level-up__unlocks {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.level-up__unlock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: 999px;
+  background: var(--rh-surface-2);
+  font-size: 13px;
+  animation: daily-total 500ms var(--rh-ease) 1100ms both;
+}
+
+.level-up__unlock-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.level-up__unlock-count {
+  color: var(--rh-good);
+  font: 600 13px/1 var(--rh-numeric);
+}
+
+.level-up__choices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.level-up__choices .button {
+  flex: 1 1 160px;
+  max-width: 240px;
+}
+
+/* The button glows (a ring behind it pulses): it stays still, to be tapped. */
+.level-up__collect {
+  position: relative;
+  min-height: 50px;
+  font-size: 18px;
+}
+
+.level-up__collect::after {
+  position: absolute;
+  inset: -5px;
+  border-radius: inherit;
+  box-shadow: 0 0 20px rgb(255 211 77 / 75%);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+  animation: daily-glow 1.4s ease-in-out 1.2s infinite;
+}
+
+/* Confetti, falling and spinning over the whole screen. */
+.level-up__confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.level-up__piece {
+  position: absolute;
+  top: -20px;
+  left: var(--x);
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--colour);
+  opacity: 0;
+  animation: level-confetti var(--fall, 3s) linear var(--delay, 0ms) infinite;
+}
+
+.level-up__piece:nth-child(3n) {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+@keyframes level-badge-in {
+  0% {
+    transform: scale(0.2) rotate(-25deg);
+    opacity: 0;
+  }
+
+  100% {
+    transform: scale(1) rotate(0);
+    opacity: 1;
+  }
+}
+
+@keyframes level-confetti {
+  0% {
+    transform: translate(0, 0) rotate(0);
+    opacity: 1;
+  }
+
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(var(--sway, 0), 110vh) rotate(var(--spin, 360deg));
+    opacity: 0;
+  }
+}
+
+/* A phone on its side: the badge beside the rest. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .level-up__panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-auto-flow: dense;
+    column-gap: 18px;
+    row-gap: 6px;
+    width: min(100%, 640px);
+    align-items: center;
+  }
+
+  .level-up__panel > * {
+    grid-column: 2;
+  }
+
+  .level-up__title,
+  .level-up__badge,
+  .level-up__name {
+    grid-column: 1;
+  }
+
+  .level-up__title {
+    grid-row: 1;
+  }
+
+  .level-up__badge {
+    grid-row: 2 / span 3;
+    justify-self: center;
+  }
+
+  .level-up__name {
+    grid-row: 5;
+  }
+
+  .level-up__rays {
+    top: 50%;
+    left: 25%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-star,
+  .result-dialog__tally,
+  .result-dialog__perfect,
+  .result-dialog__crate,
+  .crates__hint,
+  .crates__rays,
+  .crates__stage .crate-box,
+  .crates__stage .crate-box__lid,
+  .crates__stage .daily__coin,
+  .crates__spark,
+  .crates__credits,
+  .crates__paint,
+  .level-up__rays,
+  .level-up__title,
+  .level-up__badge,
+  .level-up__name,
+  .level-up__reward,
+  .level-up__unlock,
+  .level-up__collect::after,
+  .crates__stage .crate-box > span,
+  .level-up__burst .daily__coin {
+    animation: none;
+  }
+
+  .result-star {
+    opacity: 1;
+  }
+
+  .level-up__piece {
+    display: none;
+  }
+}

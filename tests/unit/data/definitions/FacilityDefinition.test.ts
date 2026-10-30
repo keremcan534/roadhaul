@@ -97,7 +97,7 @@ describe('facilities in the content and the config', () => {
     const content = ContentCatalog.create(
       contentFixture({
         facilities: [
-          facilityFixture({ levels: [{ cost: 100, requiredCompanyLevel: 9, value: 0.1 }] }),
+          facilityFixture({ levels: [{ cost: 100, requiredCompanyLevel: 11, value: 0.1 }] }),
           facilityFixture({ id: 'test_office', effect: 'extraContracts', levels: [{ cost: 100, value: 8 }] }),
         ],
       }),

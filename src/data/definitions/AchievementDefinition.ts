@@ -5,7 +5,7 @@ import type { Credits } from '../units';
  * What a goal counts (AchievementService keeps or reads it):
  *
  * - deliveries, perfectDeliveries: contracts delivered; with the cargo
- *   undamaged.
+ *   flawless (deliveryStars).
  * - distanceKm: kilometres the company's trucks were driven by the player.
  * - companyLevel, trucksOwned, driversHired, facilityLevels: how far the
  *   company has grown (its level, its garage, its drivers, the levels of
@@ -15,6 +15,8 @@ import type { Credits } from '../units';
  * - dailyStreak: the longest run of days the daily reward was collected.
  * - upgradesFitted: upgrade levels bought.
  * - bigWins: the slot machine paying ten times the bet or more.
+ * - perfectStreak: the longest run of perfect deliveries (three stars).
+ * - cratesOpened: crates opened.
  */
 export const ACHIEVEMENT_METRICS = [
   'deliveries',
@@ -30,6 +32,8 @@ export const ACHIEVEMENT_METRICS = [
   'dailyStreak',
   'upgradesFitted',
   'bigWins',
+  'perfectStreak',
+  'cratesOpened',
 ] as const;
 export type AchievementMetric = (typeof ACHIEVEMENT_METRICS)[number];
 

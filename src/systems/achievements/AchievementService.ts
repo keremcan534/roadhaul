@@ -4,6 +4,7 @@ import { err, ok, type Result } from '../../core/Result';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { AchievementDefinition, AchievementMetric } from '../../data/definitions/AchievementDefinition';
 import type { Credits } from '../../data/units';
+import { deliveryStars } from '../../domain/missions/deliveryStars';
 import type { AchievementsSaveData } from '../../domain/save/SaveGameData';
 import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
@@ -17,6 +18,9 @@ export interface CompanyMeasures {
   readonly driversHired: number;
   readonly facilityLevels: number;
   readonly creditsEarned: Credits;
+  /** The longest run of perfect deliveries, and the crates opened (CrateService). */
+  readonly bestPerfectStreak: number;
+  readonly cratesOpened: number;
 }
 
 /** The metrics the goals count themselves (the save keeps them): the rest are measured (CompanyMeasures). */
@@ -62,8 +66,8 @@ export class AchievementService {
   ) {
     const check = (): void => this.check();
     this.unsubscribe = [
-      events.on('MissionCompleted', ({ cargoDamage }) => {
-        if (cargoDamage === 0) {
+      events.on('MissionCompleted', ({ reward, cargoDamage }) => {
+        if (deliveryStars(reward.onTime, cargoDamage).flawless) {
           this.add('perfectDeliveries', 1);
         }
         this.check();
@@ -96,6 +100,7 @@ export class AchievementService {
       events.on('VehiclePurchased', check),
       events.on('DriverHired', check),
       events.on('FacilityBuilt', check),
+      events.on('CrateOpened', check),
       events.on('GameStateChanged', check),
     ];
   }
@@ -196,6 +201,8 @@ export class AchievementService {
       dailyStreak: this.counted('dailyStreak'),
       upgradesFitted: this.counted('upgradesFitted'),
       bigWins: this.counted('bigWins'),
+      perfectStreak: measures.bestPerfectStreak,
+      cratesOpened: measures.cratesOpened,
     };
   }
 

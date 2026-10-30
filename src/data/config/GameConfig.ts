@@ -4,6 +4,7 @@ import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../ContentCatalog';
 import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
+import { PAINT_RARITIES, type PaintRarity } from '../definitions/PaintDefinition';
 import type { Credits, Fraction } from '../units';
 
 /**
@@ -144,8 +145,13 @@ export interface GameConfig {
     readonly dayFromDegrees: number;
   };
   readonly company: {
-    /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
+    /**
+     * XP at which each company level starts, level 1 first (spec §14: five levels in the first version, which the
+     * content's level requirements stay within; the ones above are for the long run, and their rewards).
+     */
     readonly levelXp: readonly number[];
+    /** What each level from the second brings when the player collects it (LevelRewardService), level 2 first. */
+    readonly levelRewards: readonly LevelRewardConfig[];
   };
   /** The fleet (spec §27): the company's other trucks, on contracts of their own with hired drivers. */
   readonly fleet: {
@@ -246,8 +252,24 @@ export interface GameConfig {
   readonly dailyReward: {
     /** What each day of the streak pays at company level 1, the first day first; after the last, the streak starts over. */
     readonly credits: readonly Credits[];
-    /** Each company level above the first adds this share of it. */
+    /** Each company level above the first adds this share of it… */
     readonly levelBonus: Fraction;
+    /** …up to this many levels above the first. */
+    readonly bonusLevels: number;
+  };
+  /**
+   * Crates (CrateService): earned, never sold, and opened for credits and, at times, one of the colours only crates
+   * hold (PaintDefinition.crate). Cosmetic: nothing in them makes the game go faster.
+   */
+  readonly crates: {
+    readonly tiers: Readonly<Record<CrateTier, CrateTierConfig>>;
+    /**
+     * A streak of perfect deliveries (three stars: on time, the cargo flawless) earns a crate on every `bronzeEvery`th
+     * of them in a row, a silver one on every `silverEvery`th and a gold one on every `goldEvery`th instead.
+     */
+    readonly perfectStreak: { readonly bronzeEvery: number; readonly silverEvery: number; readonly goldEvery: number };
+    /** The daily reward's last day brings this crate too. */
+    readonly dailyStreakCrate: CrateTier;
   };
   /**
    * The truck stop's slot machine (CasinoService): played for the company's credits only, never for money; credits
@@ -276,6 +298,30 @@ export interface GameConfig {
     /** Shows FPS, draw calls and triangles (enable in the browser with `?debug`). */
     readonly showPerfOverlay: boolean;
   };
+}
+
+/** A crate's tier: the better, the more it holds. */
+export const CRATE_TIERS = ['bronze', 'silver', 'gold'] as const;
+export type CrateTier = (typeof CRATE_TIERS)[number];
+
+export function isCrateTier(value: unknown): value is CrateTier {
+  return typeof value === 'string' && (CRATE_TIERS as readonly string[]).includes(value);
+}
+
+/** What a crate of one tier holds. */
+export interface CrateTierConfig {
+  /** Credits, drawn evenly between the two. */
+  readonly credits: readonly [Credits, Credits];
+  /** How often it holds a crate colour the company has not got yet as well. */
+  readonly paintChance: Fraction;
+  /** Which rarity that colour is, by these weights against each other. */
+  readonly rarityWeights: Readonly<Record<PaintRarity, number>>;
+}
+
+/** What a company level brings when it is collected. */
+export interface LevelRewardConfig {
+  readonly credits: Credits;
+  readonly crate: CrateTier;
 }
 
 /** A symbol on the slot machine's reels. */
@@ -440,10 +486,21 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     dayFromDegrees: 12,
   },
   company: {
-    levelXp: [0, 1000, 3000, 6500, 12000],
+    levelXp: [0, 1000, 3000, 6500, 12000, 20000, 30000, 43000, 60000, 80000],
+    levelRewards: [
+      { credits: 1500, crate: 'silver' },
+      { credits: 2500, crate: 'silver' },
+      { credits: 4000, crate: 'silver' },
+      { credits: 6000, crate: 'gold' },
+      { credits: 8000, crate: 'silver' },
+      { credits: 10000, crate: 'gold' },
+      { credits: 12000, crate: 'gold' },
+      { credits: 15000, crate: 'gold' },
+      { credits: 25000, crate: 'gold' },
+    ],
   },
   fleet: {
-    garageSlots: [2, 3, 4, 6, 8],
+    garageSlots: [2, 3, 4, 6, 8, 8, 9, 9, 10, 10],
     averageSpeedKmh: 45,
     handlingSeconds: 60,
     payFactor: 0.75,
@@ -493,6 +550,16 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   dailyReward: {
     credits: [300, 500, 800, 1200, 1600, 2200, 4000],
     levelBonus: 0.5,
+    bonusLevels: 4,
+  },
+  crates: {
+    tiers: {
+      bronze: { credits: [300, 900], paintChance: 0.12, rarityWeights: { rare: 1, epic: 0.15, legendary: 0.02 } },
+      silver: { credits: [900, 2400], paintChance: 0.3, rarityWeights: { rare: 1, epic: 0.4, legendary: 0.08 } },
+      gold: { credits: [2500, 6000], paintChance: 0.6, rarityWeights: { rare: 0.6, epic: 0.6, legendary: 0.3 } },
+    },
+    perfectStreak: { bronzeEvery: 3, silverEvery: 5, goldEvery: 10 },
+    dailyStreakCrate: 'silver',
   },
   review: {
     firstAfterDeliveries: 5,
@@ -590,6 +657,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     newGame,
     monetization,
     dailyReward,
+    crates,
     casino,
     review,
     debug,
@@ -826,6 +894,17 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.check(dailyReward.credits.length > 0, 'dailyReward.credits', 'must have at least one day');
   dailyReward.credits.forEach((credits, index) => validator.positiveInteger(credits, `dailyReward.credits[${index}]`));
   validator.fraction(dailyReward.levelBonus, 'dailyReward.levelBonus');
+  validator.nonNegativeInteger(dailyReward.bonusLevels, 'dailyReward.bonusLevels');
+  validateCrates(validator, crates);
+  validator.check(
+    company.levelRewards.length === levels.length - 1,
+    'company.levelRewards',
+    'must give each level from the second a reward',
+  );
+  company.levelRewards.forEach((reward, index) => {
+    validator.positiveInteger(reward.credits, `company.levelRewards[${index}].credits`);
+    validator.check(isCrateTier(reward.crate), `company.levelRewards[${index}].crate`, `unknown crate "${String(reward.crate)}"`);
+  });
   validateCasino(validator, casino);
   validator.positiveInteger(review.firstAfterDeliveries, 'review.firstAfterDeliveries');
   validator.fraction(review.maxCargoDamage, 'review.maxCargoDamage');
@@ -864,6 +943,28 @@ function validateMonetization(validator: Validator, monetization: GameConfig['mo
     'must be greater than 0 and at most 1',
   );
   validator.positiveInteger(monetization.earningsBoostMinutes, 'monetization.earningsBoostMinutes');
+}
+
+function validateCrates(validator: Validator, crates: GameConfig['crates']): void {
+  for (const tier of CRATE_TIERS) {
+    const config = crates.tiers[tier];
+    const [least, most] = config.credits;
+    validator.check(
+      Number.isInteger(least) && Number.isInteger(most) && least > 0 && most >= least,
+      `crates.tiers.${tier}.credits`,
+      'must be two whole numbers above 0, the second at least the first',
+    );
+    validator.fraction(config.paintChance, `crates.tiers.${tier}.paintChance`);
+    for (const rarity of PAINT_RARITIES) {
+      const weight = config.rarityWeights[rarity];
+      validator.check(Number.isFinite(weight) && weight >= 0, `crates.tiers.${tier}.rarityWeights.${rarity}`, 'must be 0 or more');
+    }
+  }
+  const streak = crates.perfectStreak;
+  validator.positiveInteger(streak.bronzeEvery, 'crates.perfectStreak.bronzeEvery');
+  validator.positiveInteger(streak.silverEvery, 'crates.perfectStreak.silverEvery');
+  validator.positiveInteger(streak.goldEvery, 'crates.perfectStreak.goldEvery');
+  validator.check(isCrateTier(crates.dailyStreakCrate), 'crates.dailyStreakCrate', `unknown crate "${String(crates.dailyStreakCrate)}"`);
 }
 
 function validateCasino(validator: Validator, casino: GameConfig['casino']): void {

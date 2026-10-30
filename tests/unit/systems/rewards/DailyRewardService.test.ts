@@ -8,7 +8,7 @@ import { MemoryLogger } from '../../../support/MemoryLogger';
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
-const CONFIG = { credits: [100, 200, 300], levelBonus: 0.5 };
+const CONFIG = { credits: [100, 200, 300], levelBonus: 0.5, bonusLevels: 4 };
 
 /** A company at `level` with 1000 credits; the clock at noon UTC of day 20 000, the player in UTC+3. */
 function setup(level = 1) {

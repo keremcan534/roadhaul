@@ -29,8 +29,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v12: adds the daily reward's streak.
  * - v13: adds the company's goals (what they count that the rest of the
  *   save does not, and the rewards collected).
+ * - v14: adds the crates (held, opened, the colours they gave, the perfect
+ *   streak) and the company levels whose reward was collected.
  */
-export const CURRENT_SAVE_VERSION = 13;
+export const CURRENT_SAVE_VERSION = 14;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -57,6 +59,27 @@ export interface SaveGameData {
   readonly facilities: FacilitiesSaveData;
   readonly daily: DailyRewardSaveData;
   readonly achievements: AchievementsSaveData;
+  readonly crates: CratesSaveData;
+  readonly levelRewards: LevelRewardsSaveData;
+}
+
+/** The crates (CrateService). */
+export interface CratesSaveData {
+  /** Crates waiting to be opened, by CrateTier: bronze, silver, gold. One not listed is 0. */
+  readonly held: Readonly<Record<string, number>>;
+  /** Crates opened, ever. */
+  readonly opened: number;
+  /** The crate colours (PaintDefinition ids) the crates gave. */
+  readonly paints: readonly string[];
+  /** Perfect deliveries (three stars) in a row, up to the last one; and the most ever. */
+  readonly perfectStreak: number;
+  readonly bestPerfectStreak: number;
+}
+
+/** The company levels' rewards (LevelRewardService). */
+export interface LevelRewardsSaveData {
+  /** The highest level whose reward was collected (1: none yet; level 1 has none). */
+  readonly rewardedLevel: number;
 }
 
 /** The company's goals (AchievementService). */

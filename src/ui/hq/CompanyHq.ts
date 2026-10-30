@@ -93,6 +93,8 @@ export interface CompanyHqActions {
   readonly onOpenCasino: () => void;
   /** Opens the company's goals over the panel. */
   readonly onOpenGoals: () => void;
+  /** Opens the company's crates over the panel. */
+  readonly onOpenCrates: () => void;
   readonly onClose: () => void;
 }
 
@@ -131,6 +133,8 @@ export class CompanyHq {
   private readonly credits: HTMLSpanElement;
   /** How many goals' rewards wait, on the goals button. */
   private readonly goalsBadge: HTMLSpanElement;
+  /** How many crates wait to be opened, on the crates button. */
+  private readonly cratesBadge: HTMLSpanElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
   /** Keeps the tabs' names whole: a name too long for its tab is made smaller. */
   private readonly tabNames: LabelFitter;
@@ -158,7 +162,7 @@ export class CompanyHq {
     this.sheet.setAttribute('role', 'dialog');
     this.sheet.setAttribute('aria-label', strings.t('hq.title'));
 
-    // The company, its money, its goals, the slot machine, the map and the way back to the road.
+    // The company, its money, its goals, its crates, the slot machine, the map and the way back to the road.
     const header = el('header', 'hq__header');
     const company = el('div', 'hq__company');
     this.companyName = el('h2', 'hq__company-name');
@@ -190,10 +194,16 @@ export class CompanyHq {
     this.goalsBadge.dataset.value = 'goals-waiting';
     this.goalsBadge.hidden = true;
     goalsButton.append(this.goalsBadge);
+    const cratesButton = iconButton('crate', strings.t('crates.open'), 'open-crates', actions.onOpenCrates);
+    this.cratesBadge = el('span', 'hq__badge');
+    this.cratesBadge.dataset.value = 'crates-waiting';
+    this.cratesBadge.hidden = true;
+    cratesButton.append(this.cratesBadge);
     header.append(
       company,
       money,
       goalsButton,
+      cratesButton,
       iconButton('slots', strings.t('casino.open'), 'open-casino', actions.onOpenCasino),
       iconButton('map', strings.t('hq.map'), 'hq-map', actions.onOpenMap),
       iconButton('close', strings.t('hq.close'), 'close-hq', actions.onClose),
@@ -246,6 +256,12 @@ export class CompanyHq {
   set goalsWaiting(count: number) {
     this.goalsBadge.hidden = count === 0;
     setText(this.goalsBadge, String(count));
+  }
+
+  /** How many crates wait to be opened: shown on the crates button, hidden at 0. */
+  set cratesWaiting(count: number) {
+    this.cratesBadge.hidden = count === 0;
+    setText(this.cratesBadge, String(count));
   }
 
   get isOpen(): boolean {

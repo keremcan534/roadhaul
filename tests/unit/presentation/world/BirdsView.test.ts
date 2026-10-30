@@ -22,7 +22,7 @@ describe('BirdsView', () => {
     const view = new BirdsView(scene, region);
     view.update(0.1, 0, 0);
 
-    expect(view.mesh.count).toBe(4 * 7 + 8);
+    expect(view.mesh.count).toBe(6 * 7 + 8);
     expect(drawCallCount(scene)).toBe(1);
     for (const bird of positionsOf(view)) {
       expect(bird.y).toBeGreaterThan(9);

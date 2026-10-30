@@ -10,6 +10,8 @@ import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import type { CasinoService } from '../systems/casino/CasinoService';
 import type { ReviewService } from '../systems/review/ReviewService';
 import type { AchievementService } from '../systems/achievements/AchievementService';
+import type { CrateService } from '../systems/rewards/CrateService';
+import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
@@ -71,6 +73,10 @@ export const ServiceKeys = Object.freeze({
   review: serviceKey<ReviewService>('ReviewService'),
   /** The company's goals and their rewards. */
   achievements: serviceKey<AchievementService>('AchievementService'),
+  /** Crates: earned for perfect streaks, levels and the daily streak; opened for credits and crate colours. */
+  crates: serviceKey<CrateService>('CrateService'),
+  /** The company levels' rewards, waiting to be collected. */
+  levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),

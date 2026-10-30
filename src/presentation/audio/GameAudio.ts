@@ -1,3 +1,4 @@
+import type { PaintRarity } from '../../data/definitions/PaintDefinition';
 import { clamp01 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { KnockableKind } from '../../domain/crash/knockables';
@@ -223,6 +224,41 @@ export class GameAudio {
   /** A contract delivered: a rising chord. */
   chime(): void {
     [523.25, 659.25, 783.99].forEach((frequency, i) => this.note(frequency, i * 0.12, 0.5, 0.14, 'sine'));
+  }
+
+  /** A delivery's star lands (`index` 0 to 2): a bell, higher for each; an unlit one a soft low tap. */
+  star(index: number, lit: boolean): void {
+    if (!lit) {
+      this.note(220, 0, 0.18, 0.06, 'triangle');
+      return;
+    }
+    const base = [659.25, 783.99, 987.77][Math.min(2, Math.max(0, index))]!;
+    this.note(base, 0, 0.45, 0.13, 'sine');
+    this.note(base * 2, 0, 0.25, 0.05, 'sine');
+    this.noiseBurst('highpass', 6000, 0.12, 0.05);
+  }
+
+  /** A new company level: a rising fanfare, ending on a chord. */
+  fanfare(): void {
+    [392, 523.25, 659.25, 783.99].forEach((frequency, i) => this.note(frequency, i * 0.11, 0.3, 0.12, 'triangle'));
+    for (const frequency of [523.25, 659.25, 783.99, 1046.5]) {
+      this.note(frequency, 0.48, 1.1, 0.07, 'sine');
+    }
+  }
+
+  /** A crate shakes (`step` 0 to 2, harder each time): a wooden knock. */
+  crateShake(step: number): void {
+    const level = 0.12 + 0.06 * step;
+    this.note(150 + step * 30, 0, 0.12, level, 'triangle');
+    this.noiseBurst('bandpass', 900 + step * 300, 0.1, level);
+  }
+
+  /** A crate bursts open: a crack and a shimmer, brighter for a rarer colour (null: credits alone). */
+  crateBurst(rarity: PaintRarity | null): void {
+    this.noiseBurst('lowpass', 1200, 0.3, 0.3);
+    const notes = rarity === 'legendary' ? [783.99, 987.77, 1174.66, 1567.98] : rarity === 'epic' ? [659.25, 830.61, 987.77] : [587.33, 739.99];
+    notes.forEach((frequency, i) => this.note(frequency, 0.05 + i * 0.08, 0.6, rarity === null ? 0.08 : 0.11, 'sine'));
+    this.noiseBurst('highpass', 7000, 0.5, rarity === null ? 0.04 : 0.08, 0.1);
   }
 
   /** A contract failed: a falling pair of notes. */

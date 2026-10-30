@@ -18,6 +18,8 @@ import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
 import type { DailyRewardService } from '../rewards/DailyRewardService';
 import type { AchievementService } from '../achievements/AchievementService';
+import type { LevelRewardService } from '../company/LevelRewardService';
+import type { CrateService } from '../rewards/CrateService';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { EventService } from '../events/EventService';
@@ -53,6 +55,10 @@ export interface GameSessionDependencies {
   readonly dailyReward: DailyRewardService;
   /** The company's goals. */
   readonly achievements: AchievementService;
+  /** The crates, the colours they gave and the perfect streak. */
+  readonly crates: CrateService;
+  /** The company levels' rewards collected. */
+  readonly levelRewards: LevelRewardService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
   readonly tutorial: TutorialService;
@@ -107,6 +113,8 @@ export class GameSessionService {
       events.on('FacilityBuilt', saveNow),
       events.on('DailyRewardClaimed', saveNow),
       events.on('AchievementClaimed', saveNow),
+      events.on('CrateOpened', saveNow),
+      events.on('LevelRewardCollected', saveNow),
       events.on('CampaignRun', ({ companyId, away }) => {
         if (companyId === PLAYER_COMPANY_ID && !away) {
           saveNow();
@@ -250,7 +258,22 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, garage, fleet, rivals, facilities, dailyReward, achievements, specialEvents, tutorial } = this.deps;
+    const {
+      driving,
+      missions,
+      economy,
+      company,
+      garage,
+      fleet,
+      rivals,
+      facilities,
+      dailyReward,
+      achievements,
+      crates,
+      levelRewards,
+      specialEvents,
+      tutorial,
+    } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -277,6 +300,8 @@ export class GameSessionService {
       facilities: facilities.snapshot(),
       daily: dailyReward.snapshot(),
       achievements: achievements.snapshot(),
+      crates: crates.snapshot(),
+      levelRewards: levelRewards.snapshot(),
     };
   }
 
@@ -325,7 +350,22 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, garage, fleet, rivals, facilities, dailyReward, achievements, specialEvents, tutorial } = this.deps;
+    const {
+      driving,
+      missions,
+      economy,
+      company,
+      garage,
+      fleet,
+      rivals,
+      facilities,
+      dailyReward,
+      achievements,
+      crates,
+      levelRewards,
+      specialEvents,
+      tutorial,
+    } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -339,6 +379,8 @@ export class GameSessionService {
     company.restore(save.profile, save.company, save.stats);
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
     dailyReward.restore(save.daily);
+    crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
+    levelRewards.restore(save.levelRewards);
     garage.restore(save.garage);
     fleet.restore(save.fleet);
     missions.restore(save.missions.active);

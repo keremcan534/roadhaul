@@ -1,4 +1,5 @@
 import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinition';
+import { isCrateTier } from '../../data/config/GameConfig';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateMissionDefinition, type MissionDefinition } from '../../data/definitions/MissionDefinition';
@@ -167,6 +168,36 @@ export function validateSaveGameData(
         validator.check(typeof id === 'string', `achievements.claimed[${index}]`, 'must be an id'),
       );
     }
+  });
+  section('crates', (crates) => {
+    const held = crates['held'];
+    if (validator.check(isJson(held), 'crates.held', 'must be an object')) {
+      for (const [tier, count] of Object.entries(held as Json)) {
+        validator.check(isCrateTier(tier), `crates.held.${tier}`, 'unknown crate');
+        validator.nonNegativeInteger(count, `crates.held.${tier}`);
+      }
+    }
+    validator.nonNegativeInteger(crates['opened'], 'crates.opened');
+    const paints = crates['paints'];
+    if (validator.check(Array.isArray(paints), 'crates.paints', 'must be a list')) {
+      (paints as unknown[]).forEach((id, index) =>
+        validator.check(
+          typeof id === 'string' && content.paints.find(id)?.crate !== undefined,
+          `crates.paints[${index}]`,
+          'must be a crate colour',
+        ),
+      );
+    }
+    validator.nonNegativeInteger(crates['perfectStreak'], 'crates.perfectStreak');
+    validator.nonNegativeInteger(crates['bestPerfectStreak'], 'crates.bestPerfectStreak');
+  });
+  section('levelRewards', (levelRewards) => {
+    const level = levelRewards['rewardedLevel'];
+    validator.check(
+      Number.isInteger(level) && (level as number) >= 1 && (level as number) <= maxCompanyLevel,
+      'levelRewards.rewardedLevel',
+      `must be a whole number from 1 to ${maxCompanyLevel}`,
+    );
   });
   return validator.issues;
 }

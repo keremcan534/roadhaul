@@ -8,7 +8,7 @@ import { formatClock } from './core/time/dayTime';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
 import { weatherChoiceFor, type SteeringMode, type TiltStatus } from './data/config/controls';
-import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
+import { applyQualityPreset, DEFAULT_GAME_CONFIG, type CrateTier, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { Credits } from './data/units';
@@ -125,6 +125,9 @@ import { ShopDialog } from './ui/menus/ShopDialog';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
 import { CasinoDialog } from './ui/menus/CasinoDialog';
 import { AchievementsDialog } from './ui/menus/AchievementsDialog';
+import { CrateDialog } from './ui/menus/CrateDialog';
+import { LevelUpDialog } from './ui/menus/LevelUpDialog';
+import { levelUnlocks } from './ui/menus/levelUnlocks';
 import { isIconName } from './ui/iconShapes';
 import { SettingsDialog } from './ui/menus/SettingsDialog';
 import './ui/styles.css';
@@ -304,6 +307,8 @@ async function start(strings: Strings): Promise<void> {
   const casino = services.resolve(ServiceKeys.casino);
   const review = services.resolve(ServiceKeys.review);
   const achievements = services.resolve(ServiceKeys.achievements);
+  const crates = services.resolve(ServiceKeys.crates);
+  const levelRewards = services.resolve(ServiceKeys.levelRewards);
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
@@ -590,7 +595,7 @@ async function start(strings: Strings): Promise<void> {
         openPanel('jobs');
       }
     });
-  });
+  }, { star: (index, lit) => audio.star(index, lit) });
   // The truck stop's slot machine, from the company panel (the truck already waiting under it): credits only.
   const casinoDialog = new CasinoDialog(
     ui,
@@ -674,6 +679,92 @@ async function start(strings: Strings): Promise<void> {
     showGoalsWaiting();
   });
   events.on('AchievementClaimed', showGoalsWaiting);
+  // The crates, over the company panel or the result: earned for perfect streaks, levels and the daily streak.
+  const crateCounts = (): Record<CrateTier, number> => ({
+    bronze: crates.count('bronze'),
+    silver: crates.count('silver'),
+    gold: crates.count('gold'),
+  });
+  const cratePaintsLine = (): string => strings.t('crates.paintsGot', crates.paintsGot);
+  const crateDialog = new CrateDialog(ui, strings, {
+    onOpen: (tier) => {
+      const opened = crates.open(tier);
+      if (!opened.ok) {
+        return null;
+      }
+      const paint = opened.value.paintId === null ? null : content.paints.get(opened.value.paintId);
+      return {
+        credits: strings.money(opened.value.credits),
+        paint:
+          paint === null || paint.crate === undefined
+            ? null
+            : { name: strings.t(`paint.${paint.id}.name`), color: paint.color, rarity: paint.crate },
+      };
+    },
+    onClose: () => {
+      crateDialog.close();
+      celebrateLevel(); // Another level's reward may still wait.
+    },
+    onShake: (step) => audio.crateShake(step),
+    onBurst: (rarity) => audio.crateBurst(rarity),
+  });
+  const openCrates = (tier?: CrateTier): void => crateDialog.show(crateCounts(), cratePaintsLine(), tier);
+  const showCratesWaiting = (): void => {
+    hq.cratesWaiting = crates.total;
+    if (crateDialog.isOpen) {
+      crateDialog.update(crateCounts(), cratePaintsLine());
+    }
+  };
+  events.on('CrateEarned', ({ tier, source }) => {
+    showCratesWaiting();
+    // A streak's crate shows on the result, a level's on its celebration: the daily streak's needs a word.
+    if (source === 'dailyStreak') {
+      toasts.show(strings.t('toast.crateEarned', { crate: strings.t(`crate.name.${tier}`) }), 'success');
+    }
+  });
+  events.on('CrateOpened', () => {
+    showCratesWaiting();
+    refreshHq(); // A crate colour now on the garage's swatches.
+  });
+  // A new company level, celebrated where the player is not driving: over the result, or the company panel. Its
+  // reward waits until collected there; one level at a time.
+  const levelUpDialog = new LevelUpDialog(ui, strings, {
+    onCollect: () => {
+      if (!levelRewards.collect().ok) {
+        return false;
+      }
+      audio.chime();
+      return true;
+    },
+    onOpenCrate: (tier) => openCrates(tier),
+    onClose: () => celebrateLevel(),
+  });
+  let levelTimer: ReturnType<typeof setTimeout> | null = null;
+  const celebrateLevel = (): void => {
+    const level = levelRewards.waitingLevel;
+    if (level === null || levelUpDialog.isOpen || crateDialog.isOpen || !(result.isOpen || hq.isOpen)) {
+      return;
+    }
+    const reward = levelRewards.rewardFor(level);
+    levelUpDialog.open({
+      level,
+      name: strings.t(`company.levelName.${level}`),
+      credits: strings.money(reward.credits),
+      crate: reward.crate,
+      unlocks: levelUnlocks(content, level),
+    });
+    audio.fanfare();
+  };
+  /** Celebrates the level after `delayMs` (the result's stars first), if the result or the panel is still open. */
+  const celebrateLevelSoon = (delayMs: number): void => {
+    if (levelTimer !== null) {
+      clearTimeout(levelTimer);
+    }
+    levelTimer = setTimeout(() => {
+      levelTimer = null;
+      celebrateLevel();
+    }, delayMs);
+  };
   // The daily reward: offered as the day's first drive starts (after the tutorial), the truck waiting until it is
   // collected. Left for later, it waits until the game is started again.
   let dailyLeft = false;
@@ -820,6 +911,12 @@ async function start(strings: Strings): Promise<void> {
         }
       } else if (goalsDialog.isOpen) {
         goalsDialog.close(); // The same.
+      } else if (levelUpDialog.isOpen) {
+        levelUpDialog.close(); // Over the result or the panel; its reward waits.
+      } else if (crateDialog.isOpen) {
+        if (!crateDialog.isOpening) {
+          crateDialog.close(); // The same.
+        }
       } else if (settingsDialog.isOpen) {
         settingsDialog.close(); // Over the pause menu, which stays.
       } else if (controlsDialog.isOpen) {
@@ -1387,6 +1484,7 @@ async function start(strings: Strings): Promise<void> {
       onOpenMap: () => openMap(),
       onOpenCasino: () => openCasino(),
       onOpenGoals: () => goalsDialog.open(goalsShown()),
+      onOpenCrates: () => openCrates(),
       onClose: () => closePanel(),
     },
   );
@@ -1408,7 +1506,9 @@ async function start(strings: Strings): Promise<void> {
     lookAround.reset();
     hq.open(tab);
     showGoalsWaiting();
+    showCratesWaiting();
     showHud();
+    celebrateLevelSoon(400);
   };
   /** Back on the road: straight ahead the way the phone is held now. */
   const closePanel = (): void => {
@@ -1492,6 +1592,7 @@ async function start(strings: Strings): Promise<void> {
     if (hq.isOpen) {
       hq.refresh();
       showGoalsWaiting();
+      showCratesWaiting();
     }
     if (restArea.isOpen) {
       restArea.refresh();
@@ -1549,6 +1650,11 @@ async function start(strings: Strings): Promise<void> {
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
     result.showCompleted(delivery.mission, delivery, economy.credits);
+    // The stars, the pay counted up and the perfect streak (CrateService has seen the delivery already).
+    const celebration = crates.lastDelivery;
+    if (celebration !== null) {
+      result.celebrate(celebration, delivery.reward.total, (tier) => openCrates(tier));
+    }
     // The earnings boost's share, already paid, as a line of its own.
     if (monetization.earningsBoostPaid > 0) {
       result.showEarningsBoost(strings.percent(monetization.earningsBoost.share), monetization.earningsBoostPaid);
@@ -1590,11 +1696,13 @@ async function start(strings: Strings): Promise<void> {
     }
   });
   events.on('CompanyLevelUp', ({ level }) => {
-    const name = strings.t(`company.levelName.${level}`);
     if (result.isOpen) {
       result.showLevelUp(level);
+      celebrateLevelSoon(1800); // Once the stars have landed.
+    } else if (hq.isOpen) {
+      celebrateLevelSoon(0);
     } else {
-      toasts.show(strings.t('toast.levelUp', { name }), 'success');
+      toasts.show(strings.t('toast.levelReward', { level }), 'success');
     }
   });
   let warnedLowFuel = false;
@@ -1745,6 +1853,8 @@ async function start(strings: Strings): Promise<void> {
     if (!drivingNow) {
       casinoDialog.close();
       goalsDialog.close();
+      crateDialog.close();
+      levelUpDialog.close();
       hq.close();
       toasts.clear();
     } else {
@@ -1758,6 +1868,9 @@ async function start(strings: Strings): Promise<void> {
     showHud();
     if (drivingNow) {
       offerDailyReward();
+      if (levelRewards.waitingLevel !== null) {
+        toasts.show(strings.t('toast.levelReward', { level: company.level }), 'success');
+      }
     } else if (dailyDialog.isOpen) {
       dailyDialog.close();
       paused = false;

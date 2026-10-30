@@ -65,7 +65,8 @@ describe('GameConfig', () => {
       ...DEFAULT_GAME_CONFIG,
       economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairShare: 1.5 },
       fuel: { consumptionScale: -1, lowFuelFraction: 2 },
-      company: { levelXp: [100, 50, 60, 70, 80] },
+      company: { levelXp: [100, 50, 60, 70, 80], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 4) },
+      fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3, 4, 6, 8] },
     };
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
@@ -81,7 +82,7 @@ describe('GameConfig', () => {
   it('reports contracts, trucks, upgrades, drivers and facilities locked behind a company level that does not exist', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
-      company: { levelXp: [0, 1000] },
+      company: { levelXp: [0, 1000], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 1) },
       fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3] },
     };
     const beyondLevel2 = (level: number | undefined): boolean => (level ?? 1) > 2;
@@ -326,8 +327,8 @@ describe('GameConfig', () => {
   it('checks the daily reward and the slot machine: rising bets, and no win worth less than the bet back', () => {
     const paths = (config: GameConfig): string[] => validateGameConfig(config, catalog).map((issue) => issue.path);
     const symbols = DEFAULT_GAME_CONFIG.casino.symbols;
-    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [], levelBonus: 0.5 } })).toEqual(['dailyReward.credits']);
-    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [100, 0], levelBonus: 2 } })).toEqual([
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [], levelBonus: 0.5, bonusLevels: 4 } })).toEqual(['dailyReward.credits']);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [100, 0], levelBonus: 2, bonusLevels: 4 } })).toEqual([
       'dailyReward.credits[1]',
       'dailyReward.levelBonus',
     ]);

@@ -83,6 +83,6 @@ export class DailyRewardService {
   }
 
   private creditsFor(day: number): Credits {
-    return dailyCredits(this.config.credits, day, this.company.level, this.config.levelBonus);
+    return dailyCredits(this.config.credits, day, this.company.level, this.config.levelBonus, this.config.bonusLevels);
   }
 }

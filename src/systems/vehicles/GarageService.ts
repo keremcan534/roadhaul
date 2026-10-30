@@ -22,6 +22,7 @@ import type { GameEvents } from '../GameEvents';
 import type { CompanyLevelSource, MissionService } from '../missions/MissionService';
 import type { DamageService } from './DamageService';
 import type { FuelService } from './FuelService';
+import { NO_CRATE_PAINTS, type CratePaintSource } from '../rewards/CrateService';
 
 export type BuyTruckError = 'unknownVehicle' | 'garageFull' | 'locked' | SpendError;
 export type SwitchTruckError = 'unknownTruck' | 'alreadyActive' | 'missionInProgress' | 'onTheRoad';
@@ -46,10 +47,15 @@ export interface OwnedTruck {
 export interface PaintOffer {
   readonly paint: PaintDefinition;
   readonly requiredCompanyLevel: number;
-  /** Below that level, or a premium colour not bought yet: shown, but not for use yet. */
+  /**
+   * Below that level, a premium colour not bought yet or a crate colour no crate has given yet: shown, but not for use
+   * yet.
+   */
   readonly locked: boolean;
   /** One of the premium colours (PaintDefinition.premium): bought in the shop, not with credits. */
   readonly premium: boolean;
+  /** One of the colours only crates hold (PaintDefinition.crate): given by a crate, never sold. */
+  readonly crate: boolean;
 }
 
 /**
@@ -124,6 +130,8 @@ export class GarageService {
     private readonly perks: PerkSource = NO_PERK_SOURCE,
     /** Whether the premium colours are bought, or at least sold here. */
     private readonly premiumPaints: PremiumPaintSource = NO_PREMIUM_PAINTS,
+    /** Which of the crate colours the crates have given. */
+    private readonly cratePaints: CratePaintSource = NO_CRATE_PAINTS,
   ) {}
 
   /** How many trucks the garage holds at the company's level, and in the yard it has built. */
@@ -241,7 +249,7 @@ export class GarageService {
     return ok(this.view(next));
   }
 
-  /** Every colour of the paint shop, in content order: the premium ones only where they are sold. */
+  /** Every colour of the paint shop, in content order: the premium ones only where they are sold, the crate ones always. */
   paintShop(): readonly PaintOffer[] {
     const access = this.premiumPaints.premiumPaintAccess;
     const offers: PaintOffer[] = [];
@@ -250,9 +258,13 @@ export class GarageService {
       if (premium && access === 'unavailable') {
         continue;
       }
+      const crate = paint.crate !== undefined;
       const requiredCompanyLevel = paint.requiredCompanyLevel ?? 1;
-      const locked = this.company.level < requiredCompanyLevel || (premium && access !== 'owned');
-      offers.push({ paint, requiredCompanyLevel, locked, premium });
+      const locked =
+        this.company.level < requiredCompanyLevel ||
+        (premium && access !== 'owned') ||
+        (crate && !this.cratePaints.ownsCratePaint(paint.id));
+      offers.push({ paint, requiredCompanyLevel, locked, premium, crate });
     }
     return offers;
   }
