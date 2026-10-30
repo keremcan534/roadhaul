@@ -15,7 +15,7 @@ Console's screens and rules from time to time. When a screen here looks differen
 | App icon, 512 × 512 | `fastlane/metadata/android/en-US/images/icon.png` | Drawn by `node scripts/androidIcons.mjs`, the same mark as the launcher icon. |
 | Feature graphic, 1024 × 500 | `fastlane/metadata/android/en-US/images/featureGraphic.jpg` | Drawn by `node scripts/storeArt.mjs` (after `npm run build`). It has no words, so every language shares it. |
 | Phone screenshots | `fastlane/metadata/android/<locale>/images/phoneScreenshots/` | Six in each listing, 1920 × 1080, captioned in its language (`scripts/storeArt.mjs`): a village at dusk, the cab with its HUD, a rainy night, the job board, the garage's paint shop and the map with the rivals. Google Play takes two to eight. |
-| Promo video (optional) | `store-video/roadhaul-promo.mp4`, made by `node scripts/storeVideo.mjs` | 32 seconds, 1920 × 1080, English, with music. Not kept in the repository (tens of MB): the script makes it from the build. Google Play takes it as a YouTube link (below). |
+| Promo video (optional) | `store-video/trailer/roadhaul-trailer-<lang>.mp4` (4K) and `…-<lang>-1080p.mp4`, made by `node scripts/storeVideo.mjs` | 30 seconds (what Google Play autoplays), 3840 × 2160, one per language of the game, with music and the game's own sound. Not kept in the repository (hundreds of MB): the script makes them from the build. Google Play takes each as a YouTube link (below). |
 | Privacy policy | `public/privacy.html` → https://keremcan534.github.io/roadhaul/privacy.html | English and Turkish. Deployed with the game by `deploy-pages.yml` on every push to `main`. Settings → About links to it. |
 | Open-source licences | Settings → About | `licenses.txt`, built from the packages the game ships. |
 | In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`) and "Premium paints" (`premium_paints`), one-time products. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
@@ -92,10 +92,16 @@ the declarations.
   the same names.
 - Graphics: `icon.png`, `featureGraphic.jpg` and the screenshots. A language without its own screenshots shows the
   English ones.
-- Video (optional): upload `roadhaul-promo.mp4` to YouTube, then paste its address (`https://www.youtube.com/watch?v=…`)
-  into the listing's **Video** field. Google Play shows it on the feature graphic with a play button. The YouTube video
-  must be public or unlisted, with ads off, embedding allowed and no age restriction. One English video can serve every
-  language. For fastlane, the address goes in `fastlane/metadata/android/en-US/video.txt`.
+- Video (optional): upload `roadhaul-trailer-en.mp4` (the 4K file: YouTube then streams even its 1080p at a higher
+  quality) to YouTube as a normal video, not a Short, then paste its address (`https://www.youtube.com/watch?v=…`,
+  without `&si=` or a timestamp) into the listing's **Video** field. Google Play shows it on the feature graphic with a
+  play button, and may autoplay its first 30 seconds muted: the trailer is 30 seconds, and its words are in the picture.
+  The YouTube video must be public or unlisted, with monetisation off, embedding allowed ("Allow embedding" in its
+  details), no age restriction, and "Not made for kids". Each language can have its own: upload
+  `roadhaul-trailer-<lang>.mp4` too, and paste each address in that language's translation of the listing (a language
+  without one shows the English video). For fastlane, the addresses go in `fastlane/metadata/android/<locale>/video.txt`.
+  The trailer keeps to Google Play's rules for a listing's video: real play from the first frame, no prices, "free",
+  rankings or calls to action, no phones or fingers.
 
 **Store settings** (Grow users → Store presence → Store settings):
 
@@ -226,6 +232,6 @@ release build on a phone after adding one.
 
 - Android vitals (Monitor and improve) shows crashes, "app not responding" reports and slow frames on players' phones.
 - Reply to reviews in the Console.
-- For the next release: bump the version, update the notes, build, upload. `scripts/storeVideo.mjs` cuts the video
-  again from the new build (it needs ffmpeg with libx264; see the script's header). `scripts/storeArt.mjs` redraws the
+- For the next release: bump the version, update the notes, build, upload. `scripts/storeVideo.mjs` shoots and cuts the
+  trailers again from the new build (it needs Google Chrome and ffmpeg with libx264; see the script's header). `scripts/storeArt.mjs` redraws the
   screenshots and the feature graphic if the game's look has changed.
