@@ -55,7 +55,7 @@ test('pays a bonus on a delivery for a rewarded ad watched to its end', async ({
   const ad = page.locator('.simulated');
   await expect(ad).toBeVisible();
   await ad.locator('[data-action="skip-ad"]').click();
-  await expect(page.locator('.toast')).toContainText('The ad closed early');
+  await expect(page.locator('.toast', { hasText: 'The ad closed early' })).toBeVisible();
   await expect(claim).toBeEnabled();
 
   // Watched to the end: the bonus is paid, and shown as a line of the result.
@@ -95,7 +95,7 @@ test('fills the tank at half price after a rewarded ad at the rest area', async 
   const ad = page.locator('.simulated');
   await expect(ad).toHaveAttribute('data-rewarded', 'true', { timeout: 10_000 });
   await ad.locator('[data-action="close-ad"]').click();
-  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(page.locator('.toast', { hasText: 'Refuelled' })).toBeVisible();
   await expect(counter.locator('[data-action="rest-refuel"]')).toHaveText('Tank full');
   await expect(counter.locator('.service-discounts')).toHaveCount(0); // Nothing left to discount here.
   expect(problems).toEqual([]);
@@ -123,7 +123,7 @@ test('sells the premium paints in the shop, keeps them, and paints a truck in on
 
   await paints.locator('[data-action="buy-product"]').click();
   await page.locator('.simulated [data-action="simulated-buy"]').click();
-  await expect(page.locator('.toast')).toContainText('Thank you! Premium paints unlocked.');
+  await expect(page.locator('.toast', { hasText: 'Thank you! Premium paints unlocked.' })).toBeVisible();
   await expect(paints.locator('.shop__owned')).toHaveText('Owned');
   await page.locator('[data-action="close-shop"]').click();
 

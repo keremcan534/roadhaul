@@ -322,7 +322,7 @@ test('burns fuel while driving, and refuels only at a depot or rest area', async
   await expect(refuel).toBeEnabled();
   await expect(refuel).toContainText('Refuel');
   await refuel.click();
-  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(page.locator('.toast', { hasText: 'Refuelled' })).toBeVisible();
   await expect(refuel).toHaveText('Tank full');
   expect(problems).toEqual([]);
 });
@@ -340,7 +340,7 @@ test('offers fuel, repairs and the road again at the rest area', async ({ page }
   await expect(counter).toContainText('Rest area');
   await expect(counter.locator('[data-action="rest-repair"]')).toBeDisabled(); // No damage.
   await counter.locator('[data-action="rest-refuel"]').click();
-  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(page.locator('.toast', { hasText: 'Refuelled' })).toBeVisible();
   await expect(counter.locator('[data-action="rest-refuel"]')).toHaveText('Tank full');
 
   await counter.locator('[data-action="rest-continue"]').click();

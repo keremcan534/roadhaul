@@ -253,6 +253,8 @@ export class CasinoDialog {
     });
     this.timer = setTimeout(() => {
       this.timer = null;
+      // Each strip set where it stops: on a busy phone the transition can lag behind its own clock.
+      this.settle();
       this.spinning = false;
       this.cabinet.classList.remove('is-spinning');
       this.setControlsEnabled(true);
@@ -270,6 +272,7 @@ export class CasinoDialog {
 
   close(): void {
     this.clearTimer();
+    this.settle();
     this.spinning = false;
     this.cabinet.classList.remove('is-spinning');
     this.setControlsEnabled(true);
@@ -313,6 +316,15 @@ export class CasinoDialog {
     this.closeButton.disabled = !enabled;
     for (const chip of this.betButtons) {
       chip.disabled = !enabled;
+    }
+  }
+
+  /** The strips at rest where they stop: the window's three cells at the end of each. */
+  private settle(): void {
+    const cellPx = this.windows[0]!.clientHeight / 3;
+    for (const strip of this.strips) {
+      strip.style.transition = 'none';
+      strip.style.transform = `translate3d(0, ${-(strip.childElementCount - 3) * cellPx}px, 0)`;
     }
   }
 

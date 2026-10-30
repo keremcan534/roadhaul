@@ -23,7 +23,7 @@ test('shows the garage with its upgrades, and fits a first upgrade that shows on
   expect(await truckView(page)).toContain(':00000:');
   const tank = page.locator('.upgrade-card[data-upgrade-id="fuel_tank"]');
   await tank.locator('[data-action="buy-upgrade"]').click();
-  await expect(page.locator('.toast')).toContainText('Fuel tank: level 1 fitted.');
+  await expect(page.locator('.toast', { hasText: 'Fuel tank: level 1 fitted.' })).toBeVisible();
   await expect(page.locator('.hq__credits')).toHaveText('3,500 credits');
   await expect(tank).toHaveAttribute('data-level', '1');
   await expect(tank.locator('.pip.is-on')).toHaveCount(1);
@@ -200,7 +200,7 @@ test('paints the truck at the garage for the colour\'s price, after the player c
   await expect(apply).toHaveText('Paint it · 1,500 credits');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   await apply.click();
-  await expect(page.locator('.toast')).toContainText('RoadHaul H1 painted: Ocean blue.');
+  await expect(page.locator('.toast', { hasText: 'RoadHaul H1 painted: Ocean blue.' })).toBeVisible();
   await expect(page.locator('.hq__credits')).toHaveText('3,500 credits');
   await expect(html(page)).toHaveAttribute('data-paint', 'ocean_blue');
   await expect(picker.locator('[data-paint-id="ocean_blue"]')).toHaveClass(/is-current/);
