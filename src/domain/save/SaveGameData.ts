@@ -26,8 +26,11 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   standing in the cities, campaigns, and tenders).
  * - v11: adds the facilities (what the company has built for itself, and
  *   how far).
+ * - v12: adds the daily reward's streak.
+ * - v13: adds the company's goals (what they count that the rest of the
+ *   save does not, and the rewards collected).
  */
-export const CURRENT_SAVE_VERSION = 11;
+export const CURRENT_SAVE_VERSION = 13;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -52,6 +55,28 @@ export interface SaveGameData {
   readonly fleet: FleetSaveData;
   readonly rivals: RivalsSaveData;
   readonly facilities: FacilitiesSaveData;
+  readonly daily: DailyRewardSaveData;
+  readonly achievements: AchievementsSaveData;
+}
+
+/** The company's goals (AchievementService). */
+export interface AchievementsSaveData {
+  /**
+   * What the goals count that the rest of the save does not, by
+   * AchievementMetric: perfectDeliveries, tendersWon, rivalsBoughtOut,
+   * dailyStreak (the longest), upgradesFitted, bigWins. One not listed is 0.
+   */
+  readonly counters: Readonly<Record<string, number>>;
+  /** AchievementDefinition ids whose reward was collected. */
+  readonly claimed: readonly string[];
+}
+
+/** The daily reward's streak (DailyRewardService; src/domain/rewards/dailyReward.ts). */
+export interface DailyRewardSaveData {
+  /** The player's calendar day (localDay) the reward was last claimed on, or null if never. */
+  readonly lastClaimDay: number | null;
+  /** Days in a row claimed, the last claim's included; 0 if never. */
+  readonly streak: number;
 }
 
 /** What the company has built for itself (FacilityService). */

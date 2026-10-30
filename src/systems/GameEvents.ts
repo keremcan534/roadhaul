@@ -1,3 +1,4 @@
+import type { SlotWinKind } from '../domain/casino/slotMachine';
 import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { KnockableKind } from '../domain/crash/knockables';
@@ -146,6 +147,28 @@ export interface GameEvents {
     readonly facilityId: string;
     readonly level: number;
     readonly cost: Credits;
+  };
+  /** The day's reward was paid (DailyRewardService): its day of the streak, from 1, and the days in a row. */
+  DailyRewardClaimed: {
+    readonly day: number;
+    readonly streak: number;
+    readonly credits: Credits;
+  };
+  /** The slot machine was spun (CasinoService): the bet, what it paid (0 for nothing) and how it won. */
+  SlotSpun: {
+    readonly bet: Credits;
+    readonly payout: Credits;
+    readonly kind: SlotWinKind;
+    readonly multiplier: number;
+  };
+  /** A goal's target was reached (AchievementService): its reward waits to be collected. */
+  AchievementReached: {
+    readonly achievementId: string;
+  };
+  /** A goal's reward was collected. */
+  AchievementClaimed: {
+    readonly achievementId: string;
+    readonly reward: Credits;
   };
   /** XP or reputation changed. */
   CompanyProgressed: {

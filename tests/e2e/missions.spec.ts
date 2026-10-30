@@ -1,16 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  closePanel,
-  foundCompany,
-  openCompanyHq,
-  openGame,
-  openMainMenu,
-  openPanel,
-  shownSpeed,
-  takeContract,
-  waitForFrames,
-  watchForProblems,
-} from './support';
+import { closePanel, continueGame, foundCompany, openCompanyHq, openGame, openMainMenu, openPanel, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
 
@@ -135,7 +124,7 @@ test('offers contracts of the day, and keeps one under way across a reload', asy
   // The save keeps the contract itself, whatever the board deals next.
   await page.reload();
   await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded');
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await expect(page.locator('.mission-hud__objective')).toContainText('Deliver to');
@@ -268,7 +257,7 @@ test('continues the saved company after the page reloads', async ({ page }) => {
 
   await page.reload();
   await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
 
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await openPanel(page, 'jobs');

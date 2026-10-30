@@ -323,6 +323,26 @@ describe('GameConfig', () => {
     ]);
   });
 
+  it('checks the daily reward and the slot machine: rising bets, and no win worth less than the bet back', () => {
+    const paths = (config: GameConfig): string[] => validateGameConfig(config, catalog).map((issue) => issue.path);
+    const symbols = DEFAULT_GAME_CONFIG.casino.symbols;
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [], levelBonus: 0.5 } })).toEqual(['dailyReward.credits']);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [100, 0], levelBonus: 2 } })).toEqual([
+      'dailyReward.credits[1]',
+      'dailyReward.levelBonus',
+    ]);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, casino: { bets: [100, 50], symbols } })).toEqual(['casino.bets[1]']);
+    expect(
+      paths({
+        ...DEFAULT_GAME_CONFIG,
+        casino: {
+          bets: [50],
+          symbols: [{ ...symbols[0]!, pair: 0.5 }, { ...symbols[1]!, three: 1, pair: 1 }, { ...symbols[1]!, weight: 0 }],
+        },
+      }),
+    ).toEqual(['casino.symbols[0].pair', 'casino.symbols[1].three', 'casino.symbols[2].id', 'casino.symbols[2].weight']);
+  });
+
   it('requires the frame clamp to allow at least one fixed step', () => {
     const config = withChanges({ simulation: { fixedStepSeconds: 0.05, maxFrameDeltaSeconds: 0.01 } });
 

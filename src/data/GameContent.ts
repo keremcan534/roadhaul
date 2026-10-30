@@ -1,3 +1,4 @@
+import type { AchievementDefinition } from './definitions/AchievementDefinition';
 import type { CargoDefinition } from './definitions/CargoDefinition';
 import type { CityDefinition } from './definitions/CityDefinition';
 import type { DaylightDefinition } from './definitions/DaylightDefinition';
@@ -37,4 +38,5 @@ export interface GameContent {
   readonly rivals: readonly RivalCompanyDefinition[];
   /** What the company can build for itself at the head office, a level at a time. */
   readonly facilities: readonly FacilityDefinition[];
+  readonly achievements: readonly AchievementDefinition[];
 }

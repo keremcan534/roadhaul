@@ -51,6 +51,8 @@ describe('createNewSaveGameData', () => {
         jobsPlanned: 0,
       },
       facilities: { levels: {} },
+      daily: { lastClaimDay: null, streak: 0 },
+      achievements: { counters: {}, claimed: [] },
     });
   });
 

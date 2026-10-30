@@ -120,6 +120,10 @@ import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
+import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
+import { CasinoDialog } from './ui/menus/CasinoDialog';
+import { AchievementsDialog } from './ui/menus/AchievementsDialog';
+import { isIconName } from './ui/iconShapes';
 import { SettingsDialog } from './ui/menus/SettingsDialog';
 import './ui/styles.css';
 
@@ -294,6 +298,10 @@ async function start(strings: Strings): Promise<void> {
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
   const facilities = services.resolve(ServiceKeys.facilities);
+  const dailyReward = services.resolve(ServiceKeys.dailyReward);
+  const casino = services.resolve(ServiceKeys.casino);
+  const review = services.resolve(ServiceKeys.review);
+  const achievements = services.resolve(ServiceKeys.achievements);
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
@@ -567,7 +575,9 @@ async function start(strings: Strings): Promise<void> {
 
   // From the result: the next contract, or back on the road; an ad between contracts first, when one is due.
   const result = new ResultDialog(ui, strings, (choice) => {
+    // An ad between contracts when one is due, then a rating asked for when one is (a few deliveries in good order).
     void monetization.betweenContracts().then(() => {
+      void review.askIfDue();
       paused = false;
       showHud();
       if (choice === 'jobs') {
@@ -575,6 +585,119 @@ async function start(strings: Strings): Promise<void> {
       }
     });
   });
+  // The truck stop's slot machine, from the company panel (the truck already waiting under it): credits only.
+  const casinoDialog = new CasinoDialog(
+    ui,
+    strings,
+    config.casino.symbols.map((symbol) => ({
+      icon: isIconName(symbol.id) ? symbol.id : 'coins',
+      three: symbol.three,
+      pair: symbol.pair,
+    })),
+    casino.bets,
+    {
+      onSpin: (bet) => {
+        const spun = casino.spin(bet);
+        if (!spun.ok) {
+          if (spun.error === 'insufficientFunds') {
+            toasts.show(strings.t('toast.casinoShort'), 'warning');
+          }
+          return;
+        }
+        audio.click();
+        // The money as it was before the reels stop: what the spin paid shows once they have.
+        casinoDialog.showMoney(strings.money(economy.credits - spun.value.payout), casinoSitting(-spun.value.payout));
+        casinoDialog.play(
+          {
+            reels: spun.value.reels,
+            kind: spun.value.win.kind,
+            multiplier: spun.value.win.multiplier,
+            payout: strings.money(spun.value.payout),
+          },
+          () => {
+            if (spun.value.payout > 0) {
+              audio.chime();
+            }
+            showCasinoMoney();
+          },
+        );
+      },
+      onClose: () => casinoDialog.close(),
+    },
+  );
+  /** What this sitting has won or lost, less `pending` not yet shown; null before the first spin. */
+  const casinoSitting = (pending = 0): string | null =>
+    casino.sessionSpins === 0 ? null : strings.signedMoney(casino.sessionNet + pending);
+  const showCasinoMoney = (): void => {
+    casinoDialog.showMoney(strings.money(economy.credits), casinoSitting());
+    casinoDialog.showAffordable(economy.credits);
+  };
+  const openCasino = (): void => {
+    casinoDialog.open(strings.money(economy.credits), casinoSitting());
+    casinoDialog.showAffordable(economy.credits);
+  };
+  // The company's goals, from the company panel: a badge there counts the rewards waiting.
+  const goalsShown = () =>
+    achievements.list().map((goal) => ({
+      id: goal.definition.id,
+      metric: goal.definition.metric,
+      target: goal.definition.target,
+      progress: goal.progress,
+      reached: goal.reached,
+      claimed: goal.claimed,
+      reward: strings.money(goal.definition.reward),
+    }));
+  const goalsDialog = new AchievementsDialog(ui, strings, {
+    onClaim: (achievementId) => {
+      if (achievements.claim(achievementId).ok) {
+        audio.chime();
+        goalsDialog.showClaimed(achievementId);
+      }
+    },
+    onClose: () => goalsDialog.close(),
+  });
+  const showGoalsWaiting = (): void => {
+    hq.goalsWaiting = achievements.claimable;
+  };
+  events.on('AchievementReached', ({ achievementId }) => {
+    const goal = content.achievements.get(achievementId);
+    toasts.show(
+      strings.t('toast.achievementReached', { goal: strings.t(`achievement.metric.${goal.metric}`), target: strings.number(goal.target) }),
+      'success',
+    );
+    showGoalsWaiting();
+  });
+  events.on('AchievementClaimed', showGoalsWaiting);
+  // The daily reward: offered as the day's first drive starts (after the tutorial), the truck waiting until it is
+  // collected. Left for later, it waits until the game is started again.
+  let dailyLeft = false;
+  const dailyDialog = new DailyRewardDialog(ui, strings, {
+    onClaim: () => {
+      const claimed = dailyReward.claim();
+      if (claimed.ok) {
+        audio.chime();
+        dailyDialog.showClaimed(strings.money(claimed.value));
+      } else {
+        closeDailyReward();
+      }
+    },
+    onClose: () => closeDailyReward(),
+  });
+  const offerDailyReward = (): void => {
+    const offer = dailyReward.offer;
+    if (!offer.claimable || dailyLeft || tutorial.step !== 'done' || dailyDialog.isOpen || result.isOpen || paused) {
+      return;
+    }
+    paused = true;
+    pauseMenu.buttonVisible = false;
+    dailyDialog.open({ day: offer.day, streak: offer.streak, amounts: offer.credits.map((credits) => strings.money(credits)) });
+  };
+  const closeDailyReward = (): void => {
+    dailyLeft = true;
+    dailyDialog.close();
+    paused = false;
+    showHud();
+  };
   /** Why a rewarded boost gave nothing. */
   const boostFailed = (error: BoostError): void => {
     toasts.show(strings.t(error === 'skipped' ? 'ads.skipped' : error === 'used' ? 'ads.used' : 'ads.unavailable'), 'warning');
@@ -685,7 +808,13 @@ async function start(strings: Strings): Promise<void> {
       }
     },
     onPause: () => {
-      if (settingsDialog.isOpen) {
+      if (casinoDialog.isOpen) {
+        if (!casinoDialog.isSpinning) {
+          casinoDialog.close(); // Over the company panel, which stays.
+        }
+      } else if (goalsDialog.isOpen) {
+        goalsDialog.close(); // The same.
+      } else if (settingsDialog.isOpen) {
         settingsDialog.close(); // Over the pause menu, which stays.
       } else if (controlsDialog.isOpen) {
         controlsDialog.close(); // The same.
@@ -1250,6 +1379,8 @@ async function start(strings: Strings): Promise<void> {
         }
       },
       onOpenMap: () => openMap(),
+      onOpenCasino: () => openCasino(),
+      onOpenGoals: () => goalsDialog.open(goalsShown()),
       onClose: () => closePanel(),
     },
   );
@@ -1270,6 +1401,7 @@ async function start(strings: Strings): Promise<void> {
     worldHeld = Math.abs(driving.vehicle.speed) > PANEL_STANDSTILL_SPEED;
     lookAround.reset();
     hq.open(tab);
+    showGoalsWaiting();
     showHud();
   };
   /** Back on the road: straight ahead the way the phone is held now. */
@@ -1353,6 +1485,7 @@ async function start(strings: Strings): Promise<void> {
   const refreshHq = (): void => {
     if (hq.isOpen) {
       hq.refresh();
+      showGoalsWaiting();
     }
     if (restArea.isOpen) {
       restArea.refresh();
@@ -1587,7 +1720,7 @@ async function start(strings: Strings): Promise<void> {
     hud.visible = road;
     minimap.visible = road;
     dock.visible = road;
-    pauseMenu.buttonVisible = road && !result.isOpen;
+    pauseMenu.buttonVisible = road && !result.isOpen && !dailyDialog.isOpen;
     lookAround.enabled = road;
     cameraRig.showcase = !road;
     showCamera(road);
@@ -1604,6 +1737,8 @@ async function start(strings: Strings): Promise<void> {
       showEarningsBoost();
     }
     if (!drivingNow) {
+      casinoDialog.close();
+      goalsDialog.close();
       hq.close();
       toasts.clear();
     } else {
@@ -1615,6 +1750,12 @@ async function start(strings: Strings): Promise<void> {
       }
     }
     showHud();
+    if (drivingNow) {
+      offerDailyReward();
+    } else if (dailyDialog.isOpen) {
+      dailyDialog.close();
+      paused = false;
+    }
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
@@ -1683,13 +1824,23 @@ async function start(strings: Strings): Promise<void> {
   const goBack = (): boolean => {
     const action = backAction({
       gameState: gameState.current,
-      menuDialogOpen: settingsDialog.isOpen || controlsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
+      menuDialogOpen: settingsDialog.isOpen || controlsDialog.isOpen || newCompany.isOpen || worldMap.isOpen || casinoDialog.isOpen || goalsDialog.isOpen,
       panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
     });
     switch (action) {
       case 'closeDialog':
+        if (casinoDialog.isOpen) {
+          if (!casinoDialog.isSpinning) {
+            casinoDialog.close();
+          }
+          break;
+        }
+        if (goalsDialog.isOpen) {
+          goalsDialog.close();
+          break;
+        }
         settingsDialog.stepBack();
         controlsDialog.close();
         newCompany.close();
@@ -1737,6 +1888,9 @@ async function start(strings: Strings): Promise<void> {
         })
         .catch((error: unknown) => logger.error('The ads did not start.', error));
     }
+    import('./platform/native/inAppReview')
+      .then(({ inAppReview }) => review.attach(inAppReview()))
+      .catch((error: unknown) => logger.warn('The rating sheet did not load.', error));
     import('./platform/native/playBilling')
       .then(({ playBilling }) => playBilling(logger.withCategory('Store')))
       .then(async (store) => {

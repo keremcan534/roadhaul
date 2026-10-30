@@ -10,6 +10,11 @@ import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
 import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
+import { DailyRewardService } from '../systems/rewards/DailyRewardService';
+import { CasinoService } from '../systems/casino/CasinoService';
+import { ReviewService } from '../systems/review/ReviewService';
+import { AchievementService, type CompanyMeasures } from '../systems/achievements/AchievementService';
+import { SeededRandom } from '../core/random/SeededRandom';
 import { CrashService } from '../systems/crash/CrashService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
@@ -147,6 +152,24 @@ export class GameBootstrapper {
         ServiceKeys.facilities,
         new FacilityService(catalog, economy, company, perks, events, logger.withCategory('Facilities')),
       );
+      const dailyReward = container.register(
+        ServiceKeys.dailyReward,
+        new DailyRewardService(
+          config.dailyReward,
+          economy,
+          company,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          events,
+          logger.withCategory('DailyReward'),
+        ),
+      );
+      // The slot machine's luck: a new run of it each time the game starts.
+      const luck = new SeededRandom(clock.now() % 2_147_483_647);
+      container.register(
+        ServiceKeys.casino,
+        new CasinoService(config.casino, economy, () => luck.next(), events, logger.withCategory('Casino')),
+      );
       const dailyContracts = container.register(
         ServiceKeys.dailyContracts,
         new DailyContracts(catalog, driving, clock, config.missions.dailyContracts, perks),
@@ -197,6 +220,10 @@ export class GameBootstrapper {
           config.monetization,
           logger.withCategory('Monetization'),
         ),
+      );
+      container.register(
+        ServiceKeys.review,
+        new ReviewService(config.review, clock, storage, events, logger.withCategory('Review')),
       );
       const garage = container.register(
         ServiceKeys.garage,
@@ -280,7 +307,26 @@ export class GameBootstrapper {
           logger.withCategory('Save'),
         ),
       );
-      container.register(
+      // The goals measure the company from the services that keep it, the distance from the session (made below).
+      const achievements = container.register(
+        ServiceKeys.achievements,
+        new AchievementService(
+          catalog,
+          economy,
+          (): CompanyMeasures => ({
+            deliveries: company.stats.deliveriesCompleted,
+            distanceMeters: session.distanceDrivenMeters,
+            companyLevel: company.level,
+            trucksOwned: garage.trucks.length,
+            driversHired: fleet.hired.length,
+            facilityLevels: catalog.facilities.all.reduce((sum, facility) => sum + facilities.levelOf(facility.id), 0),
+            creditsEarned: company.stats.creditsEarned,
+          }),
+          events,
+          logger.withCategory('Achievements'),
+        ),
+      );
+      const session: GameSessionService = container.register(
         ServiceKeys.session,
         new GameSessionService({
           content: catalog,
@@ -296,6 +342,8 @@ export class GameBootstrapper {
           fleet,
           rivals,
           facilities,
+          dailyReward,
+          achievements,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),

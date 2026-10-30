@@ -180,6 +180,7 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     drivers: [driverFixture(), driverFixture({ id: 'test_veteran', skill: 4, speedFactor: 1.1, incidentChance: 0.05, payShare: 0.3, hiringFee: 5000, requiredCompanyLevel: 2 })],
     rivals: [rivalFixture()],
     facilities: [facilityFixture()],
+    achievements: [{ id: 'test_goal', metric: 'deliveries', target: 2, reward: 400 }],
     ...overrides,
   };
 }

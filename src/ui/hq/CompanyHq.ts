@@ -89,6 +89,10 @@ export interface CompanyHqActions {
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
+  /** Opens the truck stop's slot machine over the panel. */
+  readonly onOpenCasino: () => void;
+  /** Opens the company's goals over the panel. */
+  readonly onOpenGoals: () => void;
   readonly onClose: () => void;
 }
 
@@ -125,6 +129,8 @@ export class CompanyHq {
   private readonly xpLabel: HTMLSpanElement;
   private readonly reputation: HTMLSpanElement;
   private readonly credits: HTMLSpanElement;
+  /** How many goals' rewards wait, on the goals button. */
+  private readonly goalsBadge: HTMLSpanElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
   /** Keeps the tabs' names whole: a name too long for its tab is made smaller. */
   private readonly tabNames: LabelFitter;
@@ -152,7 +158,7 @@ export class CompanyHq {
     this.sheet.setAttribute('role', 'dialog');
     this.sheet.setAttribute('aria-label', strings.t('hq.title'));
 
-    // The company, its money, the map and the way back to the road.
+    // The company, its money, its goals, the slot machine, the map and the way back to the road.
     const header = el('header', 'hq__header');
     const company = el('div', 'hq__company');
     this.companyName = el('h2', 'hq__company-name');
@@ -179,9 +185,16 @@ export class CompanyHq {
       node.addEventListener('click', onClick);
       return node;
     };
+    const goalsButton = iconButton('trophy', strings.t('achievements.open'), 'open-goals', actions.onOpenGoals);
+    this.goalsBadge = el('span', 'hq__badge');
+    this.goalsBadge.dataset.value = 'goals-waiting';
+    this.goalsBadge.hidden = true;
+    goalsButton.append(this.goalsBadge);
     header.append(
       company,
       money,
+      goalsButton,
+      iconButton('slots', strings.t('casino.open'), 'open-casino', actions.onOpenCasino),
       iconButton('map', strings.t('hq.map'), 'hq-map', actions.onOpenMap),
       iconButton('close', strings.t('hq.close'), 'close-hq', actions.onClose),
     );
@@ -227,6 +240,12 @@ export class CompanyHq {
       { rivals: services.rivals, economy: services.economy, company: services.company, now: () => services.clock.now() },
       { onCampaign: actions.onCampaign, onBuyOut: actions.onBuyOut },
     );
+  }
+
+  /** How many goals' rewards wait to be collected: shown on the goals button, hidden at 0. */
+  set goalsWaiting(count: number) {
+    this.goalsBadge.hidden = count === 0;
+    setText(this.goalsBadge, String(count));
   }
 
   get isOpen(): boolean {

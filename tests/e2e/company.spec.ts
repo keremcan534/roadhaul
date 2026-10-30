@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
+import { continueGame, continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
 
 /** A level 2 company with 30,000 credits, its truck half wrecked: a full repair would cost 1,500 (half of a quarter of the H1's 12,000). */
 function battered(): string {
@@ -51,7 +51,7 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
 
   // Kept in the save: the company comes back with its workshop.
   await page.reload();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   await openPanel(page, 'company');
   await expect(workshop).toHaveAttribute('data-level', '2');

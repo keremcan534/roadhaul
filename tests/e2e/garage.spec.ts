@@ -1,13 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  closePanel,
-  continueSavedCompany,
-  openGame,
-  openPanel,
-  savedCompany,
-  takeContract,
-  watchForProblems,
-} from './support';
+import { closePanel, continueGame, continueSavedCompany, openGame, openPanel, savedCompany, takeContract, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
 const tab = (page: Page, name: string) => page.locator(`.hq__tab[data-tab="${name}"]`);
@@ -215,7 +207,7 @@ test('paints the truck at the garage for the colour\'s price, after the player c
 
   // Kept in the save: a new visit finds the truck blue.
   await page.reload();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html(page)).toHaveAttribute('data-paint', 'ocean_blue');
   await expect(html(page)).toHaveAttribute('data-truck-view', /^rh_h1:2b6cb0:/);
 

@@ -1,3 +1,4 @@
+import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinition';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateMissionDefinition, type MissionDefinition } from '../../data/definitions/MissionDefinition';
@@ -142,6 +143,31 @@ export function validateSaveGameData(
   section('fleet', (fleet) => validateFleet(fleet, data['garage'], content, validator));
   section('rivals', (rivals) => validateRivals(rivals, content, validator));
   section('facilities', (facilities) => validateFacilities(facilities, content, validator));
+  section('daily', (daily) => {
+    const last = daily['lastClaimDay'];
+    validator.check(last === null || Number.isInteger(last), 'daily.lastClaimDay', 'must be null or a whole number');
+    validator.nonNegativeInteger(daily['streak'], 'daily.streak');
+  });
+  section('achievements', (achievements) => {
+    const counters = achievements['counters'];
+    if (validator.check(isJson(counters), 'achievements.counters', 'must be an object')) {
+      for (const [metric, value] of Object.entries(counters as Json)) {
+        validator.check(
+          (ACHIEVEMENT_METRICS as readonly string[]).includes(metric),
+          `achievements.counters.${metric}`,
+          'unknown metric',
+        );
+        validator.nonNegativeInteger(value, `achievements.counters.${metric}`);
+      }
+    }
+    const claimed = achievements['claimed'];
+    if (validator.check(Array.isArray(claimed), 'achievements.claimed', 'must be a list')) {
+      // A goal the content no longer has is dropped on loading (AchievementService.restore), not refused.
+      (claimed as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `achievements.claimed[${index}]`, 'must be an id'),
+      );
+    }
+  });
   return validator.issues;
 }
 

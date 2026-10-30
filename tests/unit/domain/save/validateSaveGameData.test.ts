@@ -75,7 +75,26 @@ describe('validateSaveGameData', () => {
       'fleet',
       'rivals',
       'facilities',
+      'daily',
+      'achievements',
     ]);
+  });
+
+  it('checks the goals: known metrics counted in whole numbers, and the ids collected', () => {
+    expect(paths(withPart('achievements', { counters: { bigWins: 2 }, claimed: ['retired_goal'] }))).toEqual([]);
+    expect(paths(withPart('achievements.counters', { luck: 1 }))).toEqual(['achievements.counters.luck']);
+    expect(paths(withPart('achievements.counters', { bigWins: -1 }))).toEqual(['achievements.counters.bigWins']);
+    expect(paths(withPart('achievements.claimed', [7]))).toEqual(['achievements.claimed[0]']);
+    expect(paths(withPart('achievements', null))).toEqual(['achievements']);
+  });
+
+  it('checks the daily reward: the day last claimed (or none) and the days in a row', () => {
+    expect(paths(withPart('daily', { lastClaimDay: 20_000, streak: 3 }))).toEqual([]);
+    expect(paths(withPart('daily', { lastClaimDay: null, streak: 0 }))).toEqual([]);
+    expect(paths(withPart('daily.lastClaimDay', 1.5))).toEqual(['daily.lastClaimDay']);
+    expect(paths(withPart('daily.lastClaimDay', '20000'))).toEqual(['daily.lastClaimDay']);
+    expect(paths(withPart('daily.streak', -1))).toEqual(['daily.streak']);
+    expect(paths(withPart('daily', null))).toEqual(['daily']);
   });
 
   it('checks the facilities: known ones, each built to a level it has', () => {

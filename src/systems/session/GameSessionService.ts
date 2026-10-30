@@ -16,6 +16,8 @@ import { summarizeSave, type SaveSummary } from '../../domain/save/saveSummary';
 import { HOME_START_ID, LEFT_START_ID, startPlaces, type StartPlace } from '../../domain/world/startPlaces';
 import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
+import type { DailyRewardService } from '../rewards/DailyRewardService';
+import type { AchievementService } from '../achievements/AchievementService';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { EventService } from '../events/EventService';
@@ -47,6 +49,10 @@ export interface GameSessionDependencies {
   readonly rivals: RivalService;
   /** What the company has built for itself. */
   readonly facilities: FacilityService;
+  /** The daily reward's streak. */
+  readonly dailyReward: DailyRewardService;
+  /** The company's goals. */
+  readonly achievements: AchievementService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
   readonly tutorial: TutorialService;
@@ -58,7 +64,7 @@ export interface GameSessionDependencies {
  * game or continues the saved one, hands each part of the save to the
  * service that owns it, and writes it back. It saves after every delivery,
  * failure, purchase and truck change, every change in the fleet and each of
- * its deliveries, every campaign, buy-out, facility built and change of a
+ * its deliveries, every campaign, buy-out, facility built, daily reward and change of a
  * city's leader,
  * when the player leaves the road for a menu, and every 20 s of driving, so
  * closing the tab loses little. A company continued after a while away finds
@@ -99,6 +105,8 @@ export class GameSessionService {
       events.on('FleetCaughtUp', saveNow),
       events.on('RivalAcquired', saveNow),
       events.on('FacilityBuilt', saveNow),
+      events.on('DailyRewardClaimed', saveNow),
+      events.on('AchievementClaimed', saveNow),
       events.on('CampaignRun', ({ companyId, away }) => {
         if (companyId === PLAYER_COMPANY_ID && !away) {
           saveNow();
@@ -121,6 +129,11 @@ export class GameSessionService {
         }
       }),
     ];
+  }
+
+  /** Metres the company's trucks were driven by the player, this drive's included. */
+  get distanceDrivenMeters(): number {
+    return this.active ? this.distanceBeforeThisDrive + this.deps.driving.vehicle.odometerMeters : 0;
   }
 
   /** A company is loaded (new or continued). */
@@ -237,7 +250,7 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, garage, fleet, rivals, facilities, specialEvents, tutorial } = this.deps;
+    const { driving, missions, economy, company, garage, fleet, rivals, facilities, dailyReward, achievements, specialEvents, tutorial } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -262,6 +275,8 @@ export class GameSessionService {
       fleet: fleet.snapshot(),
       rivals: rivals.snapshot(),
       facilities: facilities.snapshot(),
+      daily: dailyReward.snapshot(),
+      achievements: achievements.snapshot(),
     };
   }
 
@@ -310,7 +325,7 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, garage, fleet, rivals, facilities, specialEvents, tutorial } = this.deps;
+    const { driving, missions, economy, company, garage, fleet, rivals, facilities, dailyReward, achievements, specialEvents, tutorial } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -323,6 +338,7 @@ export class GameSessionService {
     economy.restore(save.economy.credits);
     company.restore(save.profile, save.company, save.stats);
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
+    dailyReward.restore(save.daily);
     garage.restore(save.garage);
     fleet.restore(save.fleet);
     missions.restore(save.missions.active);
@@ -331,6 +347,7 @@ export class GameSessionService {
     tutorial.restore(save.tutorial.step);
     this.createdAtMs = save.createdAtMs;
     this.distanceBeforeThisDrive = save.stats.distanceDrivenMeters;
+    achievements.restore(save.achievements); // Last: the goals measure everything above.
     this.sinceAutosave = 0;
     this.active = true;
   }

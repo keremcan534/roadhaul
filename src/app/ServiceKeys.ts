@@ -6,6 +6,10 @@ import type { GameConfig } from '../data/config/GameConfig';
 import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
 import type { FacilityService } from '../systems/company/FacilityService';
+import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
+import type { CasinoService } from '../systems/casino/CasinoService';
+import type { ReviewService } from '../systems/review/ReviewService';
+import type { AchievementService } from '../systems/achievements/AchievementService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
@@ -59,6 +63,14 @@ export const ServiceKeys = Object.freeze({
   company: serviceKey<CompanyService>('CompanyService'),
   /** What the company builds for itself: a workshop, a fuel depot, a truck yard… */
   facilities: serviceKey<FacilityService>('FacilityService'),
+  /** The daily reward: credits for each day's first claim, more for days in a row. */
+  dailyReward: serviceKey<DailyRewardService>('DailyRewardService'),
+  /** The truck stop's slot machine, for the company's credits. */
+  casino: serviceKey<CasinoService>('CasinoService'),
+  /** Asks for a rating on the store, seldom, after deliveries in good order. */
+  review: serviceKey<ReviewService>('ReviewService'),
+  /** The company's goals and their rewards. */
+  achievements: serviceKey<AchievementService>('AchievementService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),

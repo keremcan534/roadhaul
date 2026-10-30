@@ -1,13 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  closeSettingsAndResume,
-  openGame,
-  openMainMenu,
-  openSettingsWhileDriving,
-  sceneScreenshot,
-  waitForFrames,
-  watchForProblems,
-} from './support';
+import { closeSettingsAndResume, continueGame, openGame, openMainMenu, openSettingsWhileDriving, sceneScreenshot, waitForFrames, watchForProblems } from './support';
 
 interface SceneColor {
   readonly r: number;
@@ -55,7 +47,7 @@ function brightness(color: SceneColor): number {
 /** Drives the same company's truck from the main menu, opened in the `weather` given (or dawn, dusk, night). */
 async function driveIn(page: Page, weather: string): Promise<void> {
   await openMainMenu(page, `?weather=${weather}`);
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   await waitForFrames(page, 10);
 }

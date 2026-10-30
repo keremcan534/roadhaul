@@ -135,6 +135,11 @@ export class Strings {
     return this.percentFormat.format(fraction);
   }
 
+  /** A multiplier, with one decimal when needed: "×5", "×1,5". */
+  times(value: number): string {
+    return `×${Number.isInteger(value) ? this.integer.format(value) : this.decimal.format(value)}`;
+  }
+
   /** Tonnes with one decimal when needed: "4,5 t". */
   tons(tons: number): string {
     return this.t('format.tons', { value: Number.isInteger(tons) ? this.integer.format(tons) : this.decimal.format(tons) });

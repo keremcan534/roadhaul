@@ -1,3 +1,4 @@
+import { validateAchievementDefinition, type AchievementDefinition } from './definitions/AchievementDefinition';
 import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
@@ -84,6 +85,8 @@ export class ContentCatalog {
   readonly drivers: DefinitionTable<DriverDefinition>;
   readonly rivals: DefinitionTable<RivalCompanyDefinition>;
   readonly facilities: DefinitionTable<FacilityDefinition>;
+  /** The company's goals. */
+  readonly achievements: DefinitionTable<AchievementDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -100,6 +103,7 @@ export class ContentCatalog {
     this.drivers = new DefinitionTable('driver', content.drivers);
     this.rivals = new DefinitionTable('rival company', content.rivals);
     this.facilities = new DefinitionTable('facility', content.facilities);
+    this.achievements = new DefinitionTable('achievement', content.achievements);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -129,6 +133,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'drivers', content.drivers, validateDriverDefinition);
   validateTable(validator, 'rivals', content.rivals, validateRivalCompanyDefinition);
   validateTable(validator, 'facilities', content.facilities, validateFacilityDefinition);
+  validateTable(validator, 'achievements', content.achievements, validateAchievementDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);

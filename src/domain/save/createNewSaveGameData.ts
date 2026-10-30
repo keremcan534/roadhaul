@@ -60,6 +60,8 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     fleet: { drivers: [], jobsPlanned: 0 },
     rivals: newRivalsSaveData(),
     facilities: { levels: {} },
+    daily: { lastClaimDay: null, streak: 0 },
+    achievements: { counters: {}, claimed: [] },
   };
 }
 

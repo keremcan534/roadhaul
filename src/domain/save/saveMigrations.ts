@@ -125,7 +125,53 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 10,
     migrate: (save) => ({ ...save, version: 11, facilities: { levels: {} } }),
   },
+  {
+    // v12 adds the daily reward: no streak yet, the first claim is day 1.
+    from: 11,
+    migrate: (save) => ({ ...save, version: 12, daily: { lastClaimDay: null, streak: 0 } }),
+  },
+  {
+    // v13 adds the company's goals: their counts start from what the save shows already (the daily streak, the
+    // upgrade levels fitted, the rivals bought out); what it never recorded starts from 0. No reward collected yet.
+    from: 12,
+    migrate: (save) => ({ ...save, version: 13, achievements: { counters: countersFrom(save), claimed: [] } }),
+  },
 ];
+
+/** What a v12 save already shows of what the goals count. */
+function countersFrom(save: SaveJson): Record<string, number> {
+  const count = (value: unknown): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0);
+  const daily = save['daily'];
+  const garage = save['garage'];
+  const rivals = save['rivals'];
+  let upgradesFitted = 0;
+  if (isJsonObject(garage) && Array.isArray(garage['vehicles'])) {
+    for (const vehicle of garage['vehicles'] as unknown[]) {
+      const upgrades = isJsonObject(vehicle) ? vehicle['upgrades'] : null;
+      if (isJsonObject(upgrades)) {
+        for (const level of Object.values(upgrades)) {
+          upgradesFitted += count(level);
+        }
+      }
+    }
+  }
+  let rivalsBoughtOut = 0;
+  if (isJsonObject(rivals) && Array.isArray(rivals['companies'])) {
+    rivalsBoughtOut = (rivals['companies'] as unknown[]).filter((rival) => isJsonObject(rival) && rival['acquired'] === true).length;
+  }
+  const counters: Record<string, number> = {};
+  const streak = isJsonObject(daily) ? count(daily['streak']) : 0;
+  for (const [metric, value] of [
+    ['dailyStreak', streak],
+    ['upgradesFitted', upgradesFitted],
+    ['rivalsBoughtOut', rivalsBoughtOut],
+  ] as const) {
+    if (value > 0) {
+      counters[metric] = value;
+    }
+  }
+  return counters;
+}
 
 function isJsonObject(value: unknown): value is SaveJson {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
