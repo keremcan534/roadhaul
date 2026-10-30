@@ -75,6 +75,7 @@ import {
 import { stackContainers } from './containerStacks';
 import { growSideRoads, layFarmland } from './sideRoads';
 import { growDistricts } from './districts';
+import { workedFields, type FieldWork } from './fieldWork';
 import { growVillages, type Village } from './villages';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 import {
@@ -446,6 +447,8 @@ export class DrivingWorld implements DebrisSolids {
   readonly citySigns: readonly CitySign[];
   /** Farm fields (they drive like grass), and the hay bales on the harvested ones. */
   readonly fields: readonly Field[];
+  /** The fields with a tractor at work (fieldWork.ts). */
+  readonly fieldWork: readonly FieldWork[];
   readonly hayBales: readonly HayBale[];
   readonly windTurbines: readonly WindTurbine[];
   /** City depots: paved yards (driven like asphalt) with a loading bay each. */
@@ -623,6 +626,7 @@ export class DrivingWorld implements DebrisSolids {
       ...plan.buildings.map((building) => ({ ...buildingObstacle(building), ...(building.district === undefined ? { country: true } : {}) })),
     ];
     this.fields = [...mapFields, ...plan.fields.map((field) => this.placeField(field))];
+    this.fieldWork = workedFields(this.fields, map.scenery.seed + 17);
     const parkLayouts = [...mapParks, ...plan.parks].map((park) => layoutPark(park, map.scenery.seed));
     this.parks = parkLayouts.map((layout) => layout.park);
     this.turningCircles = this.network.deadEnds.map(({ roadIndex, sampleIndex }) => {

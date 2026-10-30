@@ -72,6 +72,7 @@ import { WetReflections, type MirroredLamps } from './presentation/world/WetRefl
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { SignBoardView } from './presentation/world/SignBoardView';
+import { FieldWorkView } from './presentation/world/FieldWorkView';
 import { BirdsView } from './presentation/world/BirdsView';
 import { CloudShadows } from './presentation/world/cloudShadows';
 import { SeasonShading } from './presentation/world/SeasonShading';
@@ -456,6 +457,8 @@ async function start(strings: Strings): Promise<void> {
       ? null
       : new HarbourView(renderHost.scene, coast, { anisotropy: renderHost.anisotropy, prelit, lampGlows });
   const birds = new BirdsView(renderHost.scene, driving.world, prelit);
+  // Tractors at work in the fields, by day, out of the rain and the winter.
+  const tractors = new FieldWorkView(renderHost.scene, driving.world.fields, driving.world.fieldWork, castShadows);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
     anisotropy: renderHost.anisotropy,
   });
@@ -2093,6 +2096,12 @@ async function start(strings: Strings): Promise<void> {
         riverView?.update(paused ? 0 : deltaSeconds);
         parkView?.update(paused ? 0 : deltaSeconds);
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
+        tractors.update(
+          paused ? 0 : deltaSeconds,
+          renderHost.camera.position.x,
+          renderHost.camera.position.z,
+          lamps < 0.5 && weather.rain < 0.3 && season.season !== 'winter',
+        );
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         // The wipers sweep the snow off the glass too.
