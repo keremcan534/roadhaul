@@ -59,11 +59,14 @@ describe('planTender', () => {
     expect(plan(3, { canTake: () => false })!.contract.difficulty).toBe('easy');
   });
 
-  it('is raced by the rival at home at either end, at its pace, and pays a prize on top', () => {
+  it('is raced by the rival at home at either end (any, between towns no rival calls home), at its pace, and pays a prize on top', () => {
     for (let number = 0; number < 40; number++) {
       const tender = plan(number)!;
       const rival = RIVALS.find((candidate) => candidate.id === tender.rivalId)!;
-      expect([tender.contract.originCityId, tender.contract.destinationCityId]).toContain(rival.homeCityId);
+      const ends = [tender.contract.originCityId, tender.contract.destinationCityId];
+      if (RIVALS.some((candidate) => ends.includes(candidate.homeCityId))) {
+        expect(ends).toContain(rival.homeCityId);
+      }
       const meters = MARKET.distanceMeters(tender.contract.originCityId, tender.contract.destinationCityId);
       expect(tender.rivalSeconds).toBeCloseTo(meters / ((40 / 3.6) * rival.speedFactor) + 3, 6);
       expect(tender.prize).toBe(Math.round((tender.contract.baseReward * 0.6) / 10) * 10);

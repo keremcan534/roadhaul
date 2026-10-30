@@ -53,6 +53,9 @@ const SPECIALITIES: Readonly<Record<CitySpecialization, readonly CargoCategory[]
   industrial: ['automotive', 'construction', 'oversized', 'electronics'],
   agricultural: ['agriculture', 'food', 'frozenFood'],
   mining: ['construction', 'oversized', 'hazardous'],
+  coastal: ['food', 'frozenFood', 'fragile'],
+  quarry: ['construction', 'oversized'],
+  market: ['furniture', 'electronics', 'food'],
 };
 const SPECIALITY_WEIGHT = 3;
 

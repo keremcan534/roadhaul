@@ -19,6 +19,7 @@ import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, type StartPlace } from './domain/world/startPlaces';
+import type { DrivingWorld } from './domain/world/DrivingWorld';
 import { damagePerformance } from './domain/vehicles/vehicleDamage';
 import {
   brakePedalOf,
@@ -335,6 +336,8 @@ async function start(strings: Strings): Promise<void> {
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
     cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
     seasons: seasonShading,
+    // The ranges round the region stand still in the world, coming down to the sea where its coast meets the edges.
+    mountains: { halfSizeMeters: driving.world.halfSizeMeters, coastX: coastAtEdges(driving.world) },
   });
   /**
    * Shades what is in the scene so far, each material once: the clouds' shadows and the morning mist on the land (not
@@ -2343,3 +2346,12 @@ async function boot(): Promise<void> {
 
 document.documentElement.dataset.bootState = 'booting';
 void boot();
+
+/** Where the coast meets the map's north and south edges, the westernmost; with no sea, far west of the map. */
+function coastAtEdges(world: DrivingWorld): number {
+  const shoreline = world.sea?.shoreline;
+  if (shoreline === undefined || shoreline.length === 0) {
+    return -world.halfSizeMeters * 3;
+  }
+  return Math.min(shoreline[0]![0], shoreline[shoreline.length - 1]![0]);
+}

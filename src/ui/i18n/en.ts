@@ -382,6 +382,9 @@ export const EN: StringTable = {
   'city.city_b.name': 'Ironford',
   'city.city_c.name': 'Amberfield',
   'city.city_d.name': 'Copperdale',
+  'city.city_e.name': 'Saltcove',
+  'city.city_f.name': 'Greyfell',
+  'city.city_g.name': 'Foxhollow',
 
   'village.brinemoor.name': 'Brinemoor',
   'village.wheatcombe.name': 'Wheatcombe',

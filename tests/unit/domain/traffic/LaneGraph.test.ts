@@ -330,11 +330,21 @@ describe('LaneGraph', () => {
       expect(reachableFrom(0, false).size).toBe(graph.linkCount);
     });
 
-    it('turns traffic round at the harbour road\'s end at the quay, and at the ends of the country lanes and village streets', () => {
+    it('turns traffic round at the harbour roads\' ends at the quays, the lighthouse and the towns\' street ends, and at the ends of the country lanes and village streets', () => {
       const own = new Set(GAME_CONTENT.maps[0]!.roads.map((road) => road.id));
       const ends = world.turningCircles.map((circle) => world.roads[circle.roadIndex]!);
-      // The high street goes on south as the country road to Copperdale: of the map's own roads, only the harbour road ends.
-      expect(ends.filter((road) => own.has(road.id)).map((road) => road.id)).toEqual(['a_harbour_road']);
+      // The high street goes on north and south as country roads. Of the map's own roads, the harbour roads end
+      // at their quays, Gull Point's road at the lighthouse, and the corner towns' streets past their last houses
+      // (Foxhollow's at both ends).
+      expect(ends.filter((road) => own.has(road.id)).map((road) => road.id)).toEqual([
+        'a_harbour_road',
+        'e_main_street',
+        'e_harbour_road',
+        'gull_point_road',
+        'f_main_street',
+        'g_main_street',
+        'g_main_street',
+      ]);
       for (const road of ends.filter((candidate) => !own.has(candidate.id))) {
         expect(road.kind === 'lane' || road.id.endsWith('_street'), road.id).toBe(true);
       }

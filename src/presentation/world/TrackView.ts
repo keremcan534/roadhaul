@@ -634,10 +634,12 @@ export class TrackView {
    * different layers (roadLevels), so none fights another over the same
    * depth where they overlap.
    *
-   * The map's own roads are drawn whole, in four draw calls, with every
-   * road's markings (a few triangles). The asphalt and shoulders of the ones
-   * the country grew (DrivingWorld.mapRoadCount) go into its tiles, two draw
-   * calls a tile: only the tiles near the camera are drawn (showAround).
+   * The map's highway, ring road and streets are drawn whole, in four draw
+   * calls, with every road's markings (a few triangles). The asphalt and
+   * shoulders of its country roads and of the ones the country grew
+   * (DrivingWorld.mapRoadCount) go into its tiles, two draw calls a tile:
+   * only the tiles near the camera are drawn (showAround). Kilometres of
+   * country road lie far off in the haze from anywhere on the map.
    */
   private createRoads(world: DrivingWorld, anisotropy: number): Mesh[] {
     const { roads, network, turningCircles, mapRoadCount } = world;
@@ -684,7 +686,7 @@ export class TrackView {
       surfaces: new TileParts<BufferGeometry>(),
     };
     roads.forEach((road, index) => {
-      const grown = index >= mapRoadCount;
+      const tiled = index >= mapRoadCount || road.kind === 'rural';
       const shoulder = road.widthMeters / 2 + SHOULDER_WIDTH / 2 - 0.2;
       const shoulderBands = [
         { offset: -shoulder, width: SHOULDER_WIDTH },
@@ -692,7 +694,7 @@ export class TrackView {
       ];
       const surfaceBands = [{ offset: 0, width: road.widthMeters }];
       const surfaceY = ROAD_Y + levels[index]! * ROAD_STACK;
-      if (grown) {
+      if (tiled) {
         for (const run of tileRuns(road, ribbonRows(road))) {
           country.shoulders.add(run.x, run.z, stripGeometry(road, shoulderBands, SHOULDER_Y, GRAVEL_TILE_METERS, undefined, run.rows));
           country.surfaces.add(run.x, run.z, stripGeometry(road, surfaceBands, surfaceY, ASPHALT_TILE_METERS, undefined, run.rows));
@@ -714,7 +716,7 @@ export class TrackView {
     for (const circle of turningCircles) {
       const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS);
       const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY, ASPHALT_TILE_METERS);
-      if (circle.roadIndex >= mapRoadCount) {
+      if (circle.roadIndex >= mapRoadCount || roads[circle.roadIndex]!.kind === 'rural') {
         country.shoulders.add(circle.x, circle.z, rim);
         country.surfaces.add(circle.x, circle.z, paving);
       } else {
@@ -954,15 +956,16 @@ export class TrackView {
    * The buildings: walls with facades (offices and houses, or warehouses),
    * tiled roofs, the rest of their roofs and plinths, and soft shadows, a
    * draw call each for every building on the map (a few triangles each),
-   * but the rest of the roofs and the plinths of the houses and farms the
-   * country grew (BuildingObstacle.country): those, the most triangles, go
-   * into the country's tiles, drawn only near the camera (showAround).
+   * but their details (the rest of the roofs, the plinths, the shopfronts and
+   * doors, the silos, chimneys and towers): those, the most triangles, go
+   * into the country's tiles, drawn only near the camera (showAround). A
+   * town a kilometre off is deep in the haze.
    */
   private createBuildings(
     buildings: readonly BuildingObstacle[],
     frontOf: (box: BuildingObstacle, reachMeters: number) => BuildingSide | null,
   ): Mesh[] {
-    /** A layer's parts: the whole map's, and the country's by tile (the details only). */
+    /** A layer's parts: the whole map's, and by tile (the details only). */
     const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry> } => ({ town: [], country: new TileParts() });
     const offices = layer();
     const warehouses = layer();
@@ -980,7 +983,7 @@ export class TrackView {
       const x = box.minX + width / 2;
       const z = box.minZ + depth / 2;
       const add = (parts: ReturnType<typeof layer>, part: BufferGeometry): void => {
-        if (box.country === true && parts === details) {
+        if (parts === details) {
           parts.country.add(x, z, part);
         } else {
           parts.town.push(part);

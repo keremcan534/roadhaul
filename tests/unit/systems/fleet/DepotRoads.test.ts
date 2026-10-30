@@ -15,7 +15,7 @@ describe('DepotRoads', () => {
     const game = await newCompany();
     const roads = game.depotRoads;
     const market = roads.market()!;
-    expect(market.cities.map((city) => city.id)).toEqual(['city_a', 'city_b', 'city_c', 'city_d']);
+    expect(market.cities.map((city) => city.id)).toEqual(['city_a', 'city_b', 'city_c', 'city_d', 'city_e', 'city_f', 'city_g']);
     const meters = market.distanceMeters('city_a', 'city_b');
     expect(meters).toBeGreaterThan(3000);
     expect(market.distanceMeters('city_a', 'city_b')).toBe(meters);

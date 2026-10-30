@@ -23,8 +23,10 @@ describe('validateRivalCompanyDefinition', () => {
     }
   });
 
-  it('gives each city a rival of its own, each with its own colour and trucks of the game', () => {
-    expect(new Set(RIVALS.map((rival) => rival.homeCityId))).toEqual(new Set(CITIES.map((city) => city.id)));
+  it('gives each rival a city of its own (the towns at the corners are open to all), its own colour and trucks of the game', () => {
+    const homes = RIVALS.map((rival) => rival.homeCityId);
+    expect(new Set(homes).size).toBe(RIVALS.length);
+    expect(homes.every((home) => CITIES.some((city) => city.id === home))).toBe(true);
     expect(new Set(RIVALS.map((rival) => rival.color)).size).toBe(RIVALS.length);
     for (const rival of RIVALS) {
       expect(VEHICLES.some((vehicle) => vehicle.id === rival.vehicleId), rival.id).toBe(true);

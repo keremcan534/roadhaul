@@ -1,4 +1,4 @@
-import { BoxGeometry, BufferAttribute, BufferGeometry, Color, CylinderGeometry, Vector3 } from 'three';
+import { BoxGeometry, BufferAttribute, BufferGeometry, Color, ConeGeometry, CylinderGeometry, Vector3 } from 'three';
 import type { SeededRandom } from '../../core/random/SeededRandom';
 import { CONTAINER_GAP_METERS, CONTAINER_METERS } from '../../domain/world/containerStacks';
 import type { BuildingObstacle, BuildingSide } from '../../domain/world/DrivingWorld';
@@ -211,6 +211,8 @@ export function formGeometry(box: BuildingObstacle): BufferGeometry[] {
       return headframeGeometry(box);
     case 'containers':
       return containersGeometry(box);
+    case 'lighthouse':
+      return lighthouseGeometry(box);
     default:
       return [];
   }
@@ -270,6 +272,36 @@ function chimneyGeometry(box: BuildingObstacle): BufferGeometry[] {
     const radius = radiusAt(y) + 0.04;
     parts.push(coloured(new CylinderGeometry(radius, radius + 0.02, band, 16, 1, true).translate(cx, y, cz), hex));
   });
+  return parts;
+}
+
+/**
+ * A lighthouse on a headland: a white tower narrowing up, in red bands, on a
+ * stone footing; a dark gallery round its top, the lantern's glass over it
+ * and a red dome with its vent.
+ */
+function lighthouseGeometry(box: BuildingObstacle): BufferGeometry[] {
+  const cx = (box.minX + box.maxX) / 2;
+  const cz = (box.minZ + box.maxZ) / 2;
+  const foot = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 2 - 0.6;
+  const lantern = 3.2;
+  const tower = box.heightMeters - lantern - 1.6;
+  const top = foot * 0.62;
+  const radiusAt = (y: number): number => foot + ((top - foot) * y) / tower;
+  const parts = [
+    coloured(new CylinderGeometry(foot + 0.6, foot + 0.8, 1.2, 16).translate(cx, 0.6, cz), FOOTING_COLOR),
+    coloured(new CylinderGeometry(top, foot, tower, 16, 1, true).translate(cx, tower / 2, cz), 0xf1efe9),
+    coloured(new CylinderGeometry(top + 1.1, top + 0.9, 0.35, 16).translate(cx, tower + 0.1, cz), 0x2f3336),
+    coloured(new CylinderGeometry(top * 0.7, top * 0.7, lantern, 12, 1, true).translate(cx, tower + 0.3 + lantern / 2, cz), 0xf6dd8a),
+    coloured(new ConeGeometry(top * 0.82, 1.4, 12).translate(cx, tower + 0.3 + lantern + 0.7, cz), 0xb5322a),
+    coloured(new CylinderGeometry(0.18, 0.18, 0.6, 6).translate(cx, tower + 0.3 + lantern + 1.5, cz), 0x2f3336),
+  ];
+  // Two red bands round the tower.
+  for (const share of [0.32, 0.66]) {
+    const band = tower * 0.13;
+    const y = tower * share;
+    parts.push(coloured(new CylinderGeometry(radiusAt(y + band / 2) + 0.04, radiusAt(y - band / 2) + 0.04, band, 16, 1, true).translate(cx, y, cz), 0xb5322a));
+  }
   return parts;
 }
 

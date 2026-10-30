@@ -136,10 +136,13 @@ describe('sketchWorld', () => {
     expect(sea.maxX).toBe(Math.max(...shoreline.map(([x]) => x)));
     expect(sea.minZ).toBeLessThan(-world.halfSizeMeters);
     expect(sea.maxZ).toBeGreaterThan(world.halfSizeMeters);
-    const quay = sketch.pavedAreas[sketch.pavedAreas.length - 1]!;
-    expect(quay.minX).toBeCloseTo(-2150, 6);
-    expect(quay.maxX - quay.minX).toBeCloseTo(world.sea!.quays[0]!.widthMeters, 6);
-    expect(sketch.bounds.minX).toBeLessThan(quay.minX);
+    // The quays, last: Havenport's and Saltcove's, each from the water's edge inland.
+    const [havenport, saltcove] = sketch.pavedAreas.slice(-2);
+    expect(havenport!.minX).toBeCloseTo(-2150, 6);
+    expect(havenport!.maxX - havenport!.minX).toBeCloseTo(world.sea!.quays[0]!.widthMeters, 6);
+    expect(saltcove!.minX).toBeCloseTo(-1665, 6);
+    expect(saltcove!.maxX - saltcove!.minX).toBeCloseTo(world.sea!.quays[1]!.widthMeters, 6);
+    expect(sketch.bounds.minX).toBeLessThan(havenport!.minX);
   });
 
   it('draws each river\'s water from its source to its mouth, a little wider than it is so it shows', () => {

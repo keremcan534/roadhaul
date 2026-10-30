@@ -43,6 +43,8 @@ import {
 } from './lighting';
 import { unlitByLamps } from './LampLighting';
 import { Mist, MIST_GLSL, MIST_SKY_METERS } from './Mist';
+import type { MountainWorld } from './mountainRange';
+import { MountainRidges } from './MountainRidges';
 import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 import type { ShadowReach } from './ShadowSubset';
 
@@ -315,6 +317,12 @@ export interface EnvironmentViewOptions {
   readonly latitudeDegrees?: number;
   /** The seasons, for the hills' green to follow, and the snow on their ridges. */
   readonly seasons?: SeasonShading;
+  /**
+   * The region the mountains stand round (MountainRidges): ranges fixed in
+   * the world past its edges. Absent: the horizon's hills go round with the
+   * camera, the same from everywhere.
+   */
+  readonly mountains?: MountainWorld;
 }
 
 /**
@@ -454,6 +462,8 @@ export class EnvironmentView implements ShadowReach {
   private readonly sceneLight = { keyDirection: this.keyDirection, key: new Color(), sky: new Color(), ground: new Color() };
 
   private readonly seasons: SeasonShading | null;
+  /** The mountains fixed in the world round the region, or null for hills that go round with the camera. */
+  private readonly ridges: MountainRidges | null;
 
   constructor(
     private readonly scene: Scene,
@@ -461,6 +471,7 @@ export class EnvironmentView implements ShadowReach {
   ) {
     this.fogScale = options.hdr === true ? LINEAR_FOG_SCALE : 1;
     this.seasons = options.seasons ?? null;
+    this.ridges = options.mountains === undefined ? null : this.track(new MountainRidges(options.mountains));
     const latitude = degreesToRadians(options.latitudeDegrees ?? DEFAULT_LATITUDE);
     this.pole = new Vector3(0, Math.sin(latitude), -Math.cos(latitude));
     this.background = new Color(HORIZON);
@@ -774,6 +785,7 @@ export class EnvironmentView implements ShadowReach {
    */
   update(cameraPosition: Readonly<{ x: number; z: number }>, deltaSeconds = 0): void {
     this.backdrop.position.set(cameraPosition.x, 0, cameraPosition.z);
+    this.ridges?.follow(cameraPosition.x, cameraPosition.z);
     const glow = this.skyUniforms.townGlow.value;
     for (let i = 0; i < GLOWING_TOWNS; i++) {
       const town = this.towns[i];
@@ -894,6 +906,12 @@ export class EnvironmentView implements ShadowReach {
    * draw call.
    */
   private createHills(): Mesh {
+    const geometry = this.ridges?.geometry ?? this.createRingHills();
+    return this.hillsMesh(geometry, this.ridges !== null);
+  }
+
+  /** The hills of HILL_LAYERS, the same all round the camera wherever it is. */
+  private createRingHills(): BufferGeometry {
     const positions: number[] = [];
     const colors: number[] = [];
     const hazes: number[] = [];
@@ -931,18 +949,35 @@ export class EnvironmentView implements ShadowReach {
         }
       }
     }
-    const geometry = new BufferGeometry();
+    const geometry = this.track(new BufferGeometry());
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
     geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
     geometry.setAttribute('haze', new BufferAttribute(new Float32Array(hazes), 1));
+    // Their height as drawn is their height: the snow lies by it.
+    geometry.setAttribute('trueHeight', new BufferAttribute(new Float32Array(hazes.length).map((_, v) => positions[v * 3 + 1]!), 1));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  /**
+   * The hills' mesh: smooth-shaded by the sun and the sky; the farther and
+   * the higher, the more they take the horizon's haze, whose colour is the
+   * sky's shared uniform, so it follows the weather. One draw call.
+   * `mountains`: the ranges round the region (MountainRidges), whose snow
+   * lies down to a line in meters of true height.
+   */
+  private hillsMesh(geometry: BufferGeometry, mountains: boolean): Mesh {
     const material = this.track(new MeshLambertMaterial({ vertexColors: true, fog: false }));
     const { horizon: hazeColor, townGlow } = this.skyUniforms;
     const mist = this.mist.uniforms;
     const seasons = this.seasons;
+    material.defines = {};
     if (seasons !== null) {
-      material.defines = { SEASONS: '' };
+      material.defines['SEASONS'] = '';
+    }
+    if (mountains) {
+      material.defines['MOUNTAINS'] = '';
     }
     material.onBeforeCompile = (shader) => {
       shader.uniforms['hazeColor'] = hazeColor;
@@ -954,13 +989,13 @@ export class EnvironmentView implements ShadowReach {
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          `#include <common>\nattribute float haze;\nvarying float vHaze;\nvarying float vHillHeight;\nvarying vec3 vTownGlow;\n${TOWNS_GLOW}`,
+          `#include <common>\nattribute float haze;\nattribute float trueHeight;\nvarying float vHaze;\nvarying float vHillHeight;\nvarying vec3 vTownGlow;\n${TOWNS_GLOW}`,
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
           vHaze = haze;
-          vHillHeight = position.y;
+          vHillHeight = trueHeight;
           vec3 toHill = normalize((modelMatrix * vec4(transformed, 1.0)).xyz - cameraPosition);
           vTownGlow = townsGlow(normalize(toHill.xz + vec2(1e-5)), max(toHill.y, 0.0));`,
         );
@@ -978,8 +1013,14 @@ export class EnvironmentView implements ShadowReach {
           `#include <color_fragment>
           #ifdef SEASONS
             diffuseColor.rgb = mix( diffuseColor.rgb, dried( diffuseColor.rgb ) * seasonGrass, 0.7 );
-            float snowLine = 60.0 * ( 1.0 - snowCover ) - 10.0;
-            diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 20.0, vHillHeight ) );
+            #ifdef MOUNTAINS
+              // Meters of true height: the snow that lies all year is in the colours; more comes down in winter.
+              float snowLine = 700.0 * ( 1.0 - snowCover ) - 20.0;
+              diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 60.0, vHillHeight ) );
+            #else
+              float snowLine = 60.0 * ( 1.0 - snowCover ) - 10.0;
+              diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 20.0, vHillHeight ) );
+            #endif
           #endif`,
         )
         .replace(
@@ -991,8 +1032,8 @@ export class EnvironmentView implements ShadowReach {
           }`,
         );
     };
-    material.customProgramCacheKey = () => (seasons === null ? 'hills' : 'hills|seasons');
-    const hills = new Mesh(this.track(geometry), material);
+    material.customProgramCacheKey = () => `hills|${seasons === null ? '' : 'seasons'}|${mountains ? 'mountains' : ''}`;
+    const hills = new Mesh(geometry, material);
     hills.name = 'hills';
     hills.frustumCulled = false;
     return hills;

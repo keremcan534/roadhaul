@@ -53,10 +53,12 @@ import {
 import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
 import { SHADOW_GATHER_MARGIN_METERS, ShadowSubset, type ShadowReach } from './ShadowSubset';
-import { FarCulling, freezeTransforms } from './worldTiles';
+import { COUNTRY_TILE_METERS, FarCulling, freezeTransforms, TileParts } from './worldTiles';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
 const TILE_METERS = 600;
+/** The wires are drawn in tiles this wide, each hidden while far from the camera: few of them, so few draw calls. */
+const WIRE_TILE_METERS = COUNTRY_TILE_METERS * 2;
 /** Power poles: how tall, where the crossarm and the insulators the wires hang from are, how far the wires sag. */
 const POLE_HEIGHT = 8.4;
 const ARM_Y = 7.9;
@@ -374,13 +376,24 @@ export class SceneryView {
         this.culling.add(mesh);
       }
     }
+    // The wires in large tiles, hidden while far off: the map's kilometres of power line cost nothing out of reach.
     const wires = [...wireSegments(world.powerLines), ...fenceWireSegments(world.roadFences)];
     if (wires.length > 0) {
-      const mesh = new Mesh(this.track(wireRibbons(wires)), this.track(wireMaterial(this.resolution)));
-      mesh.name = 'scenery:wires';
-      // Widened on the screen by the shader: the bounds three.js would cull by are too thin.
-      mesh.frustumCulled = false;
-      this.root.add(mesh);
+      const tiles = new TileParts<number>(WIRE_TILE_METERS);
+      for (let piece = 0; piece < wires.length; piece += 6) {
+        for (let i = 0; i < 6; i++) {
+          tiles.add(wires[piece]!, wires[piece + 2]!, wires[piece + i]!);
+        }
+      }
+      const material = this.track(wireMaterial(this.resolution));
+      for (const [key, segments] of tiles.tiles.entries()) {
+        const mesh = new Mesh(this.track(wireRibbons(segments)), material);
+        mesh.name = `scenery:wires:${key}`;
+        // Widened on the screen by the shader: the bounds three.js would cull by are too thin.
+        mesh.frustumCulled = false;
+        this.root.add(mesh);
+        this.culling.add(mesh);
+      }
     }
 
     this.grazers = world.grazers;

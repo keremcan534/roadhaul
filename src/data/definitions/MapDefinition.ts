@@ -29,7 +29,7 @@ export interface RoadDefinition {
  * What a building is when not a block with windows: a farm's or a works' silo, a chimney, a mine's headframe, a stack
  * of shipping containers.
  */
-export const BUILDING_FORMS = ['silo', 'chimney', 'headframe', 'containers'] as const;
+export const BUILDING_FORMS = ['silo', 'chimney', 'headframe', 'containers', 'lighthouse'] as const;
 export type BuildingForm = (typeof BUILDING_FORMS)[number];
 
 export interface BuildingDefinition {
