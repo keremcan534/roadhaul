@@ -40,6 +40,7 @@ import {
   requestedWetness,
 } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
+import { gpuName } from './platform/browser/gpuName';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
@@ -225,7 +226,8 @@ async function start(strings: Strings): Promise<void> {
   // The phone's settings; sound can change while the game runs.
   let settings = loadSettings(storage);
   const qualityChoice = qualitySetting(query.get('quality'), settings.quality, persistent);
-  const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(deviceHints(navigator)));
+  const device = deviceHints(navigator, gpuName(document));
+  const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(device));
   const config = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
   const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
   if (!persistent) {
@@ -310,6 +312,9 @@ async function start(strings: Strings): Promise<void> {
   const castShadows = config.rendering.shadowMapSize > 0;
   // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
+  // A phone's GPU gets the shaders a few at a time (RenderHost.precompileGradually): all at once, a weak one stays
+  // busy so long that Android reports the game not responding.
+  const gradualCompile = device.mobile && !software;
   // The night's lamps (the truck's and the traffic's headlights, the street lamps) light the world through its
   // materials' shaders (lightScene, at the end of boot). Drawn in software, the lamps' code costs every frame about
   // a fifth of its time even by day, when the shaders skip it: there they light nothing, unless ?lamps=1 asks.
@@ -392,7 +397,9 @@ async function start(strings: Strings): Promise<void> {
   // The GPU compiles the shaders of the land, the roads, the buildings, the trees, the lamps and the fields while the
   // rest of the world is built: a phone takes seconds over them, which would otherwise all come at the end of the boot.
   shadeScene();
-  renderHost.precompile();
+  if (!gradualCompile) {
+    renderHost.precompile();
+  }
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
   // At night the towns glow on the horizon, over their depots.
   environment.setTowns(driving.world.depots.map((depot) => depot.yard));
@@ -2121,9 +2128,24 @@ async function start(strings: Strings): Promise<void> {
   );
   // Every view is in the scene: the rest of it shaded, and its shaders compiled now, behind the menu, not on the road.
   shadeScene();
-  renderHost.precompile();
+  if (gradualCompile) {
+    await renderHost.precompileGradually(afterNextFrame);
+  } else {
+    renderHost.precompile();
+  }
   loop.start();
   root.dataset.bootState = 'ready';
+}
+
+/** Resolves once the next frame is drawn, or after a moment where none is (a hidden page draws no frames). */
+function afterNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    const fallback = setTimeout(resolve, 100);
+    requestAnimationFrame(() => {
+      clearTimeout(fallback);
+      setTimeout(resolve, 0);
+    });
+  });
 }
 
 /** The error screen's words: a device that cannot draw the game is told so; anything else is a crash, the save kept. */

@@ -12,6 +12,7 @@ import {
   Vector2,
   WebGLRenderTarget,
   type Camera,
+  type Object3D,
   type PerspectiveCamera,
   type Texture,
   type Vector3,
@@ -420,6 +421,20 @@ export class PostProcessing {
     }
     this.quad.material = this.composite;
     renderer.setRenderTarget(previous);
+  }
+
+  /**
+   * Compiles the shaders of `object`, a part of `scene`, as the pass draws it
+   * (into its linear target), and resolves when they are ready
+   * (RenderHost.precompileGradually). Not per frame.
+   */
+  compileObject(object: Object3D, scene: Scene, camera: Camera): Promise<Object3D> {
+    const renderer = this.renderer;
+    const previous = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.sceneTarget);
+    const ready = renderer.compileAsync(object, camera, scene);
+    renderer.setRenderTarget(previous);
+    return ready;
   }
 
   /** Draws `scene` from `camera` through the passes onto the screen. Allocation-free. */
