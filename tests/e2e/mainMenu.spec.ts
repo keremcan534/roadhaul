@@ -26,7 +26,7 @@ test('shows the saved company on the main menu, and starts the drive at the depo
   const places = page.locator('.main-menu__place');
   await expect(places.first()).toHaveAttribute('data-start', 'left');
   await expect(places.first()).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('.main-menu__place[data-kind="depot"]')).toHaveCount(4);
+  await expect(page.locator('.main-menu__place[data-kind="depot"]')).toHaveCount(7);
   await expect(page.locator('.main-menu__place[data-kind="restArea"]')).toHaveCount(1);
   const ironford = page.locator('.main-menu__place[data-start="city_b_depot"]');
   await expect(ironford).toHaveText('Ironford depot');

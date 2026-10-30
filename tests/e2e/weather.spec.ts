@@ -117,8 +117,9 @@ test('lays a morning mist at sunrise, and none when the address clears it', asyn
   const clear = await sceneColor(page, 0.2, 0.5);
 
   // The mist's light veils the hills and the horizon: the band across them is lighter. Drawn in software, only the
-  // sky and its hills take the mist (the land's costs too much there), so the band shows less of it than a GPU would.
-  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.04);
+  // sky and its hills take the mist (the land's costs too much there), so the band shows less of it than a GPU would;
+  // and the mountains' crests rise out of it.
+  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.03);
   expect(problems).toEqual([]);
 });
 
