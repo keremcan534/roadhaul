@@ -11,6 +11,7 @@ import type { CasinoService } from '../systems/casino/CasinoService';
 import type { ReviewService } from '../systems/review/ReviewService';
 import type { AchievementService } from '../systems/achievements/AchievementService';
 import type { CrateService } from '../systems/rewards/CrateService';
+import type { SkyWonderService } from '../systems/weather/SkyWonderService';
 import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
@@ -54,6 +55,8 @@ export const ServiceKeys = Object.freeze({
   /** The game's clock, and the sun, the moon and the stars it turns (spec §39). */
   timeOfDay: serviceKey<TimeOfDayService>('TimeOfDayService'),
   season: serviceKey<SeasonService>('SeasonService'),
+  /** The northern lights some nights, and the sky's wonders the player has seen. */
+  skyWonders: serviceKey<SkyWonderService>('SkyWonderService'),
   /** The timed events of spec §22 (not the event bus: that is `events`). */
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),

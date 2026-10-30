@@ -185,6 +185,9 @@ export const FR: StringTable = {
   'toast.levelUp': 'Niveau supérieur ! {name}',
   'toast.levelReward': 'Niveau {level} ! Ta récompense t’attend au siège.',
   'toast.crateEarned': '{crate} gagnée !',
+  'toast.sky.aurora': 'Des aurores boréales ! Regarde le ciel au nord',
+  'toast.sky.meteor': 'Une étoile filante ! Fais un vœu',
+  'toast.sky.rainbow': 'Un arc-en-ciel sur la route !',
 
   'weather.clear.message': 'Le ciel se dégage. Bonne route !',
   'weather.cloudy.message': 'Les nuages arrivent.',
@@ -676,6 +679,7 @@ export const FR: StringTable = {
   'achievement.metric.bigWins': 'Gros gains à la machine à sous',
   'achievement.metric.perfectStreak': 'Livraisons parfaites d’affilée',
   'achievement.metric.cratesOpened': 'Caisses ouvertes',
+  'achievement.metric.skyWonders': 'Merveilles du ciel vues',
   'achievements.open': 'Objectifs',
   'achievements.title': 'Objectifs de l’entreprise',
   'achievements.intro': 'Atteins un objectif, puis récupère sa récompense ici.',

@@ -467,6 +467,16 @@ The owner asked for rewards that feel good ("dopamin"): a delivery celebrated, c
 - **Levels** (`GameConfig.company`): ten now. The content's requirements stay within the first five; levels 6 to 10 (20,000 to 80,000 XP) are for the long run. Each level from the second brings credits and a crate (`levelRewards`), waiting until collected (`LevelRewardService`, the lowest first): the celebration (`LevelUpDialog`) opens over the result once its stars have landed, or over the company panel; while driving a toast says the reward waits. It shows the level's badge under confetti, its name, its reward and what it opens up (trucks, upgrades, contracts… counted from the content's requirements). The daily reward's level bonus stops at level 5 (`dailyReward.bonusLevels`).
 - **The save** (v14) keeps the crates held and opened, the colours given, the streak and the best one, and the highest level collected. A v13 save's levels count as collected; a company whose XP now reaches past level 5 finds the new levels waiting.
 
+### The sky's wonders
+
+The owner asked for "beautiful things in the sky": the northern lights, shooting stars, the rainbow.
+
+- **The northern lights** come out on some nights (`SkyWonderService`): as each night falls it draws whether tonight is one, by the season's chance (`GameConfig.skyWonders.auroraChance`: half the nights in winter, one in twelve in summer), and fades them in with the dark and out at dawn over 20 s. The sky (`EnvironmentView`, the dome's AURORA) draws them as curtains over the north, their foot wandering above the hills, green low and violet higher, folding and drifting with fine rays shimmering along them, only where the sky is dark and clear enough for the stars. Their time comes round every 200π s with every rate a whole hundredth of a radian a second, so it never jumps. By day the dome skips them (a branch on their strength).
+- **Shooting stars** (`ShootingStars`): on a clear night one falls every 18 to 55 s, to one side of where the camera looks (the middle of the screen has the menus and the messages) in the upper part of its view: a quad from its bright head to its fading tail, moved as it falls in 0.75 s, hidden between them.
+- **The rainbow** after the rain with a low sun was there already, its second bow too.
+- **Seeing them counts** (`SkyWonderService.observe`, from `main.ts` while on the road): each one coming into view is pointed out (a toast) and counted toward the goals (`skyWonders`: 1 and 10 seen); a shooting star at most once in five minutes.
+- `?sky=aurora` and `?sky=meteors` bring them out for a look.
+
 ### The truck stop's slot machine
 
 The owner asked for a casino played for the game's credits, never for real money ("kumar ekleyebiliriz tabi gerçek parayla değil"). The game's rating rises with it (simulated gambling: docs/RELEASE.md).

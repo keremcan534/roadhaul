@@ -87,7 +87,8 @@ export interface AchievementsSaveData {
   /**
    * What the goals count that the rest of the save does not, by
    * AchievementMetric: perfectDeliveries, tendersWon, rivalsBoughtOut,
-   * dailyStreak (the longest), upgradesFitted, bigWins. One not listed is 0.
+   * dailyStreak (the longest), upgradesFitted, bigWins, skyWonders. One not
+   * listed is 0.
    */
   readonly counters: Readonly<Record<string, number>>;
   /** AchievementDefinition ids whose reward was collected. */

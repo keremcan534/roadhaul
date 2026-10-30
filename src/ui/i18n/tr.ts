@@ -185,6 +185,9 @@ export const TR: StringTable = {
   'toast.levelUp': 'Seviye atladın! {name}',
   'toast.levelReward': 'Seviye {level}! Ödülün şirket ofisinde seni bekliyor.',
   'toast.crateEarned': '{crate} kazandın!',
+  'toast.sky.aurora': 'Kuzey ışıkları! Kuzeyde gökyüzüne bak',
+  'toast.sky.meteor': 'Kayan yıldız! Bir dilek tut',
+  'toast.sky.rainbow': 'Yolun üstünde gökkuşağı!',
 
   'weather.clear.message': 'Hava açıyor. İyi yolculuklar!',
   'weather.cloudy.message': 'Hava bulutlanıyor.',
@@ -676,6 +679,7 @@ export const TR: StringTable = {
   'achievement.metric.bigWins': 'Slotta büyük kazanç',
   'achievement.metric.perfectStreak': 'Arka arkaya kusursuz teslimat',
   'achievement.metric.cratesOpened': 'Açılan kasa',
+  'achievement.metric.skyWonders': 'Görülen gökyüzü mucizesi',
   'achievements.open': 'Hedefler',
   'achievements.title': 'Şirket hedefleri',
   'achievements.intro': 'Bir hedefe ulaş, sonra ödülünü buradan al.',

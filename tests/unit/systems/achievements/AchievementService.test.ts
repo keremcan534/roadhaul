@@ -91,4 +91,11 @@ describe('AchievementService', () => {
     expect(goals.claimable).toBe(1);
     expect(goals.snapshot()).toEqual({ counters: { perfectDeliveries: 1 }, claimed: ['perfect_1'] });
   });
+
+  it('counts the sky\'s wonders seen, and keeps the count in the save', () => {
+    const { goals, events } = setup();
+    events.emit('SkyWonderSighted', { kind: 'aurora' });
+    events.emit('SkyWonderSighted', { kind: 'meteor' });
+    expect(goals.snapshot().counters).toEqual({ skyWonders: 2 });
+  });
 });

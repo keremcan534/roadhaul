@@ -13,6 +13,7 @@ import { FacilityService } from '../systems/company/FacilityService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import { CasinoService } from '../systems/casino/CasinoService';
 import { CrateService } from '../systems/rewards/CrateService';
+import { SkyWonderService } from '../systems/weather/SkyWonderService';
 import { LevelRewardService } from '../systems/company/LevelRewardService';
 import { ReviewService } from '../systems/review/ReviewService';
 import { AchievementService, type CompanyMeasures } from '../systems/achievements/AchievementService';
@@ -134,6 +135,12 @@ export class GameBootstrapper {
         new TimeOfDayService(catalog, clock, config.timeOfDay, this.options.localTimeOffsetMinutes ?? 0),
       );
       const season = container.register(ServiceKeys.season, new SeasonService(clock, events));
+      // The sky's wonders: each night's draw from a run of its own.
+      const skyLuck = new SeededRandom((clock.now() * 3 + 7) % 2_147_483_647);
+      container.register(
+        ServiceKeys.skyWonders,
+        new SkyWonderService(config.skyWonders, timeOfDay, season, () => skyLuck.next(), events, logger.withCategory('Sky')),
+      );
       container.register(
         ServiceKeys.weather,
         new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),

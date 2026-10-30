@@ -24,7 +24,15 @@ export interface CompanyMeasures {
 }
 
 /** The metrics the goals count themselves (the save keeps them): the rest are measured (CompanyMeasures). */
-const COUNTED: readonly AchievementMetric[] = ['perfectDeliveries', 'tendersWon', 'rivalsBoughtOut', 'dailyStreak', 'upgradesFitted', 'bigWins'];
+const COUNTED: readonly AchievementMetric[] = [
+  'perfectDeliveries',
+  'tendersWon',
+  'rivalsBoughtOut',
+  'dailyStreak',
+  'upgradesFitted',
+  'bigWins',
+  'skyWonders',
+];
 
 /** A multiplier the slot machine pays this high or more is a big win. */
 const BIG_WIN_MULTIPLIER = 10;
@@ -101,6 +109,10 @@ export class AchievementService {
       events.on('DriverHired', check),
       events.on('FacilityBuilt', check),
       events.on('CrateOpened', check),
+      events.on('SkyWonderSighted', () => {
+        this.add('skyWonders', 1);
+        this.check();
+      }),
       events.on('GameStateChanged', check),
     ];
   }
@@ -203,6 +215,7 @@ export class AchievementService {
       bigWins: this.counted('bigWins'),
       perfectStreak: measures.bestPerfectStreak,
       cratesOpened: measures.cratesOpened,
+      skyWonders: this.counted('skyWonders'),
     };
   }
 

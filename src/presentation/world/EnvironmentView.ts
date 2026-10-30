@@ -258,6 +258,34 @@ const RAINBOW = /* glsl */ `
   }
 `;
 /**
+ * The northern lights (setAurora) over the north (-z) of a clear, dark sky:
+ * curtains whose foot wanders along the sky above the hills, green low and
+ * violet higher up, folding and drifting, with fine rays shimmering along
+ * them; strongest due north, gone by the south. `auroraTime` runs round
+ * AURORA_PERIOD_SECONDS, and every rate here is a whole hundredth of a
+ * radian a second, so it comes round without a jump.
+ */
+const AURORA_PERIOD_SECONDS = 200 * Math.PI;
+const AURORA = /* glsl */ `
+  uniform float aurora;
+  uniform float auroraTime;
+  vec3 auroraOver( vec3 sky, vec3 direction, float up ) {
+    float across = length( direction.xz ) + 1e-4;
+    float north = -direction.z / across;
+    float spread = smoothstep( -0.25, 0.7, north );
+    float around = atan( direction.x, -direction.z );
+    float t = auroraTime;
+    float foot = 0.13 + 0.05 * sin( around * 3.0 + t * 0.21 ) + 0.025 * sin( around * 7.0 - t * 0.37 );
+    float h = up - foot;
+    float body = smoothstep( -0.01, 0.025, h ) * exp( -max( h, 0.0 ) * 4.5 );
+    float rays = 0.5 + 0.5 * sin( around * 47.0 + t * 1.3 + 2.0 * sin( around * 11.0 - t * 0.5 ) );
+    float folds = 0.45 + 0.55 * sin( around * 4.0 - t * 0.15 ) * sin( around * 2.0 + t * 0.07 );
+    float glow = body * ( 0.55 + 0.45 * rays ) * max( folds, 0.1 ) * spread;
+    vec3 colour = mix( vec3( 0.12, 1.0, 0.5 ), vec3( 0.7, 0.25, 0.95 ), smoothstep( 0.04, 0.3, h ) );
+    return sky + colour * glow * aurora * 0.6;
+  }
+`;
+/**
  * Lightning's flash (setLightning, 0..1) lights up the sky and the haze in
  * this bluish white, the clouds by this much of their full brightness, and
  * the world by this much of a clear day's light from the sky.
@@ -403,6 +431,9 @@ export class EnvironmentView implements ShadowReach {
     readonly townGlow: { value: Float32Array };
     /** How strongly the rainbow shows, 0..1. */
     readonly rainbow: { value: number };
+    /** How strongly the northern lights show, 0..1, and their time (AURORA). */
+    readonly aurora: { value: number };
+    readonly auroraTime: { value: number };
   };
   /**
    * The morning mist over the land (setMist): its uniforms, shared by the
@@ -421,6 +452,8 @@ export class EnvironmentView implements ShadowReach {
   private townLight = 0;
   /** How wet the ground is (setWetness): the rain's drops still in the air, for a rainbow. */
   private wetness = 0;
+  /** How strongly the northern lights are out (setAurora), before the clouds and the sky's light. */
+  private auroraOut = 0;
   /** How bright lightning flashes now (setLightning), and its light in the sky as it adds to the sky's colours. */
   private lightning = 0;
   private readonly lightningSky = new Color();
@@ -509,6 +542,8 @@ export class EnvironmentView implements ShadowReach {
       earthShadow: { value: EARTH_SHADOW_LOW },
       townGlow: { value: new Float32Array(GLOWING_TOWNS * 4) },
       rainbow: { value: 0 },
+      aurora: { value: 0 },
+      auroraTime: { value: 0 },
     };
     this.cloudGeometry = this.track(new InstancedBufferGeometry());
     this.clouds = this.createClouds(this.cloudGeometry);
@@ -615,6 +650,8 @@ export class EnvironmentView implements ShadowReach {
       smoothstep(0.15, RAINBOW_SUNLIT, look.sunlight) *
       smoothstep(SUNSET_BELOW, SUNSET_ABOVE, elevation) *
       (1 - smoothstep(RAINBOW_LOW_SUN, RAINBOW_HIGHEST_SUN, elevation));
+    // The northern lights, where the sky is dark and clear enough for the stars.
+    uniforms.aurora.value = this.auroraOut * smoothstep(0.25, 0.75, look.stars) * (1 - look.rain);
     // The sun glares while it is up and bright: less through haze and cloud, not at all in the rain.
     this.towardSun.set(sun.x, sun.y, sun.z).normalize();
     this.glare = Math.min(1, look.sunlight) * smoothstep(-0.01, 0.04, sun.y) * (1 - look.rain) * (1 - 0.7 * look.cloudCover);
@@ -716,6 +753,15 @@ export class EnvironmentView implements ShadowReach {
   }
 
   /**
+   * How strongly the northern lights are out tonight, 0..1
+   * (SkyWonderService.aurora): they show where the sky is dark and clear
+   * enough for the stars. Takes effect at the next applySky().
+   */
+  setAurora(strength: number): void {
+    this.auroraOut = clamp(strength, 0, 1);
+  }
+
+  /**
    * How thick the morning mist lies, 0..1 (morningMist): over the land, the
    * sky's horizon and the hills, and the sun's shafts through it. Takes
    * effect at the next applySky().
@@ -749,6 +795,21 @@ export class EnvironmentView implements ShadowReach {
   }
 
   /** The sun's share of the light on flat ground now (0..1): what the clouds' shadows can take (CloudShadows). */
+  /** How strongly the northern lights show on the sky now, 0..1. */
+  get auroraShown(): number {
+    return this.skyUniforms.aurora.value;
+  }
+
+  /** How strongly a rainbow shows on the sky now, 0..1. */
+  get rainbowShown(): number {
+    return this.skyUniforms.rainbow.value;
+  }
+
+  /** How brightly the stars shine now, 0..1 (none by day or under cloud). */
+  get starLevel(): number {
+    return this.stars.visible ? this.starUniforms.level.value : 0;
+  }
+
   get sunShare(): number {
     return this.groundSunShare;
   }
@@ -805,6 +866,8 @@ export class EnvironmentView implements ShadowReach {
     }
     const time = this.starUniforms.time;
     time.value = (time.value + deltaSeconds) % TWINKLE_PERIOD_SECONDS;
+    const auroraTime = this.skyUniforms.auroraTime;
+    auroraTime.value = (auroraTime.value + deltaSeconds) % AURORA_PERIOD_SECONDS;
     const drift = this.cloudUniforms.drift;
     drift.value = (drift.value + deltaSeconds * CLOUD_DRIFT) % (Math.PI * 2);
   }
@@ -848,6 +911,7 @@ export class EnvironmentView implements ShadowReach {
           uniform float earthShadow;
           ${TOWNS_GLOW}
           ${RAINBOW}
+          ${AURORA}
           ${MIST_GLSL}
           varying vec3 vDirection;
           void main() {
@@ -878,6 +942,9 @@ export class EnvironmentView implements ShadowReach {
             sky += townsGlow(bearing, height);
             if (rainbow > 0.0) {
               sky = rainbowOver(sky, direction, up, sunDirection, sunColor, rainbow);
+            }
+            if (aurora > 0.0) {
+              sky = auroraOver(sky, direction, up);
             }
             // The morning mist: a white band along the horizon, thinning up the sky; the sun low in it a soft ball.
             if (mistDensity > 0.0) {

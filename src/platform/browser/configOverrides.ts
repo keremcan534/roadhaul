@@ -57,6 +57,16 @@ export function requestedMist(query: QueryParameters): number | null {
 }
 
 /**
+ * `?sky=aurora` brings the northern lights out every night, `?sky=meteors`
+ * a shooting star every few seconds, for a look at them. Null when the URL
+ * does not say, or says something else.
+ */
+export function requestedSkyWonder(query: QueryParameters): 'aurora' | 'meteors' | null {
+  const text = query.get('sky')?.trim() ?? '';
+  return text === 'aurora' || text === 'meteors' ? text : null;
+}
+
+/**
  * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
  * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
  * along +x; 0 if left out), to look round a place without driving to it.

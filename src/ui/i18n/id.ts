@@ -185,6 +185,9 @@ export const ID: StringTable = {
   'toast.levelUp': 'Naik level! {name}',
   'toast.levelReward': 'Level {level}! Hadiahmu menunggu di kantor perusahaan.',
   'toast.crateEarned': '{crate} didapat!',
+  'toast.sky.aurora': 'Aurora utara! Lihat langit di utara',
+  'toast.sky.meteor': 'Bintang jatuh! Buat permohonan',
+  'toast.sky.rainbow': 'Pelangi di atas jalan!',
 
   'weather.clear.message': 'Langit mulai cerah. Selamat berkendara!',
   'weather.cloudy.message': 'Awan mulai berarak datang.',
@@ -676,6 +679,7 @@ export const ID: StringTable = {
   'achievement.metric.bigWins': 'Menang besar di slot',
   'achievement.metric.perfectStreak': 'Pengiriman sempurna beruntun',
   'achievement.metric.cratesOpened': 'Peti dibuka',
+  'achievement.metric.skyWonders': 'Keajaiban langit terlihat',
   'achievements.open': 'Target',
   'achievements.title': 'Target perusahaan',
   'achievements.intro': 'Capai target, lalu ambil hadiahnya di sini.',

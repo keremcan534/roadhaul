@@ -8,6 +8,7 @@ import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
+import type { SkyWonder } from '../domain/sky/skyWonders';
 import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
@@ -190,6 +191,10 @@ export interface GameEvents {
     readonly level: number;
     readonly credits: Credits;
     readonly crate: CrateTier;
+  };
+  /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow. */
+  SkyWonderSighted: {
+    readonly kind: SkyWonder;
   };
   /** XP or reputation changed. */
   CompanyProgressed: {

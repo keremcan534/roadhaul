@@ -35,6 +35,7 @@ import {
   requestedSeason,
   requestedLampLight,
   requestedMist,
+  requestedSkyWonder,
   requestedSimulations,
   requestedSpawn,
   requestedTimeOfDay,
@@ -60,6 +61,7 @@ import { SlowMotion } from './presentation/effects/SlowMotion';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
+import { ShootingStars } from './presentation/world/ShootingStars';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { LightningView } from './presentation/weather/LightningView';
@@ -149,6 +151,9 @@ import './ui/styles.css';
  */
 /** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
 const PANEL_STANDSTILL_SPEED = 0.5;
+/** The northern lights and a rainbow count as seen once they show this strongly on the sky (0..1). */
+const AURORA_SEEN = 0.35;
+const RAINBOW_SEEN = 0.45;
 /**
  * Drawn in software (RenderHost.softwareRendering): the shadow map at most
  * this size, and this share of the plants and of the clouds.
@@ -264,6 +269,7 @@ async function start(strings: Strings): Promise<void> {
   const weather = services.resolve(ServiceKeys.weather);
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
   const season = services.resolve(ServiceKeys.season);
+  const skyWonders = services.resolve(ServiceKeys.skyWonders);
   // The game's clock: the time the player picked and the way it goes (Settings), unless the address sets it
   // (`?time=`, `?weather=dawn|dusk|night`), which stops it there and keeps the player's own for later.
   const requestedTime = requestedTimeOfDay(query);
@@ -285,6 +291,9 @@ async function start(strings: Strings): Promise<void> {
   const keptWetness = requestedWetness(query);
   /** How thick the morning mist lies: the morning's, or as the address keeps it (`?mist=`). */
   const keptMist = requestedMist(query);
+  /** The sky's wonders brought out for a look (`?sky=`). */
+  const shownWonder = requestedSkyWonder(query);
+  skyWonders.forceAurora(shownWonder === 'aurora');
   /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
   const clearDay = content.weather.get(config.weather.clearWeatherId).look;
   const weatherLook = createSkyLook();
@@ -337,6 +346,9 @@ async function start(strings: Strings): Promise<void> {
   const lampLight = requestedLampLight(query) ?? !software;
   // The seasons on the land: the grass, the broadleaf trees, the verges' flowers, the fields, the hills and the snow.
   const seasonShading = new SeasonShading(season.season);
+  /** Now and then on a clear night, a shooting star where the camera looks. */
+  const shootingStars = new ShootingStars(renderHost.scene);
+  shootingStars.fallOften = shownWonder === 'meteors';
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
@@ -679,6 +691,8 @@ async function start(strings: Strings): Promise<void> {
     showGoalsWaiting();
   });
   events.on('AchievementClaimed', showGoalsWaiting);
+  // The sky's wonders, pointed out as they come into view.
+  events.on('SkyWonderSighted', ({ kind }) => toasts.show(strings.t(`toast.sky.${kind}`), 'success'));
   // The crates, over the company panel or the result: earned for perfect streaks, levels and the daily streak.
   const crateCounts = (): Record<CrateTier, number> => ({
     bronze: crates.count('bronze'),
@@ -2110,6 +2124,7 @@ async function start(strings: Strings): Promise<void> {
         traffic.update(stepSeconds);
         timeOfDay.update(stepSeconds);
         season.update(stepSeconds);
+        skyWonders.update(stepSeconds);
         weather.update(stepSeconds);
         // The fleet's drivers and the rivals work on while the player is in the panel or the menus, and those near
         // the truck join the traffic.
@@ -2285,9 +2300,16 @@ async function start(strings: Strings): Promise<void> {
           keptMist ?? morningMist(timeOfDay.sunElevationDegrees, timeOfDay.sunRising, weather.rain, skyLook.cloudCover, wetness);
         environment.setMist(mist);
         showMist(mist);
+        environment.setAurora(skyWonders.aurora);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
+        shootingStars.update(paused ? 0 : deltaSeconds, renderHost.camera, environment.starLevel);
+        // The sky's wonders count as the player sees them on the road (not behind the panel or a pause).
+        const watchingSky = isDriving() && !paused && !hq.isOpen;
+        skyWonders.observe('aurora', watchingSky && environment.auroraShown > AURORA_SEEN);
+        skyWonders.observe('rainbow', watchingSky && environment.rainbowShown > RAINBOW_SEEN);
+        skyWonders.observe('meteor', watchingSky && shootingStars.streaking);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
         // What lies far off in the haze is not drawn.

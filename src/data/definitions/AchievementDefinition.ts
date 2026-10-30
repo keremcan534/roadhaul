@@ -17,6 +17,8 @@ import type { Credits } from '../units';
  * - bigWins: the slot machine paying ten times the bet or more.
  * - perfectStreak: the longest run of perfect deliveries (three stars).
  * - cratesOpened: crates opened.
+ * - skyWonders: the sky's wonders seen (the northern lights, shooting
+ *   stars, rainbows).
  */
 export const ACHIEVEMENT_METRICS = [
   'deliveries',
@@ -34,6 +36,7 @@ export const ACHIEVEMENT_METRICS = [
   'bigWins',
   'perfectStreak',
   'cratesOpened',
+  'skyWonders',
 ] as const;
 export type AchievementMetric = (typeof ACHIEVEMENT_METRICS)[number];
 

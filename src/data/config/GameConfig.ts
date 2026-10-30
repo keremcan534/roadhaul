@@ -5,6 +5,7 @@ import { Validator, type ValidationIssue } from '../../core/validation/Validator
 import type { ContentCatalog } from '../ContentCatalog';
 import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
 import { PAINT_RARITIES, type PaintRarity } from '../definitions/PaintDefinition';
+import { SEASONS, type Season } from '../definitions/Season';
 import type { Credits, Fraction } from '../units';
 
 /**
@@ -281,6 +282,13 @@ export interface GameConfig {
     /** The bets on offer, smallest first. */
     readonly bets: readonly Credits[];
     readonly symbols: readonly SlotSymbolConfig[];
+  };
+  /** The sky's wonders (SkyWonderService): the northern lights some nights, and what counts as seeing them. */
+  readonly skyWonders: {
+    /** The share of the nights with the northern lights, by season (they also need a clear, dark sky). */
+    readonly auroraChance: Readonly<Record<Season, Fraction>>;
+    /** A shooting star counts as a sighting at most once in this many seconds of play (they fall often at night). */
+    readonly meteorCountSeconds: number;
   };
   /** When the game asks the player to rate it on the store (ReviewService): seldom, after deliveries in good order. */
   readonly review: {
@@ -561,6 +569,10 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     perfectStreak: { bronzeEvery: 3, silverEvery: 5, goldEvery: 10 },
     dailyStreakCrate: 'silver',
   },
+  skyWonders: {
+    auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
+    meteorCountSeconds: 300,
+  },
   review: {
     firstAfterDeliveries: 5,
     maxCargoDamage: 0.1,
@@ -659,6 +671,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     dailyReward,
     crates,
     casino,
+    skyWonders,
     review,
     debug,
   } = config;
@@ -906,6 +919,10 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.check(isCrateTier(reward.crate), `company.levelRewards[${index}].crate`, `unknown crate "${String(reward.crate)}"`);
   });
   validateCasino(validator, casino);
+  for (const season of SEASONS) {
+    validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
+  }
+  validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
   validator.positiveInteger(review.firstAfterDeliveries, 'review.firstAfterDeliveries');
   validator.fraction(review.maxCargoDamage, 'review.maxCargoDamage');
   validator.positiveInteger(review.daysBetween, 'review.daysBetween');
