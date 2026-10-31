@@ -1,3 +1,4 @@
+import type { CityIncidentKind } from '../../data/definitions/CityIncident';
 import { isLogLevel } from '../../core/logging/Logger';
 import { isSeason, type Season } from '../../data/definitions/Season';
 import { MAX_TRAFFIC_VEHICLES, type GameConfig } from '../../data/config/GameConfig';
@@ -64,6 +65,25 @@ export function requestedMist(query: QueryParameters): number | null {
 export function requestedSkyWonder(query: QueryParameters): 'aurora' | 'meteors' | null {
   const text = query.get('sky')?.trim() ?? '';
   return text === 'aurora' || text === 'meteors' ? text : null;
+}
+
+/**
+ * `?city=fire|chase|fireworks` starts one of the region's rare happenings
+ * near the truck as soon as it drives (CityIncidentService), for a look;
+ * fireworks whatever the time. Null when the URL does not say, or says
+ * something else.
+ */
+export function requestedCityIncident(query: QueryParameters): CityIncidentKind | null {
+  switch (query.get('city')?.trim()) {
+    case 'fire':
+      return 'building_fire';
+    case 'chase':
+      return 'police_chase';
+    case 'fireworks':
+      return 'fireworks';
+    default:
+      return null;
+  }
 }
 
 /**

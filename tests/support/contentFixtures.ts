@@ -248,6 +248,7 @@ export function rivalFixture(overrides: Partial<RivalCompanyDefinition> = {}): R
     startingCredits: 1000,
     speedFactor: 1,
     aggression: 0.5,
+    personality: 'steady',
     ...overrides,
   };
 }

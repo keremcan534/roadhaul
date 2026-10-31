@@ -1,3 +1,5 @@
+import type { NewsItem } from './world/NewsService';
+import type { CityIncidentKind } from '../data/definitions/CityIncident';
 import type { SlotWinKind } from '../domain/casino/slotMachine';
 import type { CrateTier } from '../data/config/GameConfig';
 import type { ProductId } from '../data/config/products';
@@ -255,6 +257,23 @@ export interface GameEvents {
   WeatherChanged: {
     readonly weatherId: string;
     readonly previousId: string;
+  };
+  /** Something rare began near the truck (CityIncidentService): a fire, a police chase, fireworks. */
+  CityIncidentStarted: {
+    readonly kind: CityIncidentKind;
+    readonly cityId: string | null;
+    readonly x: number;
+    readonly z: number;
+  };
+  /** It is over: the fire put out, the fireworks done, the chase ended (`caught`: at the end of its road). */
+  CityIncidentEnded: {
+    readonly kind: CityIncidentKind;
+    readonly cityId: string | null;
+    readonly caught: boolean;
+  };
+  /** A headline came out (NewsService). */
+  NewsPublished: {
+    readonly item: NewsItem;
   };
   /** The season changed: the calendar turned over, or the player picked another in Settings. */
   SeasonChanged: {

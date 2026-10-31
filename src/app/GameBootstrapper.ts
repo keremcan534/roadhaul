@@ -11,6 +11,8 @@ import { CompanyService } from '../systems/company/CompanyService';
 import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
 import { ResearchService } from '../systems/company/ResearchService';
+import { CityIncidentService } from '../systems/world/CityIncidentService';
+import { NewsService } from '../systems/world/NewsService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import { CasinoService } from '../systems/casino/CasinoService';
 import { CrateService } from '../systems/rewards/CrateService';
@@ -145,6 +147,14 @@ export class GameBootstrapper {
         ServiceKeys.skyWonders,
         new SkyWonderService(config.skyWonders, timeOfDay, season, () => skyLuck.next(), events, logger.withCategory('Sky')),
       );
+      // The region's rare happenings near the truck, and its news: each with a run of its own.
+      const incidentLuck = new SeededRandom((clock.now() * 5 + 29) % 2_147_483_647);
+      container.register(
+        ServiceKeys.cityIncidents,
+        new CityIncidentService(config.cityLife, driving, timeOfDay, () => incidentLuck.next(), events, logger.withCategory('City')),
+      );
+      const newsLuck = new SeededRandom((clock.now() * 11 + 3) % 2_147_483_647);
+      container.register(ServiceKeys.news, new NewsService(catalog, timeOfDay, () => newsLuck.next(), events));
       container.register(
         ServiceKeys.weather,
         new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),

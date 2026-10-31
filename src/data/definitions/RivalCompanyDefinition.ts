@@ -1,6 +1,14 @@
 import type { Validator } from '../../core/validation/Validator';
 import type { Credits, Fraction } from '../units';
 
+/**
+ * How a rival's boss talks and carries on, heard in the news and on the
+ * rivals page: ruthless (business is war), flashy (loud and fast), steady
+ * (patient, by the book) or thrifty (cheap and proud of it).
+ */
+export const RIVAL_PERSONALITIES = ['ruthless', 'flashy', 'steady', 'thrifty'] as const;
+export type RivalPersonality = (typeof RIVAL_PERSONALITIES)[number];
+
 /** Stands for the player's company where standing and the league list companies by id: no rival may use it. */
 export const PLAYER_COMPANY_ID = 'player';
 
@@ -34,6 +42,8 @@ export interface RivalCompanyDefinition {
    * can, and to send its trucks to the cities another company leads.
    */
   readonly aggression: Fraction;
+  /** How its boss talks and carries on. Its boss's name and its motto come from the string tables (`rival.<id>.boss`, `.motto`). */
+  readonly personality: RivalPersonality;
 }
 
 export function validateRivalCompanyDefinition(rival: RivalCompanyDefinition, path: string, validator: Validator): void {
@@ -60,4 +70,5 @@ export function validateRivalCompanyDefinition(rival: RivalCompanyDefinition, pa
     'must be from 0.5 to 1.5',
   );
   validator.fraction(rival.aggression, `${path}.aggression`);
+  validator.oneOf(rival.personality, RIVAL_PERSONALITIES, `${path}.personality`);
 }

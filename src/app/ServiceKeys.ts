@@ -7,6 +7,8 @@ import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
 import type { FacilityService } from '../systems/company/FacilityService';
 import type { ResearchService } from '../systems/company/ResearchService';
+import type { CityIncidentService } from '../systems/world/CityIncidentService';
+import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import type { CasinoService } from '../systems/casino/CasinoService';
 import type { ReviewService } from '../systems/review/ReviewService';
@@ -88,6 +90,10 @@ export const ServiceKeys = Object.freeze({
   quests: serviceKey<QuestService>('QuestService'),
   /** The trucks' designs and the trailer text. */
   liveries: serviceKey<LiveryService>('LiveryService'),
+  /** The region's rare happenings near the truck: fires, police chases, fireworks. */
+  cityIncidents: serviceKey<CityIncidentService>('CityIncidentService'),
+  /** The region's news. */
+  news: serviceKey<NewsService>('NewsService'),
   /** The research tree: points from deliveries, perks for the whole company. */
   research: serviceKey<ResearchService>('ResearchService'),
   /** The company levels' rewards, waiting to be collected. */

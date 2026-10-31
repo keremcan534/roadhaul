@@ -3,7 +3,7 @@ import { clamp01 } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
 import type { KnockableKind } from '../../domain/crash/knockables';
 import { type EngineLoop, EngineSound } from './EngineSound';
-import { brakeNoiseLevel, crashLevel, createThunderSound, roadNoiseLevel, thunderSound } from './soundModel';
+import { brakeNoiseLevel, crashLevel, createThunderSound, roadNoiseLevel, SPEED_OF_SOUND, thunderSound } from './soundModel';
 
 /** What the sound follows, written by the entry point every frame into one reused object. */
 export interface SoundState {
@@ -23,6 +23,8 @@ export interface SoundState {
   rain: number;
   /** In reverse gear: the reversing alarm beeps. */
   reversing: boolean;
+  /** Meters to the nearest emergency vehicle's siren (CityLifeView); Infinity for none. */
+  sirenMeters: number;
 }
 
 export function createSoundState(): SoundState {
@@ -37,6 +39,7 @@ export function createSoundState(): SoundState {
     speed: 0,
     rain: 0,
     reversing: false,
+    sirenMeters: Number.POSITIVE_INFINITY,
   };
 }
 
@@ -69,6 +72,14 @@ const HISS_FROM_SPEED = 3;
 const ALARM_HZ = 1150;
 const ALARM_BEATS_PER_SECOND = 1.25;
 const ALARM_VOLUME = 0.07;
+/** The emergency services' two-tone siren: its note, how far it swings either way and how often, Hz. */
+const SIREN_HZ = 520;
+const SIREN_SWING_HZ = 95;
+const SIREN_TONES_PER_SECOND = 0.85;
+const SIREN_VOLUME = 0.09;
+/** It is heard from this far, meters, louder as it nears. */
+const SIREN_REACH_METERS = 380;
+const FIREWORK_VOLUME = 0.5;
 /** A truck's dual-tone air horn: two notes a major third apart, Hz. */
 const HORN_NOTES = [196, 247] as const;
 
@@ -85,6 +96,7 @@ interface Graph {
   readonly spray: GainNode;
   readonly horn: GainNode;
   readonly alarm: GainNode;
+  readonly siren: GainNode;
 }
 
 /**
@@ -204,6 +216,9 @@ export class GameAudio {
     // Beep, beep: on for the first half of each beat while in reverse.
     const beeping = driving && state.reversing && (now * ALARM_BEATS_PER_SECOND) % 1 < 0.5;
     follow(graph.alarm.gain, beeping ? ALARM_VOLUME : 0, now);
+    // Behind the menus too, softer, like the rain.
+    const near = Math.max(0, 1 - state.sirenMeters / SIREN_REACH_METERS);
+    follow(graph.siren.gain, near * near * SIREN_VOLUME * (driving ? 1 : 0.5), now);
 
     const speed = Math.abs(state.speed);
     if (!driving || state.brakePedal < 0.5) {
@@ -369,6 +384,18 @@ export class GameAudio {
     source.stop(end + 0.1);
     if (sound.crack > 0) {
       this.noiseBurst('highpass', 300, 0.35, 0.6 * sound.crack * THUNDER_VOLUME, sound.delaySeconds);
+    }
+  }
+
+  /** A firework `distanceMeters` off, bursting `delaySeconds` from now: a bang, heard later the farther it is, and a crackle. */
+  firework(distanceMeters: number, delaySeconds: number): void {
+    const delay = delaySeconds + distanceMeters / SPEED_OF_SOUND;
+    const level = FIREWORK_VOLUME * Math.min(1, Math.max(0.08, 120 / Math.max(1, distanceMeters)));
+    this.noiseBurst('lowpass', 420, 0.7, level, delay);
+    let at = delay + 0.15;
+    for (let crackle = 0; crackle < 5; crackle++) {
+      at += this.random.range(0.06, 0.22);
+      this.noiseBurst('highpass', 2800, 0.05, level * 0.35, at);
     }
   }
 
@@ -538,5 +565,19 @@ function buildGraph(context: AudioContext): Graph {
   alarmNote.connect(alarm).connect(master);
   alarmNote.start();
 
-  return { master, noise, engine, roadFilter, road, brake, rain, drops, spray, horn, alarm };
+  // The siren: a softened square wave swung between two notes by a slow square wave, switched on by update().
+  const siren = gainNode(context, 0);
+  const sirenNote = context.createOscillator();
+  sirenNote.type = 'square';
+  sirenNote.frequency.value = SIREN_HZ;
+  const swing = context.createOscillator();
+  swing.type = 'square';
+  swing.frequency.value = SIREN_TONES_PER_SECOND;
+  const swingDepth = gainNode(context, SIREN_SWING_HZ);
+  swing.connect(swingDepth).connect(sirenNote.frequency);
+  sirenNote.connect(filterNode(context, 'lowpass', 1600)).connect(siren).connect(master);
+  sirenNote.start();
+  swing.start();
+
+  return { master, noise, engine, roadFilter, road, brake, rain, drops, spray, horn, alarm, siren };
 }

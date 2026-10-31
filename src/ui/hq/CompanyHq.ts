@@ -4,6 +4,7 @@ import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { FacilityService } from '../../systems/company/FacilityService';
 import type { ResearchService } from '../../systems/company/ResearchService';
+import type { NewsService } from '../../systems/world/NewsService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
@@ -20,6 +21,7 @@ import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
 import { LabelFitter } from '../LabelFitter';
+import { newsTicker } from './newsFeed';
 import { companyPage } from './companyPage';
 import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
@@ -54,6 +56,8 @@ export interface CompanyHqServices {
   readonly rivals: RivalService;
   readonly facilities: FacilityService;
   readonly research: ResearchService;
+  /** The region's Gazette: its newest headline over the job board, all of it on the rivals page. */
+  readonly news: NewsService;
   /** Research points a delivery earns, and a perfect one (GameConfig.research). */
   readonly researchPoints: { readonly perDelivery: number; readonly perPerfectDelivery: number };
   readonly clock: Clock;
@@ -270,7 +274,7 @@ export class CompanyHq {
     this.rivalsPage = new RivalsPage(
       document,
       strings,
-      { rivals: services.rivals, economy: services.economy, company: services.company, now: () => services.clock.now() },
+      { rivals: services.rivals, economy: services.economy, company: services.company, now: () => services.clock.now(), news: services.news },
       { onCampaign: actions.onCampaign, onBuyOut: actions.onBuyOut },
     );
   }
@@ -485,6 +489,11 @@ export class CompanyHq {
       return card;
     });
     const page: HTMLElement[] = [];
+    // What the region is talking about: the Gazette's newest headline.
+    const headline = this.services.news.latest;
+    if (headline !== null) {
+      page.push(newsTicker(document, strings, headline, this.services.company.companyName));
+    }
     const current = missions.activeDefinition;
     if (current !== null) {
       const note = element(document, 'p', 'hq__note hq__current-job');

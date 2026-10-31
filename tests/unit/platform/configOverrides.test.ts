@@ -7,6 +7,7 @@ import {
   requestedMist,
   requestedSimulations,
   requestedSkyWonder,
+  requestedCityIncident,
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
@@ -116,6 +117,17 @@ describe('requestedMist', () => {
     expect(requestedMist(query('?mist=0'))).toBe(0);
     for (const search of ['', '?mist=', '?mist=1.5', '?mist=-0.2', '?mist=thick']) {
       expect(requestedMist(query(search)), search).toBeNull();
+    }
+  });
+});
+
+describe('requestedCityIncident', () => {
+  it('starts the fire, the chase or the fireworks the URL names, and nothing else', () => {
+    expect(requestedCityIncident(query('?city=fire'))).toBe('building_fire');
+    expect(requestedCityIncident(query('?city=chase'))).toBe('police_chase');
+    expect(requestedCityIncident(query('?city=fireworks'))).toBe('fireworks');
+    for (const search of ['', '?city=', '?city=flood', '?city=building_fire']) {
+      expect(requestedCityIncident(query(search)), search).toBeNull();
     }
   });
 });

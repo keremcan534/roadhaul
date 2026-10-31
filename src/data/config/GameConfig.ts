@@ -1,3 +1,4 @@
+import { CITY_INCIDENT_KINDS, type CityIncidentKind } from '../definitions/CityIncident';
 import { isLogLevel, type LogLevel } from '../../core/logging/Logger';
 import { frozenCopy } from '../../core/objects/frozenCopy';
 import { MINUTES_PER_DAY } from '../../core/time/dayTime';
@@ -313,6 +314,26 @@ export interface GameConfig {
     readonly auroraChance: Readonly<Record<Season, Fraction>>;
     /** A shooting star counts as a sighting at most once in this many seconds of play (they fall often at night). */
     readonly meteorCountSeconds: number;
+  };
+  /**
+   * The region's rare happenings (CityIncidentService): one at a time, near the truck while it drives, a few
+   * minutes apart. Fireworks only after dark.
+   */
+  readonly cityLife: {
+    /** Seconds of driving before the first… */
+    readonly firstAfterSeconds: number;
+    /** …and between one ending and the next, from–to. */
+    readonly gapSeconds: readonly [number, number];
+    /** How likely each kind is when one comes, against each other. */
+    readonly weights: Readonly<Record<CityIncidentKind, number>>;
+    /** How long each lasts, seconds (a chase also ends where its road does). */
+    readonly durationSeconds: Readonly<Record<CityIncidentKind, number>>;
+    /** It happens at least this far from the truck… */
+    readonly nearMeters: number;
+    /** …and at most this far. */
+    readonly farMeters: number;
+    /** How fast the chase goes, m/s. */
+    readonly chaseSpeed: number;
   };
   /** The research tree (ResearchService): the points the company's own deliveries earn toward it. */
   readonly research: {
@@ -641,6 +662,15 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     pointsPerDelivery: 1,
     perfectBonusPoints: 1,
   },
+  cityLife: {
+    firstAfterSeconds: 120,
+    gapSeconds: [300, 540],
+    weights: { building_fire: 3, police_chase: 3, fireworks: 2 },
+    durationSeconds: { building_fire: 240, police_chase: 150, fireworks: 100 },
+    nearMeters: 140,
+    farMeters: 520,
+    chaseSpeed: 21,
+  },
   review: {
     firstAfterDeliveries: 5,
     maxCargoDamage: 0.1,
@@ -741,6 +771,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     casino,
     skyWonders,
     research,
+    cityLife,
     review,
     debug,
   } = config;
@@ -994,6 +1025,22 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
   validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
   validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
+  validator.positiveNumber(cityLife.firstAfterSeconds, 'cityLife.firstAfterSeconds');
+  validator.check(
+    cityLife.gapSeconds[0] > 0 && cityLife.gapSeconds[1] >= cityLife.gapSeconds[0],
+    'cityLife.gapSeconds',
+    'must be a range above 0, the least first',
+  );
+  for (const kind of CITY_INCIDENT_KINDS) {
+    validator.check(cityLife.weights[kind] >= 0, `cityLife.weights.${kind}`, 'must be 0 or more');
+    validator.positiveNumber(cityLife.durationSeconds[kind], `cityLife.durationSeconds.${kind}`);
+  }
+  validator.check(
+    cityLife.nearMeters > 0 && cityLife.farMeters > cityLife.nearMeters,
+    'cityLife.farMeters',
+    'must be beyond nearMeters, both above 0',
+  );
+  validator.positiveNumber(cityLife.chaseSpeed, 'cityLife.chaseSpeed');
   validator.positiveInteger(review.firstAfterDeliveries, 'review.firstAfterDeliveries');
   validator.fraction(review.maxCargoDamage, 'review.maxCargoDamage');
   validator.positiveInteger(review.daysBetween, 'review.daysBetween');

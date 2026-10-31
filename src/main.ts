@@ -36,6 +36,7 @@ import {
   requestedLampLight,
   requestedMist,
   requestedSkyWonder,
+  requestedCityIncident,
   requestedSimulations,
   requestedSpawn,
   requestedTimeOfDay,
@@ -78,6 +79,8 @@ import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { SignBoardView } from './presentation/world/SignBoardView';
 import { FieldWorkView } from './presentation/world/FieldWorkView';
+import { CityLifeView, FIREWORK_RISE_SECONDS } from './presentation/world/CityLifeView';
+import { newsText } from './ui/hq/newsFeed';
 import { BirdsView } from './presentation/world/BirdsView';
 import { CloudShadows } from './presentation/world/cloudShadows';
 import { SeasonShading } from './presentation/world/SeasonShading';
@@ -273,6 +276,12 @@ async function start(strings: Strings): Promise<void> {
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
   const season = services.resolve(ServiceKeys.season);
   const skyWonders = services.resolve(ServiceKeys.skyWonders);
+  const cityIncidents = services.resolve(ServiceKeys.cityIncidents);
+  const news = services.resolve(ServiceKeys.news);
+  const shownIncident = requestedCityIncident(query);
+  if (shownIncident !== null) {
+    cityIncidents.force(shownIncident);
+  }
   // The game's clock: the time the player picked and the way it goes (Settings), unless the address sets it
   // (`?time=`, `?weather=dawn|dusk|night`), which stops it there and keeps the player's own for later.
   const requestedTime = requestedTimeOfDay(query);
@@ -492,6 +501,8 @@ async function start(strings: Strings): Promise<void> {
       ? null
       : new HarbourView(renderHost.scene, coast, { anisotropy: renderHost.anisotropy, prelit, lampGlows });
   const birds = new BirdsView(renderHost.scene, driving.world, prelit);
+  // The region's happenings: a fire, a chase, fireworks; and planes, a helicopter and a ship passing by.
+  const cityLife = new CityLifeView(renderHost.scene, coast, driving.world.halfSizeMeters, prelit);
   // Tractors at work in the fields, by day, out of the rain and the winter.
   const tractors = new FieldWorkView(renderHost.scene, driving.world.fields, driving.world.fieldWork, castShadows);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
@@ -711,6 +722,17 @@ async function start(strings: Strings): Promise<void> {
   events.on('AchievementClaimed', showGoalsWaiting);
   // The sky's wonders, pointed out as they come into view.
   events.on('SkyWonderSighted', ({ kind }) => toasts.show(strings.t(`toast.sky.${kind}`), 'success'));
+  // Breaking news: something is happening near the truck.
+  events.on('NewsPublished', ({ item }) => {
+    if (item.breaking) {
+      toasts.show(`${strings.t('news.breaking')}: ${newsText(strings, item, company.companyName)}`, 'info');
+    }
+    root.dataset.news = String(item.id);
+    // The job board's headline line follows the news.
+    refreshHq();
+  });
+  events.on('CityIncidentStarted', ({ kind }) => (root.dataset.cityIncident = kind));
+  events.on('CityIncidentEnded', () => delete root.dataset.cityIncident);
   // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
   // quests, every few hours free, and for a rewarded ad the player asks for. Also the quests and the supplies.
   const cratesShown = (): CratesShown => ({
@@ -1494,6 +1516,7 @@ async function start(strings: Strings): Promise<void> {
       rivals,
       facilities,
       research,
+      news,
       researchPoints: {
         perDelivery: config.research.pointsPerDelivery,
         perPerfectDelivery: config.research.pointsPerDelivery + config.research.perfectBonusPoints,
@@ -2328,6 +2351,8 @@ async function start(strings: Strings): Promise<void> {
         timeOfDay.update(stepSeconds);
         season.update(stepSeconds);
         skyWonders.update(stepSeconds);
+        cityIncidents.update(stepSeconds);
+        news.update();
         weather.update(stepSeconds);
         // The fleet's drivers and the rivals work on while the player is in the panel or the menus, and those near
         // the truck join the traffic.
@@ -2427,6 +2452,10 @@ async function start(strings: Strings): Promise<void> {
         riverView?.update(paused ? 0 : deltaSeconds);
         parkView?.update(paused ? 0 : deltaSeconds);
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
+        cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
+        if (cityLife.sounds.bursts > 0) {
+          audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
+        }
         tractors.update(
           paused ? 0 : deltaSeconds,
           renderHost.camera.position.x,
@@ -2609,6 +2638,7 @@ async function start(strings: Strings): Promise<void> {
         soundState.reversing = reversing;
         soundState.speed = vehicle.speed;
         soundState.rain = weather.rain;
+        soundState.sirenMeters = cityLife.sounds.sirenMeters;
         audio.update(soundState);
         if (audio.status !== shownSound) {
           shownSound = audio.status;

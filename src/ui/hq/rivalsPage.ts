@@ -2,8 +2,10 @@ import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { CityStatus, LeagueEntry, MarketNews, RivalService, RivalStatus } from '../../systems/rivals/RivalService';
+import type { NewsItem, NewsService } from '../../systems/world/NewsService';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { gazette } from './newsFeed';
 import { shareBar } from './shareBar';
 
 /** The player's company on the map and in the bars: the fleet's amber. */
@@ -16,6 +18,8 @@ export interface RivalsPageServices {
   readonly company: CompanyService;
   /** Now, epoch ms (the game's Clock): how long ago the news happened. */
   readonly now: () => number;
+  /** The region's Gazette. */
+  readonly news: NewsService;
 }
 
 export interface RivalsPageActions {
@@ -39,12 +43,15 @@ export function cssColor(color: number): string {
  * league by what each company is worth; each city with everyone's share of
  * it, its leader, and the company's campaign there; each rival, where it is
  * at home, its trucks and money, and the price of buying it out once the
- * company is worth more; and the news of the market.
+ * company is worth more, and its boss; the region's Gazette, and the news
+ * of the market.
  */
 export class RivalsPage {
   private readonly waits: LiveWait[] = [];
   /** The news shown: when it changes, the page is drawn again. */
   private shownNews: MarketNews | undefined;
+  /** The Gazette's newest headline shown: when another comes, the page is drawn again. */
+  private shownHeadline: NewsItem | null = null;
 
   constructor(
     private readonly document: Document,
@@ -60,6 +67,7 @@ export class RivalsPage {
     const terms = rivals.terms;
     this.waits.length = 0;
     this.shownNews = rivals.news[0];
+    this.shownHeadline = this.services.news.latest;
 
     const league = element(document, 'ol', 'league');
     league.append(...rivals.league().map((entry, index) => this.leagueRow(entry, index + 1)));
@@ -75,6 +83,7 @@ export class RivalsPage {
         'hq__note',
         strings.t('hq.rivals.note', { share: strings.percent(terms.leadShare), bonus: strings.percent(terms.leaderBonus) }),
       ),
+      this.section('gazette', strings.t('news.title'), null, gazette(document, strings, this.services.news.items, this.services.company.companyName)),
       this.section('league', strings.t('hq.rivals.league'), strings.t('hq.rivals.leagueNote'), league),
       this.section('cities', strings.t('hq.rivals.cities'), strings.t('hq.rivals.citiesNote'), cities),
       this.section('companies', strings.t('hq.rivals.companies'), null, companies),
@@ -89,7 +98,7 @@ export class RivalsPage {
    */
   tick(): boolean {
     const { rivals } = this.services;
-    if (rivals.news[0] !== this.shownNews) {
+    if (rivals.news[0] !== this.shownNews || this.services.news.latest !== this.shownHeadline) {
       return true;
     }
     if (this.waits.length === 0) {
@@ -209,9 +218,17 @@ export class RivalsPage {
     const name = element(document, 'h3', 'rival-card__title');
     name.append(this.swatch(definition.id), element(document, 'span', '', strings.rivalName(definition.id)));
     top.append(name, element(document, 'span', 'rival-card__home', strings.t('hq.rivals.home', { city: strings.cityName(definition.homeCityId) })));
+    // Its boss: their name and manner, and the firm's motto in their words.
+    const boss = element(document, 'p', 'rival-card__boss');
+    boss.dataset.personality = definition.personality;
+    boss.append(
+      element(document, 'span', 'rival-card__boss-name', strings.t('hq.rivals.boss', { boss: strings.t(`rival.${definition.id}.boss`) })),
+      element(document, 'span', 'rival-card__personality', strings.t(`rivalPersonality.${definition.personality}`)),
+    );
+    const motto = element(document, 'p', 'rival-card__motto', strings.t(`rival.${definition.id}.motto`));
     const bottom = element(document, 'div', 'rival-card__bottom');
     if (status.acquired) {
-      card.append(top);
+      card.append(top, boss);
       bottom.append(element(document, 'span', 'rival-card__status', strings.t('hq.rivals.acquired')));
       card.append(bottom);
       return card;
@@ -239,7 +256,7 @@ export class RivalsPage {
     } else {
       bottom.append(element(document, 'span', 'rival-card__status', strings.t('hq.rivals.tooStrong')));
     }
-    card.append(top, facts, bottom);
+    card.append(top, boss, motto, facts, bottom);
     return card;
   }
 

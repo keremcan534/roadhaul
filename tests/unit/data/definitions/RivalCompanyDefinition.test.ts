@@ -33,7 +33,7 @@ describe('validateRivalCompanyDefinition', () => {
     }
   });
 
-  it('reports ids, colours, fleets, money, paces and aggression out of range', () => {
+  it('reports ids, colours, fleets, money, paces, aggression and a personality out of range', () => {
     const rival = rivalFixture({
       id: 'Bad Rival',
       color: 0x1000000,
@@ -44,6 +44,7 @@ describe('validateRivalCompanyDefinition', () => {
       startingCredits: 10.5,
       speedFactor: 2,
       aggression: 1.5,
+      personality: 'shy' as RivalCompanyDefinition['personality'],
     });
 
     expect(issues(rival)).toEqual([
@@ -56,6 +57,7 @@ describe('validateRivalCompanyDefinition', () => {
       'rival.startingCredits',
       'rival.speedFactor',
       'rival.aggression',
+      'rival.personality',
     ]);
     expect(issues(rivalFixture({ startingTrucks: 3, maxTrucks: 2 }))).toEqual(['rival.maxTrucks']);
   });

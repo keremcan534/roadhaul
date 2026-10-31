@@ -1234,6 +1234,124 @@
   height: 17px;
 }
 
+/* ---- The region's Gazette and the rivals' bosses (src/ui/hq/newsFeed.ts, rivalsPage.ts) ---- */
+
+.gazette {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+  list-style: none;
+}
+
+.gazette__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.gazette__item + .gazette__item {
+  border-top: 1px solid var(--rh-line);
+}
+
+.gazette__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.gazette__time {
+  flex: none;
+  color: var(--rh-muted);
+  font-family: var(--rh-numeric);
+  font-size: 12px;
+}
+
+.gazette__breaking,
+.news-ticker.is-breaking .news-ticker__label {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--rh-danger);
+  color: #fff;
+  font: 600 11px/1.5 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gazette__item.is-breaking {
+  background: rgb(255 80 60 / 8%);
+}
+
+/* The newest headline over the job board, on one line. */
+.news-ticker {
+  --rh-icon-accent: var(--rh-accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+  font-size: 13px;
+}
+
+.news-ticker .icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+}
+
+.news-ticker__label {
+  flex: none;
+  color: var(--rh-accent);
+  font: 600 11px/1.5 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.news-ticker__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-card__boss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.rival-card__personality {
+  padding: 1px 8px;
+  border: 1px solid var(--company-color, var(--rh-line-strong));
+  border-radius: 999px;
+  color: var(--rh-fg-2);
+  font: 600 11px/1.5 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rival-card__motto {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+  font-style: italic;
+}
+
 /* ---- Research tree (src/ui/hq/researchTree.ts) ---- */
 
 .research__head {
