@@ -1,8 +1,9 @@
 import type { PaintDefinition } from '../definitions/PaintDefinition';
 
 /**
- * The garage's colours, cheapest first; the richer ones open with the company's level. The premium ones last: they come
- * with the "Premium paints" purchase, and are then free to use on every truck.
+ * The garage's colours, cheapest first; the richer ones open with the company's level. The premium ones next: they come
+ * with the "Premium paints" purchase, and are then free to use on every truck. The crate colours last: only crates
+ * give them (never sold), the rarer the brighter.
  */
 export const PAINTS: readonly PaintDefinition[] = [
   { id: 'signal_red', color: 0xc62f2a, price: 1500 },
@@ -20,4 +21,12 @@ export const PAINTS: readonly PaintDefinition[] = [
   { id: 'sky_blue', color: 0x5aa9e6, price: 0, premium: true },
   { id: 'gold_rush', color: 0xc9a227, price: 0, premium: true },
   { id: 'rose_pink', color: 0xd9678f, price: 0, premium: true },
+  { id: 'sunset_coral', color: 0xf0694f, price: 0, crate: 'rare' },
+  { id: 'mint_frost', color: 0x8ed8c2, price: 0, crate: 'rare' },
+  { id: 'storm_slate', color: 0x4f6178, price: 0, crate: 'rare' },
+  { id: 'electric_violet', color: 0x7a3cf0, price: 0, crate: 'epic' },
+  { id: 'lava_orange', color: 0xe2401a, price: 0, crate: 'epic' },
+  { id: 'arctic_cyan', color: 0x22c2e2, price: 0, crate: 'epic' },
+  { id: 'aurora_green', color: 0x2ee6a0, price: 0, crate: 'legendary' },
+  { id: 'neon_lime', color: 0xa6ec22, price: 0, crate: 'legendary' },
 ];

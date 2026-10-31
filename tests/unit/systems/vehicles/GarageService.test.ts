@@ -17,6 +17,9 @@ describe('GarageService', () => {
       ['rh_h4', 48000, true, 0],
       ['rh_h5', 44000, true, 0],
       ['rh_h6', 62000, true, 0],
+      ['rh_h7', 74000, true, 0],
+      ['rh_h8', 88000, true, 0],
+      ['rh_h9', 110000, true, 0],
     ]);
     expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'locked' });
     expect(game.economy.credits).toBe(50_000);
@@ -39,7 +42,7 @@ describe('GarageService', () => {
     expect(game.economy.credits).toBe(8000);
     expect(bought).toEqual([{ instanceId: 'truck_002', definitionId: 'rh_h2', price: 22000 }]);
     expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'insufficientFunds' });
-    expect(game.garage.buy('rh_h9')).toEqual({ ok: false, error: 'unknownVehicle' });
+    expect(game.garage.buy('rh_h99')).toEqual({ ok: false, error: 'unknownVehicle' });
     expect(game.garage.trucks.map((truck) => truck.instanceId)).toEqual(['truck_001', 'truck_002']);
   });
 
@@ -228,6 +231,31 @@ describe('GarageService paint shop', () => {
     const painted = game.garage.paint('truck_001', 'candy_red');
     expect(painted.ok && painted.value.paint?.id).toBe('candy_red');
     expect(game.economy.credits).toBe(1000);
+  });
+
+  it('shows the crate colours locked until a crate gives one, then paints it free, and keeps it in the save', async () => {
+    const game = await newCompany(1, 1000);
+    const crateColours = (): string[] =>
+      game.garage
+        .paintShop()
+        .filter((offer) => offer.crate)
+        .map((offer) => `${offer.paint.id}${offer.locked ? ' (locked)' : ''}`);
+    expect(crateColours()).toContain('aurora_green (locked)');
+    expect(game.garage.paint('truck_001', 'aurora_green')).toEqual({ ok: false, error: 'locked' });
+
+    // A gold crate until one holds a colour (the crates' luck is the game's own).
+    let paintId: string | null = null;
+    while (paintId === null) {
+      game.crates.grant('gold', 'level');
+      const opened = game.crates.open('gold');
+      paintId = opened.ok ? opened.value.paintId : null;
+    }
+    expect(crateColours()).toContain(paintId);
+    const credits = game.economy.credits;
+    const painted = game.garage.paint('truck_001', paintId);
+    expect(painted.ok && painted.value.paint?.id).toBe(paintId);
+    expect(game.economy.credits).toBe(credits);
+    expect(game.session.snapshot().crates.paints).toEqual([paintId]);
   });
 
   it('saves the paint at once, and a continued company still has it', async () => {

@@ -28,7 +28,7 @@ describe('ContentCatalog', () => {
 
     expect(catalog.vehicles.size).toBeGreaterThan(0);
     expect(catalog.cargo.size).toBeGreaterThan(0);
-    expect(catalog.cities.size).toBe(4);
+    expect(catalog.cities.size).toBe(7);
     expect(catalog.missions.size).toBeGreaterThan(0);
   });
 
@@ -218,6 +218,10 @@ describe('ContentCatalog', () => {
       drivers: [null],
       rivals: [null],
       facilities: [null],
+      achievements: [null],
+      quests: [null],
+      liveries: [null],
+      research: [null],
     } as unknown as Parameters<typeof validateGameContent>[0];
 
     expect(issuePaths(content)).toEqual([
@@ -234,6 +238,10 @@ describe('ContentCatalog', () => {
       'drivers[0]',
       'rivals[0]',
       'facilities[0]',
+      'achievements[0]',
+      'quests[0]',
+      'liveries[0]',
+      'research[0]',
       'missions[1].originCityId', // No maps, so no depots.
       'missions[1].destinationCityId',
       'missions[1].cargoId',

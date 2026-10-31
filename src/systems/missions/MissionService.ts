@@ -99,7 +99,10 @@ export class MissionService {
     private readonly logger: Logger,
     /** The contracts of the day, besides the game's own; none without it. */
     private readonly daily: ContractSource | null = null,
-    /** The company's facilities: a training centre brings more experience from a delivery. */
+    /**
+     * The company's perks: a training centre brings more experience from a delivery; research loads faster and
+     * keeps the cargo whole.
+     */
     private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {
     this.unsubscribeCollisions = events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) =>
@@ -124,7 +127,7 @@ export class MissionService {
 
   /** How far loading or unloading has got, 0..1: it runs while the truck stands in the target bay. */
   get handlingProgress(): number {
-    return this.mission === null ? 0 : Math.min(1, this.mission.handlingSeconds / this.config.loadingSeconds);
+    return this.mission === null ? 0 : Math.min(1, this.mission.handlingSeconds / this.loadingSeconds);
   }
 
   /**
@@ -316,7 +319,12 @@ export class MissionService {
       return false;
     }
     mission.handlingSeconds += dt;
-    return mission.handlingSeconds >= this.config.loadingSeconds;
+    return mission.handlingSeconds >= this.loadingSeconds;
+  }
+
+  /** How long loading or unloading takes: research takes a share off. */
+  private get loadingSeconds(): number {
+    return this.config.loadingSeconds * (1 - this.perks.perks.loadingTimeReduction);
   }
 
   private holdInBay(hold: boolean): void {
@@ -336,7 +344,9 @@ export class MissionService {
     }
     const cargo = this.content.cargo.get(definition.cargoId);
     const addedDamage =
-      cargoDamageFromImpact(impactSpeedMetersPerSecond, cargo.damageSensitivity) * (1 - this.cargoProtection);
+      cargoDamageFromImpact(impactSpeedMetersPerSecond, cargo.damageSensitivity) *
+      (1 - this.cargoProtection) *
+      (1 - this.perks.perks.cargoDamageReduction);
     if (addedDamage <= 0) {
       return;
     }

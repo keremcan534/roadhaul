@@ -112,7 +112,10 @@ function setup(storage = new MemoryStorage()) {
   economy.restore(10_000);
   fuel.restore(300);
   const clock = { nowMs: Date.parse('2026-09-30T12:00:00Z'), now: () => clock.nowMs };
-  const monetization = new MonetizationService(economy, fuel, damage, events, storage, clock, config, logger);
+  const crates: string[] = [];
+  const monetization = new MonetizationService(economy, fuel, damage, events, storage, clock, config, logger, {
+    grant: (tier) => void crates.push(tier),
+  });
   const ads = new FakeAds();
   const store = new FakeStore();
   const deliver = (total: number) =>
@@ -125,7 +128,7 @@ function setup(storage = new MemoryStorage()) {
       xp: 10,
       reputation: 1,
     });
-  return { events, economy, damage, fuel, monetization, ads, store, clock, storage, deliver };
+  return { events, economy, damage, fuel, monetization, ads, store, clock, storage, deliver, crates };
 }
 
 /** An impact that does a quarter of the damage that wrecks a truck (past the harmless bump), m/s. */
@@ -302,12 +305,20 @@ describe('purchases', () => {
   it('sell "Remove ads" only where there are ads', async () => {
     const context = setup();
     await context.monetization.attachStore(context.store);
-    expect((await context.monetization.productsForSale()).map((product) => product.id)).toEqual(['premium_paints']);
+    expect((await context.monetization.productsForSale()).map((product) => product.id)).toEqual([
+      'premium_paints',
+      'designs_street',
+      'designs_neon',
+      'supporter_pack',
+    ]);
 
     context.monetization.attachAds(context.ads);
     expect((await context.monetization.productsForSale()).map((product) => product.id)).toEqual([
       'remove_ads',
       'premium_paints',
+      'designs_street',
+      'designs_neon',
+      'supporter_pack',
     ]);
   });
 
@@ -347,6 +358,27 @@ describe('purchases', () => {
     context.store.next = 'pending';
     expect(await context.monetization.buy('premium_paints')).toBe('pending');
     expect(context.monetization.owned).toEqual([]);
+  });
+
+  it('never charge for what the player has: a bundle\'s parts, or a bundle of parts bought one by one', async () => {
+    const context = setup();
+    await context.monetization.attachStore(context.store);
+    expect(await context.monetization.buy('supporter_pack')).toBe('purchased');
+    for (const part of ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon'] as const) {
+      expect(context.monetization.offersNothingNew(part), part).toBe(true);
+      expect(await context.monetization.buy(part), part).toBe('failed');
+    }
+    expect(context.monetization.owned).toEqual(['supporter_pack']);
+
+    const oneByOne = setup();
+    await oneByOne.monetization.attachStore(oneByOne.store);
+    for (const part of ['remove_ads', 'premium_paints', 'designs_street'] as const) {
+      await oneByOne.monetization.buy(part);
+    }
+    expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(false);
+    await oneByOne.monetization.buy('designs_neon');
+    expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(true);
+    expect(await oneByOne.monetization.buy('supporter_pack')).toBe('failed');
   });
 
   it('are refused without a store', async () => {
@@ -401,5 +433,32 @@ describe('the earnings boost', () => {
     expect(context.monetization.earningsBoost.minutesLeft).toBe(0);
     context.ads.ready = false;
     expect(context.monetization.earningsBoost.offered).toBe(false);
+  });
+
+  it('gives a crate for a rewarded ad the player asks for, a few a day, kept on the phone', async () => {
+    const { monetization, ads, clock, storage, crates } = setup();
+    // No ads in this build yet: none offered.
+    expect(monetization.adCrateOffer).toBeNull();
+    monetization.attachAds(ads);
+    expect(monetization.adCrateOffer).toEqual({ tier: config.adCrate, left: config.adCratesPerDay });
+
+    ads.next = 'skipped';
+    expect(await monetization.claimAdCrate()).toEqual({ ok: false, error: 'skipped' });
+    expect(crates).toEqual([]);
+    ads.next = 'rewarded';
+    for (let i = 0; i < config.adCratesPerDay; i++) {
+      expect(await monetization.claimAdCrate()).toEqual({ ok: true, value: config.adCrate });
+    }
+    expect(crates).toHaveLength(config.adCratesPerDay);
+    expect(monetization.adCrateOffer).toBeNull();
+    expect(await monetization.claimAdCrate()).toEqual({ ok: false, error: 'used' });
+
+    // The next day, more; the count was kept on the phone.
+    const again = setup(storage);
+    again.monetization.attachAds(ads);
+    expect(again.monetization.adCrateOffer).toBeNull();
+    clock.nowMs += 24 * 3_600_000;
+    again.clock.nowMs = clock.nowMs;
+    expect(again.monetization.adCrateOffer?.left).toBe(config.adCratesPerDay);
   });
 });

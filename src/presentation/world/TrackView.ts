@@ -145,6 +145,9 @@ const WINDOW_LIGHT_TILES = 4;
 const WINDOW_GLOW = 1.2;
 /** Footprints larger than this are warehouses (ribbed cladding), smaller ones offices. */
 const WAREHOUSE_MIN_AREA = 350;
+/** A town's districts' building details lie in tiles this wide, drawn within this far of the camera, meters. */
+const TOWN_TILE_METERS = 300;
+const TOWN_DETAIL_METERS = 350;
 /** The ground reaches this far past the map edge, so it fades into the haze instead of ending. */
 const GROUND_MARGIN = 1000;
 /** The ground's colour patches (lush, plain, dry) are this big, meters. */
@@ -436,6 +439,10 @@ export class TrackView {
   private readonly culling = new FarCulling();
   /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
   private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
+  /** The towns' districts' building details, in smaller tiles (TOWN_TILE_METERS), by key. */
+  private readonly townTiles = new Map<string, Group>();
+  /** …hidden past TOWN_DETAIL_METERS: in a town, nearer buildings stand before the far ones. */
+  private readonly townDetail = new FarCulling(TOWN_DETAIL_METERS);
 
   constructor(
     private readonly scene: Scene,
@@ -474,6 +481,15 @@ export class TrackView {
     if (world.buildings.length > 0) {
       this.root.add(...this.createBuildings(world.buildings, (box, reach) => world.frontOf(box, reach)));
     }
+    if (this.townTiles.size > 0) {
+      const town = new Group();
+      town.name = 'town';
+      for (const tile of this.townTiles.values()) {
+        town.add(tile);
+        this.townDetail.add(tile);
+      }
+      this.root.add(town);
+    }
     if (this.countryTiles.size > 0) {
       const country = new Group();
       country.name = 'country';
@@ -496,6 +512,7 @@ export class TrackView {
   showAround(x: number, z: number): void {
     this.culling.update(x, z);
     this.treeDetail.update(x, z);
+    this.townDetail.update(x, z);
   }
 
   /** How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): lit windows glow. Cheap to call every frame. */
@@ -634,10 +651,12 @@ export class TrackView {
    * different layers (roadLevels), so none fights another over the same
    * depth where they overlap.
    *
-   * The map's own roads are drawn whole, in four draw calls, with every
-   * road's markings (a few triangles). The asphalt and shoulders of the ones
-   * the country grew (DrivingWorld.mapRoadCount) go into its tiles, two draw
-   * calls a tile: only the tiles near the camera are drawn (showAround).
+   * The map's highway, ring road and streets are drawn whole, in four draw
+   * calls, with every road's markings (a few triangles). The asphalt and
+   * shoulders of its country roads and of the ones the country grew
+   * (DrivingWorld.mapRoadCount) go into its tiles, two draw calls a tile:
+   * only the tiles near the camera are drawn (showAround). Kilometres of
+   * country road lie far off in the haze from anywhere on the map.
    */
   private createRoads(world: DrivingWorld, anisotropy: number): Mesh[] {
     const { roads, network, turningCircles, mapRoadCount } = world;
@@ -684,7 +703,7 @@ export class TrackView {
       surfaces: new TileParts<BufferGeometry>(),
     };
     roads.forEach((road, index) => {
-      const grown = index >= mapRoadCount;
+      const tiled = index >= mapRoadCount || road.kind === 'rural';
       const shoulder = road.widthMeters / 2 + SHOULDER_WIDTH / 2 - 0.2;
       const shoulderBands = [
         { offset: -shoulder, width: SHOULDER_WIDTH },
@@ -692,7 +711,7 @@ export class TrackView {
       ];
       const surfaceBands = [{ offset: 0, width: road.widthMeters }];
       const surfaceY = ROAD_Y + levels[index]! * ROAD_STACK;
-      if (grown) {
+      if (tiled) {
         for (const run of tileRuns(road, ribbonRows(road))) {
           country.shoulders.add(run.x, run.z, stripGeometry(road, shoulderBands, SHOULDER_Y, GRAVEL_TILE_METERS, undefined, run.rows));
           country.surfaces.add(run.x, run.z, stripGeometry(road, surfaceBands, surfaceY, ASPHALT_TILE_METERS, undefined, run.rows));
@@ -714,7 +733,7 @@ export class TrackView {
     for (const circle of turningCircles) {
       const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS);
       const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY, ASPHALT_TILE_METERS);
-      if (circle.roadIndex >= mapRoadCount) {
+      if (circle.roadIndex >= mapRoadCount || roads[circle.roadIndex]!.kind === 'rural') {
         country.shoulders.add(circle.x, circle.z, rim);
         country.surfaces.add(circle.x, circle.z, paving);
       } else {
@@ -780,15 +799,15 @@ export class TrackView {
   }
 
   /** One mesh of `material` a tile of `parts`, named `name`, in that country tile's group. */
-  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string): void {
+  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string, tiles = this.countryTiles, prefix = 'country'): void {
     for (const [key, tile] of parts.tiles) {
       const mesh = new Mesh(this.merged(tile), material);
       mesh.name = name;
-      let group = this.countryTiles.get(key);
+      let group = tiles.get(key);
       if (group === undefined) {
         group = new Group();
-        group.name = `country:${key}`;
-        this.countryTiles.set(key, group);
+        group.name = `${prefix}:${key}`;
+        tiles.set(key, group);
       }
       group.add(mesh);
     }
@@ -954,16 +973,21 @@ export class TrackView {
    * The buildings: walls with facades (offices and houses, or warehouses),
    * tiled roofs, the rest of their roofs and plinths, and soft shadows, a
    * draw call each for every building on the map (a few triangles each),
-   * but the rest of the roofs and the plinths of the houses and farms the
-   * country grew (BuildingObstacle.country): those, the most triangles, go
-   * into the country's tiles, drawn only near the camera (showAround).
+   * but their details (the rest of the roofs, the plinths, the shopfronts and
+   * doors, the silos, chimneys and towers): those, the most triangles, go
+   * into the country's tiles, drawn only near the camera (showAround). A
+   * town a kilometre off is deep in the haze.
    */
   private createBuildings(
     buildings: readonly BuildingObstacle[],
     frontOf: (box: BuildingObstacle, reachMeters: number) => BuildingSide | null,
   ): Mesh[] {
-    /** A layer's parts: the whole map's, and the country's by tile (the details only). */
-    const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry> } => ({ town: [], country: new TileParts() });
+    /** A layer's parts: the whole map's, and by tile (the details only: the districts' in the towns' smaller tiles). */
+    const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry>; districts: TileParts<BufferGeometry> } => ({
+      town: [],
+      country: new TileParts(),
+      districts: new TileParts(TOWN_TILE_METERS),
+    });
     const offices = layer();
     const warehouses = layer();
     const tiledRoofs = layer();
@@ -980,8 +1004,8 @@ export class TrackView {
       const x = box.minX + width / 2;
       const z = box.minZ + depth / 2;
       const add = (parts: ReturnType<typeof layer>, part: BufferGeometry): void => {
-        if (box.country === true && parts === details) {
-          parts.country.add(x, z, part);
+        if (parts === details) {
+          (box.district === undefined ? parts.country : parts.districts).add(x, z, part);
         } else {
           parts.town.push(part);
         }
@@ -991,8 +1015,10 @@ export class TrackView {
       // buildings after it draw the same numbers as ever.
       const block = box.form === undefined;
       const small = width * depth < WAREHOUSE_MIN_AREA;
+      // A town's district: windows all round, but the harbour's sheds; anywhere else, big blocks are warehouses.
+      const windowed = box.district === undefined ? small || box.shops === true : box.district !== 'harbour';
       if (block) {
-        add(small || box.shops === true ? offices : warehouses, wallsGeometry(box, tint, index));
+        add(windowed ? offices : warehouses, wallsGeometry(box, tint, index));
         for (const part of plinthGeometry(box)) {
           add(details, part);
         }
@@ -1002,11 +1028,13 @@ export class TrackView {
           const dressed =
             box.shops === true
               ? shopfrontGeometry(box, front, dressing)
-              : !small
-                ? loadingDoorsGeometry(box, front)
-                : box.country === true
-                  ? frontDoorGeometry(box, front, dressing)
-                  : [];
+              : box.district !== undefined && box.district !== 'harbour'
+                ? frontDoorGeometry(box, front, dressing)
+                : !small
+                  ? loadingDoorsGeometry(box, front)
+                  : box.country === true
+                    ? frontDoorGeometry(box, front, dressing)
+                    : [];
           for (const part of dressed) {
             add(details, part);
           }
@@ -1041,7 +1069,9 @@ export class TrackView {
           }
           break;
         case 'flat': {
-          const parts = [...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing)];
+          // A town's blocks keep their roofs' plant out of sight from the street: their parapets only.
+          const unseen = box.district !== undefined;
+          const parts = [...flatRoofGeometry(box), ...(unseen ? [] : rooftopGeometry(box, random, sunBearing))];
           if (block) {
             for (const part of parts) {
               add(details, part);
@@ -1078,6 +1108,7 @@ export class TrackView {
         meshes.push(mesh);
       }
       this.addToCountry(parts.country, material, name);
+      this.addToCountry(parts.districts, material, name, this.townTiles, 'town');
     }
     return meshes;
   }

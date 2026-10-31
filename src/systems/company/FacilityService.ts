@@ -42,9 +42,9 @@ export class FacilityService {
     private readonly logger: Logger,
   ) {}
 
-  /** What the facilities built give the company now, all together. */
+  /** What the facilities built give the company now, all together (research aside). */
   get perks(): FacilityPerks {
-    return this.companyPerks.perks;
+    return this.companyPerks.of('facilities');
   }
 
   /** How far `facilityId` is built: 0 for not at all. */
@@ -107,6 +107,6 @@ export class FacilityService {
   }
 
   private update(): void {
-    this.companyPerks.set(facilityPerks(this.content.facilities.all, this.levels));
+    this.companyPerks.set('facilities', facilityPerks(this.content.facilities.all, this.levels));
   }
 }

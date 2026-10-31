@@ -1,13 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  closePanel,
-  continueSavedCompany,
-  openGame,
-  openPanel,
-  savedCompany,
-  takeContract,
-  watchForProblems,
-} from './support';
+import { closePanel, continueGame, continueSavedCompany, openGame, openPanel, savedCompany, takeContract, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
 const tab = (page: Page, name: string) => page.locator(`.hq__tab[data-tab="${name}"]`);
@@ -21,7 +13,7 @@ test('shows the garage with its upgrades, and fits a first upgrade that shows on
   await expect(page.locator('.hq__truck-name')).toHaveText('RoadHaul H1 · Box body');
 
   await openPanel(page, 'garage');
-  await expect(page.locator('.truck-card')).toHaveCount(6);
+  await expect(page.locator('.truck-card')).toHaveCount(9);
   await expect(page.locator('.truck-card[data-vehicle-id="rh_h1"] .truck-card__status')).toHaveText('Driving it now');
   await expect(page.locator('.truck-card[data-vehicle-id="rh_h2"]')).toContainText('Unlocks at level 2');
   await expect(page.locator('.truck-card[data-vehicle-id="rh_h3"]')).toContainText('Unlocks at level 3');
@@ -31,7 +23,7 @@ test('shows the garage with its upgrades, and fits a first upgrade that shows on
   expect(await truckView(page)).toContain(':00000:');
   const tank = page.locator('.upgrade-card[data-upgrade-id="fuel_tank"]');
   await tank.locator('[data-action="buy-upgrade"]').click();
-  await expect(page.locator('.toast')).toContainText('Fuel tank: level 1 fitted.');
+  await expect(page.locator('.toast', { hasText: 'Fuel tank: level 1 fitted.' })).toBeVisible();
   await expect(page.locator('.hq__credits')).toHaveText('3,500 credits');
   await expect(tank).toHaveAttribute('data-level', '1');
   await expect(tank.locator('.pip.is-on')).toHaveCount(1);
@@ -208,14 +200,14 @@ test('paints the truck at the garage for the colour\'s price, after the player c
   await expect(apply).toHaveText('Paint it · 1,500 credits');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   await apply.click();
-  await expect(page.locator('.toast')).toContainText('RoadHaul H1 painted: Ocean blue.');
+  await expect(page.locator('.toast', { hasText: 'RoadHaul H1 painted: Ocean blue.' })).toBeVisible();
   await expect(page.locator('.hq__credits')).toHaveText('3,500 credits');
   await expect(html(page)).toHaveAttribute('data-paint', 'ocean_blue');
   await expect(picker.locator('[data-paint-id="ocean_blue"]')).toHaveClass(/is-current/);
 
   // Kept in the save: a new visit finds the truck blue.
   await page.reload();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html(page)).toHaveAttribute('data-paint', 'ocean_blue');
   await expect(html(page)).toHaveAttribute('data-truck-view', /^rh_h1:2b6cb0:/);
 

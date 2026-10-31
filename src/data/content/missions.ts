@@ -13,9 +13,11 @@ import type { MissionDefinition } from '../definitions/MissionDefinition';
  * company levels unlock the rest, harder and better paid (spec §14, §42: a
  * level-up in the first half hour). The next ten need the trucks the garage
  * sells: chilled cargo and loads over 5 t need the H2's refrigerated box,
- * building materials the H3's flatbed. The last six are the later trucks':
+ * building materials the H3's flatbed. Six more are the later trucks':
  * fuel and milk for the H4's tank, gravel and copper ore for the H5's tipper,
- * and chilled loads over 10 t for the H6.
+ * and chilled loads over 10 t for the H6. The last six are the top levels':
+ * boxed loads over 16 t for the H7, building materials over 18 t for the H8's
+ * flatbed, and chilled loads over 18 t for the H9.
  */
 export const MISSIONS: readonly MissionDefinition[] = [
   {
@@ -372,5 +374,77 @@ export const MISSIONS: readonly MissionDefinition[] = [
     damageTolerance: 0.08,
     difficulty: 'expert',
     requiredCompanyLevel: 5,
+  },
+  {
+    id: 'furniture_fair',
+    originCityId: 'city_a',
+    destinationCityId: 'city_b',
+    cargoId: 'furniture',
+    cargoWeightTons: 17,
+    baseReward: 6200,
+    timeLimitSeconds: 480,
+    damageTolerance: 0.15,
+    difficulty: 'normal',
+    requiredCompanyLevel: 6,
+  },
+  {
+    id: 'assembly_line',
+    originCityId: 'city_c',
+    destinationCityId: 'city_b',
+    cargoId: 'machine_parts',
+    cargoWeightTons: 18,
+    baseReward: 6900,
+    timeLimitSeconds: 300,
+    damageTolerance: 0.12,
+    difficulty: 'hard',
+    requiredCompanyLevel: 7,
+  },
+  {
+    id: 'bridge_beams',
+    originCityId: 'city_b',
+    destinationCityId: 'city_c',
+    cargoId: 'construction_materials',
+    cargoWeightTons: 22,
+    baseReward: 7600,
+    timeLimitSeconds: 300,
+    damageTolerance: 0.2,
+    difficulty: 'hard',
+    requiredCompanyLevel: 8,
+  },
+  {
+    id: 'tower_crane',
+    originCityId: 'city_d',
+    destinationCityId: 'city_a',
+    cargoId: 'construction_materials',
+    cargoWeightTons: 24,
+    baseReward: 8800,
+    timeLimitSeconds: 350,
+    damageTolerance: 0.1,
+    difficulty: 'expert',
+    requiredCompanyLevel: 9,
+  },
+  {
+    id: 'winter_stockpile',
+    originCityId: 'city_c',
+    destinationCityId: 'city_d',
+    cargoId: 'frozen_food',
+    cargoWeightTons: 20,
+    baseReward: 9800,
+    timeLimitSeconds: 560,
+    damageTolerance: 0.12,
+    difficulty: 'hard',
+    requiredCompanyLevel: 10,
+  },
+  {
+    id: 'blood_bank',
+    originCityId: 'city_a',
+    destinationCityId: 'city_c',
+    cargoId: 'medical_supplies',
+    cargoWeightTons: 19,
+    baseReward: 10400,
+    timeLimitSeconds: 340,
+    damageTolerance: 0.06,
+    difficulty: 'expert',
+    requiredCompanyLevel: 10,
   },
 ];

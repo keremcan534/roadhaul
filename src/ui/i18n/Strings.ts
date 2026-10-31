@@ -89,6 +89,10 @@ export class Strings {
     return this.t(`facility.${facilityId}.name`);
   }
 
+  researchName(researchId: string): string {
+    return this.t(`research.${researchId}.name`);
+  }
+
   /** A whole number with the language's grouping: "12.000", "12,000". */
   number(value: number): string {
     return this.integer.format(value);
@@ -133,6 +137,11 @@ export class Strings {
   /** "%92" in Turkish, "92%" in English. */
   percent(fraction: Fraction): string {
     return this.percentFormat.format(fraction);
+  }
+
+  /** A multiplier, with one decimal when needed: "×5", "×1,5". */
+  times(value: number): string {
+    return `×${Number.isInteger(value) ? this.integer.format(value) : this.decimal.format(value)}`;
   }
 
   /** Tonnes with one decimal when needed: "4,5 t". */

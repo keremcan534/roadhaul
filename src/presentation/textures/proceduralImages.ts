@@ -542,42 +542,19 @@ export function softBoxShadowImage(size = 64): PixelImage {
 }
 
 /**
- * Side of the cargo box: white panels, the company stripes in `accent` and
- * the RoadHaul logo. 2:1, matching the box side. Symmetric apart from the
- * lettering, so it suits both sides of the truck.
- */
-export function liveryImage(accent: Rgb, width = 1024, height = 512): PixelImage {
-  const image = createImage(width, height, [242, 242, 238]);
-  // Panel seams and a little road grime toward the bottom.
-  for (let panel = 1; panel < 6; panel++) {
-    fillRect(image, (panel * width) / 6 - 1, 0, (panel * width) / 6 + 1, height, [206, 206, 202]);
-  }
-  shade(image, (x, y) => 0.9 + 0.1 * smoothstep(0, 0.35, y / height) + 0.03 * fractalNoise(x / width, y / height, 8, 2, 5));
-  // Stripes: a broad accent band with a thin dark line above, rising into a chevron at each end.
-  fillRect(image, 0, height * 0.08, width, height * 0.22, accent);
-  fillRect(image, 0, height * 0.245, width, height * 0.27, [44, 52, 64]);
-  for (let y = Math.floor(height * 0.08); y < height * 0.62; y++) {
-    const rise = ((y - height * 0.08) / (height * 0.54)) * width * 0.08;
-    for (let x = 0; x < width * 0.06; x++) {
-      blendPixel(image, Math.floor(width * 0.02 + rise + x), y, accent, 1);
-      blendPixel(image, Math.floor(width * 0.98 - rise - x), y, accent, 1);
-    }
-  }
-  const style = { height: height * 0.2, weight: 0.17, spacing: 0.12, slant: 0.16, color: [44, 52, 64] as Rgb };
-  drawText(image, 'ROADHAUL', (width - measureText('ROADHAUL', style)) / 2, height * 0.42, style);
-  return image;
-}
-
-/**
  * Rear doors of the cargo box: the logo across the top, an accent band,
  * centre seam, locking bars, hinges and a reflector strip.
  */
-export function rearDoorsImage(accent: Rgb, size = 512): PixelImage {
+export function rearDoorsImage(accent: Rgb, size = 512, text = 'ROADHAUL'): PixelImage {
   const image = createImage(size, size, [236, 236, 232]);
   shade(image, (_x, y) => 0.92 + 0.08 * smoothstep(0, 0.4, y / size));
   fillRect(image, 0, size * 0.1, size, size * 0.17, accent);
-  const style = { height: size * 0.075, weight: 0.18, spacing: 0.12, slant: 0.16, color: [44, 52, 64] as Rgb };
-  drawText(image, 'ROADHAUL', (size - measureText('ROADHAUL', style)) / 2, size * 0.8, style);
+  let style = { height: size * 0.075, weight: 0.18, spacing: 0.12, slant: 0.16, color: [44, 52, 64] as Rgb };
+  const measured = measureText(text, style);
+  if (measured > size * 0.8) {
+    style = { ...style, height: (style.height * size * 0.8) / measured };
+  }
+  drawText(image, text, (size - measureText(text, style)) / 2, size * 0.8, style);
   fillRect(image, size * 0.497, 0, size * 0.503, size, [70, 74, 80]); // Seam.
   for (const u of [0.22, 0.34, 0.66, 0.78]) {
     fillRect(image, size * u - 4, size * 0.04, size * u + 4, size * 0.74, [150, 154, 160]); // Locking bars.

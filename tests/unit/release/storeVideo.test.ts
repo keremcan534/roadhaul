@@ -1,111 +1,110 @@
 import { describe, expect, it } from 'vitest';
+import { LANGUAGES as GAME_LANGUAGES } from '../../../src/data/config/languages';
 
 /**
- * The store video (scripts/storeVideo.mjs, docs/RELEASE.md): its cut keeps to the beat, runs as long as Google Play
- * likes a promo video, and draws only footage the shoot takes.
+ * The store trailer (scripts/storeVideo.mjs, docs/RELEASE.md): its cut keeps to the beat, fits what Google Play
+ * autoplays, shows only shots the shoot takes, and says nothing in any language that a listing's video may not.
  */
 interface Timeline {
   readonly BEAT: number;
+  readonly BARS: number;
   readonly DURATION: number;
-  readonly SCENES: Readonly<Record<string, number>>;
-  readonly WORLD_CUTS: readonly number[];
-  readonly FINALE_WORDS: readonly number[];
-  readonly WHOOSHES: readonly number[];
-  readonly TAPS: { readonly job: number; readonly paints: readonly number[]; readonly paint: number; readonly upgrade: number };
-  readonly PAY_COUNT: readonly number[];
+  readonly SECTIONS: readonly { readonly id: string; readonly from: number }[];
+  readonly HITS: { readonly horn: number; readonly drop: number; readonly finale: readonly number[]; readonly brand: number };
 }
-interface Shoot {
-  readonly CLIPS: readonly { readonly id: string; readonly seconds: number; readonly speed?: number }[];
-  readonly STILLS: readonly string[];
-  readonly FPS: number;
+interface CutList {
+  readonly CUT: readonly { readonly shot: string; readonly from: number; readonly at?: number; readonly mark?: string }[];
+  readonly WORDS: readonly { readonly key: string; readonly from: number; readonly to: number; readonly place?: string }[];
+}
+interface Captions {
+  readonly LANGUAGES: Readonly<Record<string, string>>;
+  readonly CAPTIONS: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
 }
 
-const timeline = Object.values(import.meta.glob<Timeline>('/scripts/video/timeline.mjs', { eager: true }))[0]!;
-const shoot = Object.values(import.meta.glob<Shoot>('/scripts/video/shoot.mjs', { eager: true }))[0]!;
-const promo = Object.values(import.meta.glob<string>('/scripts/video/promo.js', { query: '?raw', import: 'default', eager: true }))[0]!;
+const module = <T>(modules: Record<string, T>): T => Object.values(modules)[0]!;
+const timeline = module(import.meta.glob<Timeline>('/scripts/trailer/timeline.mjs', { eager: true }));
+const { CUT, WORDS } = module(import.meta.glob<CutList>('/scripts/trailer/cutList.mjs', { eager: true }));
+const { LANGUAGES, CAPTIONS } = module(import.meta.glob<Captions>('/scripts/trailer/captions.mjs', { eager: true }));
+const listings = new Set(
+  Object.keys(import.meta.glob('/fastlane/metadata/android/*/title.txt')).map((path) => path.split('/')[4]),
+);
+const edit = module(import.meta.glob<string>('/scripts/trailer/edit.mjs', { query: '?raw', import: 'default', eager: true }));
 
-const { BEAT, DURATION, SCENES } = timeline;
-const onBeat = (time: number): boolean => Math.abs(time / BEAT - Math.round(time / BEAT)) < 1e-9;
-const starts = Object.values(SCENES);
-const sceneOf = (name: string): readonly [number, number] => {
-  const index = starts.indexOf(SCENES[name]!);
-  return [starts[index]!, starts[index + 1] ?? DURATION];
-};
+const BEATS = timeline.BARS * 4;
+const whole = (beat: number): boolean => Number.isInteger(beat);
 
-describe('the store video', () => {
-  it('runs between 30 seconds and two minutes, and ends on a bar', () => {
-    expect(DURATION).toBeGreaterThanOrEqual(30);
-    expect(DURATION).toBeLessThanOrEqual(120);
-    expect(onBeat(DURATION / 4)).toBe(true);
+describe('the store trailer', () => {
+  it('runs the 30 seconds Google Play autoplays, on whole bars', () => {
+    expect(timeline.DURATION).toBeCloseTo(30, 9);
+    expect(timeline.BARS * 4 * timeline.BEAT).toBeCloseTo(timeline.DURATION, 9);
   });
 
-  it('starts each scene on a bar, in order, with time for the brand at the end', () => {
-    expect(starts[0]).toBe(0);
-    for (const [index, start] of starts.entries()) {
-      expect(onBeat(start / 4), `scene ${index}`).toBe(true);
-      expect(start).toBeGreaterThan(starts[index - 1] ?? -1);
+  it('cuts on beats, in order, from the first frame to the brand', () => {
+    expect(CUT[0]!.from).toBe(0);
+    CUT.forEach((clip, index) => {
+      expect(whole(clip.from), clip.shot).toBe(true);
+      expect(clip.from).toBeLessThan(BEATS);
+      expect(clip.from).toBeGreaterThan(CUT[index - 1]?.from ?? -1);
+    });
+    expect(CUT.map((clip) => clip.from)).toContain(timeline.HITS.brand);
+    // The brand holds at least three seconds at the end.
+    expect((BEATS - timeline.HITS.brand) * timeline.BEAT).toBeGreaterThanOrEqual(3);
+  });
+
+  it('starts the music\'s sections on bars, and lands the finale\'s words on beats in its own', () => {
+    for (const section of timeline.SECTIONS) {
+      expect(section.from % 4, section.id).toBe(0);
     }
-    expect(DURATION - SCENES.end!).toBeGreaterThanOrEqual(5);
+    const finale = timeline.SECTIONS.find((section) => section.id === 'finale')!.from;
+    for (const hit of timeline.HITS.finale) {
+      expect(whole(hit)).toBe(true);
+      expect(hit).toBeGreaterThanOrEqual(finale);
+      expect(hit).toBeLessThan(timeline.HITS.brand);
+    }
   });
 
-  it('cuts the world montage and lands the finale\'s words on beats, inside their scenes', () => {
-    for (const [name, times] of [
-      ['world', timeline.WORLD_CUTS],
-      ['finale', timeline.FINALE_WORDS],
-    ] as const) {
-      const [from, to] = sceneOf(name);
-      for (const time of times) {
-        expect(onBeat(time), `${name} ${time}`).toBe(true);
-        expect(time).toBeGreaterThanOrEqual(from);
-        expect(time).toBeLessThan(to);
+  it('shows only shots the shoot takes', () => {
+    const shots = new Set([...edit.matchAll(/^ {4}id: '([a-z0-9]+)',$/gm)].map((match) => match[1]));
+    expect(shots.size).toBeGreaterThan(0);
+    for (const clip of CUT) {
+      expect(shots, clip.shot).toContain(clip.shot);
+    }
+  });
+
+  it('puts one caption on screen at a time, long enough to read, before the finale', () => {
+    WORDS.forEach((word, index) => {
+      expect(CAPTIONS[word.key], word.key).toBeDefined();
+      expect(word.to).toBeGreaterThan(word.from);
+      expect((word.to - word.from) * timeline.BEAT, word.key).toBeGreaterThanOrEqual(1.4);
+      expect(word.from).toBeGreaterThanOrEqual(WORDS[index - 1]?.to ?? 0);
+      expect(word.to).toBeLessThanOrEqual(timeline.HITS.finale[0]!);
+    });
+  });
+
+  it('speaks every language of the game, each for a listing the store kit has', () => {
+    expect(Object.keys(LANGUAGES).sort()).toEqual([...GAME_LANGUAGES].sort());
+    for (const locale of Object.values(LANGUAGES)) {
+      expect(listings, locale).toContain(locale);
+    }
+    for (const [key, byLanguage] of Object.entries(CAPTIONS)) {
+      for (const lang of GAME_LANGUAGES) {
+        const lines = byLanguage[lang];
+        expect(lines, `${key} ${lang}`).toBeDefined();
+        expect(lines!.join('').trim(), `${key} ${lang}`).not.toBe('');
       }
     }
-    expect(timeline.WORLD_CUTS[0]).toBe(SCENES.world);
-  });
-
-  it('sounds its sweeps on scene cuts, its taps and its pay inside their scenes', () => {
-    for (const time of timeline.WHOOSHES) {
-      expect(starts).toContain(time);
-    }
-    const inside = (name: string, time: number): void => {
-      const [from, to] = sceneOf(name);
-      expect(time, name).toBeGreaterThan(from);
-      expect(time, name).toBeLessThan(to);
-    };
-    inside('job', timeline.TAPS.job);
-    const garage = [...timeline.TAPS.paints, timeline.TAPS.paint, timeline.TAPS.upgrade];
-    garage.forEach((time, index) => {
-      inside('garage', time);
-      expect(time).toBeGreaterThan(garage[index - 1] ?? 0);
-    });
-    const [paidFrom, paidTo] = sceneOf('paid');
-    expect(timeline.PAY_COUNT[0]).toBeGreaterThan(paidFrom);
-    expect(timeline.PAY_COUNT[1]).toBeGreaterThan(timeline.PAY_COUNT[0]!);
-    expect(timeline.PAY_COUNT[1]).toBeLessThan(paidTo);
-  });
-
-  it('draws only the clips and stills the shoot takes', () => {
-    const clips = new Set(shoot.CLIPS.map((clip) => clip.id));
-    const worldClips = /const WORLD_CLIPS = \[([^\]]*)\]/.exec(promo)?.[1] ?? '';
-    const used = [...promo.matchAll(/film\('([a-z]+)'/g), ...worldClips.matchAll(/'([a-z]+)'/g)].map((match) => match[1]!);
-    expect(used.length).toBeGreaterThan(0);
-    for (const id of used) {
-      expect(clips, id).toContain(id);
-    }
-    const stills = [...promo.matchAll(/(?:still|screen)\('([a-z0-9-]+)'/g)].map((match) => match[1]!);
-    expect(stills.length).toBeGreaterThan(0);
-    for (const name of stills) {
-      expect(shoot.STILLS, name).toContain(name);
+    for (const lang of GAME_LANGUAGES) {
+      expect(CAPTIONS.finale![lang], lang).toHaveLength(timeline.HITS.finale.length);
     }
   });
 
-  it('shoots each world clip for at least its cut', () => {
-    const worldClips = [...(/const WORLD_CLIPS = \[([^\]]*)\]/.exec(promo)?.[1] ?? '').matchAll(/'([a-z]+)'/g)].map((match) => match[1]!);
-    expect(worldClips).toHaveLength(timeline.WORLD_CUTS.length);
-    const cut = timeline.WORLD_CUTS[1]! - timeline.WORLD_CUTS[0]!;
-    for (const id of worldClips) {
-      const clip = shoot.CLIPS.find((entry) => entry.id === id)!;
-      expect(clip.seconds, id).toBeGreaterThanOrEqual(cut + 4 / shoot.FPS);
+  it('sells nothing: no price, ranking or call to action in any language (Google Play\'s rules for a listing\'s video)', () => {
+    const forbidden =
+      /\b(free|gratis|gratuit|grátis|kostenlos|darmow|ücretsiz|бесплатн|download|install|play now|best|#1|new|discount|sale)\b|indir|ücretsiz|бесплатн|скача/i;
+    for (const [key, byLanguage] of Object.entries(CAPTIONS)) {
+      for (const [lang, lines] of Object.entries(byLanguage)) {
+        expect(lines.join(' '), `${key} ${lang}`).not.toMatch(forbidden);
+      }
     }
   });
 });

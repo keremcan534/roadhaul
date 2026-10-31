@@ -28,7 +28,8 @@ import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
-import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
+import { DEFAULT_TRAILER_TEXT, liveryImage } from '../textures/liveryImages';
+import { grilleImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import type { SceneLight, SkyUniforms } from '../world/EnvironmentView';
 import type { LampMirror } from '../world/WetReflections';
@@ -50,6 +51,7 @@ import {
   type Point2,
 } from './truckShapes';
 import { Wipers } from './Wipers';
+import type { LiveryPattern } from '../../data/definitions/LiveryDefinition';
 
 const TIRE_WIDTH = 0.36;
 /** The rims' face stands this far in from the tyre's sidewall, and reaches this share of the wheel's radius. */
@@ -72,6 +74,8 @@ const ARCH_CLEARANCE = 0.025;
 const ARCH_TRIM_WIDTH = 0.08;
 const VISOR_DEPTH = 0.18;
 const VISOR_TILT = 0.12;
+/** From this company level on, a truck wears the flagship trim. */
+const FLAGSHIP_LEVEL = 8;
 /** A heavy truck's two rear axles stand this far either side of the rear axle the physics uses. */
 const TANDEM_HALF_SPACING = 0.68;
 /** The exhaust stack behind the cab on the right: its radius, and how far its top stands over the cab roof. */
@@ -130,6 +134,9 @@ export interface TruckViewOptions {
   readonly paint?: number;
   /** Each upgraded part at its level (UpgradeDefinition.look); parts left out are as built. */
   readonly looks?: Partial<TruckLooks>;
+  /** The box body's design (LiveryDefinition.pattern) and its lettering; the classic RoadHaul without them. */
+  readonly livery?: LiveryPattern;
+  readonly trailerText?: string;
   /** The truck casts the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
   /** The sky its paint, glass and chrome mirror (EnvironmentView.sky); without it they mirror nothing. */
@@ -252,6 +259,9 @@ export class TruckView {
     const halfW = W / 2;
     const { bodyType } = definition;
     const tandem = definition.vehicleClass === 'heavy';
+    // The top levels' trucks wear the flagship trim: a chrome visor with more marker lamps, chrome strips along the
+    // cab and a chrome bar in front of the grille.
+    const flagship = (definition.requiredCompanyLevel ?? 1) >= FLAGSHIP_LEVEL;
 
     const parts = new Map<PartMaterial, BufferGeometry[]>();
     const add = (material: PartMaterial, geometry: BufferGeometry): void => {
@@ -332,13 +342,15 @@ export class TruckView {
     }
     // Over the windscreen a sun visor with the cab's marker lamps along it.
     add(
-      'paint',
+      flagship ? 'chrome' : 'paint',
       new BoxGeometry(W - 0.34, 0.035, VISOR_DEPTH)
         .rotateX(VISOR_TILT)
         .translate(0, cabTop - 0.03, glassFront + VISOR_DEPTH / 2 - 0.01),
     );
-    for (let i = 0; i < 5; i++) {
-      lamp(0xffa21c, [0.09, 0.028, 0.02], [(i - 2) * (W - 0.6) * 0.2, cabTop - 0.06, glassFront + VISOR_DEPTH - 0.02]);
+    const markerLamps = flagship ? 7 : 5;
+    for (let i = 0; i < markerLamps; i++) {
+      const across = (i - (markerLamps - 1) / 2) / (markerLamps - 1);
+      lamp(0xffa21c, [0.09, 0.028, 0.02], [across * (W - 0.6) * 0.8, cabTop - 0.06, glassFront + VISOR_DEPTH - 0.02]);
     }
     // A pair of chrome air horns on the roof behind it.
     for (const side of [1, -1] as const) {
@@ -405,6 +417,18 @@ export class TruckView {
     add('chrome', new BoxGeometry(0.12, 0.12, 0.02).rotateZ(Math.PI / 4).translate(0, grilleTop + 0.1, frontZ + 0.012));
     box(stance >= 2 ? 'chrome' : 'dark', [W + 0.06, 0.32, 0.24], [0, bumperTop - 0.16, frontZ + 0.02]);
     box('dark', [W - 0.1, 0.06, 0.2], [0, bumperTop - 0.34, frontZ + 0.01]);
+    if (flagship) {
+      // A chrome bar ahead of the grille on two posts from the bumper, and a strip along each side of the cab.
+      const barY = grilleBottom + 0.12;
+      add('chrome', new CylinderGeometry(0.035, 0.035, grilleWidth + 0.3, 10).rotateZ(Math.PI / 2).translate(0, barY, frontZ + 0.105));
+      for (const side of [1, -1] as const) {
+        add(
+          'chrome',
+          new CylinderGeometry(0.03, 0.03, barY - bumperTop, 8).translate(side * (grilleWidth / 2 + 0.1), (barY + bumperTop) / 2, frontZ + 0.105),
+        );
+        add('chrome', sideQuad(side, side * (halfW + 0.004), beltY - 0.09, 0.04, cabRear + 0.2, cabLength - 0.4));
+      }
+    }
     if (stance === 3) {
       // Chrome bars across the grille.
       for (let i = 1; i <= 3; i++) {
@@ -654,13 +678,21 @@ export class TruckView {
       ),
       livery: this.track(
         shiny(
-          new MeshPhongMaterial({ map: this.texture(toTexture(liveryImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          new MeshPhongMaterial({
+            map: this.texture(toTexture(liveryImage(accentRgb, options.livery ?? 'classic', options.trailerText ?? DEFAULT_TRAILER_TEXT))),
+            shininess: 25,
+            specular: 0x222222,
+          }),
           { facing: 0.03, strength: 0.5 },
         ),
       ),
       doors: this.track(
         shiny(
-          new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          new MeshPhongMaterial({
+            map: this.texture(toTexture(rearDoorsImage(accentRgb, 512, options.trailerText ?? DEFAULT_TRAILER_TEXT))),
+            shininess: 25,
+            specular: 0x222222,
+          }),
           { facing: 0.03, strength: 0.5 },
         ),
       ),
@@ -1137,5 +1169,6 @@ export function truckViewKey(definition: VehicleDefinition, options: TruckViewOp
   const parts = (['exhaust', 'brakes', 'wheels', 'stance', 'fuelTank'] as const)
     .map((look) => lookLevel(looks[look]))
     .join('');
-  return `${definition.id}:${paint.toString(16)}:${parts}:${options.lampGlows === false ? 0 : 1}`;
+  const livery = `${options.livery ?? 'classic'}:${options.trailerText ?? DEFAULT_TRAILER_TEXT}`;
+  return `${definition.id}:${paint.toString(16)}:${parts}:${options.lampGlows === false ? 0 : 1}:${livery}`;
 }

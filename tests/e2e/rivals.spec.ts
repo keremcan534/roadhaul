@@ -22,9 +22,9 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
   await expect(league.nth(2).locator('.league__name')).toHaveText('Kuzey Lojistik (you)');
   await expect(league.nth(2).locator('.league__value')).toHaveText('72,000 credits');
 
-  // Each city is led by its rival at first.
+  // Each city a rival calls home is led by it at first; the towns at the corners are open to all.
   const havenport = page.locator('.city-card[data-city-id="city_a"]');
-  await expect(page.locator('.city-card')).toHaveCount(4);
+  await expect(page.locator('.city-card')).toHaveCount(7);
   await expect(havenport.locator('.city-card__leader')).toHaveText('Led by Havenport Express');
   await expect(havenport.locator('.city-card__share')).toHaveText('Your share 0%');
 

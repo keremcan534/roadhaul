@@ -10,7 +10,13 @@ export interface ShopActions {
   readonly onClose: () => void;
 }
 
-const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = { remove_ads: 'close', premium_paints: 'garage' };
+const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = {
+  remove_ads: 'close',
+  premium_paints: 'garage',
+  designs_street: 'truck',
+  designs_neon: 'truck',
+  supporter_pack: 'star',
+};
 
 /**
  * The shop (spec §35): what the game sells on Google Play, each with its price in the player's currency, bought once
@@ -63,8 +69,8 @@ export class ShopDialog {
     this.overlay.hidden = false;
   }
 
-  /** Shows what is on sale, and what the player owns already. */
-  show(products: readonly StoreProduct[], owned: readonly ProductId[]): void {
+  /** Shows what is on sale, and as owned what would bring the player nothing new (`owned`: a bundle's parts too). */
+  show(products: readonly StoreProduct[], owned: (id: ProductId) => boolean): void {
     const { strings } = this;
     const document = this.overlay.ownerDocument;
     this.note.textContent = products.length === 0 ? strings.t('shop.unavailable') : '';
@@ -79,7 +85,7 @@ export class ShopDialog {
           element(document, 'p', 'shop__product-description', strings.t(`product.${id}.description`)),
         );
         card.append(icon(document, PRODUCT_ICONS[id], 'shop__product-icon'), text);
-        if (owned.includes(id)) {
+        if (owned(id)) {
           card.classList.add('is-owned');
           card.append(element(document, 'span', 'shop__owned', strings.t('shop.owned')));
         } else {

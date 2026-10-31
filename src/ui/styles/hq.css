@@ -191,6 +191,7 @@
 }
 
 .hq__tab {
+  position: relative;
   display: flex;
   flex: 1 1 0;
   align-items: center;
@@ -1234,6 +1235,302 @@
   height: 17px;
 }
 
+/* ---- The region's Gazette and the rivals' bosses (src/ui/hq/newsFeed.ts, rivalsPage.ts) ---- */
+
+.gazette {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+  list-style: none;
+}
+
+.gazette__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 9px 12px;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.gazette__item + .gazette__item {
+  border-top: 1px solid var(--rh-line);
+}
+
+.gazette__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.gazette__time {
+  flex: none;
+  color: var(--rh-muted);
+  font-family: var(--rh-numeric);
+  font-size: 12px;
+}
+
+.gazette__breaking,
+.news-ticker.is-breaking .news-ticker__label {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--rh-danger);
+  color: #fff;
+  font: 600 11px/1.5 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gazette__item.is-breaking {
+  background: rgb(255 80 60 / 8%);
+}
+
+/* The newest headline over the job board, on one line; a tap opens the Gazette. */
+.news-ticker {
+  --rh-icon-accent: var(--rh-accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.news-ticker .icon {
+  flex: none;
+  width: 17px;
+  height: 17px;
+}
+
+.news-ticker__label {
+  flex: none;
+  color: var(--rh-accent);
+  font: 600 11px/1.5 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.news-ticker__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival-card__boss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.rival-card__personality {
+  padding: 1px 8px;
+  border: 1px solid var(--company-color, var(--rh-line-strong));
+  border-radius: 999px;
+  color: var(--rh-fg-2);
+  font: 600 11px/1.5 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.rival-card__motto {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* A step of the research tree within reach: a dot on the company page's tab. */
+.hq__tab.has-dot::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rh-teal);
+  box-shadow: 0 0 0 2px var(--rh-surface);
+}
+
+/* ---- Research tree (src/ui/hq/researchTree.ts) ---- */
+
+.research__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
+.research__points {
+  --rh-icon-accent: var(--rh-teal);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 8px;
+  border: 1px solid rgb(92 200 188 / 45%);
+  border-radius: 999px;
+  background: rgb(92 200 188 / 10%);
+  font-family: var(--rh-numeric);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.research__points .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* A column per branch, side by side where they fit; on a phone one under the other. */
+.research__branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.research__branch {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.research__branch-title {
+  --rh-icon-accent: var(--rh-accent);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-family: var(--rh-display);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rh-muted);
+}
+
+.research__branch-title .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.research-node {
+  --rh-icon-accent: var(--rh-accent);
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+}
+
+/* The line down to the step below: lit once this one is researched. */
+.research-node + .research-node::before {
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: 27px;
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--rh-line-strong);
+}
+
+.research-node[data-state='researched'] + .research-node::before {
+  background: var(--rh-teal);
+}
+
+.research-node[data-state='researched'] {
+  --rh-icon-accent: var(--rh-teal);
+  border-color: rgb(92 200 188 / 55%);
+  background: linear-gradient(135deg, rgb(92 200 188 / 14%), var(--rh-surface-2) 60%);
+}
+
+.research-node[data-state='available'] {
+  border-color: rgb(242 163 58 / 60%);
+  box-shadow: inset 3px 0 0 var(--rh-accent);
+}
+
+.research-node[data-state='needsPrevious'],
+.research-node[data-state='locked'] {
+  opacity: 0.62;
+}
+
+.research-node__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--rh-surface-3);
+}
+
+.research-node__icon .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.research-node__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.research-node__name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.research-node__effect {
+  margin: 0;
+  font-size: 13px;
+  color: var(--rh-fg-2);
+}
+
+.research-node__price {
+  font-family: var(--rh-numeric);
+  font-size: 12px;
+  color: var(--rh-muted);
+}
+
+.research-node__status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rh-muted);
+}
+
+.research-node__status.is-done {
+  color: var(--rh-teal);
+}
+
+.research-node__action {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
 /* ---- Special events (src/ui/hq/eventCards.ts) ---- */
 
 .event-card {
@@ -1667,4 +1964,157 @@
 
 .paint-picker__swatch.is-for-sale {
   opacity: 0.55;
+}
+
+/* ---- Crate colours: a dot of their rarity's colour in the corner; until a crate gives one, dimmed ---- */
+
+.paint-picker__swatch.is-crate {
+  --rarity-colour: #4fa8ff;
+
+  border-color: var(--rarity-colour);
+  background:
+    radial-gradient(circle at 80% 20%, var(--rarity-colour) 0 4px, transparent 5px),
+    linear-gradient(180deg, rgb(255 255 255 / 16%), transparent 48%),
+    var(--rh-swatch);
+}
+
+.paint-picker__swatch.is-crate[data-rarity='epic'] {
+  --rarity-colour: #b06bff;
+}
+
+.paint-picker__swatch.is-crate[data-rarity='legendary'] {
+  --rarity-colour: #ffcb45;
+}
+
+.paint-picker__swatch.is-crate.is-locked {
+  opacity: 0.4;
+}
+
+/* An upgrade's price with the crates' parts: the list price struck through, the parts used. */
+.upgrade-card__parts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--rh-good);
+  font: 500 12px/1.2 var(--rh-display);
+}
+
+.upgrade-card__list-price {
+  color: var(--rh-muted);
+}
+
+/* ---- The trucks' designs (src/ui/hq/liveryPicker.ts): the trailer text, then a card per design ---- */
+
+.livery-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.livery-picker__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.livery-picker__label {
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.livery-picker__input {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  font: 500 16px/1.2 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.livery-picker__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.livery-card {
+  --rarity-colour: var(--rh-line-strong);
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+}
+
+.livery-card[data-rarity='rare'] {
+  --rarity-colour: #4fa8ff;
+}
+
+.livery-card[data-rarity='epic'] {
+  --rarity-colour: #b06bff;
+}
+
+.livery-card[data-rarity='legendary'] {
+  --rarity-colour: #ffcb45;
+}
+
+.livery-card[data-rarity] {
+  border-color: var(--rarity-colour);
+}
+
+.livery-card.is-worn {
+  border-color: var(--rh-accent);
+  box-shadow: inset 0 0 0 1px var(--rh-accent);
+}
+
+.livery-card__picture {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--rh-radius-small);
+  background: none;
+  cursor: pointer;
+  aspect-ratio: 2 / 1;
+}
+
+.livery-card__picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.livery-card:not(.is-owned) .livery-card__picture img {
+  opacity: 0.75;
+}
+
+.livery-card__name {
+  font: 500 13px/1.2 var(--rh-display);
+  letter-spacing: 0.03em;
+}
+
+.livery-card__status {
+  color: var(--rh-fg-2);
+  font-size: 12px;
+}
+
+.livery-card.is-worn .livery-card__status {
+  color: var(--rh-accent-hi);
+}
+
+.livery-card__action {
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 13px;
 }

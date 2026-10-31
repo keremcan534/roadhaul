@@ -100,18 +100,19 @@ describe('nextManoeuvre', () => {
     expect(manoeuvreFor(0, 100, SOUTH, -150, 200, false).manoeuvre.kind).toBe('right');
   });
 
-  it('turns left at the high street crossing on the way from Havenport to Ironford', () => {
+  it('turns left at the first crossing up the high street on the way from Havenport to Ironford', () => {
     const world = new DrivingWorld(GAME_CONTENT.maps[0]!);
     const from = world.depotOf('city_a')!.bay;
     const to = world.depotOf('city_b')!.bay;
     const regionPaces = world.roads.map(() => 12);
     const trace = world.network.trace(from.x, from.z, to.x, to.z, regionPaces, createRouteTrace(world.network));
 
-    // Out of the yard onto the high street heading north (+Z), then left (+X) onto the harbour road at 200 m.
+    // Out of the yard onto the high street heading north (+Z), then left (+X) into the cross street, 45 m on, toward
+    // the avenue and the harbour road.
     const first = nextManoeuvre(trace, (from.headingDegrees * Math.PI) / 180, false, createManoeuvre());
     expect(first.kind).toBe('left');
-    expect(first.distanceMeters).toBeGreaterThan(180);
-    expect(first.distanceMeters).toBeLessThan(215);
+    expect(first.distanceMeters).toBeGreaterThan(35);
+    expect(first.distanceMeters).toBeLessThan(60);
     expect(trace.distanceMeters).toBeGreaterThan(4000);
     // 12 m/s on the road; the bits in the two yards go slower.
     expect(trace.seconds).toBeGreaterThan(trace.distanceMeters / 12);

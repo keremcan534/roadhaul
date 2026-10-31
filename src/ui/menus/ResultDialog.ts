@@ -1,15 +1,30 @@
+import type { CrateTier } from '../../data/config/GameConfig';
 import type { EventReward } from '../../data/definitions/EventDefinition';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { Credits } from '../../data/units';
 import type { MissionFailureReason } from '../../domain/missions/MissionInstance';
 import type { GameEvents } from '../../systems/GameEvents';
+import type { DeliveryCelebration } from '../../systems/rewards/CrateService';
 import { button, element } from '../dom';
 import { routeText } from '../hq/jobCards';
 import type { Strings } from '../i18n';
-import { withIcon } from '../icons';
+import { icon, withIcon } from '../icons';
 
 /** Where the player goes from the result: back on the road, or to the job board for the next contract. */
 export type ResultChoice = 'road' | 'jobs';
+
+/** The result's sounds. */
+export interface ResultEffects {
+  /** Star `index` (0 to 2) lands, lit or not. */
+  readonly star?: (index: number, lit: boolean) => void;
+}
+
+/** The stars land one after the other from this long after the result opens, this far apart (ms)… */
+const FIRST_STAR_MS = 280;
+const NEXT_STAR_MS = 360;
+/** …while what the delivery earned counts up for this long. */
+const TALLY_MS = 1100;
+const STAR_LABELS = ['result.star.delivered', 'result.star.onTime', 'result.star.flawless'] as const;
 
 /**
  * The end of a contract (spec §12): the itemised pay of a delivery, or why
@@ -28,11 +43,14 @@ export class ResultDialog {
   private readonly way: HTMLDivElement;
   /** The open delivery's balance, which a bonus claimed on it raises. */
   private balance: HTMLElement | null = null;
+  private timers: ReturnType<typeof setTimeout>[] = [];
+  private frame = 0;
 
   constructor(
     parent: HTMLElement,
     private readonly strings: Strings,
     private readonly onContinue: (choice: ResultChoice) => void,
+    private readonly effects: ResultEffects = {},
   ) {
     const document = parent.ownerDocument;
     this.overlay = element(document, 'div', 'screen result-dialog');
@@ -88,6 +106,81 @@ export class ResultDialog {
         ` · ${strings.t('result.cargoCondition')} ${strings.percent(1 - delivery.cargoDamage)}`,
     );
     this.show('is-success', strings.t('result.completed'), definition, [lines], [facts]);
+  }
+
+  /**
+   * Celebrates the open delivery (`celebration`, from CrateService): its
+   * stars land one by one over the receipt, what it earned (`earned`) counts
+   * up under them, and the perfect streak shows how far it has come, with
+   * the crate it earned, if any, to open there and then (`onOpenCrate`).
+   */
+  celebrate(celebration: DeliveryCelebration, earned: Credits, onOpenCrate: (tier: CrateTier) => void): void {
+    const { strings } = this;
+    const document = this.overlay.ownerDocument;
+    const { stars } = celebration;
+    const reduced = this.reducedMotion();
+    const hero = element(document, 'div', 'result-dialog__hero');
+    const row = element(document, 'div', 'result-dialog__stars');
+    row.dataset.value = 'stars';
+    row.dataset.stars = String(stars.count);
+    const lit = [true, stars.onTime, stars.flawless];
+    lit.forEach((on, index) => {
+      const star = element(document, 'span', on ? 'result-star is-lit' : 'result-star');
+      star.style.setProperty('--delay', `${FIRST_STAR_MS + index * NEXT_STAR_MS}ms`);
+      star.append(icon(document, 'star', 'result-star__icon'), element(document, 'span', 'result-star__label', strings.t(STAR_LABELS[index]!)));
+      row.append(star);
+      if (!reduced) {
+        this.later(FIRST_STAR_MS + index * NEXT_STAR_MS, () => this.effects.star?.(index, on));
+      }
+    });
+    const tally = element(document, 'p', 'result-dialog__tally', `+${strings.money(reduced ? earned : 0)}`);
+    hero.append(row, tally);
+    if (stars.count === 3) {
+      hero.append(element(document, 'p', 'result-dialog__perfect', strings.t('result.perfect')));
+      hero.classList.add('is-perfect');
+    }
+    this.panel.insertBefore(hero, this.panel.children[1] ?? null);
+    this.panel.classList.add('has-hero');
+    if (!reduced) {
+      this.countUp(tally, earned);
+    }
+
+    // The perfect streak: how far it has come and the next crate, the crate this delivery earned, or how to start one.
+    const streak = element(document, 'div', 'result-dialog__streak');
+    if (celebration.streak > 0) {
+      streak.append(
+        icon(document, 'star', 'result-dialog__streak-icon'),
+        element(document, 'span', 'result-dialog__streak-count', strings.t('result.streak', { count: celebration.streak })),
+        element(
+          document,
+          'span',
+          'result-dialog__streak-next',
+          strings.t('result.streakNext', { crate: strings.t(`crate.name.${celebration.next.tier}`), count: celebration.next.deliveries }),
+        ),
+      );
+    } else {
+      streak.classList.add('is-hint');
+      streak.append(element(document, 'span', 'result-dialog__streak-next', strings.t('result.streakStart')));
+    }
+    this.way.insertBefore(streak, this.way.lastElementChild);
+    const crate = celebration.crate;
+    if (crate !== null) {
+      const card = element(document, 'div', 'result-dialog__crate');
+      card.dataset.tier = crate;
+      const open = withIcon(
+        button(document, 'button--primary result-dialog__crate-open', strings.t('result.openCrate'), 'result-open-crate', () => {
+          open.disabled = true;
+          onOpenCrate(crate);
+        }),
+        'crate',
+      );
+      card.append(
+        icon(document, 'crate', 'result-dialog__crate-icon'),
+        element(document, 'span', 'result-dialog__crate-name', strings.t('result.crateEarned', { crate: strings.t(`crate.name.${crate}`) })),
+        open,
+      );
+      this.way.insertBefore(card, this.way.lastElementChild);
+    }
   }
 
   /**
@@ -177,6 +270,29 @@ export class ResultDialog {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.earningsBoost', { percent }), this.strings.signedMoney(paid));
   }
 
+  /** Adds what the crates' boosters did for the delivery to the open result: `pay` more (`percent`), `xp` more. */
+  showBoosted(percent: string, pay: Credits, xp: number): void {
+    const { strings } = this;
+    if (pay > 0) {
+      this.addLine('result-dialog__rivalry is-bonus', strings.t('result.boosterPay', { percent }), strings.signedMoney(pay));
+    }
+    if (xp > 0) {
+      this.addLine('result-dialog__rivalry is-bonus', strings.t('result.boosterXp'), `+${strings.t('format.xp', { value: xp })}`);
+    }
+  }
+
+  /** Adds what research did for the delivery to the open result: `pay` more (`percent`), `points` research points. */
+  showResearch(percent: string, pay: Credits, points: number): void {
+    const { strings } = this;
+    if (pay > 0) {
+      this.addLine('result-dialog__rivalry is-bonus', strings.t('result.researchPay', { percent }), strings.signedMoney(pay));
+    }
+    if (points > 0) {
+      const row = this.addLine('result-dialog__rivalry result-dialog__research', strings.t('result.researchPoints'), `+${strings.number(points)}`);
+      row.dataset.value = 'research-earned';
+    }
+  }
+
   /** Adds the leader's bonus the delivery earned in `city` to the open result. */
   showLeaderBonus(city: string, bonus: Credits): void {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.leaderBonus', { city }), this.strings.signedMoney(bonus));
@@ -193,15 +309,17 @@ export class ResultDialog {
   }
 
   hide(): void {
+    this.stopEffects();
     this.overlay.hidden = true;
   }
 
   /** A line above the way on: what it was, and what it paid. */
-  private addLine(className: string, label: string, amount: string): void {
+  private addLine(className: string, label: string, amount: string): HTMLElement {
     const document = this.overlay.ownerDocument;
     const row = element(document, 'p', className);
     row.append(element(document, 'span', '', label), element(document, 'span', 'result-dialog__rivalry-amount', amount));
     this.way.insertBefore(row, this.way.lastElementChild);
+    return row;
   }
 
   /** The way on: the next job, or back on the road. The banners added later go above them. */
@@ -220,11 +338,48 @@ export class ResultDialog {
   }
 
   dispose(): void {
+    this.stopEffects();
     this.overlay.remove();
+  }
+
+  /** What `node` shows counts up from 0 to `amount`, fast then slowing. */
+  private countUp(node: HTMLElement, amount: Credits): void {
+    const view = node.ownerDocument.defaultView;
+    if (view === null) {
+      node.textContent = `+${this.strings.money(amount)}`;
+      return;
+    }
+    const start = view.performance.now();
+    const step = (now: number): void => {
+      const t = Math.min(1, Math.max(0, (now - start) / TALLY_MS));
+      node.textContent = `+${this.strings.money(Math.round(amount * (1 - (1 - t) ** 3)))}`;
+      this.frame = t < 1 ? view.requestAnimationFrame(step) : 0;
+    };
+    this.frame = view.requestAnimationFrame(step);
+  }
+
+  private reducedMotion(): boolean {
+    return this.overlay.ownerDocument.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  }
+
+  private later(ms: number, run: () => void): void {
+    this.timers.push(setTimeout(run, ms));
+  }
+
+  private stopEffects(): void {
+    for (const timer of this.timers) {
+      clearTimeout(timer);
+    }
+    this.timers = [];
+    if (this.frame !== 0) {
+      this.overlay.ownerDocument.defaultView?.cancelAnimationFrame(this.frame);
+      this.frame = 0;
+    }
   }
 
   private show(outcome: string, title: string, definition: MissionDefinition, receipt: HTMLElement[], way: HTMLElement[]): void {
     const { strings } = this;
+    this.stopEffects();
     if (outcome !== 'is-success') {
       this.balance = null;
     }

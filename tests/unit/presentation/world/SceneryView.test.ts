@@ -63,36 +63,44 @@ describe('SceneryView', () => {
     }
   });
 
-  it('hangs the wires between neighbouring poles, sagging, and the highway fence\'s straight, a pixel wide at least, in one draw', () => {
+  it('hangs the wires between neighbouring poles, sagging, and the highway fence\'s straight, a pixel wide at least, a draw a tile', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, world);
-    const [wires] = meshes(scene, 'scenery:wires');
+    const tiles = meshes(scene, 'scenery:wires:');
     const spans = world.powerLines.reduce((sum, line) => sum + line.poles.length - 1, 0);
     const fenceSpans = world.roadFences.reduce((sum, fence) => sum + fence.points.length - 1, 0);
     expect(fenceSpans).toBeGreaterThan(0);
+    expect(tiles.length).toBeGreaterThan(1);
 
-    // The power lines: three wires a span, eight pieces each, four corners a piece; then the fences' two straight ones.
-    const position = wires!.geometry.getAttribute('position') as BufferAttribute;
+    // The power lines: three wires a span, eight pieces each, four corners a piece; and the fences' two straight ones.
     const powerCorners = spans * 3 * 8 * 4;
-    expect(position.count).toBe(powerCorners + fenceSpans * 2 * 4);
-    expect(wires!.frustumCulled).toBe(false);
+    let corners = 0;
     let fenceHighest = -Infinity;
-    for (let index = powerCorners; index < position.count; index++) {
-      fenceHighest = Math.max(fenceHighest, position.getY(index));
-    }
-    expect(fenceHighest).toBeLessThan(1.2);
     let lowest = Infinity;
     let highest = -Infinity;
-    for (let index = 0; index < powerCorners; index++) {
-      lowest = Math.min(lowest, position.getY(index));
-      highest = Math.max(highest, position.getY(index));
+    for (const tile of tiles) {
+      const position = tile.geometry.getAttribute('position') as BufferAttribute;
+      corners += position.count;
+      expect(tile.frustumCulled).toBe(false);
+      expect(tile.material).toBe(tiles[0]!.material);
+      for (let index = 0; index < position.count; index++) {
+        const y = position.getY(index);
+        if (y < 2) {
+          fenceHighest = Math.max(fenceHighest, y);
+        } else {
+          lowest = Math.min(lowest, y);
+          highest = Math.max(highest, y);
+        }
+      }
     }
+    expect(corners).toBe(powerCorners + fenceSpans * 2 * 4);
+    expect(fenceHighest).toBeLessThan(1.2);
     // From the insulators' tops, sagging less than a meter.
     expect(highest).toBeCloseTo(7.9 + 0.06 + 0.16, 5);
     expect(highest - lowest).toBeGreaterThan(0.3);
     expect(highest - lowest).toBeLessThan(1);
 
-    const material = wires!.material as ShaderMaterial;
+    const material = tiles[0]!.material as ShaderMaterial;
     expect(material.transparent).toBe(true);
     expect(material.side).toBe(DoubleSide);
     expect(material.fog).toBe(true);
@@ -149,8 +157,14 @@ describe('SceneryView', () => {
       const distance = Math.hypot(Math.max(box.min.x - x, 0, x - box.max.x), Math.max(box.min.z - z, 0, z - box.max.z));
       expect(mesh.visible, mesh.name).toBe(distance <= FAR_CULL_METERS);
     }
-    // The wires and the animals go on as they are.
-    expect(meshes(scene, 'scenery:wires').every((mesh) => mesh.visible)).toBe(true);
+    // The wires' tiles too, in larger tiles.
+    const wires = meshes(scene, 'scenery:wires:');
+    expect(wires.some((mesh) => mesh.visible)).toBe(true);
+    for (const mesh of wires) {
+      const box = new Box3().setFromObject(mesh);
+      const distance = Math.hypot(Math.max(box.min.x - x, 0, x - box.max.x), Math.max(box.min.z - z, 0, z - box.max.z));
+      expect(mesh.visible, mesh.name).toBe(distance <= FAR_CULL_METERS);
+    }
   });
 
   it('draws into the shadow map only the animals that can cast round the truck, given where shadows reach', () => {
@@ -180,13 +194,14 @@ describe('SceneryView', () => {
     view.dispose();
   });
 
-  it('costs a draw a tile, one for the wires and two a kind of animal, and casts shadows only when asked', () => {
+  it('costs a draw a tile, one a tile of the wires and two a kind of animal, and casts shadows only when asked', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, world, { castShadows: true });
     const pavements = meshes(scene, 'scenery:pavement:').length;
+    const wires = meshes(scene, 'scenery:wires:').length;
 
-    expect(drawCallCount(scene)).toBe(view.counts.tiles + pavements + 1 + 2 * 2);
-    expect(meshes(scene, 'scenery:').filter((mesh) => !mesh.name.includes('pavement') && mesh.name !== 'scenery:wires').every((mesh) => mesh.castShadow)).toBe(true);
+    expect(drawCallCount(scene)).toBe(view.counts.tiles + pavements + wires + 2 * 2);
+    expect(meshes(scene, 'scenery:').filter((mesh) => !mesh.name.includes('pavement') && !mesh.name.startsWith('scenery:wires')).every((mesh) => mesh.castShadow)).toBe(true);
     const plain = new Scene();
     new SceneryView(plain, world);
     expect(meshes(plain, 'scenery:').some((mesh) => mesh.castShadow)).toBe(false);

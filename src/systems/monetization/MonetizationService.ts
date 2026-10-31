@@ -3,8 +3,8 @@ import type { Logger } from '../../core/logging/Logger';
 import { err, ok, type Result } from '../../core/Result';
 import type { KeyValueStorage } from '../../core/storage/KeyValueStorage';
 import type { Clock } from '../../core/time/Clock';
-import type { GameConfig } from '../../data/config/GameConfig';
-import { PRODUCT_IDS, isProductId, type ProductId } from '../../data/config/products';
+import type { CrateTier, GameConfig } from '../../data/config/GameConfig';
+import { PRODUCT_BUNDLES, PRODUCT_IDS, isProductId, type ProductId } from '../../data/config/products';
 import type { Credits, Fraction } from '../../data/units';
 import {
   FRESH_PACING,
@@ -32,6 +32,8 @@ const OWNED_KEY = 'roadhaul.purchases';
 const ALLOWANCE_KEY = 'roadhaul.serviceDiscounts';
 /** When the rewarded earnings boost ends, epoch ms. */
 const EARNINGS_BOOST_KEY = 'roadhaul.earningsBoost';
+/** Today's rewarded crates. */
+const AD_CRATES_KEY = 'roadhaul.adCrates';
 const MS_PER_MINUTE = 60_000;
 
 /** Why a rewarded boost gave nothing: no ad to show, the ad closed before its end, or none left to give. */
@@ -47,6 +49,19 @@ export interface EarningsBoost {
   readonly offered: boolean;
 }
 
+/** A rewarded ad's crate, and how many are left today. */
+export interface AdCrateOffer {
+  readonly tier: CrateTier;
+  readonly left: number;
+}
+
+/** Gives crates: CrateService. */
+export interface AdCrateGranter {
+  grant(tier: CrateTier, source: 'ad'): void;
+}
+
+const NO_CRATES: AdCrateGranter = { grant: () => undefined };
+
 /** A rewarded ad's discount on a repair or a fill-up, and how many are left today. */
 export interface ServiceDiscountOffer {
   readonly discount: Fraction;
@@ -57,8 +72,8 @@ export interface ServiceDiscountOffer {
  * Ads and purchases (spec §35–36): the one owner of both, so gameplay never talks to an SDK.
  *
  * - Rewarded ads are only ever the player's choice: a bonus on a delivery's pay, a discount on a repair or a
- *   fill-up (a few a day), or from the main menu a boost on every delivery's pay for an hour. Everything a boost
- *   needs is checked before its ad: no ad is watched for nothing.
+ *   fill-up (a few a day), a crate (a few a day), or from the main menu a boost on every delivery's pay for an
+ *   hour. Everything a boost needs is checked before its ad: no ad is watched for nothing.
  * - Interstitials come only between contracts, as the delivery's result closes, and seldom (adRules.interstitialDue).
  * - `remove_ads` stops the interstitials and gives the boosts without an ad; `premium_paints` opens the garage's
  *   premium colours (GarageService asks `owns`). What was bought is kept on the device and read again from the store
@@ -72,6 +87,7 @@ export class MonetizationService implements PremiumPaintSource {
   private store: PurchaseStore = NO_STORE;
   private pacing: AdPacing = FRESH_PACING;
   private allowance: DailyAllowance | null;
+  private crateAllowance: DailyAllowance | null;
   private ownedIds: readonly ProductId[];
   /** The bonus the delivery just made may still earn, while its result is open. */
   private pendingBonus: Credits = 0;
@@ -91,9 +107,11 @@ export class MonetizationService implements PremiumPaintSource {
     private readonly clock: Clock,
     private readonly config: GameConfig['monetization'],
     private readonly logger: Logger,
+    private readonly crates: AdCrateGranter = NO_CRATES,
   ) {
     this.ownedIds = this.read(OWNED_KEY, parseOwned) ?? [];
     this.allowance = this.read(ALLOWANCE_KEY, parseAllowance);
+    this.crateAllowance = this.read(AD_CRATES_KEY, parseAllowance);
     this.boostEndsAtMs = this.read(EARNINGS_BOOST_KEY, (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)) ?? 0;
     this.unsubscribe = events.on('MissionCompleted', ({ reward }) => {
       this.pacing = pacingAfterDelivery(this.pacing);
@@ -123,8 +141,19 @@ export class MonetizationService implements PremiumPaintSource {
     return this.ownedIds;
   }
 
+  /** The player owns `id`, bought on its own or in a bundle (PRODUCT_BUNDLES). */
   owns(id: ProductId): boolean {
-    return this.ownedIds.includes(id);
+    return this.ownedIds.includes(id) || this.ownedIds.some((owned) => PRODUCT_BUNDLES[owned]?.includes(id) === true);
+  }
+
+  /**
+   * Whether buying `id` would bring the player nothing new: owned already
+   * (bought, or part of a bundle bought), or a bundle whose every part is.
+   * The shop shows it as owned, and buy() refuses it.
+   */
+  offersNothingNew(id: ProductId): boolean {
+    const parts = PRODUCT_BUNDLES[id];
+    return this.owns(id) || (parts !== undefined && parts.every((part) => this.owns(part)));
   }
 
   get adsEnabled(): boolean {
@@ -162,6 +191,11 @@ export class MonetizationService implements PremiumPaintSource {
 
   async buy(id: ProductId): Promise<PurchaseOutcome> {
     if (!this.store.enabled || this.busy) {
+      return 'failed';
+    }
+    if (this.offersNothingNew(id)) {
+      // Never charge for what the player has: a bundle's parts, or a bundle of what they bought one by one.
+      this.logger.warn(`Not buying ${id}: the player has everything it brings.`);
       return 'failed';
     }
     this.busy = true;
@@ -296,6 +330,27 @@ export class MonetizationService implements PremiumPaintSource {
       this.useAllowance();
     }
     return filled;
+  }
+
+  /** A rewarded ad's crate: null when none can be offered (no ad, or none left today). */
+  get adCrateOffer(): AdCrateOffer | null {
+    const left = allowanceLeft(this.crateAllowance, this.clock.now(), this.config.adCratesPerDay);
+    return this.canReward() && left > 0 ? { tier: this.config.adCrate, left } : null;
+  }
+
+  /** Watches the ad (none with ads removed) and gives its crate. */
+  async claimAdCrate(): Promise<Result<CrateTier, BoostError>> {
+    if (allowanceLeft(this.crateAllowance, this.clock.now(), this.config.adCratesPerDay) <= 0) {
+      return err('used');
+    }
+    const watched = await this.reward();
+    if (!watched.ok) {
+      return watched;
+    }
+    this.crateAllowance = allowanceUsed(this.crateAllowance, this.clock.now());
+    this.write(AD_CRATES_KEY, this.crateAllowance);
+    this.crates.grant(this.config.adCrate, 'ad');
+    return ok(this.config.adCrate);
   }
 
   // ---- Interstitials ----

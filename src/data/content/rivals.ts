@@ -5,7 +5,9 @@ import type { RivalCompanyDefinition } from '../definitions/RivalCompanyDefiniti
  * named after it: a small, quick parcel firm in the harbour town where the
  * player starts, a farm co-operative's reefers in the village, the
  * industrial estate's big flatbed firm, and the mining town's slower quarry
- * haulier. The names are original (spec §85).
+ * haulier. The names are original (spec §85). Each has a boss with a
+ * personality of their own: the harbour's flashy, the co-operative's steady,
+ * the estate's ruthless and the quarry's thrifty.
  */
 export const RIVALS: readonly RivalCompanyDefinition[] = [
   {
@@ -18,6 +20,7 @@ export const RIVALS: readonly RivalCompanyDefinition[] = [
     startingCredits: 3000,
     speedFactor: 1.1,
     aggression: 0.65,
+    personality: 'flashy',
   },
   {
     id: 'rival_basakova',
@@ -29,6 +32,7 @@ export const RIVALS: readonly RivalCompanyDefinition[] = [
     startingCredits: 4000,
     speedFactor: 1,
     aggression: 0.35,
+    personality: 'steady',
   },
   {
     id: 'rival_demirkent',
@@ -40,6 +44,7 @@ export const RIVALS: readonly RivalCompanyDefinition[] = [
     startingCredits: 6000,
     speedFactor: 0.95,
     aggression: 0.5,
+    personality: 'ruthless',
   },
   {
     id: 'rival_bakirdere',
@@ -51,5 +56,6 @@ export const RIVALS: readonly RivalCompanyDefinition[] = [
     startingCredits: 5000,
     speedFactor: 0.9,
     aggression: 0.55,
+    personality: 'thrifty',
   },
 ];

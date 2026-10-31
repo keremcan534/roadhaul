@@ -23,15 +23,17 @@ describe('validateRivalCompanyDefinition', () => {
     }
   });
 
-  it('gives each city a rival of its own, each with its own colour and trucks of the game', () => {
-    expect(new Set(RIVALS.map((rival) => rival.homeCityId))).toEqual(new Set(CITIES.map((city) => city.id)));
+  it('gives each rival a city of its own (the towns at the corners are open to all), its own colour and trucks of the game', () => {
+    const homes = RIVALS.map((rival) => rival.homeCityId);
+    expect(new Set(homes).size).toBe(RIVALS.length);
+    expect(homes.every((home) => CITIES.some((city) => city.id === home))).toBe(true);
     expect(new Set(RIVALS.map((rival) => rival.color)).size).toBe(RIVALS.length);
     for (const rival of RIVALS) {
       expect(VEHICLES.some((vehicle) => vehicle.id === rival.vehicleId), rival.id).toBe(true);
     }
   });
 
-  it('reports ids, colours, fleets, money, paces and aggression out of range', () => {
+  it('reports ids, colours, fleets, money, paces, aggression and a personality out of range', () => {
     const rival = rivalFixture({
       id: 'Bad Rival',
       color: 0x1000000,
@@ -42,6 +44,7 @@ describe('validateRivalCompanyDefinition', () => {
       startingCredits: 10.5,
       speedFactor: 2,
       aggression: 1.5,
+      personality: 'shy' as RivalCompanyDefinition['personality'],
     });
 
     expect(issues(rival)).toEqual([
@@ -54,6 +57,7 @@ describe('validateRivalCompanyDefinition', () => {
       'rival.startingCredits',
       'rival.speedFactor',
       'rival.aggression',
+      'rival.personality',
     ]);
     expect(issues(rivalFixture({ startingTrucks: 3, maxTrucks: 2 }))).toEqual(['rival.maxTrucks']);
   });

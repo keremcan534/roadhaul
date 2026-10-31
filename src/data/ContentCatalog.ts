@@ -1,3 +1,4 @@
+import { validateAchievementDefinition, type AchievementDefinition } from './definitions/AchievementDefinition';
 import { frozenCopy } from '../core/objects/frozenCopy';
 import { ValidationError, Validator, type ValidationIssue } from '../core/validation/Validator';
 import { validateCargoDefinition, type CargoDefinition } from './definitions/CargoDefinition';
@@ -16,7 +17,10 @@ import {
   validateTrafficVehicleDefinition,
   type TrafficVehicleDefinition,
 } from './definitions/TrafficVehicleDefinition';
+import { validateLiveryDefinition, type LiveryDefinition } from './definitions/LiveryDefinition';
 import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
+import { validateQuestDefinition, type QuestDefinition } from './definitions/QuestDefinition';
+import { RESEARCH_BRANCHES, validateResearchDefinition, type ResearchDefinition } from './definitions/ResearchDefinition';
 import { validateRivalCompanyDefinition, type RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
 import { SEASONS } from './definitions/Season';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
@@ -84,6 +88,14 @@ export class ContentCatalog {
   readonly drivers: DefinitionTable<DriverDefinition>;
   readonly rivals: DefinitionTable<RivalCompanyDefinition>;
   readonly facilities: DefinitionTable<FacilityDefinition>;
+  /** The company's goals. */
+  readonly achievements: DefinitionTable<AchievementDefinition>;
+  /** The daily quests' pool. */
+  readonly quests: DefinitionTable<QuestDefinition>;
+  /** The designs the trucks can wear; the first is the one they leave the dealer in. */
+  readonly liveries: DefinitionTable<LiveryDefinition>;
+  /** The research tree, branch by branch, each in tier order. */
+  readonly research: DefinitionTable<ResearchDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -100,6 +112,10 @@ export class ContentCatalog {
     this.drivers = new DefinitionTable('driver', content.drivers);
     this.rivals = new DefinitionTable('rival company', content.rivals);
     this.facilities = new DefinitionTable('facility', content.facilities);
+    this.achievements = new DefinitionTable('achievement', content.achievements);
+    this.quests = new DefinitionTable('quest', content.quests);
+    this.liveries = new DefinitionTable('livery', content.liveries);
+    this.research = new DefinitionTable('research', content.research);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -129,6 +145,20 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'drivers', content.drivers, validateDriverDefinition);
   validateTable(validator, 'rivals', content.rivals, validateRivalCompanyDefinition);
   validateTable(validator, 'facilities', content.facilities, validateFacilityDefinition);
+  validateTable(validator, 'achievements', content.achievements, validateAchievementDefinition);
+  validateTable(validator, 'quests', content.quests, validateQuestDefinition);
+  validateTable(validator, 'liveries', content.liveries, validateLiveryDefinition);
+  validateTable(validator, 'research', content.research, validateResearchDefinition);
+  const factory: unknown = Array.isArray(content.liveries) ? content.liveries[0] : undefined;
+  validator.check(
+    typeof factory !== 'object' ||
+      factory === null ||
+      ((factory as LiveryDefinition).price === 0 &&
+        (factory as LiveryDefinition).crate === undefined &&
+        (factory as LiveryDefinition).pack === undefined),
+    'liveries[0]',
+    'must be free: every truck leaves the dealer in it',
+  );
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);
@@ -136,7 +166,32 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateDaylightPhases(validator, content);
   validateRivalReferences(validator, content);
   validateFacilityEffects(validator, content);
+  validateResearchTiers(validator, content);
   return validator.issues;
+}
+
+/**
+ * Each research branch is a line: its tiers 1, 2, 3… one of each, in that
+ * order, none unlocking at a lower company level than the tier before it.
+ */
+function validateResearchTiers(validator: Validator, content: GameContent): void {
+  if (!Array.isArray(content.research)) {
+    return; // Already reported by validateTable.
+  }
+  for (const branch of RESEARCH_BRANCHES) {
+    let tier = 0;
+    let level = 1;
+    content.research.forEach((research, index) => {
+      if (!isObject(research) || research.branch !== branch) {
+        return;
+      }
+      tier++;
+      validator.check(research.tier === tier, `research[${index}].tier`, `must be ${tier}: the next of branch "${branch}"`);
+      const required = research.requiredCompanyLevel ?? 1;
+      validator.check(required >= level, `research[${index}].requiredCompanyLevel`, 'must not be lower than the tier before');
+      level = Math.max(level, typeof required === 'number' ? required : 1);
+    });
+  }
 }
 
 /** No two facilities do the same thing: the company's perks add up one of each. */

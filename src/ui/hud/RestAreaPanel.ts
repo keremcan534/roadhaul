@@ -6,6 +6,8 @@ import type { FuelService } from '../../systems/vehicles/FuelService';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { serviceDiscounts, type ServiceDiscountSource } from '../serviceDiscounts';
+import type { TokenCounts } from '../hq/truckPage';
+import { serviceTokens } from '../serviceTokens';
 
 /** What the panel reads. It only reads them; changes go through the actions. */
 export interface RestAreaPanelServices {
@@ -15,6 +17,8 @@ export interface RestAreaPanelServices {
   readonly economy: EconomyService;
   /** The rewarded half-price services. */
   readonly discounts: ServiceDiscountSource;
+  /** The crates' free fill-up and repair tokens. */
+  readonly supplies: TokenCounts;
 }
 
 export interface RestAreaPanelActions {
@@ -23,6 +27,9 @@ export interface RestAreaPanelActions {
   /** The same at half price, after a rewarded ad. */
   readonly onRefuelDiscounted: () => void;
   readonly onRepairDiscounted: () => void;
+  /** The same for free, with a crate's token. */
+  readonly onRefuelToken: () => void;
+  readonly onRepairToken: () => void;
 }
 
 /**
@@ -117,7 +124,11 @@ export class RestAreaPanel {
         ? null
         : { fullCost: damage.repairCost, affordable: (cost) => economy.canAfford(cost), onTake: this.actions.onRepairDiscounted },
     });
-    this.discounts.replaceChildren(...(discounted === null ? [] : [discounted]));
+    const tokens = serviceTokens(this.root.ownerDocument, strings, {
+      refuel: tankFull ? null : { count: this.services.supplies.count('free_refuel'), onUse: this.actions.onRefuelToken },
+      repair: undamaged ? null : { count: this.services.supplies.count('free_repair'), onUse: this.actions.onRepairToken },
+    });
+    this.discounts.replaceChildren(...[discounted, tokens].filter((part): part is HTMLElement => part !== null));
   }
 
   dispose(): void {

@@ -26,8 +26,17 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   standing in the cities, campaigns, and tenders).
  * - v11: adds the facilities (what the company has built for itself, and
  *   how far).
+ * - v12: adds the daily reward's streak.
+ * - v13: adds the company's goals (what they count that the rest of the
+ *   save does not, and the rewards collected).
+ * - v14: adds the crates (held, opened, the colours they gave, the perfect
+ *   streak) and the company levels whose reward was collected.
+ * - v15: adds when the free crate is next ready, the supplies crates gave
+ *   (upgrade parts, boosters, those running) and the day's quests.
+ * - v16: adds the trucks' designs (bought, worn) and the trailer text, and
+ *   the designs crates gave.
  */
-export const CURRENT_SAVE_VERSION = 11;
+export const CURRENT_SAVE_VERSION = 17;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -52,6 +61,99 @@ export interface SaveGameData {
   readonly fleet: FleetSaveData;
   readonly rivals: RivalsSaveData;
   readonly facilities: FacilitiesSaveData;
+  readonly daily: DailyRewardSaveData;
+  readonly achievements: AchievementsSaveData;
+  readonly crates: CratesSaveData;
+  readonly levelRewards: LevelRewardsSaveData;
+  readonly supplies: SuppliesSaveData;
+  readonly quests: QuestsSaveData;
+  readonly liveries: LiveriesSaveData;
+  readonly research: ResearchSaveData;
+}
+
+/** The research tree (ResearchService). */
+export interface ResearchSaveData {
+  /** Research points held. */
+  readonly points: number;
+  /** ResearchDefinition ids researched. */
+  readonly researched: readonly string[];
+}
+
+/** The trucks' designs (LiveryService). */
+export interface LiveriesSaveData {
+  /** LiveryDefinition ids bought with credits. */
+  readonly bought: readonly string[];
+  /** Truck instance id → the design it wears; a truck not listed wears the classic. */
+  readonly worn: Readonly<Record<string, string>>;
+  /** The company's trailer text, or null for the RoadHaul lettering. */
+  readonly text: string | null;
+}
+
+/** What crates gave besides credits and looks (SupplyService). */
+export interface SuppliesSaveData {
+  /** Upgrade parts. */
+  readonly parts: number;
+  /** Boosters held, by BoosterKind. One not listed is 0. */
+  readonly boosters: Readonly<Record<string, number>>;
+  /** Deliveries left on the pay boost and the experience boost running; 0 for none. */
+  readonly payBoostLeft: number;
+  readonly xpBoostLeft: number;
+}
+
+/** The day's quests (QuestService): the quests themselves follow from the day. */
+export interface QuestsSaveData {
+  /** The player's day (localDay) the counts are for, or null before the first. */
+  readonly day: number | null;
+  /** What the day has counted so far, by QuestMetric (distanceKm apart). One not listed is 0. */
+  readonly counts: Readonly<Record<string, number>>;
+  /** Metres driven, ever, as the day began: the day's kilometres are counted from it. */
+  readonly distanceStartMeters: number;
+  /** The day's quests whose crate was collected, and whether the bonus crate for all of them was. */
+  readonly claimed: readonly string[];
+  readonly bonusClaimed: boolean;
+}
+
+/** The crates (CrateService). */
+export interface CratesSaveData {
+  /** Crates waiting to be opened, by CrateTier: bronze, silver, gold. One not listed is 0. */
+  readonly held: Readonly<Record<string, number>>;
+  /** Crates opened, ever. */
+  readonly opened: number;
+  /** The crate colours (PaintDefinition ids) and designs (LiveryDefinition ids) the crates gave. */
+  readonly paints: readonly string[];
+  readonly liveries: readonly string[];
+  /** Perfect deliveries (three stars) in a row, up to the last one; and the most ever. */
+  readonly perfectStreak: number;
+  readonly bestPerfectStreak: number;
+  /** When the next free crate is ready, epoch ms (0: now). */
+  readonly freeCrateAtMs: number;
+}
+
+/** The company levels' rewards (LevelRewardService). */
+export interface LevelRewardsSaveData {
+  /** The highest level whose reward was collected (1: none yet; level 1 has none). */
+  readonly rewardedLevel: number;
+}
+
+/** The company's goals (AchievementService). */
+export interface AchievementsSaveData {
+  /**
+   * What the goals count that the rest of the save does not, by
+   * AchievementMetric: perfectDeliveries, tendersWon, rivalsBoughtOut,
+   * dailyStreak (the longest), upgradesFitted, bigWins, skyWonders. One not
+   * listed is 0.
+   */
+  readonly counters: Readonly<Record<string, number>>;
+  /** AchievementDefinition ids whose reward was collected. */
+  readonly claimed: readonly string[];
+}
+
+/** The daily reward's streak (DailyRewardService; src/domain/rewards/dailyReward.ts). */
+export interface DailyRewardSaveData {
+  /** The player's calendar day (localDay) the reward was last claimed on, or null if never. */
+  readonly lastClaimDay: number | null;
+  /** Days in a row claimed, the last claim's included; 0 if never. */
+  readonly streak: number;
 }
 
 /** What the company has built for itself (FacilityService). */

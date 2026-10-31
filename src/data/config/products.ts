@@ -4,10 +4,17 @@
  *
  * - `remove_ads`: no ads between contracts, and the rewarded boosts without watching an ad.
  * - `premium_paints`: the garage's premium colours (PaintDefinition.premium).
+ * - `designs_street`, `designs_neon`: three truck designs each (LiveryDefinition.pack).
+ * - `supporter_pack`: all of the above in one (PRODUCT_BUNDLES).
  */
-export const PRODUCT_IDS = ['remove_ads', 'premium_paints'] as const;
+export const PRODUCT_IDS = ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon', 'supporter_pack'] as const;
 export type ProductId = (typeof PRODUCT_IDS)[number];
 
 export function isProductId(value: unknown): value is ProductId {
   return typeof value === 'string' && (PRODUCT_IDS as readonly string[]).includes(value);
 }
+
+/** What a bundle brings with it: owning it is owning each of these. */
+export const PRODUCT_BUNDLES: Readonly<Partial<Record<ProductId, readonly ProductId[]>>> = {
+  supporter_pack: ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon'],
+};

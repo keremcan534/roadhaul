@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { foundCompany, openMainMenu, openPanel, savedCompany, takeContract, watchForProblems } from './support';
+import { continueGame, foundCompany, openMainMenu, openPanel, savedCompany, takeContract, watchForProblems } from './support';
 
 const html = (page: import('@playwright/test').Page) => page.locator('html');
 
@@ -26,14 +26,14 @@ test('shows the saved company on the main menu, and starts the drive at the depo
   const places = page.locator('.main-menu__place');
   await expect(places.first()).toHaveAttribute('data-start', 'left');
   await expect(places.first()).toHaveAttribute('aria-checked', 'true');
-  await expect(page.locator('.main-menu__place[data-kind="depot"]')).toHaveCount(4);
+  await expect(page.locator('.main-menu__place[data-kind="depot"]')).toHaveCount(7);
   await expect(page.locator('.main-menu__place[data-kind="restArea"]')).toHaveCount(1);
   const ironford = page.locator('.main-menu__place[data-start="city_b_depot"]');
   await expect(ironford).toHaveText('Ironford depot');
   await ironford.click();
   await expect(ironford).toHaveAttribute('aria-checked', 'true');
 
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await openPanel(page, 'truck');
   await expect(page.locator('.hq__truck-location')).toHaveText('At Ironford depot');
@@ -79,7 +79,7 @@ test('keeps the start where the truck is while a contract is under way, and says
   await expect(page.locator('.main-menu__start-note')).toBeVisible();
   await expect(page.locator('.main-menu__place').first()).toHaveAttribute('aria-checked', 'true');
   await expect(page.locator('.main-menu__place[data-kind="depot"]').first()).toBeDisabled();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await expect(html(page)).not.toHaveAttribute('data-mission-state', 'none');
   expect(problems).toEqual([]);

@@ -154,8 +154,8 @@ describe('placeStreetFurniture', () => {
     expect(shelters[0]!.x).toBeCloseTo(0, 6);
     expect(shelters[0]!.z).toBeCloseTo(5 + SIDEWALK_WIDTH_METERS + 1.1, 6);
     const benchesAndBins = furniture.filter((item) => item.kind !== 'busStop');
-    expect(benchesAndBins.length).toBeGreaterThanOrEqual(8);
-    // Along each side: a bench, then a bin, and so on, 38 m apart, near the pavement's back.
+    expect(benchesAndBins.length).toBeGreaterThanOrEqual(5);
+    // Along each side: a bench, then a bin, and so on, 56 m apart, near the pavement's back.
     const right = benchesAndBins.filter((item) => item.z > 0).sort((a, b) => a.x - b.x);
     expect(right.map((item) => item.kind).slice(0, 2)).toEqual(['bench', 'bin']);
     for (const item of benchesAndBins) {

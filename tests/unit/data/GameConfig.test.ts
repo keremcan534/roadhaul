@@ -65,7 +65,7 @@ describe('GameConfig', () => {
       ...DEFAULT_GAME_CONFIG,
       economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairShare: 1.5 },
       fuel: { consumptionScale: -1, lowFuelFraction: 2 },
-      company: { levelXp: [100, 50, 60, 70, 80] },
+      company: { levelXp: [100, 50, 60, 70, 80, 90, 100, 110, 120, 130], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards },
     };
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
@@ -81,7 +81,7 @@ describe('GameConfig', () => {
   it('reports contracts, trucks, upgrades, drivers and facilities locked behind a company level that does not exist', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
-      company: { levelXp: [0, 1000] },
+      company: { levelXp: [0, 1000], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 1) },
       fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3] },
     };
     const beyondLevel2 = (level: number | undefined): boolean => (level ?? 1) > 2;
@@ -321,6 +321,26 @@ describe('GameConfig', () => {
       'rendering.msaaSamples',
       'rendering.shadowMapSize',
     ]);
+  });
+
+  it('checks the daily reward and the slot machine: rising bets, and no win worth less than the bet back', () => {
+    const paths = (config: GameConfig): string[] => validateGameConfig(config, catalog).map((issue) => issue.path);
+    const symbols = DEFAULT_GAME_CONFIG.casino.symbols;
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [], levelBonus: 0.5, bonusLevels: 4 } })).toEqual(['dailyReward.credits']);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [100, 0], levelBonus: 2, bonusLevels: 4 } })).toEqual([
+      'dailyReward.credits[1]',
+      'dailyReward.levelBonus',
+    ]);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, casino: { bets: [100, 50], symbols } })).toEqual(['casino.bets[1]']);
+    expect(
+      paths({
+        ...DEFAULT_GAME_CONFIG,
+        casino: {
+          bets: [50],
+          symbols: [{ ...symbols[0]!, pair: 0.5 }, { ...symbols[1]!, three: 1, pair: 1 }, { ...symbols[1]!, weight: 0 }],
+        },
+      }),
+    ).toEqual(['casino.symbols[0].pair', 'casino.symbols[1].three', 'casino.symbols[2].id', 'casino.symbols[2].weight']);
   });
 
   it('requires the frame clamp to allow at least one fixed step', () => {

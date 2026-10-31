@@ -1,4 +1,5 @@
 import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { compilePieces } from './compilePieces';
 import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
@@ -12,6 +13,13 @@ export interface RenderSettings {
   /** The sun's real-time shadows (EnvironmentView): a shadow map this many texels square, or 0 for none. */
   readonly shadowMapSize: number;
 }
+
+/**
+ * precompileGradually() lets a frame be drawn after this many new shaders:
+ * a weak phone GPU compiles them in well under a second, far from the five
+ * seconds Android waits before it reports the game not responding.
+ */
+const SHADERS_PER_PAUSE = 4;
 
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render driver/i;
@@ -171,6 +179,41 @@ export class RenderHost {
       this.post.compile(this.scene, this.camera, !this.softwareRendering);
     }
     this.renderer.getContext().flush();
+  }
+
+  /**
+   * precompile(), a piece of the scene at a time, for phones: a weak GPU given
+   * every shader at once is busy with them for seconds, and Android, whose own
+   * drawing waits for it, reports the game not responding (an ANR). The
+   * pieces go to the GPU a few new shaders at a time, and `pause` lets a frame
+   * be drawn between; pieces whose shaders are compiled already cost nothing.
+   * Then precompile() for the colour pass's own. At boot only.
+   */
+  async precompileGradually(pause: () => Promise<void>): Promise<void> {
+    let compiling: Promise<unknown>[] = [];
+    let sincePause = this.programCount();
+    for (const piece of compilePieces(this.scene)) {
+      const before = this.programCount();
+      const ready =
+        this.post === null
+          ? this.renderer.compileAsync(piece, this.camera, this.scene)
+          : this.post.compileObject(piece, this.scene, this.camera);
+      if (this.programCount() > before) {
+        compiling.push(ready);
+      }
+      if (this.programCount() - sincePause >= SHADERS_PER_PAUSE) {
+        this.renderer.getContext().flush();
+        await Promise.all(compiling);
+        compiling = [];
+        await pause();
+        sincePause = this.programCount();
+      }
+    }
+    this.precompile();
+  }
+
+  private programCount(): number {
+    return this.renderer.info.programs?.length ?? 0;
   }
 
   render(): void {

@@ -146,9 +146,14 @@ describe('a river under a road', () => {
 describe('the shipped region', () => {
   const world = new DrivingWorld(MAPS[0]!);
 
-  it('bridges its river where the highway and the country roads to Amberfield and Copperdale cross it', () => {
+  it('bridges its river where the highway and the country roads to Amberfield, Copperdale and from Saltcove cross it', () => {
     expect(world.rivers).toHaveLength(1);
-    expect(world.bridges.map((bridge) => world.roads[bridge.roadIndex]!.id).sort()).toEqual(['highway_a_b', 'rural_a_c', 'rural_a_d']);
+    expect(world.bridges.map((bridge) => world.roads[bridge.roadIndex]!.id).sort()).toEqual([
+      'highway_a_b',
+      'rural_a_c',
+      'rural_a_d',
+      'rural_e_c',
+    ]);
     for (const bridge of world.bridges) {
       expect(bridge.toMeters - bridge.fromMeters).toBeLessThan(70);
     }

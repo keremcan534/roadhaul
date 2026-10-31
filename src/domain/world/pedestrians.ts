@@ -10,7 +10,7 @@ import { SIDEWALK_WIDTH_METERS, type Sidewalk, type StreetFurniture } from './to
  * (walkerAt), so nothing is stepped or stored. Presentation draws them
  * (PedestrianView); nothing collides with them.
  */
-export const WALKERS_PER_100_METERS = 3.5;
+export const WALKERS_PER_100_METERS = 5;
 /** Walking paces, m/s, and a walker's stride (two steps), meters. */
 const WALK_SPEED = [0.95, 1.55] as const;
 const STRIDE_METERS = 1.45;

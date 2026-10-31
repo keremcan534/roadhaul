@@ -1,16 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  closePanel,
-  foundCompany,
-  openCompanyHq,
-  openGame,
-  openMainMenu,
-  openPanel,
-  shownSpeed,
-  takeContract,
-  waitForFrames,
-  watchForProblems,
-} from './support';
+import { closePanel, continueGame, foundCompany, openCompanyHq, openGame, openMainMenu, openPanel, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
 
 const html = (page: Page) => page.locator('html');
 
@@ -42,12 +31,12 @@ test('boots into the main menu, goes straight into the game, and opens the job b
   await expect(page.locator('.hq__company-name')).toHaveText('Kuzey Lojistik');
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
   await expect(page.locator('.hq__level')).toHaveText('Level 1 · Rookie');
-  // The game's own twenty-four, and five contracts of the day.
+  // The game's own thirty-six, and five contracts of the day.
   const own = page.locator('.job-card:not(.job-card--daily)');
-  await expect(own).toHaveCount(30);
+  await expect(own).toHaveCount(36);
   await expect(page.locator('.job-card--daily')).toHaveCount(5);
-  // Seven need a higher company level; the other twelve also need a bigger truck.
-  await expect(page.locator('.job-card.is-locked:not(.job-card--daily)')).toHaveCount(25);
+  // All but five need a higher company level or a bigger truck.
+  await expect(page.locator('.job-card.is-locked:not(.job-card--daily)')).toHaveCount(31);
   const first = own.first();
   await expect(first.locator('.job-card__title')).toHaveText('First Package');
   await expect(first.locator('.job-card__route')).toHaveText('Havenport → Ironford');
@@ -101,7 +90,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(html(page)).toHaveAttribute('data-panel', 'open');
   await expect(page.locator('.hq__tab[data-tab="jobs"]')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
-  await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(35);
+  await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(41);
   // The truck waits in the delivery depot's yard, where it can be serviced.
   await openPanel(page, 'truck');
   await expect(page.locator('.hq__truck-location')).toHaveText('At Ironford depot');
@@ -135,7 +124,7 @@ test('offers contracts of the day, and keeps one under way across a reload', asy
   // The save keeps the contract itself, whatever the board deals next.
   await page.reload();
   await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded');
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await expect(page.locator('.mission-hud__objective')).toContainText('Deliver to');
@@ -268,7 +257,7 @@ test('continues the saved company after the page reloads', async ({ page }) => {
 
   await page.reload();
   await expect(html(page)).toHaveAttribute('data-game-state', 'mainMenu');
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
 
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await openPanel(page, 'jobs');
@@ -333,7 +322,7 @@ test('burns fuel while driving, and refuels only at a depot or rest area', async
   await expect(refuel).toBeEnabled();
   await expect(refuel).toContainText('Refuel');
   await refuel.click();
-  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(page.locator('.toast', { hasText: 'Refuelled' })).toBeVisible();
   await expect(refuel).toHaveText('Tank full');
   expect(problems).toEqual([]);
 });
@@ -351,7 +340,7 @@ test('offers fuel, repairs and the road again at the rest area', async ({ page }
   await expect(counter).toContainText('Rest area');
   await expect(counter.locator('[data-action="rest-repair"]')).toBeDisabled(); // No damage.
   await counter.locator('[data-action="rest-refuel"]').click();
-  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(page.locator('.toast', { hasText: 'Refuelled' })).toBeVisible();
   await expect(counter.locator('[data-action="rest-refuel"]')).toHaveText('Tank full');
 
   await counter.locator('[data-action="rest-continue"]').click();

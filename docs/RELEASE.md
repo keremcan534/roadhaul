@@ -15,10 +15,10 @@ Console's screens and rules from time to time. When a screen here looks differen
 | App icon, 512 × 512 | `fastlane/metadata/android/en-US/images/icon.png` | Drawn by `node scripts/androidIcons.mjs`, the same mark as the launcher icon. |
 | Feature graphic, 1024 × 500 | `fastlane/metadata/android/en-US/images/featureGraphic.jpg` | Drawn by `node scripts/storeArt.mjs` (after `npm run build`). It has no words, so every language shares it. |
 | Phone screenshots | `fastlane/metadata/android/<locale>/images/phoneScreenshots/` | Six in each listing, 1920 × 1080, captioned in its language (`scripts/storeArt.mjs`): a village at dusk, the cab with its HUD, a rainy night, the job board, the garage's paint shop and the map with the rivals. Google Play takes two to eight. |
-| Promo video (optional) | `store-video/roadhaul-promo.mp4`, made by `node scripts/storeVideo.mjs` | 32 seconds, 1920 × 1080, English, with music. Not kept in the repository (tens of MB): the script makes it from the build. Google Play takes it as a YouTube link (below). |
+| Promo video (optional) | `store-video/trailer/roadhaul-trailer-<lang>.mp4` (4K) and `…-<lang>-1080p.mp4`, made by `node scripts/storeVideo.mjs` | 30 seconds (what Google Play autoplays), 3840 × 2160, one per language of the game, with music and the game's own sound. Not kept in the repository (hundreds of MB): the script makes them from the build. Google Play takes each as a YouTube link (below). |
 | Privacy policy | `public/privacy.html` → https://keremcan534.github.io/roadhaul/privacy.html | English and Turkish. Deployed with the game by `deploy-pages.yml` on every push to `main`. Settings → About links to it. |
 | Open-source licences | Settings → About | `licenses.txt`, built from the packages the game ships. |
-| In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`) and "Premium paints" (`premium_paints`), one-time products. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
+| In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`), "Premium paints" (`premium_paints`), the "Street" and "Neon" design packs (`designs_street`, `designs_neon`, three truck designs each) and the "Supporter pack" (`supporter_pack`: all four in one), one-time products, looks and comfort only. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
 | Ads (off) | `ROADHAUL_ADS`, AdMob (`@capacitor-community/admob`) | Off in releases until you switch them on (step 7): a release without ads carries no ads code at all. CI's debug APK shows Google's test ads, to try them on a phone. |
 
 ## One-time setup
@@ -92,10 +92,16 @@ the declarations.
   the same names.
 - Graphics: `icon.png`, `featureGraphic.jpg` and the screenshots. A language without its own screenshots shows the
   English ones.
-- Video (optional): upload `roadhaul-promo.mp4` to YouTube, then paste its address (`https://www.youtube.com/watch?v=…`)
-  into the listing's **Video** field. Google Play shows it on the feature graphic with a play button. The YouTube video
-  must be public or unlisted, with ads off, embedding allowed and no age restriction. One English video can serve every
-  language. For fastlane, the address goes in `fastlane/metadata/android/en-US/video.txt`.
+- Video (optional): upload `roadhaul-trailer-en.mp4` (the 4K file: YouTube then streams even its 1080p at a higher
+  quality) to YouTube as a normal video, not a Short, then paste its address (`https://www.youtube.com/watch?v=…`,
+  without `&si=` or a timestamp) into the listing's **Video** field. Google Play shows it on the feature graphic with a
+  play button, and may autoplay its first 30 seconds muted: the trailer is 30 seconds, and its words are in the picture.
+  The YouTube video must be public or unlisted, with monetisation off, embedding allowed ("Allow embedding" in its
+  details), no age restriction, and "Not made for kids". Each language can have its own: upload
+  `roadhaul-trailer-<lang>.mp4` too, and paste each address in that language's translation of the listing (a language
+  without one shows the English video). For fastlane, the addresses go in `fastlane/metadata/android/<locale>/video.txt`.
+  The trailer keeps to Google Play's rules for a listing's video: real play from the first frame, no prices, "free",
+  rankings or calls to action, no phones or fingers.
 
 **Store settings** (Grow users → Store presence → Store settings):
 
@@ -109,7 +115,7 @@ the declarations.
 | Privacy policy | https://keremcan534.github.io/roadhaul/privacy.html |
 | Ads | **No** while the releases are built without ads (the default). **Yes** from the first release with live ads (step 7). |
 | App access | All functionality is available without special access (no sign-in). |
-| Content rating | Fill in the IARC questionnaire as a **Game**. Vehicles collide and get damaged, and props (lamps, signs, bins) can be knocked over. No people or animals are hurt: pedestrians step out of the way. There is no blood, no weapons, no bad language, no gambling, and no alcohol, drugs or tobacco. Players cannot talk to each other or share anything. It offers in-app purchases of digital goods ("Remove ads", "Premium paints"): answer yes to that question. The game does not share the player's location. Expect the lowest or near-lowest ratings (for example PEGI 3 or 7, ESRB Everyone). |
+| Content rating | Fill in the IARC questionnaire as a **Game**. Vehicles collide and get damaged, and props (lamps, signs, bins) can be knocked over. No people or animals are hurt: pedestrians step out of the way. There is no blood, no weapons, no bad language, and no alcohol, drugs or tobacco. **Simulated gambling: yes.** The company panel has a slot machine played for the game's own credits; no real money can be bet or won, and credits are never sold. Answer the questionnaire's simulated gambling question yes (no real-money gambling, no prizes of value). Players cannot talk to each other or share anything. It offers in-app purchases of digital goods ("Remove ads", "Premium paints"): answer yes to that question. The game does not share the player's location. Expect the rating to rise for the simulated gambling: PEGI 12 in Europe, ESRB Teen in North America, higher in some countries; without it the game rated PEGI 3 or 7, ESRB Everyone. |
 | Target audience | 13 and over (13–15, 16–17, 18+) keeps the game outside the Families programme. Choosing ages under 13 adds the Families policy's requirements and review, and with ads, only Families-certified ad networks and settings. |
 | Data safety | Without ads: "Does your app collect or share any of the required user data types?" **No.** The game has no accounts, sends nothing off the device and keeps its saves on the phone; Google Play's purchases are Google's own. With live ads: **Yes**, for what the Google Mobile Ads SDK collects (step 7). |
 | Advertising ID | No while the releases have no ads. With live ads: **Yes**, for advertising (the ads SDK declares the permission itself). |
@@ -130,7 +136,8 @@ at every start, so a purchase follows the player to a new phone, and a refund ta
 2. Upload a bundle to a testing track first: the Console lets you make products only once the app has one with the
    billing library in it (every build has).
 3. Monetize with Play → Products → **In-app products** → Create product, twice. The product ids must be exactly
-   `remove_ads` and `premium_paints` (they are in the game's code and stored on players' phones: never rename them).
+   `remove_ads`, `premium_paints`, `designs_street`, `designs_neon` and `supporter_pack` (they are in the game's code and
+   stored on players' phones: never rename them). Suggested prices: €2.99, €1.99, €1.99, €1.99 and €6.99.
    Give each a name and a description (translate them for the listings' languages), a price, and **activate** it.
 4. Setup → **License testing**: add the Google accounts that test purchases. Their purchases are free test orders,
    and they can test a pending (slow) payment too.
@@ -226,6 +233,6 @@ release build on a phone after adding one.
 
 - Android vitals (Monitor and improve) shows crashes, "app not responding" reports and slow frames on players' phones.
 - Reply to reviews in the Console.
-- For the next release: bump the version, update the notes, build, upload. `scripts/storeVideo.mjs` cuts the video
-  again from the new build (it needs ffmpeg with libx264; see the script's header). `scripts/storeArt.mjs` redraws the
+- For the next release: bump the version, update the notes, build, upload. `scripts/storeVideo.mjs` shoots and cuts the
+  trailers again from the new build (it needs Google Chrome and ffmpeg with libx264; see the script's header). `scripts/storeArt.mjs` redraws the
   screenshots and the feature graphic if the game's look has changed.

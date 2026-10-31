@@ -1,9 +1,14 @@
+import { CITY_INCIDENT_KINDS, type CityIncidentKind } from '../definitions/CityIncident';
 import { isLogLevel, type LogLevel } from '../../core/logging/Logger';
 import { frozenCopy } from '../../core/objects/frozenCopy';
 import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../ContentCatalog';
 import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
+import { BOOSTER_KINDS, type BoosterKind } from '../definitions/BoosterKind';
+import { CRATE_TIERS, isCrateTier, type CrateTier } from '../definitions/CrateTier';
+import { PAINT_RARITIES, type PaintRarity } from '../definitions/PaintDefinition';
+import { SEASONS, type Season } from '../definitions/Season';
 import type { Credits, Fraction } from '../units';
 
 /**
@@ -144,8 +149,13 @@ export interface GameConfig {
     readonly dayFromDegrees: number;
   };
   readonly company: {
-    /** XP at which each company level starts, level 1 first (spec §14: five levels in the first version). */
+    /**
+     * XP at which each company level starts, level 1 first (spec §14: five levels in the first version, which the
+     * content's level requirements stay within; the ones above are for the long run, and their rewards).
+     */
     readonly levelXp: readonly number[];
+    /** What each level from the second brings when the player collects it (LevelRewardService), level 2 first. */
+    readonly levelRewards: readonly LevelRewardConfig[];
   };
   /** The fleet (spec §27): the company's other trucks, on contracts of their own with hired drivers. */
   readonly fleet: {
@@ -241,12 +251,147 @@ export interface GameConfig {
     readonly earningsBoostShare: Fraction;
     /** …for this many minutes of the clock (the game open or not). */
     readonly earningsBoostMinutes: number;
+    /** A rewarded ad brings a crate of this tier (the crates' screen), at most this many a day. */
+    readonly adCrate: CrateTier;
+    readonly adCratesPerDay: number;
+  };
+  /** The daily reward (DailyRewardService): credits for the first drive of each day, more for each day in a row. */
+  readonly dailyReward: {
+    /** What each day of the streak pays at company level 1, the first day first; after the last, the streak starts over. */
+    readonly credits: readonly Credits[];
+    /** Each company level above the first adds this share of it… */
+    readonly levelBonus: Fraction;
+    /** …up to this many levels above the first. */
+    readonly bonusLevels: number;
+  };
+  /**
+   * Crates (CrateService): earned, never sold, and opened for credits and, at times, one of the colours only crates
+   * hold (PaintDefinition.crate). Cosmetic: nothing in them makes the game go faster.
+   */
+  readonly crates: {
+    readonly tiers: Readonly<Record<CrateTier, CrateTierConfig>>;
+    /**
+     * A streak of perfect deliveries (three stars: on time, the cargo flawless) earns a crate on every `bronzeEvery`th
+     * of them in a row, a silver one on every `silverEvery`th and a gold one on every `goldEvery`th instead.
+     */
+    readonly perfectStreak: { readonly bronzeEvery: number; readonly silverEvery: number; readonly goldEvery: number };
+    /** Each day's daily reward brings this crate too… */
+    readonly dailyCrate: CrateTier;
+    /** …and its last day this one instead. */
+    readonly dailyStreakCrate: CrateTier;
+    /** A free crate waits on the crates' screen every this many hours, collected or not (one at a time)… */
+    readonly freeCrateHours: number;
+    /** …its tier drawn by these weights. */
+    readonly freeCrateWeights: Readonly<Record<CrateTier, number>>;
+    /** Collecting every one of the day's quests brings this crate too (QuestService). */
+    readonly questBonusCrate: CrateTier;
+    /** One upgrade part takes this much off an upgrade level's price (UpgradeService). */
+    readonly partCredits: Credits;
+    /** The boosters crates hold (SupplyService): what each does, and how often each comes against the others. */
+    readonly boosters: {
+      /** pay_boost: this share more on each of the next so many deliveries… */
+      readonly payShare: Fraction;
+      readonly payDeliveries: number;
+      /** …xp_boost: twice the experience on each of the next so many. */
+      readonly xpDeliveries: number;
+      readonly weights: Readonly<Record<BoosterKind, number>>;
+    };
+  };
+  /**
+   * The truck stop's slot machine (CasinoService): played for the company's credits only, never for money; credits
+   * are never sold. Three reels on one line, each reel the same weighted strip of symbols. Three alike pay `three`
+   * times the bet, two alike `pair` times it; no win is ever less than the bet back. Content-free: the symbols' ids
+   * name their pictures (the UI's).
+   */
+  readonly casino: {
+    /** The bets on offer, smallest first. */
+    readonly bets: readonly Credits[];
+    readonly symbols: readonly SlotSymbolConfig[];
+  };
+  /** The sky's wonders (SkyWonderService): the northern lights some nights, and what counts as seeing them. */
+  readonly skyWonders: {
+    /** The share of the nights with the northern lights, by season (they also need a clear, dark sky). */
+    readonly auroraChance: Readonly<Record<Season, Fraction>>;
+    /** A shooting star counts as a sighting at most once in this many seconds of play (they fall often at night). */
+    readonly meteorCountSeconds: number;
+  };
+  /**
+   * The region's rare happenings (CityIncidentService): one at a time, near the truck while it drives, a few
+   * minutes apart. Fireworks only after dark.
+   */
+  readonly cityLife: {
+    /** Seconds of driving before the first… */
+    readonly firstAfterSeconds: number;
+    /** …and between one ending and the next, from–to. */
+    readonly gapSeconds: readonly [number, number];
+    /** How likely each kind is when one comes, against each other. */
+    readonly weights: Readonly<Record<CityIncidentKind, number>>;
+    /** How long each lasts, seconds (a chase also ends where its road does). */
+    readonly durationSeconds: Readonly<Record<CityIncidentKind, number>>;
+    /** It happens at least this far from the truck… */
+    readonly nearMeters: number;
+    /** …and at most this far. */
+    readonly farMeters: number;
+    /** How fast the chase goes, m/s. */
+    readonly chaseSpeed: number;
+  };
+  /** The research tree (ResearchService): the points the company's own deliveries earn toward it. */
+  readonly research: {
+    /** Research points a delivery earns… */
+    readonly pointsPerDelivery: number;
+    /** …and more for a perfect one (three stars). */
+    readonly perfectBonusPoints: number;
+  };
+  /** When the game asks the player to rate it on the store (ReviewService): seldom, after deliveries in good order. */
+  readonly review: {
+    /** Deliveries in good order before the first ask… */
+    readonly firstAfterDeliveries: number;
+    /** …a delivery in good order arriving with its cargo damaged no more than this… */
+    readonly maxCargoDamage: Fraction;
+    /** …then never again for this many days… */
+    readonly daysBetween: number;
+    /** …and never more than this many times. */
+    readonly maxAsks: number;
   };
   readonly debug: {
     readonly logLevel: LogLevel;
     /** Shows FPS, draw calls and triangles (enable in the browser with `?debug`). */
     readonly showPerfOverlay: boolean;
   };
+}
+
+export { CRATE_TIERS, isCrateTier, type CrateTier } from '../definitions/CrateTier';
+
+/** What a crate of one tier holds. */
+export interface CrateTierConfig {
+  /** Credits, drawn evenly between the two. */
+  readonly credits: readonly [Credits, Credits];
+  /** How often it holds a crate colour the company has not got yet as well. */
+  readonly paintChance: Fraction;
+  /** Which rarity that colour is, by these weights against each other. */
+  readonly rarityWeights: Readonly<Record<PaintRarity, number>>;
+  /** How often it holds upgrade parts as well, and how many (evenly between the two). */
+  readonly partsChance: Fraction;
+  readonly parts: readonly [number, number];
+  /** How often it holds a booster as well (its kind by GameConfig.crates.boosters.weights). */
+  readonly boosterChance: Fraction;
+}
+
+/** What a company level brings when it is collected. */
+export interface LevelRewardConfig {
+  readonly credits: Credits;
+  readonly crate: CrateTier;
+}
+
+/** A symbol on the slot machine's reels. */
+export interface SlotSymbolConfig {
+  readonly id: string;
+  /** How often it comes up on a reel, against the others' weights. */
+  readonly weight: number;
+  /** Three alike pay this many times the bet… */
+  readonly three: number;
+  /** …two alike this many (at least 1: the bet back). */
+  readonly pair: number;
 }
 
 /** More NPC vehicles than this would cost too much on low-end phones. */
@@ -400,10 +545,21 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     dayFromDegrees: 12,
   },
   company: {
-    levelXp: [0, 1000, 3000, 6500, 12000],
+    levelXp: [0, 1000, 3000, 6500, 12000, 20000, 30000, 43000, 60000, 80000],
+    levelRewards: [
+      { credits: 1500, crate: 'silver' },
+      { credits: 2500, crate: 'silver' },
+      { credits: 4000, crate: 'silver' },
+      { credits: 6000, crate: 'gold' },
+      { credits: 8000, crate: 'silver' },
+      { credits: 10000, crate: 'gold' },
+      { credits: 12000, crate: 'gold' },
+      { credits: 15000, crate: 'gold' },
+      { credits: 25000, crate: 'gold' },
+    ],
   },
   fleet: {
-    garageSlots: [2, 3, 4, 6, 8],
+    garageSlots: [2, 3, 4, 6, 8, 8, 9, 9, 10, 10],
     averageSpeedKmh: 45,
     handlingSeconds: 60,
     payFactor: 0.75,
@@ -449,6 +605,91 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     interstitialMinSeconds: 480,
     earningsBoostShare: 0.25,
     earningsBoostMinutes: 60,
+    adCrate: 'silver',
+    adCratesPerDay: 3,
+  },
+  dailyReward: {
+    credits: [300, 500, 800, 1200, 1600, 2200, 4000],
+    levelBonus: 0.5,
+    bonusLevels: 4,
+  },
+  crates: {
+    tiers: {
+      bronze: {
+        credits: [300, 900],
+        paintChance: 0.12,
+        rarityWeights: { rare: 1, epic: 0.15, legendary: 0.02 },
+        partsChance: 0.5,
+        parts: [1, 2],
+        boosterChance: 0.3,
+      },
+      silver: {
+        credits: [900, 2400],
+        paintChance: 0.3,
+        rarityWeights: { rare: 1, epic: 0.4, legendary: 0.08 },
+        partsChance: 0.75,
+        parts: [2, 4],
+        boosterChance: 0.5,
+      },
+      gold: {
+        credits: [2500, 6000],
+        paintChance: 0.6,
+        rarityWeights: { rare: 0.6, epic: 0.6, legendary: 0.3 },
+        partsChance: 1,
+        parts: [4, 8],
+        boosterChance: 0.8,
+      },
+    },
+    perfectStreak: { bronzeEvery: 3, silverEvery: 5, goldEvery: 10 },
+    dailyCrate: 'bronze',
+    dailyStreakCrate: 'silver',
+    freeCrateHours: 6,
+    freeCrateWeights: { bronze: 75, silver: 20, gold: 5 },
+    questBonusCrate: 'gold',
+    partCredits: 500,
+    boosters: {
+      payShare: 0.25,
+      payDeliveries: 3,
+      xpDeliveries: 3,
+      weights: { pay_boost: 3, xp_boost: 3, free_refuel: 2, free_repair: 2 },
+    },
+  },
+  skyWonders: {
+    auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
+    meteorCountSeconds: 300,
+  },
+  research: {
+    pointsPerDelivery: 1,
+    perfectBonusPoints: 1,
+  },
+  cityLife: {
+    firstAfterSeconds: 120,
+    gapSeconds: [300, 540],
+    weights: { building_fire: 3, police_chase: 3, fireworks: 2 },
+    durationSeconds: { building_fire: 240, police_chase: 150, fireworks: 100 },
+    nearMeters: 140,
+    farMeters: 520,
+    chaseSpeed: 21,
+  },
+  review: {
+    firstAfterDeliveries: 5,
+    maxCargoDamage: 0.1,
+    daysBetween: 60,
+    maxAsks: 3,
+  },
+  casino: {
+    bets: [50, 100, 250, 500],
+    // Returns about 95.6% of what is bet in the long run; a win on about 46% of spins, ten times the bet or more on
+    // 1.4% (tests/unit/domain/casino/slotMachine.test.ts works it out).
+    symbols: [
+      { id: 'wrench', weight: 7, three: 5, pair: 1 },
+      { id: 'fuel', weight: 6, three: 8, pair: 1 },
+      { id: 'wheels', weight: 5, three: 12, pair: 1 },
+      { id: 'cargo', weight: 4, three: 20, pair: 1.5 },
+      { id: 'engine', weight: 3, three: 40, pair: 2 },
+      { id: 'truck', weight: 2, three: 100, pair: 5 },
+      { id: 'trophy', weight: 1, three: 250, pair: 10 },
+    ],
   },
   debug: {
     logLevel: 'info',
@@ -525,6 +766,13 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     rivals,
     newGame,
     monetization,
+    dailyReward,
+    crates,
+    casino,
+    skyWonders,
+    research,
+    cityLife,
+    review,
     debug,
   } = config;
 
@@ -756,6 +1004,47 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     `unknown map "${newGame.startingMapId}"`,
   );
   validateMonetization(validator, monetization);
+  validator.check(dailyReward.credits.length > 0, 'dailyReward.credits', 'must have at least one day');
+  dailyReward.credits.forEach((credits, index) => validator.positiveInteger(credits, `dailyReward.credits[${index}]`));
+  validator.fraction(dailyReward.levelBonus, 'dailyReward.levelBonus');
+  validator.nonNegativeInteger(dailyReward.bonusLevels, 'dailyReward.bonusLevels');
+  validateCrates(validator, crates);
+  validator.check(
+    company.levelRewards.length === levels.length - 1,
+    'company.levelRewards',
+    'must give each level from the second a reward',
+  );
+  company.levelRewards.forEach((reward, index) => {
+    validator.positiveInteger(reward.credits, `company.levelRewards[${index}].credits`);
+    validator.check(isCrateTier(reward.crate), `company.levelRewards[${index}].crate`, `unknown crate "${String(reward.crate)}"`);
+  });
+  validateCasino(validator, casino);
+  for (const season of SEASONS) {
+    validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
+  }
+  validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
+  validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
+  validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
+  validator.positiveNumber(cityLife.firstAfterSeconds, 'cityLife.firstAfterSeconds');
+  validator.check(
+    cityLife.gapSeconds[0] > 0 && cityLife.gapSeconds[1] >= cityLife.gapSeconds[0],
+    'cityLife.gapSeconds',
+    'must be a range above 0, the least first',
+  );
+  for (const kind of CITY_INCIDENT_KINDS) {
+    validator.check(cityLife.weights[kind] >= 0, `cityLife.weights.${kind}`, 'must be 0 or more');
+    validator.positiveNumber(cityLife.durationSeconds[kind], `cityLife.durationSeconds.${kind}`);
+  }
+  validator.check(
+    cityLife.nearMeters > 0 && cityLife.farMeters > cityLife.nearMeters,
+    'cityLife.farMeters',
+    'must be beyond nearMeters, both above 0',
+  );
+  validator.positiveNumber(cityLife.chaseSpeed, 'cityLife.chaseSpeed');
+  validator.positiveInteger(review.firstAfterDeliveries, 'review.firstAfterDeliveries');
+  validator.fraction(review.maxCargoDamage, 'review.maxCargoDamage');
+  validator.positiveInteger(review.daysBetween, 'review.daysBetween');
+  validator.nonNegativeInteger(review.maxAsks, 'review.maxAsks');
   validator.check(isLogLevel(debug.logLevel), 'debug.logLevel', `unknown log level "${debug.logLevel}"`);
   validator.boolean(debug.showPerfOverlay, 'debug.showPerfOverlay');
   return validator.issues;
@@ -789,4 +1078,76 @@ function validateMonetization(validator: Validator, monetization: GameConfig['mo
     'must be greater than 0 and at most 1',
   );
   validator.positiveInteger(monetization.earningsBoostMinutes, 'monetization.earningsBoostMinutes');
+  validator.check(isCrateTier(monetization.adCrate), 'monetization.adCrate', `unknown crate "${String(monetization.adCrate)}"`);
+  validator.nonNegativeInteger(monetization.adCratesPerDay, 'monetization.adCratesPerDay');
+}
+
+function validateCrates(validator: Validator, crates: GameConfig['crates']): void {
+  for (const tier of CRATE_TIERS) {
+    const config = crates.tiers[tier];
+    const [least, most] = config.credits;
+    validator.check(
+      Number.isInteger(least) && Number.isInteger(most) && least > 0 && most >= least,
+      `crates.tiers.${tier}.credits`,
+      'must be two whole numbers above 0, the second at least the first',
+    );
+    validator.fraction(config.paintChance, `crates.tiers.${tier}.paintChance`);
+    for (const rarity of PAINT_RARITIES) {
+      const weight = config.rarityWeights[rarity];
+      validator.check(Number.isFinite(weight) && weight >= 0, `crates.tiers.${tier}.rarityWeights.${rarity}`, 'must be 0 or more');
+    }
+  }
+  for (const tier of CRATE_TIERS) {
+    const config = crates.tiers[tier];
+    const [fewest, most] = config.parts;
+    validator.fraction(config.partsChance, `crates.tiers.${tier}.partsChance`);
+    validator.check(
+      Number.isInteger(fewest) && Number.isInteger(most) && fewest >= 1 && most >= fewest,
+      `crates.tiers.${tier}.parts`,
+      'must be two whole numbers from 1, the second at least the first',
+    );
+    validator.fraction(config.boosterChance, `crates.tiers.${tier}.boosterChance`);
+    validator.check(
+      Number.isFinite(crates.freeCrateWeights[tier]) && crates.freeCrateWeights[tier] >= 0,
+      `crates.freeCrateWeights.${tier}`,
+      'must be 0 or more',
+    );
+  }
+  validator.check(
+    CRATE_TIERS.some((tier) => crates.freeCrateWeights[tier] > 0),
+    'crates.freeCrateWeights',
+    'must give at least one tier a chance',
+  );
+  validator.positiveNumber(crates.freeCrateHours, 'crates.freeCrateHours');
+  validator.check(isCrateTier(crates.questBonusCrate), 'crates.questBonusCrate', `unknown crate "${String(crates.questBonusCrate)}"`);
+  validator.positiveInteger(crates.partCredits, 'crates.partCredits');
+  validator.fraction(crates.boosters.payShare, 'crates.boosters.payShare');
+  validator.positiveInteger(crates.boosters.payDeliveries, 'crates.boosters.payDeliveries');
+  validator.positiveInteger(crates.boosters.xpDeliveries, 'crates.boosters.xpDeliveries');
+  for (const kind of BOOSTER_KINDS) {
+    const weight = crates.boosters.weights[kind];
+    validator.check(Number.isFinite(weight) && weight >= 0, `crates.boosters.weights.${kind}`, 'must be 0 or more');
+  }
+  const streak = crates.perfectStreak;
+  validator.positiveInteger(streak.bronzeEvery, 'crates.perfectStreak.bronzeEvery');
+  validator.positiveInteger(streak.silverEvery, 'crates.perfectStreak.silverEvery');
+  validator.positiveInteger(streak.goldEvery, 'crates.perfectStreak.goldEvery');
+  validator.check(isCrateTier(crates.dailyCrate), 'crates.dailyCrate', `unknown crate "${String(crates.dailyCrate)}"`);
+  validator.check(isCrateTier(crates.dailyStreakCrate), 'crates.dailyStreakCrate', `unknown crate "${String(crates.dailyStreakCrate)}"`);
+}
+
+function validateCasino(validator: Validator, casino: GameConfig['casino']): void {
+  validator.check(casino.bets.length > 0, 'casino.bets', 'must offer at least one bet');
+  casino.bets.forEach((bet, index) => {
+    validator.positiveInteger(bet, `casino.bets[${index}]`);
+    validator.check(index === 0 || bet > casino.bets[index - 1]!, `casino.bets[${index}]`, 'must be more than the bet before');
+  });
+  validator.check(casino.symbols.length >= 3, 'casino.symbols', 'must have at least three symbols');
+  casino.symbols.forEach((symbol, index) => {
+    const path = `casino.symbols[${index}]`;
+    validator.check(casino.symbols.findIndex((other) => other.id === symbol.id) === index, `${path}.id`, `"${symbol.id}" is there twice`);
+    validator.positiveInteger(symbol.weight, `${path}.weight`);
+    validator.check(Number.isFinite(symbol.pair) && symbol.pair >= 1, `${path}.pair`, 'must be at least 1: never less than the bet back');
+    validator.check(Number.isFinite(symbol.three) && symbol.three > symbol.pair, `${path}.three`, 'must be more than its pair');
+  });
 }

@@ -90,7 +90,7 @@ export interface TownEntry {
 const WALK_STEP_METERS = 1;
 const SHORTEST_SIDEWALK_METERS = 8;
 /** Benches and bins take turns this far apart along a pavement, near its back, clear of the lamps. */
-const FURNITURE_SPACING_METERS = 38;
+const FURNITURE_SPACING_METERS = 56;
 const FURNITURE_BACK_METERS = 0.55;
 const FURNITURE_RADIUS: Readonly<Record<StreetFurnitureKind, number>> = { bench: 0.55, bin: 0.3, busStop: 1.6 };
 /** A bus shelter stands at the back of its pavement, its middle this far behind the kerb. */

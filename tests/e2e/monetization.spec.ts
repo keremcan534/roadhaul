@@ -55,7 +55,7 @@ test('pays a bonus on a delivery for a rewarded ad watched to its end', async ({
   const ad = page.locator('.simulated');
   await expect(ad).toBeVisible();
   await ad.locator('[data-action="skip-ad"]').click();
-  await expect(page.locator('.toast')).toContainText('The ad closed early');
+  await expect(page.locator('.toast', { hasText: 'The ad closed early' })).toBeVisible();
   await expect(claim).toBeEnabled();
 
   // Watched to the end: the bonus is paid, and shown as a line of the result.
@@ -95,7 +95,7 @@ test('fills the tank at half price after a rewarded ad at the rest area', async 
   const ad = page.locator('.simulated');
   await expect(ad).toHaveAttribute('data-rewarded', 'true', { timeout: 10_000 });
   await ad.locator('[data-action="close-ad"]').click();
-  await expect(page.locator('.toast')).toContainText('Refuelled');
+  await expect(page.locator('.toast', { hasText: 'Refuelled' })).toBeVisible();
   await expect(counter.locator('[data-action="rest-refuel"]')).toHaveText('Tank full');
   await expect(counter.locator('.service-discounts')).toHaveCount(0); // Nothing left to discount here.
   expect(problems).toEqual([]);
@@ -106,12 +106,13 @@ test('sells the premium paints in the shop, keeps them, and paints a truck in on
   const problems = watchForProblems(page);
   await openMainMenu(page, '?lang=en&store=simulated');
 
-  // Without ads there is nothing to remove: the shop sells the paints alone.
+  // Without ads there is nothing to remove: the shop sells the looks (the paints, the design packs, the bundle).
   const shopButton = page.locator('[data-action="shop"]');
   await expect(shopButton).toBeVisible();
   await shopButton.click();
   const shop = page.locator('.shop');
-  await expect(shop.locator('.shop__product')).toHaveCount(1);
+  await expect(shop.locator('.shop__product')).toHaveCount(4);
+  await expect(shop.locator('.shop__product[data-product="remove_ads"]')).toHaveCount(0);
   const paints = shop.locator('.shop__product[data-product="premium_paints"]');
   await expect(paints.locator('.shop__product-name')).toHaveText('Premium paints');
   await expect(paints.locator('[data-action="buy-product"]')).toHaveText('Buy · €1.99');
@@ -123,7 +124,7 @@ test('sells the premium paints in the shop, keeps them, and paints a truck in on
 
   await paints.locator('[data-action="buy-product"]').click();
   await page.locator('.simulated [data-action="simulated-buy"]').click();
-  await expect(page.locator('.toast')).toContainText('Thank you! Premium paints unlocked.');
+  await expect(page.locator('.toast', { hasText: 'Thank you! Premium paints unlocked.' })).toBeVisible();
   await expect(paints.locator('.shop__owned')).toHaveText('Owned');
   await page.locator('[data-action="close-shop"]').click();
 
@@ -158,7 +159,7 @@ test('offers "Remove ads" where there are ads, and then gives the bonus without 
 
   await page.locator('[data-action="shop"]').click();
   const removeAds = page.locator('.shop__product[data-product="remove_ads"]');
-  await expect(page.locator('.shop__product')).toHaveCount(2);
+  await expect(page.locator('.shop__product')).toHaveCount(5);
   await removeAds.locator('[data-action="buy-product"]').click();
   await page.locator('.simulated [data-action="simulated-buy"]').click();
   await expect(removeAds.locator('.shop__owned')).toHaveText('Owned');

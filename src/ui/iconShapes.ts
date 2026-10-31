@@ -40,6 +40,10 @@ const ICONS = {
   megaphone: `<path d="M3 9.4A1.4 1.4 0 0 1 4.4 8H7l8.6-4.6a.8.8 0 0 1 1.2.7v15.8a.8.8 0 0 1-1.2.7L7 16H4.4A1.4 1.4 0 0 1 3 14.6z"/><path d="M7.4 16.6l1.4 4.2a1 1 0 0 0 1 .7h1.4a.7.7 0 0 0 .7-.9l-1.2-4z"/><path d="M19.4 8.6a4.6 4.6 0 0 1 0 6.8" ${accentLine(2)}/>`,
   // A mortarboard: learning the trade (the training centre).
   school: `<path d="M12 3.4l10.4 5-10.4 5-10.4-5z"/><path d="M6 11.6v4.6c0 1.6 2.7 3.2 6 3.2s6-1.6 6-3.2v-4.6l-6 2.9z"/><path d="M20.6 9.4v6.2" ${accentLine(1.6)}/><circle ${ACCENT} cx="20.6" cy="16.6" r="1.4"/>`,
+  // A folded newspaper: the region's Gazette.
+  news: `<path ${HOLES} d="M5 3.5h13.6a1.4 1.4 0 0 1 1.4 1.4v14.3a2.3 2.3 0 0 1-2.3 2.3H5.6a2.6 2.6 0 0 1-2.6-2.6V8.2h2zM7.4 6.6v4.2h4.2V6.6zm6 0v1.6h4.2V6.6zm0 2.6v1.6h4.2V9.2zm-6 3.6v1.6h10.2v-1.6zm0 3.2v1.6h10.2V16z"/><path ${ACCENT} d="M7.4 6.6h4.2v4.2H7.4z"/>`,
+  // A flask: the research tree.
+  research: `<path d="M8.6 2h6.8a.8.8 0 0 1 0 1.6h-.6v5.3l5.7 9.5a2.2 2.2 0 0 1-1.9 3.4H5.4a2.2 2.2 0 0 1-1.9-3.4l5.7-9.5V3.6h-.6a.8.8 0 0 1 0-1.6z"/><path ${ACCENT} d="M7.6 13.6h8.8l2.5 4.3a.9.9 0 0 1-.8 1.4H5.9a.9.9 0 0 1-.8-1.4z"/>`,
   // A pennant: a tender, raced for.
   flag: `<rect x="3.6" y="2" width="2.3" height="20" rx="1.1"/><path ${ACCENT} d="M7.4 3.4h12.3a.6.6 0 0 1 .5.9l-2.6 4.2 2.6 4.2a.6.6 0 0 1-.5.9H7.4z"/>`,
   map: `<path d="M2 6.3a.8.8 0 0 1 .5-.7l5.6-2.4v15.4l-5 2.1a.8.8 0 0 1-1.1-.7z"/><path d="M9.6 3.2l4.8 2.4v15.2l-4.8-2.4z"/><path ${ACCENT} d="M15.9 5.6l5-2.1a.8.8 0 0 1 1.1.7v13.5a.8.8 0 0 1-.5.7l-5.6 2.4z"/>`,
@@ -55,6 +59,11 @@ const ICONS = {
   wrench: `<path d="M21.6 6.8a5.7 5.7 0 0 1-7.7 5.4l-7.4 7.5a2.4 2.4 0 0 1-3.4-3.4l7.5-7.4a5.7 5.7 0 0 1 5.4-7.7c.5 0 1 .1 1.5.2l-3.1 3.1.5 3 3 .5 3.1-3.1c.1.5.2 1 .2 1.5z"/>`,
   cargo: `<path d="M12 2.2l9.2 4.6-9.2 4.6-9.2-4.6z"/><path d="M2.4 8.5l8.8 4.4v9.4l-8.2-4.1a1 1 0 0 1-.6-.9z"/><path d="M21.6 8.5l-8.8 4.4v9.4l8.2-4.1a1 1 0 0 0 .6-.9z"/><path ${ACCENT} d="M6.2 4.3l9.2 4.6-2.8 1.4-9.2-4.6z"/><path ${ACCENT} d="M15.4 10.6l2.8-1.4v3.6l-2.8 1.4z"/>`,
   trophy: `<path ${HOLES} d="M6.5 2.5h11V9a5.5 5.5 0 0 1-11 0zM12 4.4l1.1 2.3 2.5.3-1.8 1.7.4 2.5L12 10l-2.2 1.2.4-2.5-1.8-1.7 2.5-.3z"/><path d="M6.4 4.4H3.2a.8.8 0 0 0-.8.8v1.3a4.4 4.4 0 0 0 4.7 4.4M17.6 4.4h3.2a.8.8 0 0 1 .8.8v1.3a4.4 4.4 0 0 1-4.7 4.4" ${accentLine(1.9)}/><path d="M10.6 14.2h2.8v3.6h-2.8zM7 18.6h10a.8.8 0 0 1 .8.8v1.8a.8.8 0 0 1-.8.8H7a.8.8 0 0 1-.8-.8v-1.8a.8.8 0 0 1 .8-.8z"/>`,
+  // The truck stop's slot machine: a cabinet with three windows, its lamp and its lever.
+  slots: `<path ${HOLES} d="M4.4 5h12.2A1.4 1.4 0 0 1 18 6.4v13.2a1.4 1.4 0 0 1-1.4 1.4H4.4A1.4 1.4 0 0 1 3 19.6V6.4A1.4 1.4 0 0 1 4.4 5zM5 9v6h3.2V9zm3.9 0v6h3.2V9zm3.9 0v6H16V9z"/><path ${ACCENT} d="M7.5 5a3 3 0 0 1 6 0zM6.6 10.9a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zm3.9 0a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zm3.9 0a1.1 1.1 0 1 1 0 2.2 1.1 1.1 0 0 1 0-2.2zM20.6 4a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z"/><path d="M18 13h2.6V7.2" ${line(1.8)}/>`,
+  // A delivery's star, and a crate: a chest with its lid, banded, its lock in the accent.
+  star: `<path d="M12 1.9l3 6.3 6.9.9-5 4.8 1.2 6.8L12 17.4l-6.1 3.3 1.2-6.8-5-4.8 6.9-.9z"/>`,
+  crate: `<path ${HOLES} d="M4 4.2h16a1.6 1.6 0 0 1 1.6 1.6v3.6H2.4V5.8A1.6 1.6 0 0 1 4 4.2zm2.4 1.6v3.6h1.9V5.8zm9.3 0v3.6h1.9V5.8z"/><path ${HOLES} d="M3 10.8h18v8.4a1.6 1.6 0 0 1-1.6 1.6H4.6A1.6 1.6 0 0 1 3 19.2zm3.4 0v10h1.9v-10zm9.3 0v10h1.9v-10z"/><path ${ACCENT} d="M10.2 8.2h3.6a.8.8 0 0 1 .8.8v3.6a2.6 2.6 0 0 1-5.2 0V9a.8.8 0 0 1 .8-.8z"/>`,
   // The events' terms: fast, careful, heavy.
   express: `<rect x="9.4" y="1.6" width="5.2" height="2.3" rx=".8"/><path ${HOLES} d="M12 4.6a8.7 8.7 0 1 1 0 17.4 8.7 8.7 0 0 1 0-17.4zm0 2.5a6.2 6.2 0 1 0 0 12.4 6.2 6.2 0 0 0 0-12.4z"/><path ${ACCENT} d="M13 8.4l-4.2 5.4h3l-1 4 4.4-5.6h-3.1z"/><path d="M18.3 4.6l1.8 1.8" ${line(2)}/>`,
   careful: `<path ${HOLES} d="M12 1.8l8.4 3.1a.9.9 0 0 1 .6.9v6.1c0 5.4-5.5 8.9-8.6 10.2a1 1 0 0 1-.8 0C8.5 20.8 3 17.3 3 11.9V5.8a.9.9 0 0 1 .6-.9zm4.1 6.7L10.7 14l-2.8-2.8-1.6 1.6 4.4 4.4 7-7z"/>`,
@@ -97,6 +106,11 @@ const ICONS = {
 export type IconName = keyof typeof ICONS;
 
 /** The icon's shapes, as the markup inside a `<svg viewBox="0 0 24 24" fill="currentColor">`. */
+/** Whether `name` is one of the icons: data that names its picture (the slot machine's symbols) is checked by it. */
+export function isIconName(name: string): name is IconName {
+  return Object.prototype.hasOwnProperty.call(ICONS, name);
+}
+
 export function iconMarkup(name: IconName): string {
   return ICONS[name];
 }
@@ -120,7 +134,7 @@ export function upgradeIcon(look: UpgradeLook): IconName {
   return UPGRADE_ICONS[look];
 }
 
-/** Each facility's icon, by what it does for the company (one facility per effect). */
+/** Each facility's and research's icon, by what it does for the company. */
 const FACILITY_ICONS: Readonly<Record<FacilityEffect, IconName>> = {
   repairDiscount: 'wrench',
   fuelDiscount: 'fuel',
@@ -129,6 +143,10 @@ const FACILITY_ICONS: Readonly<Record<FacilityEffect, IconName>> = {
   marketShareBonus: 'megaphone',
   xpBonus: 'school',
   extraContracts: 'jobs',
+  deliveryPayBonus: 'coins',
+  cargoDamageReduction: 'careful',
+  fuelUseReduction: 'engine',
+  loadingTimeReduction: 'express',
 };
 
 /** The icon of a facility at the head office, by its effect. */

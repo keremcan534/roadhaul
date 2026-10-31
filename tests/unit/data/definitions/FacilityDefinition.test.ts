@@ -3,6 +3,7 @@ import { Validator } from '../../../../src/core/validation/Validator';
 import { DEFAULT_GAME_CONFIG, validateGameConfig } from '../../../../src/data/config/GameConfig';
 import { ContentCatalog, validateGameContent } from '../../../../src/data/ContentCatalog';
 import { FACILITIES } from '../../../../src/data/content/facilities';
+import { RESEARCH } from '../../../../src/data/content/research';
 import {
   FACILITY_EFFECTS,
   validateFacilityDefinition,
@@ -23,9 +24,15 @@ describe('validateFacilityDefinition', () => {
     }
   });
 
-  it('ships one facility for every effect, three levels each, a first one a new company can build', () => {
-    expect(new Set(FACILITIES.map((facility) => facility.effect))).toEqual(new Set(FACILITY_EFFECTS));
-    expect(FACILITIES).toHaveLength(FACILITY_EFFECTS.length);
+  it('ships seven facilities, each its own effect, three levels each, a first one a new company can build', () => {
+    const effects = FACILITIES.map((facility) => facility.effect);
+    expect(FACILITIES).toHaveLength(7);
+    expect(new Set(effects).size).toBe(FACILITIES.length);
+    // Every other effect is the research's.
+    const researched = new Set(RESEARCH.map((research) => research.effect));
+    for (const effect of FACILITY_EFFECTS) {
+      expect(effects.includes(effect) || researched.has(effect), effect).toBe(true);
+    }
     for (const facility of FACILITIES) {
       expect(facility.levels, facility.id).toHaveLength(3);
     }
@@ -97,7 +104,7 @@ describe('facilities in the content and the config', () => {
     const content = ContentCatalog.create(
       contentFixture({
         facilities: [
-          facilityFixture({ levels: [{ cost: 100, requiredCompanyLevel: 9, value: 0.1 }] }),
+          facilityFixture({ levels: [{ cost: 100, requiredCompanyLevel: 11, value: 0.1 }] }),
           facilityFixture({ id: 'test_office', effect: 'extraContracts', levels: [{ cost: 100, value: 8 }] }),
         ],
       }),

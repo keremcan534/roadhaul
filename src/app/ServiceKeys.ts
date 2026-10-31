@@ -6,6 +6,19 @@ import type { GameConfig } from '../data/config/GameConfig';
 import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
 import type { FacilityService } from '../systems/company/FacilityService';
+import type { ResearchService } from '../systems/company/ResearchService';
+import type { CityIncidentService } from '../systems/world/CityIncidentService';
+import type { NewsService } from '../systems/world/NewsService';
+import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
+import type { CasinoService } from '../systems/casino/CasinoService';
+import type { ReviewService } from '../systems/review/ReviewService';
+import type { AchievementService } from '../systems/achievements/AchievementService';
+import type { CrateService } from '../systems/rewards/CrateService';
+import type { QuestService } from '../systems/rewards/QuestService';
+import type { SupplyService } from '../systems/rewards/SupplyService';
+import type { LiveryService } from '../systems/vehicles/LiveryService';
+import type { SkyWonderService } from '../systems/weather/SkyWonderService';
+import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
@@ -48,6 +61,8 @@ export const ServiceKeys = Object.freeze({
   /** The game's clock, and the sun, the moon and the stars it turns (spec §39). */
   timeOfDay: serviceKey<TimeOfDayService>('TimeOfDayService'),
   season: serviceKey<SeasonService>('SeasonService'),
+  /** The northern lights some nights, and the sky's wonders the player has seen. */
+  skyWonders: serviceKey<SkyWonderService>('SkyWonderService'),
   /** The timed events of spec §22 (not the event bus: that is `events`). */
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),
@@ -59,6 +74,30 @@ export const ServiceKeys = Object.freeze({
   company: serviceKey<CompanyService>('CompanyService'),
   /** What the company builds for itself: a workshop, a fuel depot, a truck yard… */
   facilities: serviceKey<FacilityService>('FacilityService'),
+  /** The daily reward: credits for each day's first claim, more for days in a row. */
+  dailyReward: serviceKey<DailyRewardService>('DailyRewardService'),
+  /** The truck stop's slot machine, for the company's credits. */
+  casino: serviceKey<CasinoService>('CasinoService'),
+  /** Asks for a rating on the store, seldom, after deliveries in good order. */
+  review: serviceKey<ReviewService>('ReviewService'),
+  /** The company's goals and their rewards. */
+  achievements: serviceKey<AchievementService>('AchievementService'),
+  /** Crates: earned for perfect streaks, levels and the daily streak; opened for credits and crate colours. */
+  crates: serviceKey<CrateService>('CrateService'),
+  /** What crates give besides credits and looks: upgrade parts and boosters. */
+  supplies: serviceKey<SupplyService>('SupplyService'),
+  /** The day's quests, each a crate. */
+  quests: serviceKey<QuestService>('QuestService'),
+  /** The trucks' designs and the trailer text. */
+  liveries: serviceKey<LiveryService>('LiveryService'),
+  /** The region's rare happenings near the truck: fires, police chases, fireworks. */
+  cityIncidents: serviceKey<CityIncidentService>('CityIncidentService'),
+  /** The region's news. */
+  news: serviceKey<NewsService>('NewsService'),
+  /** The research tree: points from deliveries, perks for the whole company. */
+  research: serviceKey<ResearchService>('ResearchService'),
+  /** The company levels' rewards, waiting to be collected. */
+  levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),

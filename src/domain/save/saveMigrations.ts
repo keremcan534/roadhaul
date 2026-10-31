@@ -125,7 +125,98 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 10,
     migrate: (save) => ({ ...save, version: 11, facilities: { levels: {} } }),
   },
+  {
+    // v12 adds the daily reward: no streak yet, the first claim is day 1.
+    from: 11,
+    migrate: (save) => ({ ...save, version: 12, daily: { lastClaimDay: null, streak: 0 } }),
+  },
+  {
+    // v13 adds the company's goals: their counts start from what the save shows already (the daily streak, the
+    // upgrade levels fitted, the rivals bought out); what it never recorded starts from 0. No reward collected yet.
+    from: 12,
+    migrate: (save) => ({ ...save, version: 13, achievements: { counters: countersFrom(save), claimed: [] } }),
+  },
+  {
+    // v14 adds the crates (none yet, no streak) and the levels' rewards: the levels the company already has were
+    // reached before there were any, so they count as collected; the ones its XP reaches above them (the levels
+    // beyond the fifth came with v14) wait to be collected.
+    from: 13,
+    migrate: (save) => ({
+      ...save,
+      version: 14,
+      crates: { held: {}, opened: 0, paints: [], perfectStreak: 0, bestPerfectStreak: 0 },
+      levelRewards: { rewardedLevel: savedLevel(save) },
+    }),
+  },
+  {
+    // v15 adds the free crate (ready now), the supplies crates give (none yet) and the day's quests (none started).
+    from: 14,
+    migrate: (save) => ({
+      ...save,
+      version: 15,
+      crates: { ...(isJsonObject(save['crates']) ? save['crates'] : {}), freeCrateAtMs: 0 },
+      supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
+      quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
+    }),
+  },
+  {
+    // v16 adds the designs: every truck in the classic, none bought or given by a crate, the RoadHaul lettering.
+    from: 15,
+    migrate: (save) => ({
+      ...save,
+      version: 16,
+      crates: { ...(isJsonObject(save['crates']) ? save['crates'] : {}), liveries: [] },
+      liveries: { bought: [], worn: {}, text: null },
+    }),
+  },
+  {
+    // v17 adds the research tree: nothing researched, no points yet.
+    from: 16,
+    migrate: (save) => ({ ...save, version: 17, research: { points: 0, researched: [] } }),
+  },
 ];
+
+/** The company level a v13 save holds, or 1. */
+function savedLevel(save: SaveJson): number {
+  const company = save['company'];
+  const level = isJsonObject(company) ? company['level'] : null;
+  return typeof level === 'number' && Number.isInteger(level) && level >= 1 ? level : 1;
+}
+
+/** What a v12 save already shows of what the goals count. */
+function countersFrom(save: SaveJson): Record<string, number> {
+  const count = (value: unknown): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0);
+  const daily = save['daily'];
+  const garage = save['garage'];
+  const rivals = save['rivals'];
+  let upgradesFitted = 0;
+  if (isJsonObject(garage) && Array.isArray(garage['vehicles'])) {
+    for (const vehicle of garage['vehicles'] as unknown[]) {
+      const upgrades = isJsonObject(vehicle) ? vehicle['upgrades'] : null;
+      if (isJsonObject(upgrades)) {
+        for (const level of Object.values(upgrades)) {
+          upgradesFitted += count(level);
+        }
+      }
+    }
+  }
+  let rivalsBoughtOut = 0;
+  if (isJsonObject(rivals) && Array.isArray(rivals['companies'])) {
+    rivalsBoughtOut = (rivals['companies'] as unknown[]).filter((rival) => isJsonObject(rival) && rival['acquired'] === true).length;
+  }
+  const counters: Record<string, number> = {};
+  const streak = isJsonObject(daily) ? count(daily['streak']) : 0;
+  for (const [metric, value] of [
+    ['dailyStreak', streak],
+    ['upgradesFitted', upgradesFitted],
+    ['rivalsBoughtOut', rivalsBoughtOut],
+  ] as const) {
+    if (value > 0) {
+      counters[metric] = value;
+    }
+  }
+  return counters;
+}
 
 function isJsonObject(value: unknown): value is SaveJson {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

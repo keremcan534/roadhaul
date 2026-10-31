@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { closePanel, continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
+import { closePanel, continueGame, continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
 
 test('hires a driver, buys a second truck and sends it out on contracts that pay the company, kept across a reload', async ({
   page,
@@ -31,8 +31,9 @@ test('hires a driver, buys a second truck and sends it out on contracts that pay
   await expect(second.locator('.fleet-truck__status')).toHaveText(/^Selin Y\.: \S+ → \S+ · /);
   await testInfo.attach('fleet', { body: await page.screenshot(), contentType: 'image/png' });
 
-  // Ten minutes later (debug F): delivered and paid.
+  // Twenty minutes later (debug F, twice: the towns at the corners are six kilometres and more off): delivered and paid.
   await closePanel(page);
+  await page.keyboard.press('KeyF');
   await page.keyboard.press('KeyF');
   await expect(page.locator('.toast').filter({ hasText: /^Selin Y\. delivered / }).first()).toBeVisible();
   await openPanel(page, 'fleet');
@@ -42,7 +43,7 @@ test('hires a driver, buys a second truck and sends it out on contracts that pay
 
   // Kept across a reload: the driver still has the truck out.
   await page.reload();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   await openPanel(page, 'fleet');
   await expect(second).toHaveAttribute('data-state', /^(onContract|settingOff|inWorkshop)$/);

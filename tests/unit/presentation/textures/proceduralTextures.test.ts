@@ -10,7 +10,6 @@ import {
   concreteImage,
   glowImage,
   grassImage,
-  liveryImage,
   meadowImage,
   moonImage,
   puffImage,
@@ -25,6 +24,7 @@ import { drawText, hasGlyph, measureText } from '../../../../src/presentation/te
 import { EN } from '../../../../src/ui/i18n/en';
 import { TR } from '../../../../src/ui/i18n/tr';
 import { toTexture } from '../../../../src/presentation/textures/toTexture';
+import { liveryImage } from '../../../../src/presentation/textures/liveryImages';
 
 const style = { height: 40, weight: 0.17, spacing: 0.12, slant: 0.16, color: [0, 0, 0] as const };
 
@@ -219,7 +219,9 @@ describe('procedural images', () => {
 
   it('are deterministic', () => {
     expect(grassImage(64).data).toEqual(grassImage(64).data);
-    expect(liveryImage([224, 98, 42], 256, 128).data).toEqual(liveryImage([224, 98, 42], 256, 128).data);
+    expect(liveryImage([224, 98, 42], 'classic', 'ROADHAUL', 256, 128).data).toEqual(
+      liveryImage([224, 98, 42], 'classic', 'ROADHAUL', 256, 128).data,
+    );
   });
 
   it('keep grass green and asphalt dark grey', () => {
@@ -238,7 +240,7 @@ describe('procedural images', () => {
 
   it('put the company accent and the dark logo on the livery and the rear doors', () => {
     const accent = [224, 98, 42] as const;
-    for (const image of [liveryImage(accent, 512, 256), rearDoorsImage(accent, 256)]) {
+    for (const image of [liveryImage(accent, 'classic', 'ROADHAUL', 512, 256), rearDoorsImage(accent, 256)]) {
       let accentPixels = 0;
       let logoPixels = 0;
       for (let i = 0; i < image.width * image.height; i++) {

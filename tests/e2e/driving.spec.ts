@@ -1,17 +1,5 @@
 import { expect, test } from '@playwright/test';
-import {
-  centreOf,
-  headingChange,
-  OPEN_ROAD,
-  openGame,
-  sceneScreenshot,
-  shownHeading,
-  shownSpeed,
-  turnWheel,
-  waitForFrames,
-  watchForProblems,
-  wheelRotation,
-} from './support';
+import { centreOf, continueGame, headingChange, OPEN_ROAD, openGame, sceneScreenshot, shownHeading, shownSpeed, turnWheel, waitForFrames, watchForProblems, wheelRotation } from './support';
 
 test('drives off from the HQ with the touch controls on screen', async ({ page }) => {
   const problems = watchForProblems(page);
@@ -181,7 +169,7 @@ test('steps through the cameras with the button, names each, and keeps the last 
   await expect(html).toHaveAttribute('data-camera', 'cabin');
   await page.reload();
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html).toHaveAttribute('data-game-state', 'driving');
   await expect(html).toHaveAttribute('data-camera', 'cabin');
   expect(problems).toEqual([]);
