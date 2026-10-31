@@ -724,7 +724,7 @@ async function start(strings: Strings): Promise<void> {
   events.on('SkyWonderSighted', ({ kind }) => toasts.show(strings.t(`toast.sky.${kind}`), 'success'));
   // Breaking news: something is happening near the truck.
   events.on('NewsPublished', ({ item }) => {
-    if (item.breaking) {
+    if (item.breaking && isDriving()) {
       toasts.show(`${strings.t('news.breaking')}: ${newsText(strings, item, company.companyName)}`, 'info');
     }
     root.dataset.news = String(item.id);
@@ -736,6 +736,11 @@ async function start(strings: Strings): Promise<void> {
   });
   events.on('CityIncidentStarted', ({ kind }) => (root.dataset.cityIncident = kind));
   events.on('CityIncidentEnded', () => delete root.dataset.cityIncident);
+  events.on('GameStateChanged', ({ previous, current }) => {
+    if (previous === 'mainMenu' && current === 'driving') {
+      delete root.dataset.cityIncident; // A new company's: the last one's incident is gone (CityIncidentService).
+    }
+  });
   // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
   // quests, every few hours free, and for a rewarded ad the player asks for. Also the quests and the supplies.
   const cratesShown = (): CratesShown => ({
@@ -882,11 +887,14 @@ async function start(strings: Strings): Promise<void> {
     onClose: () => celebrateLevel(),
   });
   let levelTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The level last celebrated: one closed without collecting it waits for the panel again. */
+  let celebratedLevel: number | null = null;
   const celebrateLevel = (): void => {
     const level = levelRewards.waitingLevel;
     if (level === null || levelUpDialog.isOpen || crateDialog.isOpen || !(result.isOpen || hq.isOpen)) {
       return;
     }
+    celebratedLevel = level;
     const reward = levelRewards.rewardFor(level);
     levelUpDialog.open({
       level,
@@ -1082,9 +1090,14 @@ async function start(strings: Strings): Promise<void> {
         goalsDialog.close(); // The same.
       } else if (levelUpDialog.isOpen) {
         levelUpDialog.close(); // Over the result or the panel; its reward waits.
+        // Collected, with another level's waiting: that one's turn. Not collected: it waits for the panel again.
+        if (levelRewards.waitingLevel !== null && levelRewards.waitingLevel !== celebratedLevel) {
+          celebrateLevel();
+        }
       } else if (crateDialog.isOpen) {
         if (!crateDialog.isOpening) {
           crateDialog.close(); // The same.
+          celebrateLevel(); // As its close button: another level's reward may still wait.
         }
       } else if (settingsDialog.isOpen) {
         settingsDialog.close(); // Over the pause menu, which stays.
@@ -1418,7 +1431,7 @@ async function start(strings: Strings): Promise<void> {
   const fillShop = (): void => {
     void monetization.productsForSale().then((products) => {
       if (shop.isOpen) {
-        shop.show(products, monetization.owned);
+        shop.show(products, (id) => monetization.offersNothingNew(id));
       }
     });
   };
@@ -2549,9 +2562,9 @@ async function start(strings: Strings): Promise<void> {
         shootingStars.update(paused ? 0 : deltaSeconds, renderHost.camera, environment.starLevel);
         // The sky's wonders count as the player sees them on the road (not behind the panel or a pause).
         const watchingSky = isDriving() && !paused && !hq.isOpen;
-        skyWonders.observe('aurora', watchingSky && environment.auroraShown > AURORA_SEEN);
-        skyWonders.observe('rainbow', watchingSky && environment.rainbowShown > RAINBOW_SEEN);
-        skyWonders.observe('meteor', watchingSky && shootingStars.streaking);
+        skyWonders.observe('aurora', environment.auroraShown > AURORA_SEEN, watchingSky);
+        skyWonders.observe('rainbow', environment.rainbowShown > RAINBOW_SEEN, watchingSky);
+        skyWonders.observe('meteor', shootingStars.streaking, watchingSky);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
         // What lies far off in the haze is not drawn.

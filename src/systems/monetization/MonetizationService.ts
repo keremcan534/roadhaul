@@ -146,6 +146,16 @@ export class MonetizationService implements PremiumPaintSource {
     return this.ownedIds.includes(id) || this.ownedIds.some((owned) => PRODUCT_BUNDLES[owned]?.includes(id) === true);
   }
 
+  /**
+   * Whether buying `id` would bring the player nothing new: owned already
+   * (bought, or part of a bundle bought), or a bundle whose every part is.
+   * The shop shows it as owned, and buy() refuses it.
+   */
+  offersNothingNew(id: ProductId): boolean {
+    const parts = PRODUCT_BUNDLES[id];
+    return this.owns(id) || (parts !== undefined && parts.every((part) => this.owns(part)));
+  }
+
   get adsEnabled(): boolean {
     return this.ads.enabled;
   }
@@ -181,6 +191,11 @@ export class MonetizationService implements PremiumPaintSource {
 
   async buy(id: ProductId): Promise<PurchaseOutcome> {
     if (!this.store.enabled || this.busy) {
+      return 'failed';
+    }
+    if (this.offersNothingNew(id)) {
+      // Never charge for what the player has: a bundle's parts, or a bundle of what they bought one by one.
+      this.logger.warn(`Not buying ${id}: the player has everything it brings.`);
       return 'failed';
     }
     this.busy = true;

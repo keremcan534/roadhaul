@@ -99,6 +99,36 @@ describe('CityIncidentService', () => {
     expect(ended).toHaveLength(1);
   });
 
+  it('runs a chase from its start after another incident has run its time', async () => {
+    const { service, ended, run } = await setup();
+    service.force('building_fire');
+    run(CONFIG.durationSeconds.building_fire + 1);
+    expect(ended).toHaveLength(1);
+    service.force('police_chase');
+    run(0.5);
+    expect(service.incident?.kind).toBe('police_chase');
+
+    const x = service.vehicleX[0];
+    const z = service.vehicleZ[0];
+    run(5);
+    expect(service.incident?.kind).toBe('police_chase');
+    expect(Math.hypot(service.vehicleX[0]! - x!, service.vehicleZ[0]! - z!)).toBeGreaterThan(CONFIG.chaseSpeed * 3);
+  });
+
+  it('forgets the incident under way when a company is started or continued from the main menu', async () => {
+    const { service, started, run, game } = await setup();
+    service.force('building_fire');
+    run(0.5);
+    expect(service.incident).not.toBeNull();
+
+    game.events.emit('GameStateChanged', { previous: 'driving', current: 'mainMenu' });
+    game.events.emit('GameStateChanged', { previous: 'mainMenu', current: 'driving' });
+    expect(service.incident).toBeNull();
+    expect(service.vehicleKinds).toEqual([]);
+    run(CONFIG.firstAfterSeconds - 2);
+    expect(started).toHaveLength(1);
+  });
+
   it('lets off fireworks only after dark, but at any time when asked for', async () => {
     const night = await setup(1, 0.9);
     night.run(CONFIG.firstAfterSeconds + 1);

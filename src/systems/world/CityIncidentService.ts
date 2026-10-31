@@ -1,4 +1,4 @@
-import type { EventBus } from '../../core/events/EventBus';
+import type { EventBus, Unsubscribe } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
 import type { GameConfig } from '../../data/config/GameConfig';
 import { CITY_INCIDENT_KINDS, type CityIncidentKind, type CityVehicleKind } from '../../data/definitions/CityIncident';
@@ -15,7 +15,7 @@ import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import { createRouteTrace, type RouteTrace } from '../../domain/world/RoadNetwork';
 import type { GameEvents } from '../GameEvents';
 
-/** What the incidents need of the truck: whether it is on the map, where, and the map. */
+/** What the incidents need of the truck: whether it is on the road (not behind the main menu), where, and the map. */
 export interface IncidentWitness {
   readonly isDriving: boolean;
   readonly vehicle: { readonly x: number; readonly z: number; readonly heading: number };
@@ -89,6 +89,7 @@ export class CityIncidentService {
   private readonly cursors = new Int32Array(MAX_INCIDENT_VEHICLES);
   private readonly spot = createRoadSpot();
   private readonly target = createRoadSpot();
+  private readonly unsubscribe: Unsubscribe;
 
   constructor(
     private readonly config: GameConfig['cityLife'],
@@ -100,6 +101,15 @@ export class CityIncidentService {
     private readonly logger: Logger,
   ) {
     this.untilNext = config.firstAfterSeconds;
+    // A company started or continued from the main menu: nothing of the last one's carries over, and the first
+    // comes after its while again.
+    this.unsubscribe = events.on('GameStateChanged', ({ previous, current }) => {
+      if (previous === 'mainMenu' && current === 'driving') {
+        this.current = null;
+        this.kinds = NO_VEHICLES;
+        this.untilNext = config.firstAfterSeconds;
+      }
+    });
   }
 
   /** The incident under way, or null. */
@@ -147,6 +157,10 @@ export class CityIncidentService {
     }
   }
 
+  dispose(): void {
+    this.unsubscribe();
+  }
+
   private pickKind(): CityIncidentKind | null {
     const dark = this.sky.weights.night >= NIGHT_FROM;
     const weights = this.config.weights;
@@ -159,6 +173,8 @@ export class CityIncidentService {
   }
 
   private start(kind: CityIncidentKind): boolean {
+    // From its first moment: the chase is placed by it as it is planned.
+    this.elapsed = 0;
     const { x, z, heading } = this.truck.vehicle;
     const world = this.truck.world;
     const { nearMeters, farMeters } = this.config;
@@ -222,7 +238,6 @@ export class CityIncidentService {
       }
     }
     this.current = incident;
-    this.elapsed = 0;
     this.logger.info(`City incident: ${kind} in ${incident.cityId ?? 'the country'}.`);
     this.events.emit('CityIncidentStarted', { kind, cityId: incident.cityId, x: incident.x, z: incident.z });
     return true;

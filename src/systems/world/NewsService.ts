@@ -58,6 +58,13 @@ export class NewsService {
     private readonly events: EventBus<GameEvents>,
   ) {
     this.unsubscribe = [
+      // A company started or continued from the main menu: the last one's news goes, a morning paper comes.
+      events.on('GameStateChanged', ({ previous, current }) => {
+        if (previous === 'mainMenu' && current === 'driving') {
+          this.list.length = 0;
+          this.lastMinute = -1;
+        }
+      }),
       events.on('CityIncidentStarted', ({ kind, cityId }) => this.add(`news.incident.${kind}`, { cityId, breaking: true })),
       events.on('CityIncidentEnded', ({ kind, cityId, caught }) => {
         if (kind === 'building_fire') {

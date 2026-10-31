@@ -8,6 +8,8 @@ import type { GameEvents } from '../GameEvents';
 
 /** The northern lights come and go over this long, seconds. */
 const AURORA_FADE_SECONDS = 20;
+/** A rainbow counts at most once in this long, seconds: the clouds passing over the sun hide and show it. */
+const RAINBOW_COUNT_SECONDS = 600;
 
 /**
  * The sky's wonders (GameConfig.skyWonders). Each night, as it falls, it
@@ -27,6 +29,9 @@ export class SkyWonderService {
   private forced = false;
   private readonly showing: Record<SkyWonder, boolean> = { aurora: false, meteor: false, rainbow: false };
   private sinceMeteor = Number.POSITIVE_INFINITY;
+  private sinceRainbow = Number.POSITIVE_INFINITY;
+  /** The northern lights counted tonight: once a night, however often the clouds hide them. */
+  private auroraCounted = false;
 
   constructor(
     private readonly config: GameConfig['skyWonders'],
@@ -54,6 +59,7 @@ export class SkyWonderService {
     const night = this.sky.weights.night;
     const isNight = night >= NIGHT_FROM;
     if (isNight && !this.wasNight) {
+      this.auroraCounted = false;
       this.tonight = this.forced || auroraTonight(this.random(), this.season.season, this.config.auroraChance);
       if (this.tonight) {
         this.logger.info('The northern lights are out tonight.');
@@ -63,23 +69,55 @@ export class SkyWonderService {
     const target = this.tonight ? Math.min(1, Math.max(0, (night - 0.3) / 0.6)) : 0;
     this.strength += (target - this.strength) * Math.min(1, dt / AURORA_FADE_SECONDS);
     this.sinceMeteor += dt;
+    this.sinceRainbow += dt;
   }
 
   /**
-   * The player can see `kind` now, or not (on the road, the sky as drawn).
-   * Coming into view, it counts: announced once, a shooting star only if
-   * none has counted for a while. Allocation-free when nothing is announced.
+   * Whether `kind` is on the sky now (as drawn), and whether the player is
+   * watching it (on the road, not paused or in the panel). It counts as it is
+   * first watched on the sky, announced once: looking away and back (a
+   * pause) does not count it again, only its leaving the sky and coming
+   * back; and then the northern lights once a night, a rainbow at most every
+   * ten minutes and a shooting star every few. Allocation-free when nothing
+   * is announced.
    */
-  observe(kind: SkyWonder, visible: boolean): void {
-    if (visible && !this.showing[kind]) {
-      if (kind !== 'meteor' || this.sinceMeteor >= this.config.meteorCountSeconds) {
-        if (kind === 'meteor') {
-          this.sinceMeteor = 0;
-        }
-        this.logger.info(`Sky wonder seen: ${kind}.`);
-        this.events.emit('SkyWonderSighted', { kind });
-      }
+  observe(kind: SkyWonder, onSky: boolean, watching: boolean): void {
+    if (!onSky) {
+      this.showing[kind] = false;
+      return;
     }
-    this.showing[kind] = visible;
+    if (!watching || this.showing[kind]) {
+      return;
+    }
+    this.showing[kind] = true;
+    if (!this.mayCount(kind)) {
+      return;
+    }
+    this.logger.info(`Sky wonder seen: ${kind}.`);
+    this.events.emit('SkyWonderSighted', { kind });
+  }
+
+  /** Whether a sighting of `kind` counts now, and if so its count is taken. */
+  private mayCount(kind: SkyWonder): boolean {
+    switch (kind) {
+      case 'aurora':
+        if (this.auroraCounted) {
+          return false;
+        }
+        this.auroraCounted = true;
+        return true;
+      case 'rainbow':
+        if (this.sinceRainbow < RAINBOW_COUNT_SECONDS) {
+          return false;
+        }
+        this.sinceRainbow = 0;
+        return true;
+      case 'meteor':
+        if (this.sinceMeteor < this.config.meteorCountSeconds) {
+          return false;
+        }
+        this.sinceMeteor = 0;
+        return true;
+    }
   }
 }

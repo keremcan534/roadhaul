@@ -51,20 +51,42 @@ describe('SkyWonderService', () => {
     expect(shown.service.aurora).toBeGreaterThan(0.99);
   });
 
-  it('counts a wonder as it comes into view, a shooting star at most once every few minutes', () => {
-    const { service, seen, run } = setup();
-    service.observe('aurora', true);
-    service.observe('aurora', true);
-    service.observe('aurora', false);
-    service.observe('aurora', true);
-    service.observe('rainbow', true);
-    service.observe('meteor', true);
-    service.observe('meteor', false);
+  it('counts a wonder as it is first watched on the sky: the lights once a night, a rainbow and a shooting star every few minutes', () => {
+    const { service, seen, run, sky } = setup();
+    // On the sky while the player looks away (paused): counted once watched, and not again for looking away and back.
+    service.observe('aurora', true, false);
+    expect(seen).toEqual([]);
+    service.observe('aurora', true, true);
+    service.observe('aurora', true, false);
+    service.observe('aurora', true, true);
+    // Hidden by the clouds and back: still tonight's.
+    service.observe('aurora', false, true);
+    service.observe('aurora', true, true);
+    expect(seen).toEqual(['aurora']);
+    // The next night's lights count again.
+    sky.weights.night = 0;
+    run(1);
+    sky.weights.night = 1;
+    run(1);
+    service.observe('aurora', false, true);
+    service.observe('aurora', true, true);
+    expect(seen).toEqual(['aurora', 'aurora']);
+
+    service.observe('rainbow', true, true);
+    service.observe('rainbow', false, true);
     run(60);
-    service.observe('meteor', true);
-    service.observe('meteor', false);
+    service.observe('rainbow', true, true);
+    service.observe('rainbow', false, true);
+    run(600);
+    service.observe('rainbow', true, true);
+
+    service.observe('meteor', true, true);
+    service.observe('meteor', false, true);
+    run(60);
+    service.observe('meteor', true, true);
+    service.observe('meteor', false, true);
     run(300);
-    service.observe('meteor', true);
-    expect(seen).toEqual(['aurora', 'aurora', 'rainbow', 'meteor', 'meteor']);
+    service.observe('meteor', true, true);
+    expect(seen).toEqual(['aurora', 'aurora', 'rainbow', 'rainbow', 'meteor', 'meteor']);
   });
 });

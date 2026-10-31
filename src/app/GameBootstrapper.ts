@@ -151,7 +151,25 @@ export class GameBootstrapper {
       const incidentLuck = new SeededRandom((clock.now() * 5 + 29) % 2_147_483_647);
       container.register(
         ServiceKeys.cityIncidents,
-        new CityIncidentService(config.cityLife, driving, timeOfDay, () => incidentLuck.next(), events, logger.withCategory('City')),
+        new CityIncidentService(
+          config.cityLife,
+          // On the road, not the main menu's backdrop (a world is loaded behind it too).
+          {
+            get isDriving() {
+              return gameState.current === 'driving' && driving.isDriving;
+            },
+            get vehicle() {
+              return driving.vehicle;
+            },
+            get world() {
+              return driving.world;
+            },
+          },
+          timeOfDay,
+          () => incidentLuck.next(),
+          events,
+          logger.withCategory('City'),
+        ),
       );
       const newsLuck = new SeededRandom((clock.now() * 11 + 3) % 2_147_483_647);
       container.register(ServiceKeys.news, new NewsService(catalog, timeOfDay, () => newsLuck.next(), events));

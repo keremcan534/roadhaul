@@ -88,6 +88,20 @@ describe('NewsService', () => {
     expect(news.items[2]).toMatchObject({ key: 'news.levelUp', count: 4 });
   });
 
+  it('clears the last company\'s news when one is started or continued, and brings out a morning paper', () => {
+    const { news, events } = setup();
+    news.update();
+    events.emit('CompanyLevelUp', { level: 7 });
+    expect(news.items).toHaveLength(3);
+
+    events.emit('GameStateChanged', { previous: 'driving', current: 'mainMenu' });
+    expect(news.items).toHaveLength(3);
+    events.emit('GameStateChanged', { previous: 'mainMenu', current: 'driving' });
+    expect(news.items).toEqual([]);
+    news.update();
+    expect(news.items.map((item) => item.key.split('.')[1])).toEqual(['flavor', 'flavor']);
+  });
+
   it('keeps the newest headlines only', () => {
     const { news, events } = setup();
     for (let i = 0; i < NEWS_LIMIT + 5; i++) {

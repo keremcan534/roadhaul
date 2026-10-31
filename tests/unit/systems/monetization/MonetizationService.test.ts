@@ -360,6 +360,27 @@ describe('purchases', () => {
     expect(context.monetization.owned).toEqual([]);
   });
 
+  it('never charge for what the player has: a bundle\'s parts, or a bundle of parts bought one by one', async () => {
+    const context = setup();
+    await context.monetization.attachStore(context.store);
+    expect(await context.monetization.buy('supporter_pack')).toBe('purchased');
+    for (const part of ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon'] as const) {
+      expect(context.monetization.offersNothingNew(part), part).toBe(true);
+      expect(await context.monetization.buy(part), part).toBe('failed');
+    }
+    expect(context.monetization.owned).toEqual(['supporter_pack']);
+
+    const oneByOne = setup();
+    await oneByOne.monetization.attachStore(oneByOne.store);
+    for (const part of ['remove_ads', 'premium_paints', 'designs_street'] as const) {
+      await oneByOne.monetization.buy(part);
+    }
+    expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(false);
+    await oneByOne.monetization.buy('designs_neon');
+    expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(true);
+    expect(await oneByOne.monetization.buy('supporter_pack')).toBe('failed');
+  });
+
   it('are refused without a store', async () => {
     const context = setup();
     expect(context.monetization.storeEnabled).toBe(false);
