@@ -133,17 +133,18 @@ describe('CrateService', () => {
     crates.grant('silver', 'level');
     expect(crates.total).toBe(2);
 
-    expect(crates.open('silver')).toEqual({ ok: true, value: { credits: 200, paintId: 'test_aurora', parts: 0, booster: null } });
+    expect(crates.open('silver')).toEqual({ ok: true, value: { credits: 200, paintId: 'test_aurora', liveryId: null, parts: 0, booster: null } });
     expect(crates.ownsCratePaint('test_aurora')).toBe(true);
-    expect(crates.paintsGot).toEqual({ got: 1, of: 1 });
+    // The fixture's crate design is legendary: a silver crate, weighted to rare, gives the colour.
+    expect(crates.paintsGot).toEqual({ got: 1, of: 2 });
     // Every colour got: credits alone.
-    expect(crates.open('silver')).toEqual({ ok: true, value: { credits: 200, paintId: null, parts: 0, booster: null } });
+    expect(crates.open('silver')).toEqual({ ok: true, value: { credits: 200, paintId: null, liveryId: null, parts: 0, booster: null } });
     expect(economy.credits).toBe(1400);
     expect(crates.opened).toBe(2);
     expect(crates.total).toBe(0);
     expect(opened).toEqual([
-      { tier: 'silver', credits: 200, paintId: 'test_aurora' },
-      { tier: 'silver', credits: 200, paintId: null },
+      { tier: 'silver', credits: 200, paintId: 'test_aurora', liveryId: null },
+      { tier: 'silver', credits: 200, paintId: null, liveryId: null },
     ]);
   });
 
@@ -154,7 +155,7 @@ describe('CrateService', () => {
     crates.open('bronze');
     deliver(true, 0);
     const saved = crates.snapshot();
-    expect(saved).toEqual({ held: { gold: 1 }, opened: 1, paints: [], perfectStreak: 1, bestPerfectStreak: 1, freeCrateAtMs: 0 });
+    expect(saved).toEqual({ held: { gold: 1 }, opened: 1, paints: [], liveries: [], perfectStreak: 1, bestPerfectStreak: 1, freeCrateAtMs: 0 });
 
     const other = setup().crates;
     other.restore({ ...saved, paints: ['test_aurora', 'retired_colour'], held: { gold: 1, diamond: 4 } });

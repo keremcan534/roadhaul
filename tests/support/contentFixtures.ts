@@ -186,6 +186,12 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
       { id: 'test_drive', metric: 'distanceKm', target: 5, crate: 'silver' },
       { id: 'test_earn', metric: 'creditsEarned', target: 1000, crate: 'bronze' },
     ],
+    liveries: [
+      { id: 'test_classic', pattern: 'classic', price: 0 },
+      { id: 'test_speed', pattern: 'speed', price: 1500, requiredCompanyLevel: 2 },
+      { id: 'test_galaxy', pattern: 'galaxy', price: 0, crate: 'legendary' },
+      { id: 'test_neon', pattern: 'neon', price: 0, pack: 'designs_neon' },
+    ],
     ...overrides,
   };
 }

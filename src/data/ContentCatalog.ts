@@ -17,6 +17,7 @@ import {
   validateTrafficVehicleDefinition,
   type TrafficVehicleDefinition,
 } from './definitions/TrafficVehicleDefinition';
+import { validateLiveryDefinition, type LiveryDefinition } from './definitions/LiveryDefinition';
 import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
 import { validateQuestDefinition, type QuestDefinition } from './definitions/QuestDefinition';
 import { validateRivalCompanyDefinition, type RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
@@ -90,6 +91,8 @@ export class ContentCatalog {
   readonly achievements: DefinitionTable<AchievementDefinition>;
   /** The daily quests' pool. */
   readonly quests: DefinitionTable<QuestDefinition>;
+  /** The designs the trucks can wear; the first is the one they leave the dealer in. */
+  readonly liveries: DefinitionTable<LiveryDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -108,6 +111,7 @@ export class ContentCatalog {
     this.facilities = new DefinitionTable('facility', content.facilities);
     this.achievements = new DefinitionTable('achievement', content.achievements);
     this.quests = new DefinitionTable('quest', content.quests);
+    this.liveries = new DefinitionTable('livery', content.liveries);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -139,6 +143,17 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'facilities', content.facilities, validateFacilityDefinition);
   validateTable(validator, 'achievements', content.achievements, validateAchievementDefinition);
   validateTable(validator, 'quests', content.quests, validateQuestDefinition);
+  validateTable(validator, 'liveries', content.liveries, validateLiveryDefinition);
+  const factory: unknown = Array.isArray(content.liveries) ? content.liveries[0] : undefined;
+  validator.check(
+    typeof factory !== 'object' ||
+      factory === null ||
+      ((factory as LiveryDefinition).price === 0 &&
+        (factory as LiveryDefinition).crate === undefined &&
+        (factory as LiveryDefinition).pack === undefined),
+    'liveries[0]',
+    'must be free: every truck leaves the dealer in it',
+  );
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);

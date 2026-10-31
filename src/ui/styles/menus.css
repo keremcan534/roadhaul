@@ -3693,3 +3693,13 @@
     display: none;
   }
 }
+
+/* A crate's design: its picture beside its name. */
+.crates__livery-picture {
+  flex: none;
+  width: 88px;
+  height: 44px;
+  border: 2px solid rgb(255 255 255 / 85%);
+  border-radius: var(--rh-radius-small);
+  object-fit: cover;
+}

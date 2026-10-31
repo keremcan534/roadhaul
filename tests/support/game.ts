@@ -40,6 +40,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     crates: services.resolve(ServiceKeys.crates),
     supplies: services.resolve(ServiceKeys.supplies),
     quests: services.resolve(ServiceKeys.quests),
+    liveries: services.resolve(ServiceKeys.liveries),
     levelRewards: services.resolve(ServiceKeys.levelRewards),
     specialEvents: services.resolve(ServiceKeys.specialEvents),
     tutorial: services.resolve(ServiceKeys.tutorial),

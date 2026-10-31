@@ -28,7 +28,8 @@ import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
 import type { Rgb } from '../textures/pixelImage';
-import { grilleImage, liveryImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
+import { DEFAULT_TRAILER_TEXT, liveryImage } from '../textures/liveryImages';
+import { grilleImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import type { SceneLight, SkyUniforms } from '../world/EnvironmentView';
 import type { LampMirror } from '../world/WetReflections';
@@ -50,6 +51,7 @@ import {
   type Point2,
 } from './truckShapes';
 import { Wipers } from './Wipers';
+import type { LiveryPattern } from '../../data/definitions/LiveryDefinition';
 
 const TIRE_WIDTH = 0.36;
 /** The rims' face stands this far in from the tyre's sidewall, and reaches this share of the wheel's radius. */
@@ -130,6 +132,9 @@ export interface TruckViewOptions {
   readonly paint?: number;
   /** Each upgraded part at its level (UpgradeDefinition.look); parts left out are as built. */
   readonly looks?: Partial<TruckLooks>;
+  /** The box body's design (LiveryDefinition.pattern) and its lettering; the classic RoadHaul without them. */
+  readonly livery?: LiveryPattern;
+  readonly trailerText?: string;
   /** The truck casts the sun's real-time shadows (the high preset's shadow map). Default: false. */
   readonly castShadows?: boolean;
   /** The sky its paint, glass and chrome mirror (EnvironmentView.sky); without it they mirror nothing. */
@@ -654,13 +659,21 @@ export class TruckView {
       ),
       livery: this.track(
         shiny(
-          new MeshPhongMaterial({ map: this.texture(toTexture(liveryImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          new MeshPhongMaterial({
+            map: this.texture(toTexture(liveryImage(accentRgb, options.livery ?? 'classic', options.trailerText ?? DEFAULT_TRAILER_TEXT))),
+            shininess: 25,
+            specular: 0x222222,
+          }),
           { facing: 0.03, strength: 0.5 },
         ),
       ),
       doors: this.track(
         shiny(
-          new MeshPhongMaterial({ map: this.texture(toTexture(rearDoorsImage(accentRgb))), shininess: 25, specular: 0x222222 }),
+          new MeshPhongMaterial({
+            map: this.texture(toTexture(rearDoorsImage(accentRgb, 512, options.trailerText ?? DEFAULT_TRAILER_TEXT))),
+            shininess: 25,
+            specular: 0x222222,
+          }),
           { facing: 0.03, strength: 0.5 },
         ),
       ),
@@ -1137,5 +1150,6 @@ export function truckViewKey(definition: VehicleDefinition, options: TruckViewOp
   const parts = (['exhaust', 'brakes', 'wheels', 'stance', 'fuelTank'] as const)
     .map((look) => lookLevel(looks[look]))
     .join('');
-  return `${definition.id}:${paint.toString(16)}:${parts}:${options.lampGlows === false ? 0 : 1}`;
+  const livery = `${options.livery ?? 'classic'}:${options.trailerText ?? DEFAULT_TRAILER_TEXT}`;
+  return `${definition.id}:${paint.toString(16)}:${parts}:${options.lampGlows === false ? 0 : 1}:${livery}`;
 }

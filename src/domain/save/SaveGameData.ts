@@ -33,8 +33,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   streak) and the company levels whose reward was collected.
  * - v15: adds when the free crate is next ready, the supplies crates gave
  *   (upgrade parts, boosters, those running) and the day's quests.
+ * - v16: adds the trucks' designs (bought, worn) and the trailer text, and
+ *   the designs crates gave.
  */
-export const CURRENT_SAVE_VERSION = 15;
+export const CURRENT_SAVE_VERSION = 16;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -65,6 +67,17 @@ export interface SaveGameData {
   readonly levelRewards: LevelRewardsSaveData;
   readonly supplies: SuppliesSaveData;
   readonly quests: QuestsSaveData;
+  readonly liveries: LiveriesSaveData;
+}
+
+/** The trucks' designs (LiveryService). */
+export interface LiveriesSaveData {
+  /** LiveryDefinition ids bought with credits. */
+  readonly bought: readonly string[];
+  /** Truck instance id → the design it wears; a truck not listed wears the classic. */
+  readonly worn: Readonly<Record<string, string>>;
+  /** The company's trailer text, or null for the RoadHaul lettering. */
+  readonly text: string | null;
 }
 
 /** What crates gave besides credits and looks (SupplyService). */
@@ -97,8 +110,9 @@ export interface CratesSaveData {
   readonly held: Readonly<Record<string, number>>;
   /** Crates opened, ever. */
   readonly opened: number;
-  /** The crate colours (PaintDefinition ids) the crates gave. */
+  /** The crate colours (PaintDefinition ids) and designs (LiveryDefinition ids) the crates gave. */
   readonly paints: readonly string[];
+  readonly liveries: readonly string[];
   /** Perfect deliveries (three stars) in a row, up to the last one; and the most ever. */
   readonly perfectStreak: number;
   readonly bestPerfectStreak: number;

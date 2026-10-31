@@ -81,11 +81,12 @@ describe('validateSaveGameData', () => {
       'levelRewards',
       'supplies',
       'quests',
+      'liveries',
     ]);
   });
 
   it('checks the crates: known tiers held in whole numbers, crate colours given, the streaks', () => {
-    const crates = { held: { gold: 2 }, opened: 3, paints: [], perfectStreak: 1, bestPerfectStreak: 4, freeCrateAtMs: 0 };
+    const crates = { held: { gold: 2 }, opened: 3, paints: [], liveries: [], perfectStreak: 1, bestPerfectStreak: 4, freeCrateAtMs: 0 };
     expect(paths(withPart('crates', crates))).toEqual([]);
     expect(paths(withPart('crates', { ...crates, held: { diamond: 1, silver: -1 } }))).toEqual([
       'crates.held.diamond',
@@ -117,6 +118,18 @@ describe('validateSaveGameData', () => {
       'quests.claimed[0]',
       'quests.bonusClaimed',
     ]);
+  });
+
+  it('checks the designs: ids bought and worn, and the trailer text short enough', () => {
+    const liveries = { bought: ['test_speed'], worn: { truck_001: 'retired' }, text: 'KUZEY' };
+    expect(paths(withPart('liveries', liveries))).toEqual([]);
+    expect(paths(withPart('liveries', { ...liveries, bought: [7], worn: { truck_001: 3 } }))).toEqual([
+      'liveries.bought[0]',
+      'liveries.worn.truck_001',
+    ]);
+    expect(paths(withPart('liveries', { ...liveries, text: 'X'.repeat(40) }))).toEqual(['liveries.text']);
+    expect(paths(withPart('liveries', { ...liveries, text: '' }))).toEqual(['liveries.text']);
+    expect(paths(withPart('liveries', null))).toEqual(['liveries']);
   });
 
   it('checks the level rewards: collected up to a level the company can have', () => {

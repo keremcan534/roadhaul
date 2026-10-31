@@ -18,7 +18,7 @@ Console's screens and rules from time to time. When a screen here looks differen
 | Promo video (optional) | `store-video/trailer/roadhaul-trailer-<lang>.mp4` (4K) and `…-<lang>-1080p.mp4`, made by `node scripts/storeVideo.mjs` | 30 seconds (what Google Play autoplays), 3840 × 2160, one per language of the game, with music and the game's own sound. Not kept in the repository (hundreds of MB): the script makes them from the build. Google Play takes each as a YouTube link (below). |
 | Privacy policy | `public/privacy.html` → https://keremcan534.github.io/roadhaul/privacy.html | English and Turkish. Deployed with the game by `deploy-pages.yml` on every push to `main`. Settings → About links to it. |
 | Open-source licences | Settings → About | `licenses.txt`, built from the packages the game ships. |
-| In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`) and "Premium paints" (`premium_paints`), one-time products. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
+| In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`), "Premium paints" (`premium_paints`), the "Street" and "Neon" design packs (`designs_street`, `designs_neon`, three truck designs each) and the "Supporter pack" (`supporter_pack`: all four in one), one-time products, looks and comfort only. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
 | Ads (off) | `ROADHAUL_ADS`, AdMob (`@capacitor-community/admob`) | Off in releases until you switch them on (step 7): a release without ads carries no ads code at all. CI's debug APK shows Google's test ads, to try them on a phone. |
 
 ## One-time setup
@@ -136,7 +136,8 @@ at every start, so a purchase follows the player to a new phone, and a refund ta
 2. Upload a bundle to a testing track first: the Console lets you make products only once the app has one with the
    billing library in it (every build has).
 3. Monetize with Play → Products → **In-app products** → Create product, twice. The product ids must be exactly
-   `remove_ads` and `premium_paints` (they are in the game's code and stored on players' phones: never rename them).
+   `remove_ads`, `premium_paints`, `designs_street`, `designs_neon` and `supporter_pack` (they are in the game's code and
+   stored on players' phones: never rename them). Suggested prices: €2.99, €1.99, €1.99, €1.99 and €6.99.
    Give each a name and a description (translate them for the listings' languages), a price, and **activate** it.
 4. Setup → **License testing**: add the Google accounts that test purchases. Their purchases are free test orders,
    and they can test a pending (slow) payment too.

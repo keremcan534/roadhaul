@@ -4,7 +4,7 @@ import { err, ok, type Result } from '../../core/Result';
 import type { KeyValueStorage } from '../../core/storage/KeyValueStorage';
 import type { Clock } from '../../core/time/Clock';
 import type { CrateTier, GameConfig } from '../../data/config/GameConfig';
-import { PRODUCT_IDS, isProductId, type ProductId } from '../../data/config/products';
+import { PRODUCT_BUNDLES, PRODUCT_IDS, isProductId, type ProductId } from '../../data/config/products';
 import type { Credits, Fraction } from '../../data/units';
 import {
   FRESH_PACING,
@@ -141,8 +141,9 @@ export class MonetizationService implements PremiumPaintSource {
     return this.ownedIds;
   }
 
+  /** The player owns `id`, bought on its own or in a bundle (PRODUCT_BUNDLES). */
   owns(id: ProductId): boolean {
-    return this.ownedIds.includes(id);
+    return this.ownedIds.includes(id) || this.ownedIds.some((owned) => PRODUCT_BUNDLES[owned]?.includes(id) === true);
   }
 
   get adsEnabled(): boolean {

@@ -477,6 +477,14 @@ The owner asked for crates every day, crates from quests, more for an ad, and mo
 - **Quests** (`QuestService`, `dailyQuests`): three a day from a pool of eleven, each of another metric, counted from the player's midnight (as the daily reward's); each done is announced once and its crate collected in the dialog; all three collected, a gold crate. Kilometres count from when the day began, or from when a company is loaded if it began before.
 - **The save** (v15) adds when the free crate is next ready, the supplies and the day's quest counts.
 
+### Truck designs and the trailer text
+
+The owner asked for "very cool designs" and for writing on the truck, and for purchases to stay cosmetic.
+
+- **Designs are content** (`LiveryDefinition`, `liveries.ts`): seventeen, each got one way: the classic every truck leaves the dealer in; five for credits, bought once for the whole company from a company level; five only crates give (they join the crate colours in a crate's draw: a crate gives a colour or a design); and two packs of three in the shop (`designs_street`, `designs_neon`), with the `supporter_pack` bundling both packs, the premium paints and no ads (`PRODUCT_BUNDLES`; `MonetizationService.owns` counts a bundle's products).
+- **`LiveryService`** keeps what was bought, what each truck wears (a truck not listed wears the classic) and the company's trailer text (`trailerText`: capitals by the player's language, so Turkish "i" becomes "İ"; only what the stroke font draws; 14 letters at most; empty is RoadHaul). Saved (v16).
+- **The pictures** (`liveryImages.ts`) are drawn once per truck, never per frame: the box's sides in the design, in the truck's colour, lettered with the text (white on the dark designs), the rear doors lettered too. The truck's view is rebuilt when its design or the text changes (`truckViewKey`). The garage shows each design small (`liveryThumbnail` through `pixelImageUrl`, kept per colour), and a tap previews it on the truck.
+
 ### The sky's wonders
 
 The owner asked for "beautiful things in the sky": the northern lights, shooting stars, the rainbow.

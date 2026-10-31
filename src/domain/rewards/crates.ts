@@ -4,10 +4,12 @@ import { CRATE_TIERS } from '../../data/definitions/CrateTier';
 import { PAINT_RARITIES, type PaintRarity } from '../../data/definitions/PaintDefinition';
 import type { Credits } from '../../data/units';
 
-/** A colour only crates hold, as a crate draws from them. */
+/** A colour or a truck design only crates hold, as a crate draws from them. */
 export interface CratePaint {
   readonly id: string;
   readonly rarity: PaintRarity;
+  /** A colour (PaintDefinition) by default, or a design (LiveryDefinition). */
+  readonly kind?: 'paint' | 'livery';
 }
 
 /** What a crate held. */
@@ -15,6 +17,8 @@ export interface CrateContents {
   readonly credits: Credits;
   /** A crate colour the company had not got yet, or null. */
   readonly paintId: string | null;
+  /** A crate design the company had not got yet, or null (a crate gives a colour or a design, not both). */
+  readonly liveryId: string | null;
   /** Upgrade parts: 0 for none. */
   readonly parts: number;
   /** A booster, or null. */
@@ -28,9 +32,9 @@ export const CRATE_ROLLS = 8;
  * What a crate of `config`'s tier holds, drawn with `random` (uniform in
  * [0, 1)): credits between its two; by its parts chance upgrade parts; by
  * its booster chance a booster, its kind by `boosterWeights`; and by its
- * paint chance a crate colour from those the company has not got yet
- * (`unowned`), its rarity by the tier's weights, then one of that rarity
- * evenly (with every colour got, none).
+ * paint chance a crate colour or design from those the company has not got
+ * yet (`unowned`), its rarity by the tier's weights, then one of that rarity
+ * evenly (with every one got, none).
  */
 export function drawCrate(
   config: CrateTierConfig,
@@ -51,11 +55,18 @@ export function drawCrate(
   const withBooster = random() < config.boosterChance;
   const boosterRoll = random();
   const booster = withBooster ? weighted(BOOSTER_KINDS, boosterWeights, boosterRoll) : null;
-  return { credits, paintId: withPaint ? drawPaint(config, unowned, roll, pick) : null, parts, booster };
+  const cosmetic = withPaint ? drawPaint(config, unowned, roll, pick) : null;
+  return {
+    credits,
+    paintId: cosmetic !== null && cosmetic.kind !== 'livery' ? cosmetic.id : null,
+    liveryId: cosmetic?.kind === 'livery' ? cosmetic.id : null,
+    parts,
+    booster,
+  };
 }
 
-/** A crate colour of `unowned`: its rarity by the tier's weights (`roll`), then one of it evenly (`pick`). */
-function drawPaint(config: CrateTierConfig, unowned: readonly CratePaint[], roll: number, pick: number): string | null {
+/** A crate cosmetic of `unowned`: its rarity by the tier's weights (`roll`), then one of it evenly (`pick`). */
+function drawPaint(config: CrateTierConfig, unowned: readonly CratePaint[], roll: number, pick: number): CratePaint | null {
   if (unowned.length === 0) {
     return null;
   }
@@ -81,7 +92,7 @@ function drawPaint(config: CrateTierConfig, unowned: readonly CratePaint[], roll
     }
   }
   const ofRarity = unowned.filter((paint) => paint.rarity === chosen);
-  return ofRarity[Math.min(ofRarity.length - 1, Math.floor(pick * ofRarity.length))]!.id;
+  return ofRarity[Math.min(ofRarity.length - 1, Math.floor(pick * ofRarity.length))]!;
 }
 
 /** One of `kinds` by `weights` against each other (`roll` uniform in [0, 1)); null when none has any weight. */

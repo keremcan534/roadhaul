@@ -55,7 +55,10 @@ import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
 import { RenderHost } from './presentation/RenderHost';
-import { TruckView, truckViewKey } from './presentation/vehicles/TruckView';
+import { TruckView, truckViewKey, type TruckViewOptions } from './presentation/vehicles/TruckView';
+import { DEFAULT_TRAILER_TEXT, liveryThumbnail } from './presentation/textures/liveryImages';
+import { pixelImageUrl } from './presentation/textures/pixelImageUrl';
+import type { LiveryPattern } from './data/definitions/LiveryDefinition';
 import { CrashEffects } from './presentation/effects/CrashEffects';
 import { SlowMotion } from './presentation/effects/SlowMotion';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
@@ -317,6 +320,7 @@ async function start(strings: Strings): Promise<void> {
   const review = services.resolve(ServiceKeys.review);
   const achievements = services.resolve(ServiceKeys.achievements);
   const crates = services.resolve(ServiceKeys.crates);
+  const liveries = services.resolve(ServiceKeys.liveries);
   const supplies = services.resolve(ServiceKeys.supplies);
   const quests = services.resolve(ServiceKeys.quests);
   const levelRewards = services.resolve(ServiceKeys.levelRewards);
@@ -348,6 +352,17 @@ async function start(strings: Strings): Promise<void> {
   const lampLight = requestedLampLight(query) ?? !software;
   // The seasons on the land: the grass, the broadleaf trees, the verges' flowers, the fields, the hills and the snow.
   const seasonShading = new SeasonShading(season.season);
+  /** The garage's pictures of the designs, in a colour: drawn once each, kept. */
+  const liveryPictures = new Map<string, string>();
+  const liveryPicture = (pattern: LiveryPattern, color: number): string => {
+    const key = `${pattern}:${color}`;
+    let url = liveryPictures.get(key);
+    if (url === undefined) {
+      url = pixelImageUrl(document, liveryThumbnail([(color >> 16) & 255, (color >> 8) & 255, color & 255], pattern));
+      liveryPictures.set(key, url);
+    }
+    return url;
+  };
   /** Now and then on a clear night, a shooting star where the camera looks. */
   const shootingStars = new ShootingStars(renderHost.scene);
   shootingStars.fallOften = shownWonder === 'meteors';
@@ -737,12 +752,18 @@ async function start(strings: Strings): Promise<void> {
           return null;
         }
         const paint = opened.value.paintId === null ? null : content.paints.get(opened.value.paintId);
+        const livery = opened.value.liveryId === null ? null : content.liveries.get(opened.value.liveryId);
+        const truckColor = garage.activeTruck.paint?.color ?? garage.activeTruck.definition.factoryColor;
         return {
           credits: strings.money(opened.value.credits),
           paint:
             paint === null || paint.crate === undefined
               ? null
               : { name: strings.t(`paint.${paint.id}.name`), color: paint.color, rarity: paint.crate },
+          livery:
+            livery === null || livery.crate === undefined
+              ? null
+              : { name: strings.t(`livery.${livery.id}.name`), picture: liveryPicture(livery.pattern, truckColor), rarity: livery.crate },
           parts: opened.value.parts,
           booster: opened.value.booster,
         };
@@ -1071,7 +1092,10 @@ async function start(strings: Strings): Promise<void> {
     let definition = driving.definition;
     let paint = active?.paint?.color ?? definition.factoryColor;
     let fitted = active?.upgrades ?? {};
-    if (truckPreview?.kind === 'paint') {
+    let livery = active === null ? 'classic' : liveries.liveryOf(active.instanceId).pattern;
+    if (truckPreview?.kind === 'livery') {
+      livery = content.liveries.get(truckPreview.liveryId).pattern;
+    } else if (truckPreview?.kind === 'paint') {
       paint = truckPreview.paintId === null ? definition.factoryColor : content.paints.get(truckPreview.paintId).color;
     } else if (truckPreview?.kind === 'upgrade') {
       const upgrade = content.upgrades.get(truckPreview.upgradeId);
@@ -1082,14 +1106,17 @@ async function start(strings: Strings): Promise<void> {
       definition = model;
       paint = owned?.paint?.color ?? model.factoryColor;
       fitted = owned?.upgrades ?? {};
+      livery = owned === undefined ? 'classic' : liveries.liveryOf(owned.instanceId).pattern;
     }
-    const options = {
+    const options: TruckViewOptions = {
       lampGlows,
       castShadows,
       sky: environment.sky,
       light: environment.light,
       paint,
       looks: truckLooks(fitted, content.upgrades.all),
+      livery,
+      ...(session.isActive && liveries.trailerText !== null ? { trailerText: liveries.trailerText } : {}),
     };
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
@@ -1468,6 +1495,8 @@ async function start(strings: Strings): Promise<void> {
       clock,
       monetization,
       supplies,
+      liveries,
+      liveryPicture,
     },
     {
       onAccept: (missionId) => {
@@ -1484,6 +1513,28 @@ async function start(strings: Strings): Promise<void> {
       onRepairDiscounted: repairDiscounted,
       onRefuelToken: refuelToken,
       onRepairToken: repairToken,
+      onBuyLivery: (liveryId) => {
+        const bought = liveries.buy(liveryId);
+        if (bought.ok) {
+          audio.chime();
+          // Bought for the company: on the truck being driven at once.
+          liveries.apply(garage.activeTruck.instanceId, liveryId);
+          toasts.show(strings.t('toast.liveryBought', { livery: strings.t(`livery.${liveryId}.name`) }), 'success');
+        } else if (bought.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        }
+      },
+      onApplyLivery: (liveryId) => {
+        if (liveries.apply(garage.activeTruck.instanceId, liveryId).ok) {
+          toasts.show(strings.t('toast.liveryApplied', { livery: strings.t(`livery.${liveryId}.name`) }), 'success');
+        }
+      },
+      onSetTrailerText: (text) => {
+        const set = liveries.setTrailerText(text, strings.language);
+        if (set.ok) {
+          toasts.show(strings.t('toast.trailerText', { text: set.value ?? DEFAULT_TRAILER_TEXT }), 'success');
+        }
+      },
       onOpenShop: () => openShop(),
       onBuyTruck: (definitionId) => {
         const bought = garage.buy(definitionId);
@@ -1956,7 +2007,7 @@ async function start(strings: Strings): Promise<void> {
     }
   });
   // A purchase ends any preview (refreshHq), then the truck shows what was bought.
-  for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged'] as const) {
+  for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged', 'LiveryChanged'] as const) {
     events.on(name, () => {
       refreshHq();
       showTruck();

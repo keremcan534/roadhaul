@@ -10,7 +10,13 @@ export interface ShopActions {
   readonly onClose: () => void;
 }
 
-const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = { remove_ads: 'close', premium_paints: 'garage' };
+const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = {
+  remove_ads: 'close',
+  premium_paints: 'garage',
+  designs_street: 'truck',
+  designs_neon: 'truck',
+  supporter_pack: 'star',
+};
 
 /**
  * The shop (spec §35): what the game sells on Google Play, each with its price in the player's currency, bought once

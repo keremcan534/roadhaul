@@ -15,6 +15,7 @@ import { CasinoService } from '../systems/casino/CasinoService';
 import { CrateService } from '../systems/rewards/CrateService';
 import { QuestService } from '../systems/rewards/QuestService';
 import { SupplyService } from '../systems/rewards/SupplyService';
+import { LiveryService } from '../systems/vehicles/LiveryService';
 import { SkyWonderService } from '../systems/weather/SkyWonderService';
 import { LevelRewardService } from '../systems/company/LevelRewardService';
 import { ReviewService } from '../systems/review/ReviewService';
@@ -293,6 +294,11 @@ export class GameBootstrapper {
           config.crates.partCredits,
         ),
       );
+      // The trucks' designs: bought with credits, given by crates, or with a pack from the shop.
+      const liveries = container.register(
+        ServiceKeys.liveries,
+        new LiveryService(catalog, economy, company, garage, crates, monetization, events, logger.withCategory('Liveries')),
+      );
       const depotRoads = container.register(ServiceKeys.depotRoads, new DepotRoads(catalog, driving));
       const fleet = container.register(
         ServiceKeys.fleet,
@@ -411,6 +417,7 @@ export class GameBootstrapper {
           levelRewards,
           supplies,
           quests,
+          liveries,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),

@@ -32,6 +32,9 @@ import { cssColor, RivalsPage } from './rivalsPage';
 import { truckPage } from './truckPage';
 import { upgradeCard } from './upgradeCards';
 import type { SupplyService } from '../../systems/rewards/SupplyService';
+import type { LiveryPattern } from '../../data/definitions/LiveryDefinition';
+import type { LiveryService } from '../../systems/vehicles/LiveryService';
+import { liveryPicker } from './liveryPicker';
 
 /** What the panel shows. It only reads them; changes go through the actions. */
 export interface CompanyHqServices {
@@ -54,11 +57,16 @@ export interface CompanyHqServices {
   readonly monetization: MonetizationService;
   /** The crates' parts and boosters: the free fill-up and repair tokens. */
   readonly supplies: SupplyService;
+  /** The trucks' designs and the trailer text. */
+  readonly liveries: LiveryService;
+  /** A design's small picture in a colour (0xRRGGBB), as an image URL (the presentation draws it). */
+  readonly liveryPicture: (pattern: LiveryPattern, color: number) => string;
 }
 
 /** Something shown on the truck in the showroom before it is bought: a paint, an upgrade's next level, another model. */
 export type TruckPreview =
   | { readonly kind: 'paint'; readonly paintId: string | null }
+  | { readonly kind: 'livery'; readonly liveryId: string }
   | { readonly kind: 'upgrade'; readonly upgradeId: string }
   | { readonly kind: 'truck'; readonly definitionId: string };
 
@@ -68,6 +76,10 @@ export interface CompanyHqActions {
   readonly onRepair: () => void;
   /** The same at half price, after a rewarded ad. */
   readonly onRefuelDiscounted: () => void;
+  /** Buys a design for credits, puts one on the truck being driven, sets the trailer text. */
+  readonly onBuyLivery: (liveryId: string) => void;
+  readonly onApplyLivery: (liveryId: string) => void;
+  readonly onSetTrailerText: (text: string) => void;
   /** Fills up or repairs for free, with a crate's token. */
   readonly onRefuelToken: () => void;
   readonly onRepairToken: () => void;
@@ -522,6 +534,30 @@ export class CompanyHq {
       ),
     );
 
+    const color = truck.paint?.color ?? truck.definition.factoryColor;
+    const designs = section(
+      'liveries',
+      strings.t('hq.garage.liveries'),
+      liveryPicker(
+        document,
+        strings,
+        {
+          offers: this.services.liveries.offers(),
+          worn: this.services.liveries.liveryOf(truck.instanceId),
+          text: this.services.liveries.trailerText,
+          canAfford,
+          picture: (pattern) => this.services.liveryPicture(pattern, color),
+        },
+        {
+          onBuy: actions.onBuyLivery,
+          onApply: actions.onApplyLivery,
+          onPreview: (liveryId) => this.togglePreview({ kind: 'livery', liveryId }),
+          onSetText: actions.onSetTrailerText,
+          onOpenShop: actions.onOpenShop,
+        },
+      ),
+    );
+
     const upgradeCards = element(document, 'div', 'hq__cards');
     upgradeCards.append(
       ...upgrades.offers().map((offer) =>
@@ -570,7 +606,7 @@ export class CompanyHq {
       ),
     );
     const trucksSection = section('trucks', strings.t('hq.garage.trucks'), truckCards);
-    return [paint, upgradesSection, trucksSection];
+    return [paint, designs, upgradesSection, trucksSection];
   }
 }
 
@@ -587,6 +623,8 @@ function previewKey(preview: TruckPreview | null): string {
   switch (preview.kind) {
     case 'paint':
       return `paint:${preview.paintId ?? 'factory'}`;
+    case 'livery':
+      return `livery:${preview.liveryId}`;
     case 'upgrade':
       return `upgrade:${preview.upgradeId}`;
     case 'truck':

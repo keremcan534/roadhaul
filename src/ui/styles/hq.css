@@ -1705,3 +1705,119 @@
 .upgrade-card__list-price {
   color: var(--rh-muted);
 }
+
+/* ---- The trucks' designs (src/ui/hq/liveryPicker.ts): the trailer text, then a card per design ---- */
+
+.livery-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.livery-picker__text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.livery-picker__label {
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.livery-picker__input {
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  font: 500 16px/1.2 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.livery-picker__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.livery-card {
+  --rarity-colour: var(--rh-line-strong);
+
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+}
+
+.livery-card[data-rarity='rare'] {
+  --rarity-colour: #4fa8ff;
+}
+
+.livery-card[data-rarity='epic'] {
+  --rarity-colour: #b06bff;
+}
+
+.livery-card[data-rarity='legendary'] {
+  --rarity-colour: #ffcb45;
+}
+
+.livery-card[data-rarity] {
+  border-color: var(--rarity-colour);
+}
+
+.livery-card.is-worn {
+  border-color: var(--rh-accent);
+  box-shadow: inset 0 0 0 1px var(--rh-accent);
+}
+
+.livery-card__picture {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--rh-radius-small);
+  background: none;
+  cursor: pointer;
+  aspect-ratio: 2 / 1;
+}
+
+.livery-card__picture img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.livery-card:not(.is-owned) .livery-card__picture img {
+  opacity: 0.75;
+}
+
+.livery-card__name {
+  font: 500 13px/1.2 var(--rh-display);
+  letter-spacing: 0.03em;
+}
+
+.livery-card__status {
+  color: var(--rh-fg-2);
+  font-size: 12px;
+}
+
+.livery-card.is-worn .livery-card__status {
+  color: var(--rh-accent-hi);
+}
+
+.livery-card__action {
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 13px;
+}

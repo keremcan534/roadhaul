@@ -1,6 +1,7 @@
 import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinition';
 import { isCrateTier } from '../../data/config/GameConfig';
 import { isBoosterKind } from '../../data/definitions/BoosterKind';
+import { TRAILER_TEXT_MAX } from '../vehicles/trailerText';
 import { QUEST_METRICS } from '../../data/definitions/QuestDefinition';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
@@ -190,6 +191,13 @@ export function validateSaveGameData(
         ),
       );
     }
+    const liveries = crates['liveries'];
+    if (validator.check(Array.isArray(liveries), 'crates.liveries', 'must be a list')) {
+      // A design the content no longer has is dropped on loading (CrateService.restore), not refused.
+      (liveries as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `crates.liveries[${index}]`, 'must be an id'),
+      );
+    }
     validator.nonNegativeInteger(crates['perfectStreak'], 'crates.perfectStreak');
     validator.nonNegativeInteger(crates['bestPerfectStreak'], 'crates.bestPerfectStreak');
     validator.check(
@@ -241,6 +249,26 @@ export function validateSaveGameData(
       );
     }
     validator.boolean(quests['bonusClaimed'], 'quests.bonusClaimed');
+  });
+  section('liveries', (liveries) => {
+    const bought = liveries['bought'];
+    if (validator.check(Array.isArray(bought), 'liveries.bought', 'must be a list')) {
+      (bought as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `liveries.bought[${index}]`, 'must be an id'),
+      );
+    }
+    const worn = liveries['worn'];
+    if (validator.check(isJson(worn), 'liveries.worn', 'must be an object')) {
+      for (const [instanceId, id] of Object.entries(worn as Json)) {
+        validator.check(typeof id === 'string', `liveries.worn.${instanceId}`, 'must be an id');
+      }
+    }
+    const text = liveries['text'];
+    validator.check(
+      text === null || (typeof text === 'string' && text.length > 0 && text.length <= TRAILER_TEXT_MAX),
+      'liveries.text',
+      `must be null or up to ${TRAILER_TEXT_MAX} letters`,
+    );
   });
   return validator.issues;
 }

@@ -22,6 +22,7 @@ import type { LevelRewardService } from '../company/LevelRewardService';
 import type { CrateService } from '../rewards/CrateService';
 import type { QuestService } from '../rewards/QuestService';
 import type { SupplyService } from '../rewards/SupplyService';
+import type { LiveryService } from '../vehicles/LiveryService';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { EventService } from '../events/EventService';
@@ -65,6 +66,8 @@ export interface GameSessionDependencies {
   readonly supplies: SupplyService;
   /** The day's quests. */
   readonly quests: QuestService;
+  /** The trucks' designs and the trailer text. */
+  readonly liveries: LiveryService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
   readonly tutorial: TutorialService;
@@ -123,6 +126,7 @@ export class GameSessionService {
       events.on('LevelRewardCollected', saveNow),
       events.on('CrateEarned', saveNow),
       events.on('SuppliesChanged', saveNow),
+      events.on('LiveryChanged', saveNow),
       events.on('CampaignRun', ({ companyId, away }) => {
         if (companyId === PLAYER_COMPANY_ID && !away) {
           saveNow();
@@ -281,6 +285,7 @@ export class GameSessionService {
       levelRewards,
       supplies,
       quests,
+      liveries,
       specialEvents,
       tutorial,
     } = this.deps;
@@ -314,6 +319,7 @@ export class GameSessionService {
       levelRewards: levelRewards.snapshot(),
       supplies: supplies.snapshot(),
       quests: quests.snapshot(),
+      liveries: liveries.snapshot(),
     };
   }
 
@@ -377,6 +383,7 @@ export class GameSessionService {
       levelRewards,
       supplies,
       quests,
+      liveries,
       specialEvents,
       tutorial,
     } = this.deps;
@@ -397,6 +404,7 @@ export class GameSessionService {
     levelRewards.restore(save.levelRewards);
     supplies.restore(save.supplies);
     garage.restore(save.garage);
+    liveries.restore(save.liveries);
     fleet.restore(save.fleet);
     missions.restore(save.missions.active);
     rivals.restore(save.rivals); // After the contract under way: a tender being raced must be it.

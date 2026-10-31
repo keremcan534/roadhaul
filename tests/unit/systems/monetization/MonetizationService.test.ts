@@ -305,12 +305,20 @@ describe('purchases', () => {
   it('sell "Remove ads" only where there are ads', async () => {
     const context = setup();
     await context.monetization.attachStore(context.store);
-    expect((await context.monetization.productsForSale()).map((product) => product.id)).toEqual(['premium_paints']);
+    expect((await context.monetization.productsForSale()).map((product) => product.id)).toEqual([
+      'premium_paints',
+      'designs_street',
+      'designs_neon',
+      'supporter_pack',
+    ]);
 
     context.monetization.attachAds(context.ads);
     expect((await context.monetization.productsForSale()).map((product) => product.id)).toEqual([
       'remove_ads',
       'premium_paints',
+      'designs_street',
+      'designs_neon',
+      'supporter_pack',
     ]);
   });
 

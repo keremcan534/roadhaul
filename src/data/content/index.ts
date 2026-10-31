@@ -8,6 +8,7 @@ import { EVENTS } from './events';
 import { FACILITIES } from './facilities';
 import { ACHIEVEMENTS } from './achievements';
 import { QUESTS } from './quests';
+import { LIVERIES } from './liveries';
 import { MISSIONS } from './missions';
 import { PAINTS } from './paints';
 import { RIVALS } from './rivals';
@@ -34,4 +35,5 @@ export const GAME_CONTENT: GameContent = {
   facilities: FACILITIES,
   achievements: ACHIEVEMENTS,
   quests: QUESTS,
+  liveries: LIVERIES,
 };

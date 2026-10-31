@@ -13,6 +13,7 @@ import type { AchievementService } from '../systems/achievements/AchievementServ
 import type { CrateService } from '../systems/rewards/CrateService';
 import type { QuestService } from '../systems/rewards/QuestService';
 import type { SupplyService } from '../systems/rewards/SupplyService';
+import type { LiveryService } from '../systems/vehicles/LiveryService';
 import type { SkyWonderService } from '../systems/weather/SkyWonderService';
 import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
@@ -84,6 +85,8 @@ export const ServiceKeys = Object.freeze({
   supplies: serviceKey<SupplyService>('SupplyService'),
   /** The day's quests, each a crate. */
   quests: serviceKey<QuestService>('QuestService'),
+  /** The trucks' designs and the trailer text. */
+  liveries: serviceKey<LiveryService>('LiveryService'),
   /** The company levels' rewards, waiting to be collected. */
   levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),

@@ -73,6 +73,7 @@ export class CrateService implements CratePaintSource {
   private readonly held: Record<CrateTier, number> = { bronze: 0, silver: 0, gold: 0 };
   private openedCount = 0;
   private readonly paints = new Set<string>();
+  private readonly liveries = new Set<string>();
   private streak = 0;
   private best = 0;
   private last: DeliveryCelebration | null = null;
@@ -93,7 +94,12 @@ export class CrateService implements CratePaintSource {
     private readonly events: EventBus<GameEvents>,
     private readonly logger: Logger,
   ) {
-    this.cratePaints = content.paints.all.flatMap((paint) => (paint.crate === undefined ? [] : [{ id: paint.id, rarity: paint.crate }]));
+    this.cratePaints = [
+      ...content.paints.all.flatMap((paint) => (paint.crate === undefined ? [] : [{ id: paint.id, rarity: paint.crate }])),
+      ...content.liveries.all.flatMap((livery) =>
+        livery.crate === undefined ? [] : [{ id: livery.id, rarity: livery.crate, kind: 'livery' as const }],
+      ),
+    ];
     this.unsubscribe = [
       events.on('MissionCompleted', ({ reward, cargoDamage }) => this.delivered(deliveryStars(reward.onTime, cargoDamage))),
       events.on('MissionFailed', () => {
@@ -138,13 +144,17 @@ export class CrateService implements CratePaintSource {
     return this.last;
   }
 
-  /** The crate colours, and how many of them the crates have given. */
+  /** The crate colours and designs, and how many of them the crates have given. */
   get paintsGot(): { readonly got: number; readonly of: number } {
-    return { got: this.paints.size, of: this.cratePaints.length };
+    return { got: this.paints.size + this.liveries.size, of: this.cratePaints.length };
   }
 
   ownsCratePaint(paintId: string): boolean {
     return this.paints.has(paintId);
+  }
+
+  ownsCrateLivery(liveryId: string): boolean {
+    return this.liveries.has(liveryId);
   }
 
   /** The free crate: ready now, or when. */
@@ -176,17 +186,20 @@ export class CrateService implements CratePaintSource {
     if (this.held[tier] <= 0) {
       return err('noCrate');
     }
-    const unowned = this.cratePaints.filter((paint) => !this.paints.has(paint.id));
+    const unowned = this.cratePaints.filter((paint) => !this.paints.has(paint.id) && !this.liveries.has(paint.id));
     const contents = drawCrate(this.config.tiers[tier], unowned, this.random, this.config.boosters.weights);
     this.held[tier] -= 1;
     this.openedCount += 1;
     if (contents.paintId !== null) {
       this.paints.add(contents.paintId);
     }
+    if (contents.liveryId !== null) {
+      this.liveries.add(contents.liveryId);
+    }
     this.economy.earn(contents.credits, 'crate');
     this.supplies.add(contents.parts, contents.booster);
     this.logger.info(`Crate opened: ${tier}, ${contents.credits} credits${contents.paintId === null ? '' : `, ${contents.paintId}`}.`);
-    this.events.emit('CrateOpened', { tier, credits: contents.credits, paintId: contents.paintId });
+    this.events.emit('CrateOpened', { tier, credits: contents.credits, paintId: contents.paintId, liveryId: contents.liveryId });
     return ok(contents);
   }
 
@@ -201,6 +214,7 @@ export class CrateService implements CratePaintSource {
       held,
       opened: this.openedCount,
       paints: [...this.paints],
+      liveries: [...this.liveries],
       perfectStreak: this.streak,
       bestPerfectStreak: this.best,
       freeCrateAtMs: this.freeAtMs,
@@ -220,8 +234,14 @@ export class CrateService implements CratePaintSource {
     this.openedCount = save.opened;
     this.paints.clear();
     for (const id of save.paints) {
-      if (this.cratePaints.some((paint) => paint.id === id)) {
+      if (this.cratePaints.some((paint) => paint.id === id && paint.kind !== 'livery')) {
         this.paints.add(id);
+      }
+    }
+    this.liveries.clear();
+    for (const id of save.liveries) {
+      if (this.cratePaints.some((paint) => paint.id === id && paint.kind === 'livery')) {
+        this.liveries.add(id);
       }
     }
     this.streak = save.perfectStreak;

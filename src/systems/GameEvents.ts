@@ -180,11 +180,17 @@ export interface GameEvents {
     readonly tier: CrateTier;
     readonly source: CrateSource;
   };
-  /** A crate was opened: the credits it paid, and the crate colour it gave (null for none). */
+  /** A crate was opened: the credits it paid, and the crate colour or design it gave (null for none). */
   CrateOpened: {
     readonly tier: CrateTier;
     readonly credits: Credits;
     readonly paintId: string | null;
+    readonly liveryId: string | null;
+  };
+  /** A design was bought (`instanceId` null) or put on a truck, or the trailer text changed (both null). */
+  LiveryChanged: {
+    readonly instanceId: string | null;
+    readonly liveryId: string | null;
   };
   /** What crates gave besides credits changed (SupplyService): parts or boosters added, used or running out. */
   SuppliesChanged: {

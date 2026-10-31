@@ -159,6 +159,16 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
     }),
   },
+  {
+    // v16 adds the designs: every truck in the classic, none bought or given by a crate, the RoadHaul lettering.
+    from: 15,
+    migrate: (save) => ({
+      ...save,
+      version: 16,
+      crates: { ...(isJsonObject(save['crates']) ? save['crates'] : {}), liveries: [] },
+      liveries: { bought: [], worn: {}, text: null },
+    }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

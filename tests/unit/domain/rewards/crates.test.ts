@@ -63,9 +63,13 @@ describe('drawCrate', () => {
     expect(drawCrate(TIER, [], rolls(0, 0.1, 0.5, 0, 0.9, 0, 0.9, 0), BOOSTERS)).toEqual({
       credits: 100,
       paintId: null,
+      liveryId: null,
       parts: 0,
       booster: null,
     });
+    // A design drawn is given as one.
+    const designs: readonly CratePaint[] = [{ id: 'galaxy', rarity: 'legendary', kind: 'livery' }];
+    expect(drawCrate(TIER, designs, rolls(0, 0.1, 0.5, 0, 0.9, 0, 0.9, 0), BOOSTERS)).toMatchObject({ paintId: null, liveryId: 'galaxy' });
     // A rarity weighted 0 is never drawn.
     const noColours: CrateTierConfig = { ...TIER, rarityWeights: { rare: 0, epic: 0, legendary: 0 } };
     expect(drawCrate(noColours, PAINTS, rolls(0, 0.1, 0.5, 0, 0.9, 0, 0.9, 0), BOOSTERS).paintId).toBeNull();

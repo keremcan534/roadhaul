@@ -38,6 +38,8 @@ export interface CrateShown {
   readonly credits: string;
   /** The crate colour it gave, or null. */
   readonly paint: { readonly name: string; readonly color: number; readonly rarity: PaintRarity } | null;
+  /** The crate design it gave (its picture an image URL), or null. */
+  readonly livery: { readonly name: string; readonly picture: string; readonly rarity: PaintRarity } | null;
   /** Upgrade parts: 0 for none. */
   readonly parts: number;
   /** A booster, or null. */
@@ -574,11 +576,12 @@ export class CrateDialog {
     }
     this.later(shakes * SHAKE_MS, () => {
       this.stage.dataset.state = 'burst';
-      if (shown.paint !== null) {
-        this.stage.dataset.rarity = shown.paint.rarity;
+      const rarity = shown.paint?.rarity ?? shown.livery?.rarity ?? null;
+      if (rarity !== null) {
+        this.stage.dataset.rarity = rarity;
       }
-      this.fillBurst(shown.paint?.rarity ?? null);
-      this.actions.onBurst?.(shown.paint?.rarity ?? null);
+      this.fillBurst(rarity);
+      this.actions.onBurst?.(rarity);
     });
     this.later(shakes * SHAKE_MS + (reduced ? 0 : REVEAL_MS), () => {
       this.showReward(shown);
@@ -631,6 +634,23 @@ export class CrateDialog {
       );
       paint.append(swatch, words);
       cards.push(paint);
+    }
+    if (shown.livery !== null) {
+      const livery = element(document, 'div', 'crates__paint crates__livery');
+      livery.dataset.rarity = shown.livery.rarity;
+      livery.dataset.value = 'crate-livery';
+      const picture = document.createElement('img');
+      picture.className = 'crates__livery-picture';
+      picture.alt = '';
+      picture.src = shown.livery.picture;
+      const words = element(document, 'span', 'crates__paint-words');
+      words.append(
+        element(document, 'span', 'crates__rarity', strings.t(`rarity.${shown.livery.rarity}`)),
+        element(document, 'span', 'crates__paint-name', strings.t('crates.newLivery', { livery: shown.livery.name })),
+        element(document, 'span', 'crates__paint-tip', strings.t('crates.liveryTip')),
+      );
+      livery.append(picture, words);
+      cards.push(livery);
     }
     this.reward.replaceChildren(...cards);
   }
