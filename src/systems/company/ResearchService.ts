@@ -93,11 +93,11 @@ export class ResearchService {
     return { researched: this.done.size, total: this.content.research.all.length };
   }
 
-  /** Steps that could be researched now with the points held (credits aside): for a badge. */
-  get affordableCount(): number {
+  /** Steps that could be researched now with the points held and `credits`: for the company page's dot. */
+  readyCount(credits: Credits): number {
     let count = 0;
     for (const definition of this.content.research.all) {
-      if (this.stateOf(definition) === 'available' && definition.points <= this.pointsHeld) {
+      if (this.stateOf(definition) === 'available' && definition.points <= this.pointsHeld && definition.cost <= credits) {
         count++;
       }
     }

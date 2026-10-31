@@ -13,7 +13,9 @@ test('breaks the news of a fire near the truck: over the job board, in the Gazet
   await expect(ticker).toHaveClass(/is-breaking/);
   await expect(ticker).toContainText('Fire in Havenport! Fire crews and an ambulance are on the scene.');
 
-  await openPanel(page, 'rivals');
+  // A tap on it opens the Gazette.
+  await ticker.click();
+  await expect(page.locator('.hq__tab[data-tab="rivals"]')).toHaveAttribute('aria-selected', 'true');
   const gazette = page.locator('.hq__section--gazette');
   await expect(gazette.locator('.gazette__item.is-breaking')).toHaveCount(1);
   await expect(gazette.locator('.gazette__item.is-breaking .gazette__text')).toHaveText('Fire in Havenport! Fire crews and an ambulance are on the scene.');

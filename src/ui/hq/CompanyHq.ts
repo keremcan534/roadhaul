@@ -285,6 +285,11 @@ export class CompanyHq {
     setText(this.goalsBadge, String(count));
   }
 
+  /** A step of the research tree can be researched now: a dot on the company page's tab. */
+  set researchReady(ready: boolean) {
+    this.tabs.get('company')?.classList.toggle('has-dot', ready);
+  }
+
   /** How many crates wait to be opened: shown on the crates button, hidden at 0. */
   set cratesWaiting(count: number) {
     this.cratesBadge.hidden = count === 0;
@@ -354,8 +359,24 @@ export class CompanyHq {
     this.list.dataset.tab = this.tab;
     this.showPreview(null);
     const scrolled = this.list.scrollTop;
+    // A field being typed in (the trailer text) keeps what was typed and the caret: money coming in from the fleet
+    // redraws the page meanwhile.
+    const active = this.list.ownerDocument.activeElement;
+    const typing = active?.tagName === 'INPUT' && this.list.contains(active) ? (active as HTMLInputElement) : null;
+    const field =
+      typing !== null && typing.dataset.value !== undefined
+        ? { name: typing.dataset.value, value: typing.value, start: typing.selectionStart, end: typing.selectionEnd }
+        : null;
     this.list.replaceChildren(...this.tabContent());
     this.list.scrollTop = scrolled;
+    if (field !== null) {
+      const again = this.list.querySelector<HTMLInputElement>(`input[data-value="${field.name}"]`);
+      if (again !== null) {
+        again.value = field.value;
+        again.focus({ preventScroll: true });
+        again.setSelectionRange(field.start, field.end);
+      }
+    }
   }
 
   /**
@@ -492,7 +513,7 @@ export class CompanyHq {
     // What the region is talking about: the Gazette's newest headline.
     const headline = this.services.news.latest;
     if (headline !== null) {
-      page.push(newsTicker(document, strings, headline, this.services.company.companyName));
+      page.push(newsTicker(document, strings, headline, this.services.company.companyName, () => this.selectTab('rivals')));
     }
     const current = missions.activeDefinition;
     if (current !== null) {

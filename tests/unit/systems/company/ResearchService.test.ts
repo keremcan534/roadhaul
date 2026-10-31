@@ -36,7 +36,7 @@ describe('ResearchService', () => {
       RESEARCH.map((step) => [step.id, step.tier === 1 ? 'available' : 'needsPrevious']),
     );
     expect(game.research.progress).toEqual({ researched: 0, total: RESEARCH.length });
-    expect(game.research.affordableCount).toBe(0);
+    expect(game.research.readyCount(game.economy.credits)).toBe(0);
   });
 
   it('earns a point a delivery, two for a perfect one', async () => {
@@ -48,7 +48,7 @@ describe('ResearchService', () => {
     expect(game.research.points).toBe(DEFAULT_GAME_CONFIG.research.pointsPerDelivery + DEFAULT_GAME_CONFIG.research.perfectBonusPoints);
     expect(game.research.lastDelivery).toEqual({ pay: 0, points: 2 });
     expect(earned).toEqual([{ points: 2, earned: 2 }]);
-    expect(game.research.affordableCount).toBe(0);
+    expect(game.research.readyCount(game.economy.credits)).toBe(0);
   });
 
   it('researches a step for its points and credits, a step at a time, from its company level', async () => {
@@ -83,7 +83,9 @@ describe('ResearchService', () => {
     expect(game.research.research('better_rates')).toEqual({ ok: false, error: 'insufficientFunds' });
     expect(game.research.points).toBe(5);
     expect(game.economy.credits).toBe(100);
-    expect(game.research.affordableCount).toBe(3); // Each first step: the credits are not counted.
+    // Each first step, with the points: none the credits reach, all three once they do.
+    expect(game.research.readyCount(game.economy.credits)).toBe(0);
+    expect(game.research.readyCount(2000)).toBe(3);
   });
 
   it('pays the pay bonus on top of each delivery, in tens, and says so', async () => {

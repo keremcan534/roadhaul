@@ -65,6 +65,9 @@ test('researches a step of the research tree with the points deliveries earned',
   const problems = watchForProblems(page);
   await continueSavedCompany(page, researchSave(5), '?lang=en');
   await openPanel(page, 'company');
+  // A step within reach: a dot on the page's tab.
+  const companyTab = page.locator('.hq__tab[data-tab="company"]');
+  await expect(companyTab).toHaveClass(/has-dot/);
 
   const tree = page.locator('.hq__section--research');
   await expect(tree.locator('[data-value="research-points"]')).toHaveText('Research points: 5');
@@ -85,6 +88,7 @@ test('researches a step of the research tree with the points deliveries earned',
   const training = tree.locator('.research-node[data-research-id="training_program"]');
   await expect(training).toHaveAttribute('data-state', 'available');
   await expect(training.locator('[data-action="research"]')).toBeDisabled();
+  await expect(companyTab).not.toHaveClass(/has-dot/);
   await testInfo.attach('research', { body: await page.screenshot(), contentType: 'image/png' });
   expect(problems).toEqual([]);
 });

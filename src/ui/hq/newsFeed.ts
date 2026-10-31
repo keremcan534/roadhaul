@@ -43,10 +43,13 @@ export function gazette(document: Document, strings: Strings, items: readonly Ne
   return list;
 }
 
-/** The newest headline in one line, over the job board: what the region is talking about. */
-export function newsTicker(document: Document, strings: Strings, item: NewsItem, companyName: string): HTMLElement {
-  const ticker = element(document, 'p', 'news-ticker');
+/** The newest headline in one line, over the job board: what the region is talking about. A tap opens the Gazette. */
+export function newsTicker(document: Document, strings: Strings, item: NewsItem, companyName: string, onOpen: () => void): HTMLElement {
+  const ticker = element(document, 'button', 'news-ticker');
+  ticker.type = 'button';
   ticker.dataset.value = 'news-latest';
+  ticker.dataset.action = 'open-news';
+  ticker.addEventListener('click', onOpen);
   ticker.classList.toggle('is-breaking', item.breaking);
   ticker.append(
     icon(document, 'news'),

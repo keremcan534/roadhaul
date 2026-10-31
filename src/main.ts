@@ -728,8 +728,11 @@ async function start(strings: Strings): Promise<void> {
       toasts.show(`${strings.t('news.breaking')}: ${newsText(strings, item, company.companyName)}`, 'info');
     }
     root.dataset.news = String(item.id);
-    // The job board's headline line follows the news.
-    refreshHq();
+    // The job board's headline line follows the news (the rivals page follows it by itself; other pages, a text
+    // being typed among them, are left alone).
+    if (hq.isOpen && hq.currentTab === 'jobs') {
+      refreshHq();
+    }
   });
   events.on('CityIncidentStarted', ({ kind }) => (root.dataset.cityIncident = kind));
   events.on('CityIncidentEnded', () => delete root.dataset.cityIncident);
@@ -1987,6 +1990,13 @@ async function start(strings: Strings): Promise<void> {
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
   events.on('ResearchCompleted', refreshHq);
+  // A dot on the company page's tab while a research step is within reach (points and credits).
+  const showResearchReady = (): void => {
+    hq.researchReady = research.readyCount(economy.credits) > 0;
+  };
+  for (const name of ['ResearchPointsChanged', 'ResearchCompleted', 'MoneyChanged', 'CompanyLevelUp', 'GameStateChanged'] as const) {
+    events.on(name, showResearchReady);
+  }
   for (const name of ['DriverHired', 'DriverDismissed', 'FleetTruckAssigned', 'FleetTruckRepaired'] as const) {
     events.on(name, refreshHq);
   }

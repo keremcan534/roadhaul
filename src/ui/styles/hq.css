@@ -191,6 +191,7 @@
 }
 
 .hq__tab {
+  position: relative;
   display: flex;
   flex: 1 1 0;
   align-items: center;
@@ -1290,19 +1291,24 @@
   background: rgb(255 80 60 / 8%);
 }
 
-/* The newest headline over the job board, on one line. */
+/* The newest headline over the job board, on one line; a tap opens the Gazette. */
 .news-ticker {
   --rh-icon-accent: var(--rh-accent);
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-width: 0;
   margin: 0;
   padding: 7px 12px;
   border: 1px solid var(--rh-line);
   border-radius: var(--rh-radius-small);
   background: var(--rh-surface-2);
+  color: var(--rh-fg);
+  font: inherit;
   font-size: 13px;
+  text-align: left;
+  cursor: pointer;
 }
 
 .news-ticker .icon {
@@ -1350,6 +1356,19 @@
   color: var(--rh-fg-2);
   font-size: 13px;
   font-style: italic;
+}
+
+/* A step of the research tree within reach: a dot on the company page's tab. */
+.hq__tab.has-dot::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rh-teal);
+  box-shadow: 0 0 0 2px var(--rh-surface);
 }
 
 /* ---- Research tree (src/ui/hq/researchTree.ts) ---- */
