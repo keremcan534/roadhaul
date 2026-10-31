@@ -68,10 +68,20 @@ export function upgradeCard(
       bottom.append(element(document, 'span', 'upgrade-card__price', strings.money(next.cost)));
       bottom.append(element(document, 'span', 'upgrade-card__status', strings.t('hq.locked', { level: next.requiredCompanyLevel })));
     } else {
+      // The crates' upgrade parts take their share off the price: the list price struck through, the parts used.
+      if (next.partsUsed > 0) {
+        const parts = element(document, 'span', 'upgrade-card__parts');
+        parts.dataset.value = 'upgrade-parts';
+        parts.append(
+          element(document, 's', 'upgrade-card__list-price', strings.money(next.cost)),
+          element(document, 'span', '', strings.t('hq.upgrades.parts', { count: next.partsUsed })),
+        );
+        bottom.append(parts);
+      }
       const buy = button(
         document,
         'button--primary upgrade-card__action',
-        strings.t('hq.upgrades.buy', { cost: strings.money(next.cost) }),
+        strings.t('hq.upgrades.buy', { cost: strings.money(next.price) }),
         'buy-upgrade',
         () => onBuy(upgrade.id),
       );

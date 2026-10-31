@@ -34,30 +34,17 @@ test('celebrates a delivery: its stars land, what it earned counts up, and the p
 test('opens a crate from the company panel: it shakes, bursts, and pays', async ({ page }, testInfo) => {
   test.slow();
   const problems = watchForProblems(page);
-  const save = JSON.parse(savedCompany({ credits: 10_000 })) as Record<string, unknown>;
-  // A save from this build: two crates waiting.
-  Object.assign(save, {
-    version: 14,
-    tutorial: { step: 'done' },
-    fleet: { drivers: [], jobsPlanned: 0 },
-    rivals: { companies: [], standing: [], campaignCooldowns: [], tender: null, race: null, nextTenderSeconds: null, tendersPosted: 0, jobsPlanned: 0 },
-    events: { runs: [] },
-    facilities: { levels: {} },
-    daily: { lastClaimDay: null, streak: 0 },
-    achievements: { counters: {}, claimed: [] },
-    crates: { held: { gold: 1, bronze: 1 }, opened: 0, paints: [], perfectStreak: 2, bestPerfectStreak: 2 },
-    levelRewards: { rewardedLevel: 2 },
-  });
-  const garage = save['garage'] as { vehicles: Record<string, unknown>[] };
-  garage.vehicles = garage.vehicles.map((vehicle) => ({ ...vehicle, paintId: null }));
-  await continueSavedCompany(page, JSON.stringify(save), '?lang=en');
+  // A save from this build: two crates waiting, the free crate not yet.
+  await continueSavedCompany(page, crateSave({ gold: 1, bronze: 1 }, 4_102_444_800_000), '?lang=en');
   await openPanel(page, 'jobs');
   await expect(page.locator('[data-value="crates-waiting"]')).toHaveText('2');
   await page.locator('[data-action="open-crates"]').click();
   const crates = page.locator('.crates');
   await expect(crates).toBeVisible();
-  await expect(crates.locator('[data-value="crates-gold"]')).toHaveText('×1');
-  await expect(crates.locator('[data-value="crates-bronze"]')).toHaveText('×1');
+  await expect(crates.locator('.crates__slot[data-tier="gold"]')).toHaveCount(1);
+  await expect(crates.locator('.crates__slot[data-tier="bronze"]')).toHaveCount(1);
+  await expect(crates.locator('.crates__slot.is-empty')).toHaveCount(2);
+  await expect(crates.locator('[data-value="free-crate"]')).toContainText('Next one in');
   // The best first.
   await expect(crates.locator('.crates__stage')).toHaveAttribute('data-tier', 'gold');
 
@@ -67,7 +54,7 @@ test('opens a crate from the company panel: it shakes, bursts, and pays', async 
   await testInfo.attach('opened', { body: await page.screenshot(), contentType: 'image/png' });
   const paid = Number((await credits.textContent())!.replace(/\D/g, ''));
   expect(paid).toBeGreaterThanOrEqual(2500);
-  await expect(crates.locator('[data-value="crates-gold"]')).toHaveText('×0');
+  await expect(crates.locator('.crates__slot[data-tier="gold"]')).toHaveCount(0);
   await expect(page.locator('[data-value="crates-waiting"]')).toHaveText('1');
 
   // The other one, then none left.
@@ -83,6 +70,58 @@ test('opens a crate from the company panel: it shakes, bursts, and pays', async 
   expect(balance).toBeGreaterThan(10_000 + paid);
   expect(problems).toEqual([]);
 });
+
+test('collects the free crate, and shows the day\'s quests and what the crates gave', async ({ page }, testInfo) => {
+  test.slow();
+  const problems = watchForProblems(page);
+  // No crate held, the free one ready.
+  await continueSavedCompany(page, crateSave({}, 0), '?lang=en');
+  await openPanel(page, 'jobs');
+  await expect(page.locator('[data-value="crates-waiting"]')).toHaveText('1');
+  await page.locator('[data-action="open-crates"]').click();
+  const crates = page.locator('.crates');
+  await expect(crates.locator('.crates__slot.is-empty')).toHaveCount(4);
+  await expect(crates.locator('[data-value="free-crate"]')).toHaveText('Ready to collect!');
+  await crates.locator('[data-action="claim-free-crate"]').click();
+  await expect(crates.locator('.crates__slot:not(.is-empty)')).toHaveCount(1);
+  await expect(crates.locator('[data-value="free-crate"]')).toContainText('Next one in');
+  await expect(page.locator('[data-value="crates-waiting"]')).toHaveText('1');
+
+  // The day's quests: three, nothing done yet.
+  await crates.locator('[data-action="crates-page"][data-page="quests"]').click();
+  await expect(crates.locator('.crates__quest[data-quest]')).toHaveCount(3);
+  await expect(crates.locator('[data-action="claim-quest"]')).toHaveCount(0);
+  await testInfo.attach('quests', { body: await page.screenshot(), contentType: 'image/png' });
+
+  // What the crates gave: none yet; the boosters each with what it does.
+  await crates.locator('[data-action="crates-page"][data-page="supplies"]').click();
+  await expect(crates.locator('[data-value="supply-parts"]')).toHaveText('×0');
+  await expect(crates.locator('.crates__supply')).toHaveCount(5);
+  await expect(crates.locator('[data-action="start-booster"]')).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+/** A save from this build: the crates `held`, the free crate ready at `freeCrateAtMs`, nothing else of crates. */
+function crateSave(held: Readonly<Record<string, number>>, freeCrateAtMs: number): string {
+  const save = JSON.parse(savedCompany({ credits: 10_000 })) as Record<string, unknown>;
+  Object.assign(save, {
+    version: 15,
+    tutorial: { step: 'done' },
+    fleet: { drivers: [], jobsPlanned: 0 },
+    rivals: { companies: [], standing: [], campaignCooldowns: [], tender: null, race: null, nextTenderSeconds: null, tendersPosted: 0, jobsPlanned: 0 },
+    events: { runs: [] },
+    facilities: { levels: {} },
+    daily: { lastClaimDay: null, streak: 0 },
+    achievements: { counters: {}, claimed: [] },
+    crates: { held, opened: 0, paints: [], perfectStreak: 2, bestPerfectStreak: 2, freeCrateAtMs },
+    levelRewards: { rewardedLevel: 2 },
+    supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
+    quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
+  });
+  const garage = save['garage'] as { vehicles: Record<string, unknown>[] };
+  garage.vehicles = garage.vehicles.map((vehicle) => ({ ...vehicle, paintId: null }));
+  return JSON.stringify(save);
+}
 
 test('celebrates the levels a company reached while away, and pays each one collected', async ({ page }, testInfo) => {
   test.slow();
@@ -100,7 +139,8 @@ test('celebrates the levels a company reached while away, and pays each one coll
 
   await show.locator('[data-action="collect-level"]').click();
   await expect(page.locator('.hq__credits')).toHaveText('5,000 credits');
-  await expect(page.locator('[data-value="crates-waiting"]')).toHaveText('1');
+  // The level's crate, and the free crate waiting since the update.
+  await expect(page.locator('[data-value="crates-waiting"]')).toHaveText('2');
   // Straight to its crate.
   await show.locator('[data-action="level-open-crate"]').click();
   await expect(show).toBeHidden();

@@ -2514,7 +2514,6 @@
 }
 
 .result-dialog__crate[data-tier='silver'],
-.crates__tile[data-tier='silver'],
 .crates__stage[data-tier='silver'],
 .level-up__reward--crate[data-tier='silver'] {
   --crate-colour: #c4ced8;
@@ -2522,7 +2521,6 @@
 }
 
 .result-dialog__crate[data-tier='gold'],
-.crates__tile[data-tier='gold'],
 .crates__stage[data-tier='gold'],
 .level-up__reward--crate[data-tier='gold'] {
   --crate-colour: #ffcb45;
@@ -2673,55 +2671,321 @@
   animation: daily-glow 1.4s ease-in-out infinite;
 }
 
-.crates__tiles {
+.crates__tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
-.crates__tile {
-  --crate-colour: #c98a4b;
-  --crate-rgb: 201 138 75;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
+.crates__tab {
+  position: relative;
+  min-height: 38px;
+  padding: 6px 4px;
   border: 1px solid var(--rh-line);
   border-radius: var(--rh-radius);
   background: var(--rh-surface-2);
+  color: var(--rh-fg-2);
+  font: 500 14px/1.1 var(--rh-display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.crates__tab.is-chosen {
+  border-color: var(--rh-accent);
+  background: var(--rh-accent-soft);
+  color: var(--rh-accent-hi);
+}
+
+.crates__page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crates__page[hidden] {
+  display: none;
+}
+
+/* The free crate and the ad's crate, side by side. */
+.crates__offers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.crates__offer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+}
+
+.crates__offer[hidden] {
+  display: none;
+}
+
+.crates__offer.is-ready {
+  border-color: var(--rh-accent);
+  background: radial-gradient(120% 140% at 0% 50%, rgb(242 163 58 / 22%), transparent 70%), var(--rh-surface-2);
+}
+
+.crates__offer-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  color: var(--rh-accent);
+}
+
+.crates__offer-words {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.crates__offer-title {
+  font: 500 14px/1.2 var(--rh-display);
+  letter-spacing: 0.03em;
+}
+
+.crates__offer-state {
+  color: var(--rh-fg-2);
+  font-size: 12px;
+}
+
+.crates__offer-button {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
+.crates__offer-button[hidden] {
+  display: none;
+}
+
+/* The crates held, a slot each. */
+.crates__slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.crates__slot {
+  --crate-colour: #c98a4b;
+  --crate-rgb: 201 138 75;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 66px;
+  padding: 6px 4px;
+  border: 1px solid rgb(var(--crate-rgb) / 60%);
+  border-radius: var(--rh-radius);
+  background: radial-gradient(100% 100% at 50% 0%, rgb(var(--crate-rgb) / 24%), transparent 75%), var(--rh-surface-2);
   color: var(--rh-fg);
-  cursor: pointer;
   font: inherit;
 }
 
-.crates__tile.is-chosen {
+.crates__slot.is-chosen {
   border-color: var(--crate-colour);
-  background: radial-gradient(100% 100% at 50% 0%, rgb(var(--crate-rgb) / 28%), transparent 75%), var(--rh-surface-3);
+  box-shadow: inset 0 0 0 1px var(--crate-colour);
 }
 
-.crates__tile.is-empty {
-  opacity: 0.5;
+.crates__slot.is-empty {
+  border: 1px dashed var(--rh-line-strong);
+  background: none;
+  color: var(--rh-muted);
 }
 
-.crates__tile-icon {
-  width: 26px;
-  height: 26px;
+.crates__slot[data-tier='silver'] {
+  --crate-colour: #c4ced8;
+  --crate-rgb: 196 206 216;
+}
+
+.crates__slot[data-tier='gold'] {
+  --crate-colour: #ffcb45;
+  --crate-rgb: 255 203 69;
+}
+
+.crates__slot-icon {
+  width: 28px;
+  height: 28px;
   color: var(--crate-colour);
   --rh-icon-accent: var(--rh-sign-yellow);
 }
 
-.crates__tile-name {
-  font: 500 12px/1.1 var(--rh-display);
+.crates__slot-name {
+  font: 500 11px/1.1 var(--rh-display);
   letter-spacing: 0.03em;
   text-align: center;
   text-transform: uppercase;
 }
 
-.crates__tile-count {
+.crates__slot-more {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  color: var(--rh-accent-hi);
+  font: 600 12px/1 var(--rh-numeric);
+}
+
+/* What a crate held besides credits: parts, a booster. */
+.crates__extras {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  animation: daily-total 500ms var(--rh-ease) 120ms both;
+}
+
+.crates__extra {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: 999px;
+  background: var(--rh-surface-3);
+  font: 500 13px/1.2 var(--rh-display);
+}
+
+.crates__extra-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--rh-accent);
+}
+
+/* The day's quests and the supplies: a row each. */
+.crates__quests,
+.crates__supplies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crates__quest,
+.crates__supply {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius);
+  background: var(--rh-surface-2);
+}
+
+.crates__quest[data-state='done'] {
+  border-color: var(--rh-accent);
+}
+
+.crates__quest[data-state='claimed'] {
+  opacity: 0.6;
+}
+
+.crates__quest--bonus {
+  border-style: dashed;
+}
+
+.crates__quest-icon,
+.crates__supply-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--rh-accent);
+}
+
+.crates__quest-words,
+.crates__supply-words {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.crates__quest-title,
+.crates__supply-title {
+  font: 500 14px/1.2 var(--rh-display);
+  letter-spacing: 0.02em;
+}
+
+.crates__quest--bonus .crates__quest-title {
+  flex: 1;
+}
+
+.crates__quest-bar {
+  height: 5px;
+}
+
+.crates__quest-bar .meter__fill {
+  background: var(--rh-accent);
+}
+
+.crates__quest-count,
+.crates__supply-detail {
   color: var(--rh-fg-2);
-  font: 600 13px/1.1 var(--rh-numeric);
+  font-size: 12px;
+}
+
+.crates__quest-prize {
+  --crate-colour: #c98a4b;
+
+  flex: none;
+}
+
+.crates__quest-prize[data-tier='silver'] {
+  --crate-colour: #c4ced8;
+}
+
+.crates__quest-prize[data-tier='gold'] {
+  --crate-colour: #ffcb45;
+}
+
+.crates__quest-crate {
+  width: 24px;
+  height: 24px;
+  color: var(--crate-colour);
+  --rh-icon-accent: var(--rh-sign-yellow);
+}
+
+.crates__quest-claim,
+.crates__supply-use {
+  flex: none;
+  min-height: 34px;
+  padding: 4px 12px;
+}
+
+.crates__supply.is-empty {
+  opacity: 0.55;
+}
+
+.crates__supply.is-running {
+  border-color: var(--rh-good);
+}
+
+.crates__supply-count {
+  flex: none;
+  color: var(--rh-accent-hi);
+  font: 600 15px/1 var(--rh-numeric);
+}
+
+.crates__supply-running {
+  flex: none;
+  color: var(--rh-good);
+  font-size: 12px;
+}
+
+/* Narrow: the slots two by two. */
+@media (max-width: 420px) {
+  .crates__slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* The stage: the crate in its tier's glow, light wheeling behind it once it bursts. */
@@ -3408,6 +3672,7 @@
   .crates__spark,
   .crates__credits,
   .crates__paint,
+  .crates__extras,
   .level-up__rays,
   .level-up__title,
   .level-up__badge,

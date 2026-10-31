@@ -1,5 +1,7 @@
 import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinition';
 import { isCrateTier } from '../../data/config/GameConfig';
+import { isBoosterKind } from '../../data/definitions/BoosterKind';
+import { QUEST_METRICS } from '../../data/definitions/QuestDefinition';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateMissionDefinition, type MissionDefinition } from '../../data/definitions/MissionDefinition';
@@ -190,6 +192,11 @@ export function validateSaveGameData(
     }
     validator.nonNegativeInteger(crates['perfectStreak'], 'crates.perfectStreak');
     validator.nonNegativeInteger(crates['bestPerfectStreak'], 'crates.bestPerfectStreak');
+    validator.check(
+      isFiniteNumber(crates['freeCrateAtMs']) && (crates['freeCrateAtMs'] as number) >= 0,
+      'crates.freeCrateAtMs',
+      'must be 0 or more',
+    );
   });
   section('levelRewards', (levelRewards) => {
     const level = levelRewards['rewardedLevel'];
@@ -198,6 +205,42 @@ export function validateSaveGameData(
       'levelRewards.rewardedLevel',
       `must be a whole number from 1 to ${maxCompanyLevel}`,
     );
+  });
+  section('supplies', (supplies) => {
+    validator.nonNegativeInteger(supplies['parts'], 'supplies.parts');
+    const boosters = supplies['boosters'];
+    if (validator.check(isJson(boosters), 'supplies.boosters', 'must be an object')) {
+      for (const [kind, count] of Object.entries(boosters as Json)) {
+        validator.check(isBoosterKind(kind), `supplies.boosters.${kind}`, 'unknown booster');
+        validator.nonNegativeInteger(count, `supplies.boosters.${kind}`);
+      }
+    }
+    validator.nonNegativeInteger(supplies['payBoostLeft'], 'supplies.payBoostLeft');
+    validator.nonNegativeInteger(supplies['xpBoostLeft'], 'supplies.xpBoostLeft');
+  });
+  section('quests', (quests) => {
+    const day = quests['day'];
+    validator.check(day === null || Number.isInteger(day), 'quests.day', 'must be null or a whole number');
+    const counts = quests['counts'];
+    if (validator.check(isJson(counts), 'quests.counts', 'must be an object')) {
+      for (const [metric, value] of Object.entries(counts as Json)) {
+        validator.check((QUEST_METRICS as readonly string[]).includes(metric), `quests.counts.${metric}`, 'unknown metric');
+        validator.nonNegativeInteger(value, `quests.counts.${metric}`);
+      }
+    }
+    validator.check(
+      isFiniteNumber(quests['distanceStartMeters']) && (quests['distanceStartMeters'] as number) >= 0,
+      'quests.distanceStartMeters',
+      'must be 0 or more',
+    );
+    const claimed = quests['claimed'];
+    if (validator.check(Array.isArray(claimed), 'quests.claimed', 'must be a list')) {
+      // A quest the content no longer has is dropped on loading (QuestService.restore), not refused.
+      (claimed as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `quests.claimed[${index}]`, 'must be an id'),
+      );
+    }
+    validator.boolean(quests['bonusClaimed'], 'quests.bonusClaimed');
   });
   return validator.issues;
 }

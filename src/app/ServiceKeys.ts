@@ -11,6 +11,8 @@ import type { CasinoService } from '../systems/casino/CasinoService';
 import type { ReviewService } from '../systems/review/ReviewService';
 import type { AchievementService } from '../systems/achievements/AchievementService';
 import type { CrateService } from '../systems/rewards/CrateService';
+import type { QuestService } from '../systems/rewards/QuestService';
+import type { SupplyService } from '../systems/rewards/SupplyService';
 import type { SkyWonderService } from '../systems/weather/SkyWonderService';
 import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
@@ -78,6 +80,10 @@ export const ServiceKeys = Object.freeze({
   achievements: serviceKey<AchievementService>('AchievementService'),
   /** Crates: earned for perfect streaks, levels and the daily streak; opened for credits and crate colours. */
   crates: serviceKey<CrateService>('CrateService'),
+  /** What crates give besides credits and looks: upgrade parts and boosters. */
+  supplies: serviceKey<SupplyService>('SupplyService'),
+  /** The day's quests, each a crate. */
+  quests: serviceKey<QuestService>('QuestService'),
   /** The company levels' rewards, waiting to be collected. */
   levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),

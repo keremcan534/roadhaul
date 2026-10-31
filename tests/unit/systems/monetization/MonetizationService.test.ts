@@ -112,7 +112,10 @@ function setup(storage = new MemoryStorage()) {
   economy.restore(10_000);
   fuel.restore(300);
   const clock = { nowMs: Date.parse('2026-09-30T12:00:00Z'), now: () => clock.nowMs };
-  const monetization = new MonetizationService(economy, fuel, damage, events, storage, clock, config, logger);
+  const crates: string[] = [];
+  const monetization = new MonetizationService(economy, fuel, damage, events, storage, clock, config, logger, {
+    grant: (tier) => void crates.push(tier),
+  });
   const ads = new FakeAds();
   const store = new FakeStore();
   const deliver = (total: number) =>
@@ -125,7 +128,7 @@ function setup(storage = new MemoryStorage()) {
       xp: 10,
       reputation: 1,
     });
-  return { events, economy, damage, fuel, monetization, ads, store, clock, storage, deliver };
+  return { events, economy, damage, fuel, monetization, ads, store, clock, storage, deliver, crates };
 }
 
 /** An impact that does a quarter of the damage that wrecks a truck (past the harmless bump), m/s. */
@@ -401,5 +404,32 @@ describe('the earnings boost', () => {
     expect(context.monetization.earningsBoost.minutesLeft).toBe(0);
     context.ads.ready = false;
     expect(context.monetization.earningsBoost.offered).toBe(false);
+  });
+
+  it('gives a crate for a rewarded ad the player asks for, a few a day, kept on the phone', async () => {
+    const { monetization, ads, clock, storage, crates } = setup();
+    // No ads in this build yet: none offered.
+    expect(monetization.adCrateOffer).toBeNull();
+    monetization.attachAds(ads);
+    expect(monetization.adCrateOffer).toEqual({ tier: config.adCrate, left: config.adCratesPerDay });
+
+    ads.next = 'skipped';
+    expect(await monetization.claimAdCrate()).toEqual({ ok: false, error: 'skipped' });
+    expect(crates).toEqual([]);
+    ads.next = 'rewarded';
+    for (let i = 0; i < config.adCratesPerDay; i++) {
+      expect(await monetization.claimAdCrate()).toEqual({ ok: true, value: config.adCrate });
+    }
+    expect(crates).toHaveLength(config.adCratesPerDay);
+    expect(monetization.adCrateOffer).toBeNull();
+    expect(await monetization.claimAdCrate()).toEqual({ ok: false, error: 'used' });
+
+    // The next day, more; the count was kept on the phone.
+    const again = setup(storage);
+    again.monetization.attachAds(ads);
+    expect(again.monetization.adCrateOffer).toBeNull();
+    clock.nowMs += 24 * 3_600_000;
+    again.clock.nowMs = clock.nowMs;
+    expect(again.monetization.adCrateOffer?.left).toBe(config.adCratesPerDay);
   });
 });

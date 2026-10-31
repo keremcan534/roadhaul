@@ -20,6 +20,8 @@ import type { DailyRewardService } from '../rewards/DailyRewardService';
 import type { AchievementService } from '../achievements/AchievementService';
 import type { LevelRewardService } from '../company/LevelRewardService';
 import type { CrateService } from '../rewards/CrateService';
+import type { QuestService } from '../rewards/QuestService';
+import type { SupplyService } from '../rewards/SupplyService';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { EventService } from '../events/EventService';
@@ -59,6 +61,10 @@ export interface GameSessionDependencies {
   readonly crates: CrateService;
   /** The company levels' rewards collected. */
   readonly levelRewards: LevelRewardService;
+  /** The parts and boosters crates gave. */
+  readonly supplies: SupplyService;
+  /** The day's quests. */
+  readonly quests: QuestService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
   readonly tutorial: TutorialService;
@@ -115,6 +121,8 @@ export class GameSessionService {
       events.on('AchievementClaimed', saveNow),
       events.on('CrateOpened', saveNow),
       events.on('LevelRewardCollected', saveNow),
+      events.on('CrateEarned', saveNow),
+      events.on('SuppliesChanged', saveNow),
       events.on('CampaignRun', ({ companyId, away }) => {
         if (companyId === PLAYER_COMPANY_ID && !away) {
           saveNow();
@@ -271,6 +279,8 @@ export class GameSessionService {
       achievements,
       crates,
       levelRewards,
+      supplies,
+      quests,
       specialEvents,
       tutorial,
     } = this.deps;
@@ -302,6 +312,8 @@ export class GameSessionService {
       achievements: achievements.snapshot(),
       crates: crates.snapshot(),
       levelRewards: levelRewards.snapshot(),
+      supplies: supplies.snapshot(),
+      quests: quests.snapshot(),
     };
   }
 
@@ -363,6 +375,8 @@ export class GameSessionService {
       achievements,
       crates,
       levelRewards,
+      supplies,
+      quests,
       specialEvents,
       tutorial,
     } = this.deps;
@@ -381,6 +395,7 @@ export class GameSessionService {
     dailyReward.restore(save.daily);
     crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
     levelRewards.restore(save.levelRewards);
+    supplies.restore(save.supplies);
     garage.restore(save.garage);
     fleet.restore(save.fleet);
     missions.restore(save.missions.active);
@@ -392,6 +407,7 @@ export class GameSessionService {
     achievements.restore(save.achievements); // Last: the goals measure everything above.
     this.sinceAutosave = 0;
     this.active = true;
+    quests.restore(save.quests); // Once active: the day's kilometres count from the distance driven.
   }
 }
 

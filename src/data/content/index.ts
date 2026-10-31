@@ -7,6 +7,7 @@ import { MAPS } from './maps';
 import { EVENTS } from './events';
 import { FACILITIES } from './facilities';
 import { ACHIEVEMENTS } from './achievements';
+import { QUESTS } from './quests';
 import { MISSIONS } from './missions';
 import { PAINTS } from './paints';
 import { RIVALS } from './rivals';
@@ -32,4 +33,5 @@ export const GAME_CONTENT: GameContent = {
   rivals: RIVALS,
   facilities: FACILITIES,
   achievements: ACHIEVEMENTS,
+  quests: QUESTS,
 };

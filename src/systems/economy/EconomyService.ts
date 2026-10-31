@@ -31,6 +31,7 @@ export const MONEY_REASONS = [
   'achievement',
   'crate',
   'levelReward',
+  'booster',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 

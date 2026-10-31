@@ -467,6 +467,16 @@ The owner asked for rewards that feel good ("dopamin"): a delivery celebrated, c
 - **Levels** (`GameConfig.company`): ten now. The content's requirements stay within the first five; levels 6 to 10 (20,000 to 80,000 XP) are for the long run. Each level from the second brings credits and a crate (`levelRewards`), waiting until collected (`LevelRewardService`, the lowest first): the celebration (`LevelUpDialog`) opens over the result once its stars have landed, or over the company panel; while driving a toast says the reward waits. It shows the level's badge under confetti, its name, its reward and what it opens up (trucks, upgrades, contracts… counted from the content's requirements). The daily reward's level bonus stops at level 5 (`dailyReward.bonusLevels`).
 - **The save** (v14) keeps the crates held and opened, the colours given, the streak and the best one, and the highest level collected. A v13 save's levels count as collected; a company whose XP now reaches past level 5 finds the new levels waiting.
 
+### Crates, quests and supplies (crate system v2)
+
+The owner asked for crates every day, crates from quests, more for an ad, and more in them; purchases stay cosmetic (the owner's choice, and the rule: nothing sold speeds the game up). Crates sit in the dialog's slots and open at once (no timers, the owner's choice).
+
+- **Where crates come from** (`CrateService`): the perfect streak, each company level, each daily reward (bronze; silver on the seventh day), the day's quests, a free crate every 6 hours (waiting until collected, one at a time; its tier drawn 75/20/5), and a rewarded ad the player asks for (`MonetizationService.claimAdCrate`: silver, 3 a day, counted on the phone like the service discounts).
+- **What they hold** (`drawCrate`): credits; upgrade parts (bronze 1–2 half the time, silver 2–4, gold 4–8 always); a booster (30/50/80%); and the crate colours as before. Every draw takes the same eight rolls.
+- **Supplies** (`SupplyService`): parts take 500 credits each off an upgrade level as it is bought, no more of them than its price takes (`UpgradeService`, the card striking the list price through). Boosters wait until used: the pay boost (+25% on the next 3 deliveries) and the experience boost (twice the experience on the next 3), started from the dialog, show on the delivery's result; a free fill-up or repair token is a button under the pump's or the workshop's.
+- **Quests** (`QuestService`, `dailyQuests`): three a day from a pool of eleven, each of another metric, counted from the player's midnight (as the daily reward's); each done is announced once and its crate collected in the dialog; all three collected, a gold crate. Kilometres count from when the day began, or from when a company is loaded if it began before.
+- **The save** (v15) adds when the free crate is next ready, the supplies and the day's quest counts.
+
 ### The sky's wonders
 
 The owner asked for "beautiful things in the sky": the northern lights, shooting stars, the rainbow.

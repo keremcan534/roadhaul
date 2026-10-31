@@ -18,6 +18,7 @@ import {
   type TrafficVehicleDefinition,
 } from './definitions/TrafficVehicleDefinition';
 import { validatePaintDefinition, type PaintDefinition } from './definitions/PaintDefinition';
+import { validateQuestDefinition, type QuestDefinition } from './definitions/QuestDefinition';
 import { validateRivalCompanyDefinition, type RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
 import { SEASONS } from './definitions/Season';
 import { validateUpgradeDefinition, type UpgradeDefinition } from './definitions/UpgradeDefinition';
@@ -87,6 +88,8 @@ export class ContentCatalog {
   readonly facilities: DefinitionTable<FacilityDefinition>;
   /** The company's goals. */
   readonly achievements: DefinitionTable<AchievementDefinition>;
+  /** The daily quests' pool. */
+  readonly quests: DefinitionTable<QuestDefinition>;
 
   private constructor(content: GameContent) {
     this.vehicles = new DefinitionTable('vehicle', content.vehicles);
@@ -104,6 +107,7 @@ export class ContentCatalog {
     this.rivals = new DefinitionTable('rival company', content.rivals);
     this.facilities = new DefinitionTable('facility', content.facilities);
     this.achievements = new DefinitionTable('achievement', content.achievements);
+    this.quests = new DefinitionTable('quest', content.quests);
   }
 
   /** Validates `content` and builds a catalog from a frozen copy. Throws a ValidationError listing every problem. */
@@ -134,6 +138,7 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
   validateTable(validator, 'rivals', content.rivals, validateRivalCompanyDefinition);
   validateTable(validator, 'facilities', content.facilities, validateFacilityDefinition);
   validateTable(validator, 'achievements', content.achievements, validateAchievementDefinition);
+  validateTable(validator, 'quests', content.quests, validateQuestDefinition);
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);

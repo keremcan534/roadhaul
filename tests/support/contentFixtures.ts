@@ -181,6 +181,11 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     rivals: [rivalFixture()],
     facilities: [facilityFixture()],
     achievements: [{ id: 'test_goal', metric: 'deliveries', target: 2, reward: 400 }],
+    quests: [
+      { id: 'test_deliver', metric: 'deliveries', target: 2, crate: 'bronze' },
+      { id: 'test_drive', metric: 'distanceKm', target: 5, crate: 'silver' },
+      { id: 'test_earn', metric: 'creditsEarned', target: 1000, crate: 'bronze' },
+    ],
     ...overrides,
   };
 }

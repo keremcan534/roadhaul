@@ -31,6 +31,7 @@ import { paintPicker } from './paintPicker';
 import { cssColor, RivalsPage } from './rivalsPage';
 import { truckPage } from './truckPage';
 import { upgradeCard } from './upgradeCards';
+import type { SupplyService } from '../../systems/rewards/SupplyService';
 
 /** What the panel shows. It only reads them; changes go through the actions. */
 export interface CompanyHqServices {
@@ -51,6 +52,8 @@ export interface CompanyHqServices {
   readonly clock: Clock;
   /** Ads and purchases: the half-price services, and the premium paints. */
   readonly monetization: MonetizationService;
+  /** The crates' parts and boosters: the free fill-up and repair tokens. */
+  readonly supplies: SupplyService;
 }
 
 /** Something shown on the truck in the showroom before it is bought: a paint, an upgrade's next level, another model. */
@@ -65,6 +68,9 @@ export interface CompanyHqActions {
   readonly onRepair: () => void;
   /** The same at half price, after a rewarded ad. */
   readonly onRefuelDiscounted: () => void;
+  /** Fills up or repairs for free, with a crate's token. */
+  readonly onRefuelToken: () => void;
+  readonly onRepairToken: () => void;
   readonly onRepairDiscounted: () => void;
   readonly onBuyTruck: (definitionId: string) => void;
   readonly onSwitchTruck: (instanceId: string) => void;
@@ -401,6 +407,8 @@ export class CompanyHq {
           onRepair: this.actions.onRepair,
           onRefuelDiscounted: this.actions.onRefuelDiscounted,
           onRepairDiscounted: this.actions.onRepairDiscounted,
+          onRefuelToken: this.actions.onRefuelToken,
+          onRepairToken: this.actions.onRepairToken,
         });
       case 'garage':
         return this.garagePage();
@@ -521,7 +529,7 @@ export class CompanyHq {
           document,
           strings,
           offer,
-          offer.next !== null && economy.canAfford(offer.next.cost),
+          offer.next !== null && economy.canAfford(offer.next.price),
           actions.onBuyUpgrade,
           {
             previewing: false,

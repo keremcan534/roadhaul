@@ -270,6 +270,17 @@ export class ResultDialog {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.earningsBoost', { percent }), this.strings.signedMoney(paid));
   }
 
+  /** Adds what the crates' boosters did for the delivery to the open result: `pay` more (`percent`), `xp` more. */
+  showBoosted(percent: string, pay: Credits, xp: number): void {
+    const { strings } = this;
+    if (pay > 0) {
+      this.addLine('result-dialog__rivalry is-bonus', strings.t('result.boosterPay', { percent }), strings.signedMoney(pay));
+    }
+    if (xp > 0) {
+      this.addLine('result-dialog__rivalry is-bonus', strings.t('result.boosterXp'), `+${strings.t('format.xp', { value: xp })}`);
+    }
+  }
+
   /** Adds the leader's bonus the delivery earned in `city` to the open result. */
   showLeaderBonus(city: string, bonus: Credits): void {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.leaderBonus', { city }), this.strings.signedMoney(bonus));

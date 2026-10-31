@@ -148,6 +148,17 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       levelRewards: { rewardedLevel: savedLevel(save) },
     }),
   },
+  {
+    // v15 adds the free crate (ready now), the supplies crates give (none yet) and the day's quests (none started).
+    from: 14,
+    migrate: (save) => ({
+      ...save,
+      version: 15,
+      crates: { ...(isJsonObject(save['crates']) ? save['crates'] : {}), freeCrateAtMs: 0 },
+      supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
+      quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
+    }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

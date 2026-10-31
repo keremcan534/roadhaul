@@ -1692,3 +1692,16 @@
 .paint-picker__swatch.is-crate.is-locked {
   opacity: 0.4;
 }
+
+/* An upgrade's price with the crates' parts: the list price struck through, the parts used. */
+.upgrade-card__parts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--rh-good);
+  font: 500 12px/1.2 var(--rh-display);
+}
+
+.upgrade-card__list-price {
+  color: var(--rh-muted);
+}

@@ -13,6 +13,8 @@ import { FacilityService } from '../systems/company/FacilityService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import { CasinoService } from '../systems/casino/CasinoService';
 import { CrateService } from '../systems/rewards/CrateService';
+import { QuestService } from '../systems/rewards/QuestService';
+import { SupplyService } from '../systems/rewards/SupplyService';
 import { SkyWonderService } from '../systems/weather/SkyWonderService';
 import { LevelRewardService } from '../systems/company/LevelRewardService';
 import { ReviewService } from '../systems/review/ReviewService';
@@ -179,24 +181,6 @@ export class GameBootstrapper {
         ServiceKeys.casino,
         new CasinoService(config.casino, economy, () => luck.next(), events, logger.withCategory('Casino')),
       );
-      // The crates' draws: a run of their own, so the slot machine's spins do not change what a crate holds.
-      const crateLuck = new SeededRandom((clock.now() * 7 + 13) % 2_147_483_647);
-      const crates = container.register(
-        ServiceKeys.crates,
-        new CrateService(
-          config.crates,
-          catalog,
-          economy,
-          () => crateLuck.next(),
-          config.dailyReward.credits.length,
-          events,
-          logger.withCategory('Crates'),
-        ),
-      );
-      const levelRewards = container.register(
-        ServiceKeys.levelRewards,
-        new LevelRewardService(config.company.levelRewards, company, economy, crates, events, logger.withCategory('Levels')),
-      );
       const dailyContracts = container.register(
         ServiceKeys.dailyContracts,
         new DailyContracts(catalog, driving, clock, config.missions.dailyContracts, perks),
@@ -234,6 +218,31 @@ export class GameBootstrapper {
         ServiceKeys.fuel,
         new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel')),
       );
+      // What crates give besides credits and looks: after the company, so a delivery's own experience comes first.
+      const supplies = container.register(
+        ServiceKeys.supplies,
+        new SupplyService(config.crates.boosters, economy, company, fuel, damage, events, logger.withCategory('Supplies')),
+      );
+      // The crates' draws: a run of their own, so the slot machine's spins do not change what a crate holds.
+      const crateLuck = new SeededRandom((clock.now() * 7 + 13) % 2_147_483_647);
+      const crates = container.register(
+        ServiceKeys.crates,
+        new CrateService(
+          config.crates,
+          catalog,
+          economy,
+          supplies,
+          clock,
+          () => crateLuck.next(),
+          config.dailyReward.credits.length,
+          events,
+          logger.withCategory('Crates'),
+        ),
+      );
+      const levelRewards = container.register(
+        ServiceKeys.levelRewards,
+        new LevelRewardService(config.company.levelRewards, company, economy, crates, events, logger.withCategory('Levels')),
+      );
       // Ads and purchases: none until the platform attaches its own (main.ts); the garage asks it for the premium paints.
       const monetization = container.register(
         ServiceKeys.monetization,
@@ -246,6 +255,7 @@ export class GameBootstrapper {
           clock,
           config.monetization,
           logger.withCategory('Monetization'),
+          crates,
         ),
       );
       container.register(
@@ -272,7 +282,16 @@ export class GameBootstrapper {
       );
       container.register(
         ServiceKeys.upgrades,
-        new UpgradeService(catalog, garage, economy, company, events, logger.withCategory('Upgrades')),
+        new UpgradeService(
+          catalog,
+          garage,
+          economy,
+          company,
+          events,
+          logger.withCategory('Upgrades'),
+          supplies,
+          config.crates.partCredits,
+        ),
       );
       const depotRoads = container.register(ServiceKeys.depotRoads, new DepotRoads(catalog, driving));
       const fleet = container.register(
@@ -356,6 +375,20 @@ export class GameBootstrapper {
           logger.withCategory('Achievements'),
         ),
       );
+      // The day's quests: their kilometres from the session (made below).
+      const quests = container.register(
+        ServiceKeys.quests,
+        new QuestService(
+          catalog,
+          crates,
+          config.crates.questBonusCrate,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          () => (session.isActive ? session.distanceDrivenMeters : null),
+          events,
+          logger.withCategory('Quests'),
+        ),
+      );
       const session: GameSessionService = container.register(
         ServiceKeys.session,
         new GameSessionService({
@@ -376,6 +409,8 @@ export class GameBootstrapper {
           achievements,
           crates,
           levelRewards,
+          supplies,
+          quests,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),

@@ -31,8 +31,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   save does not, and the rewards collected).
  * - v14: adds the crates (held, opened, the colours they gave, the perfect
  *   streak) and the company levels whose reward was collected.
+ * - v15: adds when the free crate is next ready, the supplies crates gave
+ *   (upgrade parts, boosters, those running) and the day's quests.
  */
-export const CURRENT_SAVE_VERSION = 14;
+export const CURRENT_SAVE_VERSION = 15;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -61,6 +63,32 @@ export interface SaveGameData {
   readonly achievements: AchievementsSaveData;
   readonly crates: CratesSaveData;
   readonly levelRewards: LevelRewardsSaveData;
+  readonly supplies: SuppliesSaveData;
+  readonly quests: QuestsSaveData;
+}
+
+/** What crates gave besides credits and looks (SupplyService). */
+export interface SuppliesSaveData {
+  /** Upgrade parts. */
+  readonly parts: number;
+  /** Boosters held, by BoosterKind. One not listed is 0. */
+  readonly boosters: Readonly<Record<string, number>>;
+  /** Deliveries left on the pay boost and the experience boost running; 0 for none. */
+  readonly payBoostLeft: number;
+  readonly xpBoostLeft: number;
+}
+
+/** The day's quests (QuestService): the quests themselves follow from the day. */
+export interface QuestsSaveData {
+  /** The player's day (localDay) the counts are for, or null before the first. */
+  readonly day: number | null;
+  /** What the day has counted so far, by QuestMetric (distanceKm apart). One not listed is 0. */
+  readonly counts: Readonly<Record<string, number>>;
+  /** Metres driven, ever, as the day began: the day's kilometres are counted from it. */
+  readonly distanceStartMeters: number;
+  /** The day's quests whose crate was collected, and whether the bonus crate for all of them was. */
+  readonly claimed: readonly string[];
+  readonly bonusClaimed: boolean;
 }
 
 /** The crates (CrateService). */
@@ -74,6 +102,8 @@ export interface CratesSaveData {
   /** Perfect deliveries (three stars) in a row, up to the last one; and the most ever. */
   readonly perfectStreak: number;
   readonly bestPerfectStreak: number;
+  /** When the next free crate is ready, epoch ms (0: now). */
+  readonly freeCrateAtMs: number;
 }
 
 /** The company levels' rewards (LevelRewardService). */

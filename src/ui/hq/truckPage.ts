@@ -13,6 +13,7 @@ import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { cargoIcon, icon, upgradeIcon, type IconName } from '../icons';
+import { serviceTokens } from '../serviceTokens';
 import { serviceDiscounts, type ServiceDiscountSource } from '../serviceDiscounts';
 import { truckSilhouette } from './truckSilhouette';
 
@@ -28,6 +29,13 @@ export interface TruckPageServices {
   readonly upgrades: UpgradeService;
   /** The rewarded half-price services. */
   readonly monetization: ServiceDiscountSource;
+  /** The crates' free fill-up and repair tokens. */
+  readonly supplies: TokenCounts;
+}
+
+/** How many of a crate's free service tokens are held: SupplyService. */
+export interface TokenCounts {
+  count(kind: 'free_refuel' | 'free_repair'): number;
 }
 
 export interface TruckPageActions {
@@ -36,6 +44,9 @@ export interface TruckPageActions {
   /** The same at half price, after a rewarded ad. */
   readonly onRefuelDiscounted: () => void;
   readonly onRepairDiscounted: () => void;
+  /** The same for free, with a crate's token. */
+  readonly onRefuelToken: () => void;
+  readonly onRepairToken: () => void;
 }
 
 /**
@@ -151,6 +162,14 @@ export function truckPage(
   });
   if (discounts !== null) {
     gauges.append(discounts);
+  }
+  // Free with a crate's token, for the same.
+  const tokens = serviceTokens(document, strings, {
+    refuel: tankFull || !fuel.atPump ? null : { count: services.supplies.count('free_refuel'), onUse: actions.onRefuelToken },
+    repair: undamaged || !damage.atWorkshop ? null : { count: services.supplies.count('free_repair'), onUse: actions.onRepairToken },
+  });
+  if (tokens !== null) {
+    gauges.append(tokens);
   }
 
   return [head, gauges, cargoSection(document, strings, services), partsSection(document, strings, services)];

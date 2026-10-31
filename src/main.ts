@@ -1,7 +1,7 @@
 import { GameBootstrapper } from './app/GameBootstrapper';
 import { ServiceKeys } from './app/ServiceKeys';
 import { ConsoleLogger } from './core/logging/ConsoleLogger';
-import type { Result } from './core/Result';
+import { err, type Result } from './core/Result';
 import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
 import { formatClock } from './core/time/dayTime';
@@ -127,7 +127,7 @@ import { ShopDialog } from './ui/menus/ShopDialog';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
 import { CasinoDialog } from './ui/menus/CasinoDialog';
 import { AchievementsDialog } from './ui/menus/AchievementsDialog';
-import { CrateDialog } from './ui/menus/CrateDialog';
+import { CrateDialog, type CratePage, type CratesShown } from './ui/menus/CrateDialog';
 import { LevelUpDialog } from './ui/menus/LevelUpDialog';
 import { levelUnlocks } from './ui/menus/levelUnlocks';
 import { isIconName } from './ui/iconShapes';
@@ -317,6 +317,8 @@ async function start(strings: Strings): Promise<void> {
   const review = services.resolve(ServiceKeys.review);
   const achievements = services.resolve(ServiceKeys.achievements);
   const crates = services.resolve(ServiceKeys.crates);
+  const supplies = services.resolve(ServiceKeys.supplies);
+  const quests = services.resolve(ServiceKeys.quests);
   const levelRewards = services.resolve(ServiceKeys.levelRewards);
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
@@ -693,52 +695,131 @@ async function start(strings: Strings): Promise<void> {
   events.on('AchievementClaimed', showGoalsWaiting);
   // The sky's wonders, pointed out as they come into view.
   events.on('SkyWonderSighted', ({ kind }) => toasts.show(strings.t(`toast.sky.${kind}`), 'success'));
-  // The crates, over the company panel or the result: earned for perfect streaks, levels and the daily streak.
-  const crateCounts = (): Record<CrateTier, number> => ({
-    bronze: crates.count('bronze'),
-    silver: crates.count('silver'),
-    gold: crates.count('gold'),
-  });
-  const cratePaintsLine = (): string => strings.t('crates.paintsGot', crates.paintsGot);
-  const crateDialog = new CrateDialog(ui, strings, {
-    onOpen: (tier) => {
-      const opened = crates.open(tier);
-      if (!opened.ok) {
-        return null;
-      }
-      const paint = opened.value.paintId === null ? null : content.paints.get(opened.value.paintId);
-      return {
-        credits: strings.money(opened.value.credits),
-        paint:
-          paint === null || paint.crate === undefined
-            ? null
-            : { name: strings.t(`paint.${paint.id}.name`), color: paint.color, rarity: paint.crate },
-      };
+  // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
+  // quests, every few hours free, and for a rewarded ad the player asks for. Also the quests and the supplies.
+  const cratesShown = (): CratesShown => ({
+    counts: { bronze: crates.count('bronze'), silver: crates.count('silver'), gold: crates.count('gold') },
+    paintsGot: strings.t('crates.paintsGot', crates.paintsGot),
+    freeReadyAtMs: crates.freeCrate.readyAtMs,
+    ad: monetization.adCrateOffer,
+    quests: quests.quests.map((quest) => ({
+      id: quest.definition.id,
+      metric: quest.definition.metric,
+      target: quest.definition.target,
+      progress: quest.progress,
+      done: quest.done,
+      claimed: quest.claimed,
+      crate: quest.definition.crate,
+    })),
+    bonus: quests.bonus,
+    supplies: {
+      parts: supplies.parts,
+      partValue: strings.money(config.crates.partCredits),
+      boosters: {
+        pay_boost: supplies.count('pay_boost'),
+        xp_boost: supplies.count('xp_boost'),
+        free_refuel: supplies.count('free_refuel'),
+        free_repair: supplies.count('free_repair'),
+      },
+      payLeft: supplies.payBoostLeft,
+      xpLeft: supplies.xpBoostLeft,
+      payShare: strings.percent(config.crates.boosters.payShare),
+      boostDeliveries: config.crates.boosters.payDeliveries,
     },
-    onClose: () => {
-      crateDialog.close();
-      celebrateLevel(); // Another level's reward may still wait.
-    },
-    onShake: (step) => audio.crateShake(step),
-    onBurst: (rarity) => audio.crateBurst(rarity),
   });
-  const openCrates = (tier?: CrateTier): void => crateDialog.show(crateCounts(), cratePaintsLine(), tier);
+  const crateDialog = new CrateDialog(
+    ui,
+    strings,
+    {
+      onOpen: (tier) => {
+        const opened = crates.open(tier);
+        if (!opened.ok) {
+          return null;
+        }
+        const paint = opened.value.paintId === null ? null : content.paints.get(opened.value.paintId);
+        return {
+          credits: strings.money(opened.value.credits),
+          paint:
+            paint === null || paint.crate === undefined
+              ? null
+              : { name: strings.t(`paint.${paint.id}.name`), color: paint.color, rarity: paint.crate },
+          parts: opened.value.parts,
+          booster: opened.value.booster,
+        };
+      },
+      onClose: () => {
+        crateDialog.close();
+        celebrateLevel(); // Another level's reward may still wait.
+      },
+      onClaimFree: () => {
+        if (crates.claimFreeCrate().ok) {
+          audio.chime();
+        }
+      },
+      onAdCrate: () => {
+        void monetization.claimAdCrate().then((claimed) => {
+          if (claimed.ok) {
+            audio.chime();
+          } else {
+            boostFailed(claimed.error);
+          }
+          showCratesWaiting();
+        });
+      },
+      onClaimQuest: (questId) => {
+        if (quests.claim(questId).ok) {
+          audio.chime();
+        }
+      },
+      onClaimBonus: () => {
+        if (quests.claimBonus().ok) {
+          audio.chime();
+        }
+      },
+      onStartBooster: (kind) => {
+        if (supplies.start(kind).ok) {
+          audio.chime();
+          toasts.show(strings.t(`toast.boosterStarted.${kind}`), 'success');
+        }
+      },
+      onShake: (step) => audio.crateShake(step),
+      onBurst: (rarity) => audio.crateBurst(rarity),
+    },
+    () => clock.now(),
+  );
+  const openCrates = (tier?: CrateTier, page?: CratePage): void => crateDialog.show(cratesShown(), page, tier);
+  /** What waits on the crates' button: crates to open, quests' crates to collect, the free crate. */
   const showCratesWaiting = (): void => {
-    hq.cratesWaiting = crates.total;
+    hq.cratesWaiting = crates.total + quests.claimable + (crates.freeCrate.ready ? 1 : 0);
     if (crateDialog.isOpen) {
-      crateDialog.update(crateCounts(), cratePaintsLine());
+      crateDialog.update(cratesShown());
     }
   };
   events.on('CrateEarned', ({ tier, source }) => {
     showCratesWaiting();
-    // A streak's crate shows on the result, a level's on its celebration: the daily streak's needs a word.
-    if (source === 'dailyStreak') {
+    // A streak's crate shows on the result, a level's on its celebration, the dialog's own there: the daily reward's
+    // needs a word.
+    if (source === 'dailyStreak' || source === 'daily') {
       toasts.show(strings.t('toast.crateEarned', { crate: strings.t(`crate.name.${tier}`) }), 'success');
     }
   });
   events.on('CrateOpened', () => {
     showCratesWaiting();
     refreshHq(); // A crate colour now on the garage's swatches.
+  });
+  events.on('SuppliesChanged', () => {
+    showCratesWaiting();
+    refreshHq(); // Parts off the upgrades' prices, tokens at the pump.
+  });
+  events.on('QuestsChanged', showCratesWaiting);
+  events.on('QuestCompleted', ({ questId }) => {
+    const quest = content.quests.get(questId);
+    toasts.show(
+      strings.t('toast.questDone', {
+        quest: strings.t(`quest.metric.${quest.metric}`, { target: strings.number(quest.target) }),
+      }),
+      'success',
+    );
   });
   // A new company level, celebrated where the player is not driving: over the result, or the company panel. Its
   // reward waits until collected there; one level at a time.
@@ -857,11 +938,38 @@ async function start(strings: Strings): Promise<void> {
       boostFailed(repaired.error);
     }
   };
+  // Free with a crate's token (SupplyService): the same toasts, the service free.
+  const refuelToken = (): void => {
+    const filled = supplies.useFreeRefuel();
+    if (filled.ok) {
+      const liters = strings.t('format.liters', { value: Math.round(filled.value.liters) });
+      toasts.show(strings.t('toast.tokenRefuelled', { liters }), 'success');
+    } else if (filled.error !== 'none') {
+      showRefuel(err(filled.error));
+    }
+    refreshHq();
+  };
+  const repairToken = (): void => {
+    const repaired = supplies.useFreeRepair();
+    if (repaired.ok) {
+      toasts.show(strings.t('toast.tokenRepaired'), 'success');
+    } else if (repaired.error !== 'none') {
+      showRepair(err(repaired.error));
+    }
+    refreshHq();
+  };
   const restArea = new RestAreaPanel(
     ui,
     strings,
-    { driving, fuel, damage, economy, discounts: monetization },
-    { onRefuel: () => refuel(false), onRepair: repair, onRefuelDiscounted: refuelDiscounted, onRepairDiscounted: repairDiscounted },
+    { driving, fuel, damage, economy, discounts: monetization, supplies },
+    {
+      onRefuel: () => refuel(false),
+      onRepair: repair,
+      onRefuelDiscounted: refuelDiscounted,
+      onRepairDiscounted: repairDiscounted,
+      onRefuelToken: refuelToken,
+      onRepairToken: repairToken,
+    },
   );
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   const roadsideFuelOffer = (): RoadsideFuelOffer => {
@@ -1342,7 +1450,25 @@ async function start(strings: Strings): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, facilities, clock, monetization },
+    {
+      content,
+      driving,
+      missions,
+      economy,
+      company,
+      fuel,
+      damage,
+      garage,
+      upgrades,
+      specialEvents,
+      dailyContracts,
+      fleet,
+      rivals,
+      facilities,
+      clock,
+      monetization,
+      supplies,
+    },
     {
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
@@ -1356,6 +1482,8 @@ async function start(strings: Strings): Promise<void> {
       onRepair: repair,
       onRefuelDiscounted: refuelDiscounted,
       onRepairDiscounted: repairDiscounted,
+      onRefuelToken: refuelToken,
+      onRepairToken: repairToken,
       onOpenShop: () => openShop(),
       onBuyTruck: (definitionId) => {
         const bought = garage.buy(definitionId);
@@ -1673,6 +1801,9 @@ async function start(strings: Strings): Promise<void> {
     if (monetization.earningsBoostPaid > 0) {
       result.showEarningsBoost(strings.percent(monetization.earningsBoost.share), monetization.earningsBoostPaid);
     }
+    // The crates' boosters running, theirs (SupplyService has seen the delivery already).
+    const boosted = supplies.lastDelivery;
+    result.showBoosted(strings.percent(config.crates.boosters.payShare), boosted.pay, boosted.xp);
     // A share of the pay again for a rewarded ad, if the player wants it (none in a build without ads).
     const bonus = monetization.deliveryBonusOffer;
     if (bonus > 0) {

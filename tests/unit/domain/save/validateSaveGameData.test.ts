@@ -79,11 +79,13 @@ describe('validateSaveGameData', () => {
       'achievements',
       'crates',
       'levelRewards',
+      'supplies',
+      'quests',
     ]);
   });
 
   it('checks the crates: known tiers held in whole numbers, crate colours given, the streaks', () => {
-    const crates = { held: { gold: 2 }, opened: 3, paints: [], perfectStreak: 1, bestPerfectStreak: 4 };
+    const crates = { held: { gold: 2 }, opened: 3, paints: [], perfectStreak: 1, bestPerfectStreak: 4, freeCrateAtMs: 0 };
     expect(paths(withPart('crates', crates))).toEqual([]);
     expect(paths(withPart('crates', { ...crates, held: { diamond: 1, silver: -1 } }))).toEqual([
       'crates.held.diamond',
@@ -93,6 +95,28 @@ describe('validateSaveGameData', () => {
     expect(paths(withPart('crates', { ...crates, paints: ['test_gold', 7] }))).toEqual(['crates.paints[0]', 'crates.paints[1]']);
     expect(paths(withPart('crates', { ...crates, opened: 1.5, perfectStreak: -1 }))).toEqual(['crates.opened', 'crates.perfectStreak']);
     expect(paths(withPart('crates', null))).toEqual(['crates']);
+  });
+
+  it('checks the supplies: parts, known boosters held and the boosts running, in whole numbers', () => {
+    const supplies = { parts: 3, boosters: { xp_boost: 1 }, payBoostLeft: 2, xpBoostLeft: 0 };
+    expect(paths(withPart('supplies', supplies))).toEqual([]);
+    expect(paths(withPart('supplies', { ...supplies, boosters: { nitro: 1, pay_boost: -1 } }))).toEqual([
+      'supplies.boosters.nitro',
+      'supplies.boosters.pay_boost',
+    ]);
+    expect(paths(withPart('supplies', { ...supplies, parts: 1.5, xpBoostLeft: -1 }))).toEqual(['supplies.parts', 'supplies.xpBoostLeft']);
+    expect(paths(withPart('supplies', null))).toEqual(['supplies']);
+  });
+
+  it('checks the day\'s quests: the day, known metrics counted, the ids collected', () => {
+    const quests = { day: 20_000, counts: { deliveries: 2 }, distanceStartMeters: 1500, claimed: ['retired'], bonusClaimed: false };
+    expect(paths(withPart('quests', quests))).toEqual([]);
+    expect(paths(withPart('quests', { ...quests, day: 'today', counts: { luck: 1 } }))).toEqual(['quests.day', 'quests.counts.luck']);
+    expect(paths(withPart('quests', { ...quests, claimed: [7], bonusClaimed: 'yes', distanceStartMeters: -1 }))).toEqual([
+      'quests.distanceStartMeters',
+      'quests.claimed[0]',
+      'quests.bonusClaimed',
+    ]);
   });
 
   it('checks the level rewards: collected up to a level the company can have', () => {

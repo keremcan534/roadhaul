@@ -4,6 +4,8 @@ import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../ContentCatalog';
 import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
+import { BOOSTER_KINDS, type BoosterKind } from '../definitions/BoosterKind';
+import { CRATE_TIERS, isCrateTier, type CrateTier } from '../definitions/CrateTier';
 import { PAINT_RARITIES, type PaintRarity } from '../definitions/PaintDefinition';
 import { SEASONS, type Season } from '../definitions/Season';
 import type { Credits, Fraction } from '../units';
@@ -248,6 +250,9 @@ export interface GameConfig {
     readonly earningsBoostShare: Fraction;
     /** …for this many minutes of the clock (the game open or not). */
     readonly earningsBoostMinutes: number;
+    /** A rewarded ad brings a crate of this tier (the crates' screen), at most this many a day. */
+    readonly adCrate: CrateTier;
+    readonly adCratesPerDay: number;
   };
   /** The daily reward (DailyRewardService): credits for the first drive of each day, more for each day in a row. */
   readonly dailyReward: {
@@ -269,8 +274,27 @@ export interface GameConfig {
      * of them in a row, a silver one on every `silverEvery`th and a gold one on every `goldEvery`th instead.
      */
     readonly perfectStreak: { readonly bronzeEvery: number; readonly silverEvery: number; readonly goldEvery: number };
-    /** The daily reward's last day brings this crate too. */
+    /** Each day's daily reward brings this crate too… */
+    readonly dailyCrate: CrateTier;
+    /** …and its last day this one instead. */
     readonly dailyStreakCrate: CrateTier;
+    /** A free crate waits on the crates' screen every this many hours, collected or not (one at a time)… */
+    readonly freeCrateHours: number;
+    /** …its tier drawn by these weights. */
+    readonly freeCrateWeights: Readonly<Record<CrateTier, number>>;
+    /** Collecting every one of the day's quests brings this crate too (QuestService). */
+    readonly questBonusCrate: CrateTier;
+    /** One upgrade part takes this much off an upgrade level's price (UpgradeService). */
+    readonly partCredits: Credits;
+    /** The boosters crates hold (SupplyService): what each does, and how often each comes against the others. */
+    readonly boosters: {
+      /** pay_boost: this share more on each of the next so many deliveries… */
+      readonly payShare: Fraction;
+      readonly payDeliveries: number;
+      /** …xp_boost: twice the experience on each of the next so many. */
+      readonly xpDeliveries: number;
+      readonly weights: Readonly<Record<BoosterKind, number>>;
+    };
   };
   /**
    * The truck stop's slot machine (CasinoService): played for the company's credits only, never for money; credits
@@ -308,13 +332,7 @@ export interface GameConfig {
   };
 }
 
-/** A crate's tier: the better, the more it holds. */
-export const CRATE_TIERS = ['bronze', 'silver', 'gold'] as const;
-export type CrateTier = (typeof CRATE_TIERS)[number];
-
-export function isCrateTier(value: unknown): value is CrateTier {
-  return typeof value === 'string' && (CRATE_TIERS as readonly string[]).includes(value);
-}
+export { CRATE_TIERS, isCrateTier, type CrateTier } from '../definitions/CrateTier';
 
 /** What a crate of one tier holds. */
 export interface CrateTierConfig {
@@ -324,6 +342,11 @@ export interface CrateTierConfig {
   readonly paintChance: Fraction;
   /** Which rarity that colour is, by these weights against each other. */
   readonly rarityWeights: Readonly<Record<PaintRarity, number>>;
+  /** How often it holds upgrade parts as well, and how many (evenly between the two). */
+  readonly partsChance: Fraction;
+  readonly parts: readonly [number, number];
+  /** How often it holds a booster as well (its kind by GameConfig.crates.boosters.weights). */
+  readonly boosterChance: Fraction;
 }
 
 /** What a company level brings when it is collected. */
@@ -554,6 +577,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     interstitialMinSeconds: 480,
     earningsBoostShare: 0.25,
     earningsBoostMinutes: 60,
+    adCrate: 'silver',
+    adCratesPerDay: 3,
   },
   dailyReward: {
     credits: [300, 500, 800, 1200, 1600, 2200, 4000],
@@ -562,12 +587,44 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   },
   crates: {
     tiers: {
-      bronze: { credits: [300, 900], paintChance: 0.12, rarityWeights: { rare: 1, epic: 0.15, legendary: 0.02 } },
-      silver: { credits: [900, 2400], paintChance: 0.3, rarityWeights: { rare: 1, epic: 0.4, legendary: 0.08 } },
-      gold: { credits: [2500, 6000], paintChance: 0.6, rarityWeights: { rare: 0.6, epic: 0.6, legendary: 0.3 } },
+      bronze: {
+        credits: [300, 900],
+        paintChance: 0.12,
+        rarityWeights: { rare: 1, epic: 0.15, legendary: 0.02 },
+        partsChance: 0.5,
+        parts: [1, 2],
+        boosterChance: 0.3,
+      },
+      silver: {
+        credits: [900, 2400],
+        paintChance: 0.3,
+        rarityWeights: { rare: 1, epic: 0.4, legendary: 0.08 },
+        partsChance: 0.75,
+        parts: [2, 4],
+        boosterChance: 0.5,
+      },
+      gold: {
+        credits: [2500, 6000],
+        paintChance: 0.6,
+        rarityWeights: { rare: 0.6, epic: 0.6, legendary: 0.3 },
+        partsChance: 1,
+        parts: [4, 8],
+        boosterChance: 0.8,
+      },
     },
     perfectStreak: { bronzeEvery: 3, silverEvery: 5, goldEvery: 10 },
+    dailyCrate: 'bronze',
     dailyStreakCrate: 'silver',
+    freeCrateHours: 6,
+    freeCrateWeights: { bronze: 75, silver: 20, gold: 5 },
+    questBonusCrate: 'gold',
+    partCredits: 500,
+    boosters: {
+      payShare: 0.25,
+      payDeliveries: 3,
+      xpDeliveries: 3,
+      weights: { pay_boost: 3, xp_boost: 3, free_refuel: 2, free_repair: 2 },
+    },
   },
   skyWonders: {
     auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
@@ -960,6 +1017,8 @@ function validateMonetization(validator: Validator, monetization: GameConfig['mo
     'must be greater than 0 and at most 1',
   );
   validator.positiveInteger(monetization.earningsBoostMinutes, 'monetization.earningsBoostMinutes');
+  validator.check(isCrateTier(monetization.adCrate), 'monetization.adCrate', `unknown crate "${String(monetization.adCrate)}"`);
+  validator.nonNegativeInteger(monetization.adCratesPerDay, 'monetization.adCratesPerDay');
 }
 
 function validateCrates(validator: Validator, crates: GameConfig['crates']): void {
@@ -977,10 +1036,42 @@ function validateCrates(validator: Validator, crates: GameConfig['crates']): voi
       validator.check(Number.isFinite(weight) && weight >= 0, `crates.tiers.${tier}.rarityWeights.${rarity}`, 'must be 0 or more');
     }
   }
+  for (const tier of CRATE_TIERS) {
+    const config = crates.tiers[tier];
+    const [fewest, most] = config.parts;
+    validator.fraction(config.partsChance, `crates.tiers.${tier}.partsChance`);
+    validator.check(
+      Number.isInteger(fewest) && Number.isInteger(most) && fewest >= 1 && most >= fewest,
+      `crates.tiers.${tier}.parts`,
+      'must be two whole numbers from 1, the second at least the first',
+    );
+    validator.fraction(config.boosterChance, `crates.tiers.${tier}.boosterChance`);
+    validator.check(
+      Number.isFinite(crates.freeCrateWeights[tier]) && crates.freeCrateWeights[tier] >= 0,
+      `crates.freeCrateWeights.${tier}`,
+      'must be 0 or more',
+    );
+  }
+  validator.check(
+    CRATE_TIERS.some((tier) => crates.freeCrateWeights[tier] > 0),
+    'crates.freeCrateWeights',
+    'must give at least one tier a chance',
+  );
+  validator.positiveNumber(crates.freeCrateHours, 'crates.freeCrateHours');
+  validator.check(isCrateTier(crates.questBonusCrate), 'crates.questBonusCrate', `unknown crate "${String(crates.questBonusCrate)}"`);
+  validator.positiveInteger(crates.partCredits, 'crates.partCredits');
+  validator.fraction(crates.boosters.payShare, 'crates.boosters.payShare');
+  validator.positiveInteger(crates.boosters.payDeliveries, 'crates.boosters.payDeliveries');
+  validator.positiveInteger(crates.boosters.xpDeliveries, 'crates.boosters.xpDeliveries');
+  for (const kind of BOOSTER_KINDS) {
+    const weight = crates.boosters.weights[kind];
+    validator.check(Number.isFinite(weight) && weight >= 0, `crates.boosters.weights.${kind}`, 'must be 0 or more');
+  }
   const streak = crates.perfectStreak;
   validator.positiveInteger(streak.bronzeEvery, 'crates.perfectStreak.bronzeEvery');
   validator.positiveInteger(streak.silverEvery, 'crates.perfectStreak.silverEvery');
   validator.positiveInteger(streak.goldEvery, 'crates.perfectStreak.goldEvery');
+  validator.check(isCrateTier(crates.dailyCrate), 'crates.dailyCrate', `unknown crate "${String(crates.dailyCrate)}"`);
   validator.check(isCrateTier(crates.dailyStreakCrate), 'crates.dailyStreakCrate', `unknown crate "${String(crates.dailyStreakCrate)}"`);
 }
 

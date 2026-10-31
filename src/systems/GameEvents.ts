@@ -15,7 +15,7 @@ import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
 
 /** What earned a crate. */
-export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak';
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -185,6 +185,18 @@ export interface GameEvents {
     readonly tier: CrateTier;
     readonly credits: Credits;
     readonly paintId: string | null;
+  };
+  /** What crates gave besides credits changed (SupplyService): parts or boosters added, used or running out. */
+  SuppliesChanged: {
+    readonly parts: number;
+  };
+  /** One of the day's quests was done (QuestService): its crate waits to be collected. */
+  QuestCompleted: {
+    readonly questId: string;
+  };
+  /** The day's quests changed: a new day, a crate collected, a quest done. */
+  QuestsChanged: {
+    readonly day: number;
   };
   /** A company level's reward was collected (LevelRewardService): its credits paid, its crate given. */
   LevelRewardCollected: {
