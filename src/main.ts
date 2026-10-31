@@ -315,6 +315,7 @@ async function start(strings: Strings): Promise<void> {
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
   const facilities = services.resolve(ServiceKeys.facilities);
+  const research = services.resolve(ServiceKeys.research);
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const casino = services.resolve(ServiceKeys.casino);
   const review = services.resolve(ServiceKeys.review);
@@ -1492,6 +1493,11 @@ async function start(strings: Strings): Promise<void> {
       fleet,
       rivals,
       facilities,
+      research,
+      researchPoints: {
+        perDelivery: config.research.pointsPerDelivery,
+        perPerfectDelivery: config.research.pointsPerDelivery + config.research.perfectBonusPoints,
+      },
       clock,
       monetization,
       supplies,
@@ -1652,6 +1658,17 @@ async function start(strings: Strings): Promise<void> {
           toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
         } else {
           logger.warn(`Could not build ${facilityId}: ${built.error}.`);
+        }
+      },
+      onResearch: (researchId) => {
+        const researched = research.research(researchId);
+        if (researched.ok) {
+          audio.fanfare();
+          toasts.show(strings.t('toast.researched', { research: strings.researchName(researchId) }), 'success');
+        } else if (researched.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not research ${researchId}: ${researched.error}.`);
         }
       },
       onBuyUpgrade: (upgradeId) => {
@@ -1855,6 +1872,9 @@ async function start(strings: Strings): Promise<void> {
     // The crates' boosters running, theirs (SupplyService has seen the delivery already).
     const boosted = supplies.lastDelivery;
     result.showBoosted(strings.percent(config.crates.boosters.payShare), boosted.pay, boosted.xp);
+    // The research's pay bonus, already paid, and the research points earned (ResearchService has seen it too).
+    const researched = research.lastDelivery;
+    result.showResearch(strings.percent(research.perks.deliveryPayBonus), researched.pay, researched.points);
     // A share of the pay again for a rewarded ad, if the player wants it (none in a build without ads).
     const bonus = monetization.deliveryBonusOffer;
     if (bonus > 0) {
@@ -1943,6 +1963,7 @@ async function start(strings: Strings): Promise<void> {
   events.on('VehiclePurchased', refreshHq);
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
+  events.on('ResearchCompleted', refreshHq);
   for (const name of ['DriverHired', 'DriverDismissed', 'FleetTruckAssigned', 'FleetTruckRepaired'] as const) {
     events.on(name, refreshHq);
   }

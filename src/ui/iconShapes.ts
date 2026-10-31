@@ -40,6 +40,8 @@ const ICONS = {
   megaphone: `<path d="M3 9.4A1.4 1.4 0 0 1 4.4 8H7l8.6-4.6a.8.8 0 0 1 1.2.7v15.8a.8.8 0 0 1-1.2.7L7 16H4.4A1.4 1.4 0 0 1 3 14.6z"/><path d="M7.4 16.6l1.4 4.2a1 1 0 0 0 1 .7h1.4a.7.7 0 0 0 .7-.9l-1.2-4z"/><path d="M19.4 8.6a4.6 4.6 0 0 1 0 6.8" ${accentLine(2)}/>`,
   // A mortarboard: learning the trade (the training centre).
   school: `<path d="M12 3.4l10.4 5-10.4 5-10.4-5z"/><path d="M6 11.6v4.6c0 1.6 2.7 3.2 6 3.2s6-1.6 6-3.2v-4.6l-6 2.9z"/><path d="M20.6 9.4v6.2" ${accentLine(1.6)}/><circle ${ACCENT} cx="20.6" cy="16.6" r="1.4"/>`,
+  // A flask: the research tree.
+  research: `<path d="M8.6 2h6.8a.8.8 0 0 1 0 1.6h-.6v5.3l5.7 9.5a2.2 2.2 0 0 1-1.9 3.4H5.4a2.2 2.2 0 0 1-1.9-3.4l5.7-9.5V3.6h-.6a.8.8 0 0 1 0-1.6z"/><path ${ACCENT} d="M7.6 13.6h8.8l2.5 4.3a.9.9 0 0 1-.8 1.4H5.9a.9.9 0 0 1-.8-1.4z"/>`,
   // A pennant: a tender, raced for.
   flag: `<rect x="3.6" y="2" width="2.3" height="20" rx="1.1"/><path ${ACCENT} d="M7.4 3.4h12.3a.6.6 0 0 1 .5.9l-2.6 4.2 2.6 4.2a.6.6 0 0 1-.5.9H7.4z"/>`,
   map: `<path d="M2 6.3a.8.8 0 0 1 .5-.7l5.6-2.4v15.4l-5 2.1a.8.8 0 0 1-1.1-.7z"/><path d="M9.6 3.2l4.8 2.4v15.2l-4.8-2.4z"/><path ${ACCENT} d="M15.9 5.6l5-2.1a.8.8 0 0 1 1.1.7v13.5a.8.8 0 0 1-.5.7l-5.6 2.4z"/>`,
@@ -130,7 +132,7 @@ export function upgradeIcon(look: UpgradeLook): IconName {
   return UPGRADE_ICONS[look];
 }
 
-/** Each facility's icon, by what it does for the company (one facility per effect). */
+/** Each facility's and research's icon, by what it does for the company. */
 const FACILITY_ICONS: Readonly<Record<FacilityEffect, IconName>> = {
   repairDiscount: 'wrench',
   fuelDiscount: 'fuel',
@@ -139,6 +141,10 @@ const FACILITY_ICONS: Readonly<Record<FacilityEffect, IconName>> = {
   marketShareBonus: 'megaphone',
   xpBonus: 'school',
   extraContracts: 'jobs',
+  deliveryPayBonus: 'coins',
+  cargoDamageReduction: 'careful',
+  fuelUseReduction: 'engine',
+  loadingTimeReduction: 'express',
 };
 
 /** The icon of a facility at the head office, by its effect. */

@@ -169,6 +169,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       liveries: { bought: [], worn: {}, text: null },
     }),
   },
+  {
+    // v17 adds the research tree: nothing researched, no points yet.
+    from: 16,
+    migrate: (save) => ({ ...save, version: 17, research: { points: 0, researched: [] } }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

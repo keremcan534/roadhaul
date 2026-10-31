@@ -6,6 +6,7 @@ import { DEFAULT_GAME_CONFIG, QUALITY_CHOICES } from '../../../../src/data/confi
 import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
 import { CARGO_CATEGORIES } from '../../../../src/data/definitions/CargoDefinition';
 import { FACILITY_EFFECTS } from '../../../../src/data/definitions/FacilityDefinition';
+import { RESEARCH_BRANCHES } from '../../../../src/data/definitions/ResearchDefinition';
 import { MISSION_DIFFICULTIES } from '../../../../src/data/definitions/MissionDefinition';
 import { VEHICLE_STATS } from '../../../../src/data/definitions/UpgradeDefinition';
 import { VEHICLE_CLASSES } from '../../../../src/data/definitions/VehicleDefinition';
@@ -55,7 +56,7 @@ describe('string tables', () => {
     }
   });
 
-  it('name every city, village, cargo, mission, truck, upgrade, paint, product, weather, time of day, clock setting, event, driver, rival, facility and its effect, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, village, cargo, mission, truck, upgrade, paint, product, weather, time of day, clock setting, event, driver, rival, facility and its effect, research and its branch, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.paints.map((paint) => `paint.${paint.id}.name`),
@@ -77,6 +78,8 @@ describe('string tables', () => {
       ...GAME_CONTENT.rivals.map((rival) => `rival.${rival.id}.name`),
       ...GAME_CONTENT.facilities.flatMap((facility) => [`facility.${facility.id}.name`, `facility.${facility.id}.description`]),
       ...FACILITY_EFFECTS.map((effect) => `facility.effect.${effect}`),
+      ...GAME_CONTENT.research.map((research) => `research.${research.id}.name`),
+      ...RESEARCH_BRANCHES.map((branch) => `hq.research.branch.${branch}`),
       ...CARGO_CATEGORIES.map((category) => `cargoCategory.${category}`),
       ...TUTORIAL_STEPS.filter((step) => step !== 'done').map((step) => `tutorial.${step}`),
       ...QUALITY_CHOICES.map((choice) => `settings.quality.${choice}`),

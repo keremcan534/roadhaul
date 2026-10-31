@@ -82,6 +82,7 @@ describe('validateSaveGameData', () => {
       'supplies',
       'quests',
       'liveries',
+      'research',
     ]);
   });
 
@@ -130,6 +131,14 @@ describe('validateSaveGameData', () => {
     expect(paths(withPart('liveries', { ...liveries, text: 'X'.repeat(40) }))).toEqual(['liveries.text']);
     expect(paths(withPart('liveries', { ...liveries, text: '' }))).toEqual(['liveries.text']);
     expect(paths(withPart('liveries', null))).toEqual(['liveries']);
+  });
+
+  it('checks the research: whole points, the steps researched by id', () => {
+    const research = { points: 4, researched: ['retired'] };
+    expect(paths(withPart('research', research))).toEqual([]);
+    expect(paths(withPart('research', { points: -1, researched: [7] }))).toEqual(['research.points', 'research.researched[0]']);
+    expect(paths(withPart('research', { points: 1.5, researched: 'all' }))).toEqual(['research.points', 'research.researched']);
+    expect(paths(withPart('research', null))).toEqual(['research']);
   });
 
   it('checks the level rewards: collected up to a level the company can have', () => {

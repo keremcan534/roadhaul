@@ -89,6 +89,10 @@ export class Strings {
     return this.t(`facility.${facilityId}.name`);
   }
 
+  researchName(researchId: string): string {
+    return this.t(`research.${researchId}.name`);
+  }
+
   /** A whole number with the language's grouping: "12.000", "12,000". */
   number(value: number): string {
     return this.integer.format(value);

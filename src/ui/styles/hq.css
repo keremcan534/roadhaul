@@ -1234,6 +1234,166 @@
   height: 17px;
 }
 
+/* ---- Research tree (src/ui/hq/researchTree.ts) ---- */
+
+.research__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
+.research__points {
+  --rh-icon-accent: var(--rh-teal);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 8px;
+  border: 1px solid rgb(92 200 188 / 45%);
+  border-radius: 999px;
+  background: rgb(92 200 188 / 10%);
+  font-family: var(--rh-numeric);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.research__points .icon {
+  width: 17px;
+  height: 17px;
+}
+
+/* A column per branch, side by side where they fit; on a phone one under the other. */
+.research__branches {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.research__branch {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.research__branch-title {
+  --rh-icon-accent: var(--rh-accent);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-family: var(--rh-display);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--rh-muted);
+}
+
+.research__branch-title .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.research-node {
+  --rh-icon-accent: var(--rh-accent);
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+}
+
+/* The line down to the step below: lit once this one is researched. */
+.research-node + .research-node::before {
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: 27px;
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--rh-line-strong);
+}
+
+.research-node[data-state='researched'] + .research-node::before {
+  background: var(--rh-teal);
+}
+
+.research-node[data-state='researched'] {
+  --rh-icon-accent: var(--rh-teal);
+  border-color: rgb(92 200 188 / 55%);
+  background: linear-gradient(135deg, rgb(92 200 188 / 14%), var(--rh-surface-2) 60%);
+}
+
+.research-node[data-state='available'] {
+  border-color: rgb(242 163 58 / 60%);
+  box-shadow: inset 3px 0 0 var(--rh-accent);
+}
+
+.research-node[data-state='needsPrevious'],
+.research-node[data-state='locked'] {
+  opacity: 0.62;
+}
+
+.research-node__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--rh-surface-3);
+}
+
+.research-node__icon .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.research-node__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.research-node__name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.research-node__effect {
+  margin: 0;
+  font-size: 13px;
+  color: var(--rh-fg-2);
+}
+
+.research-node__price {
+  font-family: var(--rh-numeric);
+  font-size: 12px;
+  color: var(--rh-muted);
+}
+
+.research-node__status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--rh-muted);
+}
+
+.research-node__status.is-done {
+  color: var(--rh-teal);
+}
+
+.research-node__action {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
 /* ---- Special events (src/ui/hq/eventCards.ts) ---- */
 
 .event-card {

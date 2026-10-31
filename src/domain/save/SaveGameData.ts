@@ -36,7 +36,7 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v16: adds the trucks' designs (bought, worn) and the trailer text, and
  *   the designs crates gave.
  */
-export const CURRENT_SAVE_VERSION = 16;
+export const CURRENT_SAVE_VERSION = 17;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -68,6 +68,15 @@ export interface SaveGameData {
   readonly supplies: SuppliesSaveData;
   readonly quests: QuestsSaveData;
   readonly liveries: LiveriesSaveData;
+  readonly research: ResearchSaveData;
+}
+
+/** The research tree (ResearchService). */
+export interface ResearchSaveData {
+  /** Research points held. */
+  readonly points: number;
+  /** ResearchDefinition ids researched. */
+  readonly researched: readonly string[];
 }
 
 /** The trucks' designs (LiveryService). */

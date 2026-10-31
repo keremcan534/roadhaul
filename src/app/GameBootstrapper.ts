@@ -10,6 +10,7 @@ import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
 import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
+import { ResearchService } from '../systems/company/ResearchService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
 import { CasinoService } from '../systems/casino/CasinoService';
 import { CrateService } from '../systems/rewards/CrateService';
@@ -164,6 +165,11 @@ export class GameBootstrapper {
         ServiceKeys.facilities,
         new FacilityService(catalog, economy, company, perks, events, logger.withCategory('Facilities')),
       );
+      // The research tree: points from deliveries, perks for good; after the economy, its pay bonus on top.
+      const research = container.register(
+        ServiceKeys.research,
+        new ResearchService(catalog, config.research, economy, company, perks, events, logger.withCategory('Research')),
+      );
       const dailyReward = container.register(
         ServiceKeys.dailyReward,
         new DailyRewardService(
@@ -217,7 +223,7 @@ export class GameBootstrapper {
       );
       const fuel = container.register(
         ServiceKeys.fuel,
-        new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel')),
+        new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel'), perks),
       );
       // What crates give besides credits and looks: after the company, so a delivery's own experience comes first.
       const supplies = container.register(
@@ -411,6 +417,7 @@ export class GameBootstrapper {
           fleet,
           rivals,
           facilities,
+          research,
           dailyReward,
           achievements,
           crates,
@@ -458,5 +465,6 @@ function describeContent(catalog: ContentCatalog): string {
     `drivers ${catalog.drivers.size}`,
     `rivals ${catalog.rivals.size}`,
     `facilities ${catalog.facilities.size}`,
+    `research ${catalog.research.size}`,
   ].join(', ');
 }

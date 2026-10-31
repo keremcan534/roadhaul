@@ -192,6 +192,16 @@ export interface GameEvents {
     readonly instanceId: string | null;
     readonly liveryId: string | null;
   };
+  /** A step of the research tree was researched (ResearchService): `points` are left. */
+  ResearchCompleted: {
+    readonly researchId: string;
+    readonly points: number;
+  };
+  /** A delivery earned research points (`earned`): `points` are held now. */
+  ResearchPointsChanged: {
+    readonly points: number;
+    readonly earned: number;
+  };
   /** What crates gave besides credits changed (SupplyService): parts or boosters added, used or running out. */
   SuppliesChanged: {
     readonly parts: number;

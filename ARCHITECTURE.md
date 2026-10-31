@@ -426,7 +426,13 @@ For the player's request for more to buy for the company ("şirket yönetimini d
   - `RivalService` gives the company's own deliveries, and its fleet's, more standing;
   - `MissionService` gives a delivery more experience;
   - `DailyContracts` deals more contracts of the day, the same ones first.
-- **The Company page** (`companyPage.ts`) shows what the facilities give now and a card for each: its level, its effect, and the next level's effect and price or the company level that unlocks it.
+- **The Company page** (`companyPage.ts`) shows what the facilities give now, the research tree, and a card for each facility: its level, its effect, and the next level's effect and price or the company level that unlocks it.
+
+### Research
+
+- **Research steps** (`ResearchDefinition`, content in `research.ts`): three branches (`RESEARCH_BRANCHES`: logistics, engineering, business) of four tiers, each step one perk (a `FacilityEffect`, its value checked as a facility level's is), its price in research points and credits, and the company level it needs. The catalog checks each branch is a line of tiers 1, 2, 3… none unlocking earlier than the one before.
+- **More perks**: research brought four effects the facilities do not use yet: `deliveryPayBonus` (paid by `ResearchService` on top of each delivery, a line on the receipt), `cargoDamageReduction` (`MissionService`, on top of the truck's suspension), `fuelUseReduction` (`FuelService`, the player's own truck) and `loadingTimeReduction` (`MissionService`'s loading and unloading). `CompanyPerks` now holds two parts, the facilities' and the research's, and gives the services their sum.
+- **`ResearchService`** (`src/systems/company`) earns research points on `MissionCompleted` (`GameConfig.research`: one a delivery, one more for three stars), researches a step (`ResearchCompleted`), refusing an unknown or done step, one whose tier above is not done, a company level not reached, too few points or credits (taking nothing), and keeps points and steps in the save (v17; a step the content no longer has is dropped).
 
 ### Havenport, a city
 

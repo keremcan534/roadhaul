@@ -58,6 +58,7 @@ describe('createNewSaveGameData', () => {
       supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
       quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
       liveries: { bought: [], worn: {}, text: null },
+      research: { points: 0, researched: [] },
     });
   });
 

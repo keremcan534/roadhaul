@@ -17,6 +17,9 @@ describe('GarageService', () => {
       ['rh_h4', 48000, true, 0],
       ['rh_h5', 44000, true, 0],
       ['rh_h6', 62000, true, 0],
+      ['rh_h7', 74000, true, 0],
+      ['rh_h8', 88000, true, 0],
+      ['rh_h9', 110000, true, 0],
     ]);
     expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'locked' });
     expect(game.economy.credits).toBe(50_000);
@@ -39,7 +42,7 @@ describe('GarageService', () => {
     expect(game.economy.credits).toBe(8000);
     expect(bought).toEqual([{ instanceId: 'truck_002', definitionId: 'rh_h2', price: 22000 }]);
     expect(game.garage.buy('rh_h2')).toEqual({ ok: false, error: 'insufficientFunds' });
-    expect(game.garage.buy('rh_h9')).toEqual({ ok: false, error: 'unknownVehicle' });
+    expect(game.garage.buy('rh_h99')).toEqual({ ok: false, error: 'unknownVehicle' });
     expect(game.garage.trucks.map((truck) => truck.instanceId)).toEqual(['truck_001', 'truck_002']);
   });
 

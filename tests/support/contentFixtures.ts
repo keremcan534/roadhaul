@@ -192,6 +192,13 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
       { id: 'test_galaxy', pattern: 'galaxy', price: 0, crate: 'legendary' },
       { id: 'test_neon', pattern: 'neon', price: 0, pack: 'designs_neon' },
     ],
+    research: [
+      { id: 'test_loading', branch: 'logistics', tier: 1, effect: 'loadingTimeReduction', value: 0.5, points: 2, cost: 1000 },
+      { id: 'test_contracts', branch: 'logistics', tier: 2, effect: 'extraContracts', value: 1, points: 3, cost: 2000, requiredCompanyLevel: 2 },
+      { id: 'test_pay', branch: 'business', tier: 1, effect: 'deliveryPayBonus', value: 0.1, points: 1, cost: 500 },
+      { id: 'test_care', branch: 'engineering', tier: 1, effect: 'cargoDamageReduction', value: 0.5, points: 1, cost: 0 },
+      { id: 'test_eco', branch: 'engineering', tier: 2, effect: 'fuelUseReduction', value: 0.5, points: 1, cost: 0 },
+    ],
     ...overrides,
   };
 }

@@ -10,6 +10,7 @@ import type { MissionDefinition } from './definitions/MissionDefinition';
 import type { LiveryDefinition } from './definitions/LiveryDefinition';
 import type { PaintDefinition } from './definitions/PaintDefinition';
 import type { QuestDefinition } from './definitions/QuestDefinition';
+import type { ResearchDefinition } from './definitions/ResearchDefinition';
 import type { RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
 import type { TrafficVehicleDefinition } from './definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from './definitions/UpgradeDefinition';
@@ -45,4 +46,6 @@ export interface GameContent {
   readonly quests: readonly QuestDefinition[];
   /** The designs the trucks can wear. */
   readonly liveries: readonly LiveryDefinition[];
+  /** The research tree: perks for the whole company, researched once a step at a time. */
+  readonly research: readonly ResearchDefinition[];
 }

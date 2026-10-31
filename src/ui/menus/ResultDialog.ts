@@ -281,6 +281,18 @@ export class ResultDialog {
     }
   }
 
+  /** Adds what research did for the delivery to the open result: `pay` more (`percent`), `points` research points. */
+  showResearch(percent: string, pay: Credits, points: number): void {
+    const { strings } = this;
+    if (pay > 0) {
+      this.addLine('result-dialog__rivalry is-bonus', strings.t('result.researchPay', { percent }), strings.signedMoney(pay));
+    }
+    if (points > 0) {
+      const row = this.addLine('result-dialog__rivalry result-dialog__research', strings.t('result.researchPoints'), `+${strings.number(points)}`);
+      row.dataset.value = 'research-earned';
+    }
+  }
+
   /** Adds the leader's bonus the delivery earned in `city` to the open result. */
   showLeaderBonus(city: string, bonus: Credits): void {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.leaderBonus', { city }), this.strings.signedMoney(bonus));
@@ -302,11 +314,12 @@ export class ResultDialog {
   }
 
   /** A line above the way on: what it was, and what it paid. */
-  private addLine(className: string, label: string, amount: string): void {
+  private addLine(className: string, label: string, amount: string): HTMLElement {
     const document = this.overlay.ownerDocument;
     const row = element(document, 'p', className);
     row.append(element(document, 'span', '', label), element(document, 'span', 'result-dialog__rivalry-amount', amount));
     this.way.insertBefore(row, this.way.lastElementChild);
+    return row;
   }
 
   /** The way on: the next job, or back on the road. The banners added later go above them. */

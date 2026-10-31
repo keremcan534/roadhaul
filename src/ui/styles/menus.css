@@ -1136,6 +1136,10 @@
   white-space: nowrap;
 }
 
+.result-dialog__research .result-dialog__rivalry-amount {
+  color: var(--rh-teal);
+}
+
 /* The rewarded delivery bonus. */
 .result-dialog__bonus {
   width: 100%;

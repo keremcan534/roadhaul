@@ -270,6 +270,16 @@ export function validateSaveGameData(
       `must be null or up to ${TRAILER_TEXT_MAX} letters`,
     );
   });
+  section('research', (research) => {
+    validator.nonNegativeInteger(research['points'], 'research.points');
+    const researched = research['researched'];
+    if (validator.check(Array.isArray(researched), 'research.researched', 'must be a list')) {
+      // A step the content no longer has is dropped on loading (ResearchService.restore), not refused.
+      (researched as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `research.researched[${index}]`, 'must be an id'),
+      );
+    }
+  });
   return validator.issues;
 }
 

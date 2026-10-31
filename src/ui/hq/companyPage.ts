@@ -5,25 +5,30 @@ import type { FacilityOffer } from '../../systems/company/FacilityService';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { facilityIcon, icon } from '../icons';
+import { researchTree, type ResearchTreeView } from './researchTree';
 
 /** What the company page shows: the facilities as the head office offers them, and what they give now. */
 export interface CompanyPageView {
   readonly offers: readonly FacilityOffer[];
   readonly perks: FacilityPerks;
   readonly canAfford: (price: Credits) => boolean;
+  /** The research tree. */
+  readonly research: ResearchTreeView;
 }
 
 /**
  * The company's own page: what it builds for itself at the head office, a
- * level at a time. At the top, all that its facilities give it now; then a
- * card for each facility, with its effect at the level built, the next
- * level's and its price, or the company level that unlocks it.
+ * level at a time, and what it researches. At the top, all that its
+ * facilities give it now; then the research tree; then a card for each
+ * facility, with its effect at the level built, the next level's and its
+ * price, or the company level that unlocks it.
  */
 export function companyPage(
   document: Document,
   strings: Strings,
   view: CompanyPageView,
   onBuild: (facilityId: string) => void,
+  onResearch: (researchId: string) => void,
 ): HTMLElement[] {
   const section = (name: string, title: string, ...content: HTMLElement[]): HTMLElement => {
     const node = element(document, 'section', `hq__section hq__section--${name}`);
@@ -52,6 +57,7 @@ export function companyPage(
   return [
     element(document, 'p', 'hq__note', strings.t('hq.company.note')),
     section('perks', strings.t('hq.company.perks'), perks),
+    researchTree(document, strings, view.research, onResearch),
     section('facilities', strings.t('hq.company.facilities'), cards),
   ];
 }

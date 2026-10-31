@@ -65,8 +65,7 @@ describe('GameConfig', () => {
       ...DEFAULT_GAME_CONFIG,
       economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairShare: 1.5 },
       fuel: { consumptionScale: -1, lowFuelFraction: 2 },
-      company: { levelXp: [100, 50, 60, 70, 80], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 4) },
-      fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3, 4, 6, 8] },
+      company: { levelXp: [100, 50, 60, 70, 80, 90, 100, 110, 120, 130], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards },
     };
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([

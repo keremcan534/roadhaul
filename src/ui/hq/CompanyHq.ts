@@ -3,6 +3,7 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { FacilityService } from '../../systems/company/FacilityService';
+import type { ResearchService } from '../../systems/company/ResearchService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
@@ -52,6 +53,9 @@ export interface CompanyHqServices {
   readonly fleet: FleetService;
   readonly rivals: RivalService;
   readonly facilities: FacilityService;
+  readonly research: ResearchService;
+  /** Research points a delivery earns, and a perfect one (GameConfig.research). */
+  readonly researchPoints: { readonly perDelivery: number; readonly perPerfectDelivery: number };
   readonly clock: Clock;
   /** Ads and purchases: the half-price services, and the premium paints. */
   readonly monetization: MonetizationService;
@@ -104,6 +108,7 @@ export interface CompanyHqActions {
   readonly onBuyOut: (rivalId: string) => void;
   /** Builds a facility's next level at the head office. */
   readonly onBuildFacility: (facilityId: string) => void;
+  readonly onResearch: (researchId: string) => void;
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
@@ -434,8 +439,16 @@ export class CompanyHq {
             offers: this.services.facilities.offers(),
             perks: this.services.facilities.perks,
             canAfford: (price) => this.services.economy.canAfford(price),
+            research: {
+              offers: this.services.research.offers(),
+              points: this.services.research.points,
+              pointsPerDelivery: this.services.researchPoints.perDelivery,
+              pointsPerPerfectDelivery: this.services.researchPoints.perPerfectDelivery,
+              canAfford: (price) => this.services.economy.canAfford(price),
+            },
           },
           this.actions.onBuildFacility,
+          this.actions.onResearch,
         );
       case 'rivals':
         return this.rivalsPage.render();

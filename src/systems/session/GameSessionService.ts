@@ -16,6 +16,7 @@ import { summarizeSave, type SaveSummary } from '../../domain/save/saveSummary';
 import { HOME_START_ID, LEFT_START_ID, startPlaces, type StartPlace } from '../../domain/world/startPlaces';
 import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
+import type { ResearchService } from '../company/ResearchService';
 import type { DailyRewardService } from '../rewards/DailyRewardService';
 import type { AchievementService } from '../achievements/AchievementService';
 import type { LevelRewardService } from '../company/LevelRewardService';
@@ -54,6 +55,8 @@ export interface GameSessionDependencies {
   readonly rivals: RivalService;
   /** What the company has built for itself. */
   readonly facilities: FacilityService;
+  /** The research tree. */
+  readonly research: ResearchService;
   /** The daily reward's streak. */
   readonly dailyReward: DailyRewardService;
   /** The company's goals. */
@@ -120,6 +123,7 @@ export class GameSessionService {
       events.on('FleetCaughtUp', saveNow),
       events.on('RivalAcquired', saveNow),
       events.on('FacilityBuilt', saveNow),
+      events.on('ResearchCompleted', saveNow),
       events.on('DailyRewardClaimed', saveNow),
       events.on('AchievementClaimed', saveNow),
       events.on('CrateOpened', saveNow),
@@ -279,6 +283,7 @@ export class GameSessionService {
       fleet,
       rivals,
       facilities,
+      research,
       dailyReward,
       achievements,
       crates,
@@ -313,6 +318,7 @@ export class GameSessionService {
       fleet: fleet.snapshot(),
       rivals: rivals.snapshot(),
       facilities: facilities.snapshot(),
+      research: research.snapshot(),
       daily: dailyReward.snapshot(),
       achievements: achievements.snapshot(),
       crates: crates.snapshot(),
@@ -377,6 +383,7 @@ export class GameSessionService {
       fleet,
       rivals,
       facilities,
+      research,
       dailyReward,
       achievements,
       crates,
@@ -399,6 +406,7 @@ export class GameSessionService {
     economy.restore(save.economy.credits);
     company.restore(save.profile, save.company, save.stats);
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
+    research.restore(save.research);
     dailyReward.restore(save.daily);
     crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
     levelRewards.restore(save.levelRewards);

@@ -314,6 +314,13 @@ export interface GameConfig {
     /** A shooting star counts as a sighting at most once in this many seconds of play (they fall often at night). */
     readonly meteorCountSeconds: number;
   };
+  /** The research tree (ResearchService): the points the company's own deliveries earn toward it. */
+  readonly research: {
+    /** Research points a delivery earns… */
+    readonly pointsPerDelivery: number;
+    /** …and more for a perfect one (three stars). */
+    readonly perfectBonusPoints: number;
+  };
   /** When the game asks the player to rate it on the store (ReviewService): seldom, after deliveries in good order. */
   readonly review: {
     /** Deliveries in good order before the first ask… */
@@ -630,6 +637,10 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
     meteorCountSeconds: 300,
   },
+  research: {
+    pointsPerDelivery: 1,
+    perfectBonusPoints: 1,
+  },
   review: {
     firstAfterDeliveries: 5,
     maxCargoDamage: 0.1,
@@ -729,6 +740,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     crates,
     casino,
     skyWonders,
+    research,
     review,
     debug,
   } = config;
@@ -980,6 +992,8 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
   }
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
+  validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
+  validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
   validator.positiveInteger(review.firstAfterDeliveries, 'review.firstAfterDeliveries');
   validator.fraction(review.maxCargoDamage, 'review.maxCargoDamage');
   validator.positiveInteger(review.daysBetween, 'review.daysBetween');

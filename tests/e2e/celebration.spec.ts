@@ -27,6 +27,8 @@ test('celebrates a delivery: its stars land, what it earned counts up, and the p
   await expect(result.locator('.result-dialog__tally')).toHaveText(`+${total}`);
   await expect(result.locator('.result-dialog__streak')).toContainText('Perfect streak: 1');
   await expect(result.locator('.result-dialog__streak')).toContainText('Next: Bronze crate in 2');
+  // A perfect delivery's research points.
+  await expect(result.locator('[data-value="research-earned"]')).toHaveText('Research points+2');
   await testInfo.attach('stars', { body: await page.screenshot(), contentType: 'image/png' });
   expect(problems).toEqual([]);
 });
