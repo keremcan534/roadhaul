@@ -280,6 +280,23 @@ export function validateSaveGameData(
       );
     }
   });
+  section('career', (career) => {
+    for (const key of ['tonsDelivered', 'longestHaulMeters', 'haulMeters', 'topSpeedKmh', 'drivingSeconds', 'fuelLiters'] as const) {
+      validator.check(isFiniteNumber(career[key]) && (career[key] as number) >= 0, `career.${key}`, 'must be a number, 0 or more');
+    }
+    for (const key of ['bestPay', 'fuelSpent', 'repairsSpent', 'knocks', 'overturns', 'carsWrecked', 'propsKnocked', 'fleetDeliveries'] as const) {
+      validator.nonNegativeInteger(career[key], `career.${key}`);
+    }
+    for (const key of ['cargo', 'destinations'] as const) {
+      const counts = career[key];
+      // An id the content no longer has is shown no more (CareerService), not refused.
+      if (validator.check(isJson(counts), `career.${key}`, 'must be an object')) {
+        for (const [id, count] of Object.entries(counts as Json)) {
+          validator.nonNegativeInteger(count, `career.${key}.${id}`);
+        }
+      }
+    }
+  });
   return validator.issues;
 }
 

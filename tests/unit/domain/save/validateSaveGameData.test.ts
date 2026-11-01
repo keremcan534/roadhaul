@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
+import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
 import { contentFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
@@ -83,6 +84,18 @@ describe('validateSaveGameData', () => {
       'quests',
       'liveries',
       'research',
+      'career',
+    ]);
+  });
+
+  it('checks the career: amounts 0 or more, whole counts, deliveries counted by id', () => {
+    const career = { ...emptyCareer(), tonsDelivered: 12.5, topSpeedKmh: 88.2, cargo: { furniture: 2 }, destinations: { city_b: 1 } };
+    expect(paths(withPart('career', career))).toEqual([]);
+    expect(paths(withPart('career', { ...career, tonsDelivered: -1, knocks: 1.5, cargo: { furniture: -2 }, destinations: [] }))).toEqual([
+      'career.tonsDelivered',
+      'career.knocks',
+      'career.cargo.furniture',
+      'career.destinations',
     ]);
   });
 

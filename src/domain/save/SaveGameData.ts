@@ -35,8 +35,12 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   (upgrade parts, boosters, those running) and the day's quests.
  * - v16: adds the trucks' designs (bought, worn) and the trailer text, and
  *   the designs crates gave.
+ * - v17: adds the research tree (points, steps researched).
+ * - v18: adds the career's records (CareerService): tons delivered, the
+ *   longest haul, the top speed, the time on the road, fuel and repairs,
+ *   knocks and crashes, deliveries by cargo and by town.
  */
-export const CURRENT_SAVE_VERSION = 17;
+export const CURRENT_SAVE_VERSION = 18;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -69,6 +73,39 @@ export interface SaveGameData {
   readonly quests: QuestsSaveData;
   readonly liveries: LiveriesSaveData;
   readonly research: ResearchSaveData;
+  readonly career: CareerSaveData;
+}
+
+/**
+ * The career's records (CareerService), beyond what `stats` and the goals'
+ * counters keep: from the company's start (or from v18 for an older one).
+ */
+export interface CareerSaveData {
+  /** Cargo the player delivered, tons. */
+  readonly tonsDelivered: number;
+  /** The longest distance driven loaded, from pickup to delivery, meters. */
+  readonly longestHaulMeters: number;
+  /** The distance driven loaded on the contract under way so far, meters (0 with none loaded). */
+  readonly haulMeters: number;
+  /** The best pay for one delivery. */
+  readonly bestPay: Credits;
+  readonly topSpeedKmh: number;
+  /** Time on the road, the truck in the player's hands. */
+  readonly drivingSeconds: number;
+  /** Diesel bought, and what it and the repairs cost. */
+  readonly fuelLiters: number;
+  readonly fuelSpent: Credits;
+  readonly repairsSpent: Credits;
+  /** Knocks that damaged the truck, times it went over, cars it wrecked, things it knocked down. */
+  readonly knocks: number;
+  readonly overturns: number;
+  readonly carsWrecked: number;
+  readonly propsKnocked: number;
+  /** The hired drivers' deliveries (a driver dismissed keeps their count here). */
+  readonly fleetDeliveries: number;
+  /** The player's deliveries by CargoDefinition id, and by destination CityDefinition id. */
+  readonly cargo: Readonly<Record<string, number>>;
+  readonly destinations: Readonly<Record<string, number>>;
 }
 
 /** The research tree (ResearchService). */

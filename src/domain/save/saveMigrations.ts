@@ -1,4 +1,5 @@
 import { err, ok, type Result } from '../../core/Result';
+import { emptyCareer } from '../career/careerRecords';
 import { CURRENT_SAVE_VERSION } from './SaveGameData';
 
 /** Facts a migration may need that old saves did not record. */
@@ -173,6 +174,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     // v17 adds the research tree: nothing researched, no points yet.
     from: 16,
     migrate: (save) => ({ ...save, version: 17, research: { points: 0, researched: [] } }),
+  },
+  {
+    // v18 adds the career's records: kept from now on (what `stats` and the goals already counted stays there).
+    from: 17,
+    migrate: (save) => ({ ...save, version: 18, career: emptyCareer() }),
   },
 ];
 

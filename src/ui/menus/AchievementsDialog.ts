@@ -3,6 +3,10 @@ import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, withIcon } from '../icons';
 import type { IconName } from '../iconShapes';
+import { careerSheet, type CareerShown } from './careerSheet';
+
+/** The dialog's two pages: the goals, and the career's record. */
+export type GoalsPage = 'goals' | 'career';
 
 export interface AchievementsActions {
   readonly onClaim: (achievementId: string) => void;
@@ -48,11 +52,17 @@ const COINS = 10;
  * for each, those to collect first (lit, with their button), then those
  * closest to done, then those collected. Each shows what it counts, its
  * target, a bar of the way there and its reward. Collecting one pops its
- * card and bursts coins from it.
+ * card and bursts coins from it. A second tab shows the career's record
+ * (careerSheet).
  */
 export class AchievementsDialog {
   private readonly overlay: HTMLDivElement;
+  private readonly title: HTMLHeadingElement;
+  private readonly intro: HTMLParagraphElement;
   private readonly list: HTMLDivElement;
+  private readonly career: HTMLDivElement;
+  private readonly tabs: Readonly<Record<GoalsPage, HTMLButtonElement>>;
+  private page: GoalsPage = 'goals';
 
   constructor(
     parent: HTMLElement,
@@ -65,12 +75,27 @@ export class AchievementsDialog {
     this.overlay.hidden = true;
     const panel = element(document, 'div', 'panel goals__panel');
     const head = element(document, 'div', 'goals__head');
-    head.append(icon(document, 'trophy', 'goals__icon'), element(document, 'h2', 'panel__title', strings.t('achievements.title')));
+    this.title = element(document, 'h2', 'panel__title', strings.t('achievements.title'));
+    head.append(icon(document, 'trophy', 'goals__icon'), this.title);
+    const tabRow = element(document, 'div', 'goals__tabs');
+    tabRow.setAttribute('role', 'tablist');
+    const tab = (page: GoalsPage, label: string, picture: IconName): HTMLButtonElement => {
+      const node = withIcon(button(document, 'goals__tab', label, 'goals-tab', () => this.showPage(page)), picture);
+      node.setAttribute('role', 'tab');
+      node.dataset.page = page;
+      tabRow.append(node);
+      return node;
+    };
+    this.tabs = { goals: tab('goals', strings.t('career.tab.goals'), 'trophy'), career: tab('career', strings.t('career.tab.career'), 'route') };
+    this.intro = element(document, 'p', 'goals__intro', strings.t('achievements.intro'));
     this.list = element(document, 'div', 'goals__list');
+    this.career = element(document, 'div', 'goals__list goals__career');
     panel.append(
       head,
-      element(document, 'p', 'goals__intro', strings.t('achievements.intro')),
+      tabRow,
+      this.intro,
       this.list,
+      this.career,
       withIcon(button(document, 'button--secondary goals__close', strings.t('settings.close'), 'close-goals', actions.onClose), 'close'),
     );
     this.overlay.append(panel);
@@ -81,10 +106,33 @@ export class AchievementsDialog {
     return !this.overlay.hidden;
   }
 
-  open(goals: readonly AchievementShown[]): void {
+  /** Opens on the goals, the career's record ready on its tab. */
+  open(goals: readonly AchievementShown[], career: CareerShown): void {
     this.show(goals);
+    this.career.replaceChildren(careerSheet(this.overlay.ownerDocument, this.strings, career));
+    this.showPage('goals');
     this.overlay.hidden = false;
+  }
+
+  /** The page shown: the goals or the career. */
+  get shownPage(): GoalsPage {
+    return this.page;
+  }
+
+  private showPage(page: GoalsPage): void {
+    this.page = page;
+    for (const [name, node] of Object.entries(this.tabs) as [GoalsPage, HTMLButtonElement][]) {
+      const picked = name === page;
+      node.classList.toggle('is-selected', picked);
+      node.setAttribute('aria-selected', String(picked));
+    }
+    this.list.hidden = page !== 'goals';
+    this.career.hidden = page !== 'career';
+    this.overlay.dataset.page = page;
+    this.title.textContent = this.strings.t(page === 'goals' ? 'achievements.title' : 'career.title');
+    this.intro.textContent = this.strings.t(page === 'goals' ? 'achievements.intro' : 'career.intro');
     this.list.scrollTop = 0;
+    this.career.scrollTop = 0;
   }
 
   /** The goals as they stand: to collect first, then the closest to done, then those collected. */

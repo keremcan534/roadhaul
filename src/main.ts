@@ -130,6 +130,7 @@ import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
+import type { CareerShown } from './ui/menus/careerSheet';
 import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
 import { photoFileName } from './ui/photo/photoFileName';
 import { photoPicture } from './ui/photo/photoPicture';
@@ -330,6 +331,7 @@ async function start(strings: Strings): Promise<void> {
   const rivals = services.resolve(ServiceKeys.rivals);
   const facilities = services.resolve(ServiceKeys.facilities);
   const research = services.resolve(ServiceKeys.research);
+  const career = services.resolve(ServiceKeys.career);
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const casino = services.resolve(ServiceKeys.casino);
   const review = services.resolve(ServiceKeys.review);
@@ -704,6 +706,22 @@ async function start(strings: Strings): Promise<void> {
       claimed: goal.claimed,
       reward: strings.money(goal.definition.reward),
     }));
+  /** The career's record as the goals dialog's second tab shows it. */
+  const careerShown = (): CareerShown => {
+    const measured = achievements.measured;
+    return {
+      records: career.records,
+      distanceMeters: session.distanceDrivenMeters,
+      deliveries: company.stats.deliveriesCompleted,
+      failed: company.stats.deliveriesFailed,
+      earned: company.stats.creditsEarned,
+      perfect: measured.perfectDeliveries,
+      bestStreak: measured.perfectStreak,
+      tendersWon: measured.tendersWon,
+      cratesOpened: measured.cratesOpened,
+      skyWonders: measured.skyWonders,
+    };
+  };
   const goalsDialog = new AchievementsDialog(ui, strings, {
     onClaim: (achievementId) => {
       if (achievements.claim(achievementId).ok) {
@@ -1791,7 +1809,7 @@ async function start(strings: Strings): Promise<void> {
       },
       onOpenMap: () => openMap(),
       onOpenCasino: () => openCasino(),
-      onOpenGoals: () => goalsDialog.open(goalsShown()),
+      onOpenGoals: () => goalsDialog.open(goalsShown(), careerShown()),
       onOpenCrates: () => openCrates(),
       onClose: () => closePanel(),
     },
@@ -2464,6 +2482,7 @@ async function start(strings: Strings): Promise<void> {
         navigation.update(stepSeconds);
         fuel.update();
         session.update(stepSeconds);
+        career.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();

@@ -123,6 +123,11 @@ export class AchievementService {
     return this.content.achievements.all.map((definition) => this.viewOf(definition, values));
   }
 
+  /** What each goal counts now, by metric (the career page shows some of them). */
+  get measured(): Readonly<Record<AchievementMetric, number>> {
+    return this.values();
+  }
+
   /** Goals reached whose reward waits. */
   get claimable(): number {
     let count = 0;

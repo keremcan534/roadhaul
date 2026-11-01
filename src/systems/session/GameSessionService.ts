@@ -17,6 +17,7 @@ import { HOME_START_ID, LEFT_START_ID, startPlaces, type StartPlace } from '../.
 import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
 import type { ResearchService } from '../company/ResearchService';
+import type { CareerService } from '../company/CareerService';
 import type { DailyRewardService } from '../rewards/DailyRewardService';
 import type { AchievementService } from '../achievements/AchievementService';
 import type { LevelRewardService } from '../company/LevelRewardService';
@@ -57,6 +58,8 @@ export interface GameSessionDependencies {
   readonly facilities: FacilityService;
   /** The research tree. */
   readonly research: ResearchService;
+  /** The career's records. */
+  readonly career: CareerService;
   /** The daily reward's streak. */
   readonly dailyReward: DailyRewardService;
   /** The company's goals. */
@@ -284,6 +287,7 @@ export class GameSessionService {
       rivals,
       facilities,
       research,
+      career,
       dailyReward,
       achievements,
       crates,
@@ -319,6 +323,7 @@ export class GameSessionService {
       rivals: rivals.snapshot(),
       facilities: facilities.snapshot(),
       research: research.snapshot(),
+      career: career.snapshot(),
       daily: dailyReward.snapshot(),
       achievements: achievements.snapshot(),
       crates: crates.snapshot(),
@@ -384,6 +389,7 @@ export class GameSessionService {
       rivals,
       facilities,
       research,
+      career,
       dailyReward,
       achievements,
       crates,
@@ -407,6 +413,7 @@ export class GameSessionService {
     company.restore(save.profile, save.company, save.stats);
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
     research.restore(save.research);
+    career.restore(save.career);
     dailyReward.restore(save.daily);
     crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
     levelRewards.restore(save.levelRewards);

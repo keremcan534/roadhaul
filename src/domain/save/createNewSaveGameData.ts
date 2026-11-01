@@ -1,5 +1,6 @@
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits } from '../../data/units';
+import { emptyCareer } from '../career/careerRecords';
 import { validateCompanyName } from '../company/companyName';
 import { CURRENT_SAVE_VERSION, type RivalsSaveData, type SaveGameData } from './SaveGameData';
 
@@ -68,6 +69,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
     liveries: { bought: [], worn: {}, text: null },
     research: { points: 0, researched: [] },
+    career: emptyCareer(),
   };
 }
 

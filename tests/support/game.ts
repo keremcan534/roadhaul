@@ -38,6 +38,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     companyTraffic: services.resolve(ServiceKeys.companyTraffic),
     facilities: services.resolve(ServiceKeys.facilities),
     research: services.resolve(ServiceKeys.research),
+    career: services.resolve(ServiceKeys.career),
     crates: services.resolve(ServiceKeys.crates),
     supplies: services.resolve(ServiceKeys.supplies),
     quests: services.resolve(ServiceKeys.quests),
@@ -60,6 +61,7 @@ export function play(game: Game, seconds: number, throttle = 0): void {
     game.fleet.update(STEP_SECONDS);
     game.rivals.update(STEP_SECONDS);
     game.session.update(STEP_SECONDS);
+    game.career.update(STEP_SECONDS);
   }
 }
 

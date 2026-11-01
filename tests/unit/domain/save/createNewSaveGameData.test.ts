@@ -4,6 +4,7 @@ import {
   formatVehicleInstanceId,
   type NewGameParams,
 } from '../../../../src/domain/save/createNewSaveGameData';
+import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { CURRENT_SAVE_VERSION } from '../../../../src/domain/save/SaveGameData';
 import { vehicleFixture } from '../../../support/contentFixtures';
 
@@ -59,6 +60,7 @@ describe('createNewSaveGameData', () => {
       quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
       liveries: { bought: [], worn: {}, text: null },
       research: { points: 0, researched: [] },
+      career: emptyCareer(),
     });
   });
 

@@ -11,6 +11,7 @@ import { CompanyService } from '../systems/company/CompanyService';
 import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
 import { ResearchService } from '../systems/company/ResearchService';
+import { CareerService } from '../systems/company/CareerService';
 import { CityIncidentService } from '../systems/world/CityIncidentService';
 import { NewsService } from '../systems/world/NewsService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -235,6 +236,8 @@ export class GameBootstrapper {
           perks,
         ),
       );
+      // The career's records: deliveries by cargo and town, the longest haul, the top speed, fuel and repairs.
+      const career = container.register(ServiceKeys.career, new CareerService(catalog, driving, missions, events));
       container.register(
         ServiceKeys.navigation,
         new NavigationService(
@@ -446,6 +449,7 @@ export class GameBootstrapper {
           rivals,
           facilities,
           research,
+          career,
           dailyReward,
           achievements,
           crates,

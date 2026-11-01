@@ -2335,6 +2335,93 @@
   align-self: flex-end;
 }
 
+/* The goals and the career, side by side under the title. */
+.goals__tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.button.goals__tab {
+  flex: 1 1 0;
+  justify-content: center;
+  min-height: 38px;
+  padding: 6px 12px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: var(--rh-radius-small);
+  background: rgb(255 255 255 / 3%);
+  font-size: 14px;
+}
+
+.button.goals__tab.is-selected {
+  border-color: var(--rh-accent);
+  background: var(--rh-accent-soft);
+  color: var(--rh-accent-hi);
+}
+
+.goals__list[hidden] {
+  display: none;
+}
+
+/* ---- The career's record (src/ui/menus/careerSheet.ts) ---- */
+
+.career {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.career__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.career__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 6px;
+}
+
+.career__tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+}
+
+.career__icon {
+  grid-row: span 2;
+  width: 22px;
+  height: 22px;
+  color: var(--rh-fg-2);
+}
+
+.career__value {
+  overflow-wrap: anywhere;
+  font: 500 18px/1.15 var(--rh-numeric);
+  color: var(--rh-fg);
+}
+
+.career__label {
+  color: var(--rh-muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+/* The favourites: a name and a count, given the width of two tiles. */
+.career__group--favourites .career__tile:nth-child(-n + 2) {
+  grid-column: span 2;
+}
+
+.career__group--favourites .career__tile:nth-child(-n + 2) .career__value {
+  font: 500 15px/1.2 var(--rh-text);
+}
+
 /* Narrow: the button under the text. */
 @media (max-width: 460px) {
   .goals__card {

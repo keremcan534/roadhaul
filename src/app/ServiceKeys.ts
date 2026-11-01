@@ -7,6 +7,7 @@ import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
 import type { FacilityService } from '../systems/company/FacilityService';
 import type { ResearchService } from '../systems/company/ResearchService';
+import type { CareerService } from '../systems/company/CareerService';
 import type { CityIncidentService } from '../systems/world/CityIncidentService';
 import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -96,6 +97,8 @@ export const ServiceKeys = Object.freeze({
   news: serviceKey<NewsService>('NewsService'),
   /** The research tree: points from deliveries, perks for the whole company. */
   research: serviceKey<ResearchService>('ResearchService'),
+  /** The career's records, for the career page. */
+  career: serviceKey<CareerService>('CareerService'),
   /** The company levels' rewards, waiting to be collected. */
   levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),
