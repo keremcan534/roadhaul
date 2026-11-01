@@ -55,7 +55,7 @@ export class TrafficService {
     if (this.driving.drive !== this.drive) {
       this.startDrive(world);
     }
-    this.current!.update(dt, this.driving.vehicle, this.driving.footprint);
+    this.current!.update(dt, this.driving.vehicle, this.driving.footprint, this.driving.trailer, this.driving.trailerFootprint);
   }
 
   /** Slows all traffic to `factor` of its usual speed, in this drive and later ones (WeatherService). */

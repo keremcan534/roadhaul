@@ -44,7 +44,7 @@ const HEAVY_LOAD_TONS = 10;
 const HEAVY_LOAD_TIME_FACTOR = 1.15;
 const YARD_SECONDS = 50;
 const DAMAGE_TOLERANCE: Readonly<Record<MissionDifficulty, number>> = { easy: 0.3, normal: 0.2, hard: 0.15, expert: 0.1 };
-/** Loads are a quarter to nine tenths of what the biggest suitable truck carries, in half tonnes. */
+/** Loads are a quarter to nine tenths of what the biggest suitable rigid truck carries, in half tonnes. */
 const MIN_LOAD_SHARE = 0.25;
 const MAX_LOAD_SHARE = 0.9;
 /** A city ships more of what it makes (spec §20): these cargo families are this many times likelier from it. */
@@ -105,7 +105,11 @@ export function generateContracts(market: ContractMarket, batch: number, count: 
       (candidate) => (specialities.includes(candidate.category) ? SPECIALITY_WEIGHT : 1),
       cargoRoll,
     );
-    const capacity = Math.max(...trucks.filter(carries(cargo)).map((vehicle) => vehicle.maxPayloadTons));
+    // Sized to the rigid trucks that carry it: a semi-trailer's bigger loads are its own contracts (missions.ts), and
+    // the day's work stays open to companies without one.
+    const suitable = trucks.filter(carries(cargo));
+    const rigid = suitable.filter((vehicle) => vehicle.trailer === undefined);
+    const capacity = Math.max(...(rigid.length > 0 ? rigid : suitable).map((vehicle) => vehicle.maxPayloadTons));
     const share = MIN_LOAD_SHARE + (MAX_LOAD_SHARE - MIN_LOAD_SHARE) * loadRoll;
     const tons = Math.max(0.5, Math.round(capacity * share * 2) / 2);
     const haulers = market.vehicles.filter((vehicle) => carries(cargo)(vehicle) && vehicle.maxPayloadTons >= tons);

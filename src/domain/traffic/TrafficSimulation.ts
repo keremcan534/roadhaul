@@ -63,6 +63,13 @@ export interface TrafficTruck {
   readonly speed: number;
 }
 
+/** A tractor unit's semi-trailer as the traffic sees it: where its axles stand and the way it faces (semiTrailer.ts). */
+export interface TrafficTrailer {
+  readonly x: number;
+  readonly z: number;
+  readonly heading: number;
+}
+
 /** Car following (the Intelligent Driver Model): gap kept at a standstill, m… */
 const MIN_GAP_METERS = 2.5;
 /** …and time gap kept while moving, s. */
@@ -428,12 +435,19 @@ export class TrafficSimulation implements MovingObstacles {
 
   /**
    * Advances every vehicle by `dt` seconds, with the truck where it is now
-   * (`footprint` is its collision shape). Call once per fixed step, before
-   * the truck moves. Allocation-free.
+   * (`footprint` is its collision shape), and its semi-trailer, if it pulls
+   * one (`trailerFootprint` along it). Call once per fixed step, before the
+   * truck moves. Allocation-free.
    */
-  update(dt: number, truck: TrafficTruck, footprint: VehicleFootprint): void {
+  update(
+    dt: number,
+    truck: TrafficTruck,
+    footprint: VehicleFootprint,
+    trailer: TrafficTrailer | null = null,
+    trailerFootprint: VehicleFootprint | null = null,
+  ): void {
     this.wrecks.count = 0;
-    this.readTruck(truck, footprint);
+    this.readTruck(truck, footprint, trailer, trailerFootprint);
     if (this.capacity === 0) {
       return;
     }
@@ -452,16 +466,35 @@ export class TrafficSimulation implements MovingObstacles {
     this.writeCircles();
   }
 
-  private readTruck(truck: TrafficTruck, footprint: VehicleFootprint): void {
+  private readTruck(
+    truck: TrafficTruck,
+    footprint: VehicleFootprint,
+    trailer: TrafficTrailer | null,
+    trailerFootprint: VehicleFootprint | null,
+  ): void {
     const sin = Math.sin(truck.heading);
     const cos = Math.cos(truck.heading);
-    const count = Math.min(MAX_TRUCK_CIRCLES, footprint.offsets.length);
+    let count = Math.min(MAX_TRUCK_CIRCLES, footprint.offsets.length);
     let reach = 0;
     for (let k = 0; k < count; k++) {
       const offset = footprint.offsets[k]!;
       this.truckCircleX[k] = truck.x + sin * offset;
       this.truckCircleZ[k] = truck.z + cos * offset;
       reach = Math.max(reach, Math.abs(offset));
+    }
+    if (trailer !== null && trailerFootprint !== null) {
+      // The trailer's circles, as wide as the tractor's: the truck reaches as far as the furthest of them.
+      const trailerSin = Math.sin(trailer.heading);
+      const trailerCos = Math.cos(trailer.heading);
+      for (let k = 0; k < trailerFootprint.offsets.length && count < MAX_TRUCK_CIRCLES; k++) {
+        const offset = trailerFootprint.offsets[k]!;
+        const x = trailer.x + trailerSin * offset;
+        const z = trailer.z + trailerCos * offset;
+        this.truckCircleX[count] = x;
+        this.truckCircleZ[count] = z;
+        count++;
+        reach = Math.max(reach, hypot2(x - truck.x, z - truck.z));
+      }
     }
     this.truckCircleCount = count;
     this.truckRadius = footprint.radius;

@@ -1,14 +1,23 @@
 import type { EventBus } from '../../core/events/EventBus';
 import type { Logger } from '../../core/logging/Logger';
 import type { ContentCatalog } from '../../data/ContentCatalog';
-import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
+import type { TrailerBody, VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { PerformanceFactors } from '../../domain/vehicles/performance';
-import type { BodyBuild } from '../../domain/vehicles/bodyMotion';
+import { footprintBuild, type BodyBuild } from '../../domain/vehicles/bodyMotion';
+import {
+  articulation,
+  copyTrailerPose,
+  createTrailerFootprint,
+  createTrailerPose,
+  followCoupling,
+  straightenTrailer,
+  type TrailerPose,
+} from '../../domain/vehicles/semiTrailer';
 import { VehicleDynamics } from '../../domain/vehicles/VehicleDynamics';
 import { createVehicleFootprint, type VehicleFootprint } from '../../domain/vehicles/VehicleFootprint';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
-import { DrivingWorld, type MovingObstacles, type ServicePoint } from '../../domain/world/DrivingWorld';
+import { DrivingWorld, type CollisionBody, type MovingObstacles, type ServicePoint } from '../../domain/world/DrivingWorld';
 import { laneOffsetMeters } from '../../domain/world/lanes';
 import type { Surface } from '../../domain/world/Surface';
 import type { GameEvents } from '../GameEvents';
@@ -110,6 +119,21 @@ export const COLLISION_EVENT_MIN_SPEED = 1.5;
  */
 export const OVERTURN_BLOW_SPEED = 11;
 
+/** A tractor unit's semi-trailer while it is driven (semiTrailer.ts). */
+interface Rig {
+  readonly body: TrailerBody;
+  readonly footprint: VehicleFootprint;
+  /** Where it stands now, and before the last fixed step (rendering interpolates). */
+  readonly pose: TrailerPose;
+  readonly previousPose: TrailerPose;
+  /** The trailer as a truck of its own, for the world's collisions: where it stands, moving as the coupling drags it. */
+  readonly stand: VehicleRuntimeState;
+  /** Its build for the blows, and the whole rig's mass. */
+  readonly collision: CollisionBody;
+  /** Whether it stood at its jackknife limit after the last step. */
+  jackknifed: boolean;
+}
+
 interface DrivingSession {
   readonly definition: VehicleDefinition;
   readonly dynamics: VehicleDynamics;
@@ -127,6 +151,8 @@ interface DrivingSession {
   cargoMassKg: number;
   /** The ground under the middle of the truck at the last step. */
   surface: Surface;
+  /** The semi-trailer of a tractor unit; null for a rigid truck. */
+  readonly rig: Rig | null;
 }
 
 /** Engine, brake, tyre and body strength from one source (damage, upgrades): the service multiplies all sources. */
@@ -183,6 +209,30 @@ export class DrivingService {
   /** The truck's collision shape. */
   get footprint(): VehicleFootprint {
     return this.requireSession().footprint;
+  }
+
+  /**
+   * Where a tractor unit's semi-trailer stands (its axles' middle and the
+   * way it faces: semiTrailer.ts) after the last fixed step; null for a
+   * rigid truck or when nothing is driven.
+   */
+  get trailer(): Readonly<TrailerPose> | null {
+    return this.session?.rig?.pose ?? null;
+  }
+
+  /** …and before it, so rendering can interpolate. */
+  get previousTrailer(): Readonly<TrailerPose> | null {
+    return this.session?.rig?.previousPose ?? null;
+  }
+
+  /** The semi-trailer's collision shape (along it from its axles' middle); null for a rigid truck. */
+  get trailerFootprint(): VehicleFootprint | null {
+    return this.session?.rig?.footprint ?? null;
+  }
+
+  /** Whether the semi-trailer stood at its jackknife limit after the last fixed step. */
+  get jackknifed(): boolean {
+    return this.session?.rig?.jackknifed ?? false;
   }
 
   /** Where the truck's weight sits and how it turns, with its cargo (bodyMotion): the views place its body by it. */
@@ -257,6 +307,7 @@ export class DrivingService {
       over: false,
       cargoMassKg: Math.max(0, cargoMassKg),
       surface: world.surfaceAt(state.x, state.z),
+      rig: createRig(definition, dynamics, state),
     };
     this.applyPerformance();
     this.logger.info(`Driving ${vehicleId} on ${mapId}: ${world.trees.length} trees, ${world.buildings.length} buildings.`);
@@ -283,6 +334,7 @@ export class DrivingService {
       footprint: createVehicleFootprint(definition.body),
       lastImpactSpeed: 0,
       over: false,
+      rig: createRig(definition, dynamics, state),
     };
     this.applyPerformance();
     this.logger.info(`Switched to ${vehicleId}.`);
@@ -333,6 +385,13 @@ export class DrivingService {
     keepPose(session.previousPose, session.state);
     session.lastImpactSpeed = 0;
     session.over = false;
+    const rig = session.rig;
+    if (rig !== null) {
+      // Coupled straight behind it.
+      straightenTrailer(rig.pose, x, z, heading, rig.body);
+      copyTrailerPose(rig.previousPose, rig.pose);
+      rig.jackknifed = false;
+    }
   }
 
   /**
@@ -388,8 +447,11 @@ export class DrivingService {
     if (session === null) {
       return;
     }
-    const { state, previousPose, world } = session;
+    const { state, previousPose, world, rig } = session;
     keepPose(previousPose, state);
+    if (rig !== null) {
+      copyTrailerPose(rig.previousPose, rig.pose);
+    }
 
     // The ground under the middle of the truck decides grip and rolling resistance.
     const centreAhead = session.definition.body.wheelbaseMeters / 2;
@@ -400,7 +462,10 @@ export class DrivingService {
     session.surface = surface;
     session.dynamics.step(state, input, surface, dt);
 
-    const impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers, session.dynamics);
+    let impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers, session.dynamics);
+    if (rig !== null) {
+      impact = Math.max(impact, this.stepTrailer(session, rig, dt));
+    }
     if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }
@@ -420,6 +485,40 @@ export class DrivingService {
 
   dispose(): void {
     this.stop();
+  }
+
+  /**
+   * The semi-trailer follows the tractor's coupling, then strikes what it
+   * runs into as a truck of its own would: where it is pushed out of
+   * something, the whole rig moves with it, and the change to its speed
+   * along it slows the tractor as far as the two point the same way.
+   * Returns the hardest impact. Allocation-free.
+   */
+  private stepTrailer(session: DrivingSession, rig: Rig, dt: number): number {
+    const { state, world } = session;
+    const { pose, stand } = rig;
+    const headingBefore = pose.heading;
+    rig.jackknifed = followCoupling(pose, state.x, state.z, state.heading, rig.body);
+    const along = Math.cos(articulation(pose, state.heading));
+    stand.x = pose.x;
+    stand.z = pose.z;
+    stand.heading = pose.heading;
+    stand.speed = state.speed * along;
+    stand.slipSpeed = 0;
+    stand.pathCurvature = 0;
+    stand.spinRate = dt > 0 ? (pose.heading - headingBefore) / dt : 0;
+    const speedBefore = stand.speed;
+    const impact = world.resolveCollisions(stand, rig.footprint, this.obstacles, this.knockOvers, rig.collision, true);
+    const pushX = stand.x - pose.x;
+    const pushZ = stand.z - pose.z;
+    if (pushX !== 0 || pushZ !== 0) {
+      state.x += pushX;
+      state.z += pushZ;
+      pose.x = stand.x;
+      pose.z = stand.z;
+    }
+    state.speed += (stand.speed - speedBefore) * along;
+    return impact;
   }
 
   private applyPerformance(): void {
@@ -447,4 +546,32 @@ export class DrivingService {
     }
     return this.session;
   }
+}
+
+/** A tractor unit's semi-trailer coupled straight behind it; null for a rigid truck. */
+function createRig(definition: VehicleDefinition, dynamics: VehicleDynamics, state: Readonly<VehicleRuntimeState>): Rig | null {
+  const body = definition.trailer;
+  if (body === undefined) {
+    return null;
+  }
+  const footprint = createTrailerFootprint(body, definition.body.widthMeters);
+  const pose = createTrailerPose();
+  straightenTrailer(pose, state.x, state.z, state.heading, body);
+  const previousPose = createTrailerPose();
+  copyTrailerPose(previousPose, pose);
+  const build = footprintBuild(footprint.offsets, footprint.radius);
+  return {
+    body,
+    footprint,
+    pose,
+    previousPose,
+    stand: dynamics.createState(pose.x, pose.z, pose.heading),
+    collision: {
+      build,
+      get totalMassKg() {
+        return dynamics.totalMassKg;
+      },
+    },
+    jackknifed: false,
+  };
 }

@@ -2,7 +2,8 @@ import { Vector3, type PerspectiveCamera } from 'three';
 import { clamp, clamp01, dampFactor, finiteOr } from '../../core/math/scalar';
 import { CAMERA_MODES, type CameraMode } from '../../data/config/controls';
 import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
-import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
+import type { TrailerBody, VehicleBody } from '../../data/definitions/VehicleDefinition';
+import { trailerFrontAhead, type TrailerPose } from '../../domain/vehicles/semiTrailer';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { BodyBuild } from '../../domain/vehicles/bodyMotion';
 import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
@@ -150,10 +151,23 @@ export class CameraRig {
   private shakeLevel = 0;
   private shakeTime = 0;
 
+  /**
+   * A tractor unit's semi-trailer (setBody), and where it stands this frame
+   * (setTrailerPose): the chase camera trails the whole rig, the rear camera
+   * rides on the trailer's back.
+   */
+  private trailer: TrailerBody | null = null;
+  private trailerPose: Readonly<TrailerPose> | null = null;
+  /** How far behind the truck's middle its back reaches, straight: its own half length, or to its trailer's back. */
+  private reachBehind: number;
+
   constructor(
     private readonly camera: PerspectiveCamera,
     private body: VehicleBody,
+    trailer: TrailerBody | null = null,
   ) {
+    this.trailer = trailer;
+    this.reachBehind = reachBehind(body, trailer);
     this.cab = cabGeometry(body);
     this.build = { cogHeight: body.heightMeters * 0.55, cogAhead: body.wheelbaseMeters / 2 };
     this.applyFieldOfView();
@@ -195,11 +209,18 @@ export class CameraRig {
     this.shakeLevel = Math.min(SHAKE_MAX, Math.max(this.shakeLevel, Number.isFinite(strength) ? strength : 0));
   }
 
-  /** Follows another truck (the garage swapped it): a bigger one is watched from further back. */
-  setBody(body: VehicleBody): void {
+  /** Follows another truck (the garage swapped it): a bigger one, or one with a semi-trailer, is watched from further back. */
+  setBody(body: VehicleBody, trailer: TrailerBody | null = null): void {
     this.body = body;
+    this.trailer = trailer;
+    this.reachBehind = reachBehind(body, trailer);
     this.cab = cabGeometry(body);
     this.snapNextFrame = true;
+  }
+
+  /** Where the semi-trailer stands this frame (null: straight behind, or none). Cheap: call it every frame. */
+  setTrailerPose(pose: Readonly<TrailerPose> | null): void {
+    this.trailerPose = pose;
   }
 
   get currentMode(): CameraMode {
@@ -323,8 +344,9 @@ export class CameraRig {
       let ahead: number;
       let lookHeight: number;
       if (mode === 'chase') {
-        back = this.body.lengthMeters / 2 + CHASE_GAP_METERS + Math.abs(motion.speed) * CHASE_DISTANCE_PER_SPEED;
-        height = Math.max(2, this.body.heightMeters + CHASE_HEIGHT_ABOVE_ROOF_METERS - this.lookPitch * CHASE_HEIGHT_PER_PITCH);
+        back = this.reachBehind + CHASE_GAP_METERS + Math.abs(motion.speed) * CHASE_DISTANCE_PER_SPEED;
+        const top = Math.max(this.body.heightMeters, this.trailer?.heightMeters ?? 0);
+        height = Math.max(2, top + CHASE_HEIGHT_ABOVE_ROOF_METERS - this.lookPitch * CHASE_HEIGHT_PER_PITCH);
         ahead = CHASE_LOOK_AHEAD_METERS;
         lookHeight = CHASE_LOOK_HEIGHT_METERS;
       } else {
@@ -367,6 +389,20 @@ export class CameraRig {
       this.placeOnTruck(pose, body, 0, cab.cabTop + HOOD_ABOVE_ROOF_METERS, cab.frontZ - HOOD_BEHIND_FRONT_METERS);
       this.lookAlong(view, this.lookPitch - CABIN_LOOK_DOWN - body.tilt);
       this.turnWithTruck(pose, body);
+    } else if (this.trailer !== null) {
+      // On the semi-trailer's back, looking back: what reversing it into a bay needs.
+      const trailer = this.trailer;
+      const at = this.trailerPose;
+      const heading = at?.heading ?? pose.heading;
+      const behind = trailerFrontAhead(trailer) - trailer.lengthMeters - REAR_BEHIND_METERS;
+      const fromX = at?.x ?? pose.x - sin * (trailer.axleBehindKingpinMeters - trailer.couplingAheadMeters);
+      const fromZ = at?.z ?? pose.z - cos * (trailer.axleBehindKingpinMeters - trailer.couplingAheadMeters);
+      this.position.set(
+        fromX + Math.sin(heading) * behind,
+        trailer.heightMeters - REAR_BELOW_TOP_METERS,
+        fromZ + Math.cos(heading) * behind,
+      );
+      this.lookAlong(heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN);
     } else {
       this.placeOnTruck(pose, body, 0, this.body.heightMeters - REAR_BELOW_TOP_METERS, cab.rearZ - REAR_BEHIND_METERS);
       // Backwards. Its picture is shown mirrored, like a reversing camera's (RenderHost.mirrored): the truck's
@@ -454,4 +490,13 @@ export class CameraRig {
     this.camera.fov = this.baseFieldOfView();
     this.camera.updateProjectionMatrix();
   }
+}
+
+/** How far behind the truck's middle (half its wheelbase ahead of the rear axle) its back reaches, straight. */
+function reachBehind(body: VehicleBody, trailer: TrailerBody | null): number {
+  if (trailer === null) {
+    return body.lengthMeters / 2;
+  }
+  const trailerBack = trailer.axleBehindKingpinMeters - trailer.couplingAheadMeters - (trailerFrontAhead(trailer) - trailer.lengthMeters);
+  return Math.max(body.lengthMeters / 2, body.wheelbaseMeters / 2 + trailerBack);
 }

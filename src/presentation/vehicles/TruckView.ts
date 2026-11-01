@@ -24,6 +24,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { UpgradeLook } from '../../data/definitions/UpgradeDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import { createBodyBuild, type BodyBuild } from '../../domain/vehicles/bodyMotion';
+import { createTrailerPose, straightenTrailer, trailerFrontAhead, type TrailerPose } from '../../domain/vehicles/semiTrailer';
 import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
@@ -78,6 +79,8 @@ const VISOR_TILT = 0.12;
 const FLAGSHIP_LEVEL = 8;
 /** A heavy truck's two rear axles stand this far either side of the rear axle the physics uses. */
 const TANDEM_HALF_SPACING = 0.68;
+/** A semi-trailer's axles are this far apart, meters. */
+const TRAILER_AXLE_SPACING = 1.3;
 /** The exhaust stack behind the cab on the right: its radius, and how far its top stands over the cab roof. */
 const STACK_RADIUS = 0.075;
 const STACK_OVER_ROOF = 0.42;
@@ -223,6 +226,19 @@ export class TruckView {
   private readonly exhaustAt: readonly [number, number, number];
   private readonly behindRearWheelAt: readonly [number, number, number];
   private wheelSpin = 0;
+  /**
+   * A tractor unit's semi-trailer (definition.trailer): a group of its own,
+   * placed where the trailer stands at every update(), its body leaning
+   * with the tractor's; null for a rigid truck.
+   */
+  private readonly trailerRoot: Group | null = null;
+  private readonly trailerFrame: Group | null = null;
+  private readonly trailerWheels: InstancedMesh | null = null;
+  private readonly trailerWheelPositions: readonly (readonly [number, number, number])[] = [];
+  /** The tail lights' glows, on the trailer's back. */
+  private readonly trailerGlows: LampGlows | null = null;
+  /** Where the trailer stands when no pose is given (the garage): straight behind the tractor. */
+  private readonly straightTrailer: TrailerPose = createTrailerPose();
   // Scratch objects reused every frame.
   private readonly matrix = new Matrix4();
   private readonly position = new Vector3();
@@ -262,12 +278,21 @@ export class TruckView {
     // The top levels' trucks wear the flagship trim: a chrome visor with more marker lamps, chrome strips along the
     // cab and a chrome bar in front of the grille.
     const flagship = (definition.requiredCompanyLevel ?? 1) >= FLAGSHIP_LEVEL;
+    // A tractor unit carries its load on a semi-trailer: the load's body is built in the trailer's own frame (z
+    // forward from its axles' middle, as the truck's from its rear axle), the parts going to its own meshes.
+    const rig = definition.trailer ?? null;
+    const bodyFrontZ = rig === null ? boxFront : trailerFrontAhead(rig);
+    const bodyRearZ = rig === null ? rearZ : bodyFrontZ - rig.lengthMeters;
+    const bodyTop = rig === null ? H : rig.heightMeters;
 
     const parts = new Map<PartMaterial, BufferGeometry[]>();
+    const trailerParts = new Map<PartMaterial, BufferGeometry[]>();
+    /** Where the parts go: the truck's, or the trailer's while its body is built. */
+    let into = parts;
     const add = (material: PartMaterial, geometry: BufferGeometry): void => {
-      const list = parts.get(material) ?? [];
+      const list = into.get(material) ?? [];
       list.push(geometry);
-      parts.set(material, list);
+      into.set(material, list);
     };
     const box = (material: PartMaterial, size: readonly [number, number, number], at: readonly [number, number, number]): void =>
       add(material, new BoxGeometry(...size).translate(...at));
@@ -361,7 +386,7 @@ export class TruckView {
     }
     // On the roof: a fairing up to the box and extenders across the gap to it, the cooling unit of a refrigerated
     // body, or the beacons of an open body (a flatbed, a tanker or a tipper).
-    if (bodyType === 'box') {
+    if (bodyType === 'box' || (bodyType === 'refrigerated' && rig !== null)) {
       const fairingFront = cabRear + cabLength * 0.72;
       const rise = H - 0.06 - cabTop;
       const profile: Point2[] = [[fairingFront, cabTop]];
@@ -456,6 +481,11 @@ export class TruckView {
 
     // Chassis, fuel tank, battery box, rear mudguards, underrun bar and light bar.
     box('dark', [W * 0.7, 0.24, L * 0.9], [0, frameY, centreZ]);
+    if (rig !== null) {
+      // The fifth wheel the trailer rests on, over the rear axles.
+      add('metal', new CylinderGeometry(0.72, 0.72, 0.08, 20).translate(0, frameY + 0.16, rig.couplingAheadMeters));
+      box('dark', [1.6, 0.1, 1.3], [0, frameY + 0.1, rig.couplingAheadMeters]);
+    }
     // The fuel tank on the left; at level 3 a second one takes the battery box's place on the right.
     const tankRadius = TANK_RADIUS[tank];
     const fuelTank = (side: 1 | -1): BufferGeometry =>
@@ -519,33 +549,36 @@ export class TruckView {
       lamp(0xffa21c, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, rearZ - 0.03]);
     }
 
-    const bodyLength = boxFront - rearZ;
+    if (rig !== null) {
+      into = trailerParts;
+    }
+    const bodyLength = bodyFrontZ - bodyRearZ;
     /** Amber marker lamps along the foot of the body on both sides, about every 1.8 m, at `x` either side and `y`. */
     const sideMarkers = (x: number, y: number): void => {
       const count = Math.max(2, Math.round(bodyLength / 1.8));
       for (const side of [1, -1] as const) {
         for (let i = 0; i < count; i++) {
-          lamp(0xffa21c, [0.02, 0.05, 0.1], [side * x, y, rearZ + 0.3 + (i * (bodyLength - 0.6)) / (count - 1)]);
+          lamp(0xffa21c, [0.02, 0.05, 0.1], [side * x, y, bodyRearZ + 0.3 + (i * (bodyLength - 0.6)) / (count - 1)]);
         }
       }
     };
     const loadParts: BufferGeometry[] = [];
     if (bodyType === 'flatbed') {
       // Deck with side rails, a headboard behind the cab and stakes along both sides.
-      box('deck', [W, 0.16, bodyLength], [0, deckY - 0.08, rearZ + bodyLength / 2]);
+      box('deck', [W, 0.16, bodyLength], [0, deckY - 0.08, bodyRearZ + bodyLength / 2]);
       for (const side of [1, -1] as const) {
-        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, rearZ + bodyLength / 2]);
-        for (let z = rearZ + 0.2; z < boxFront - 0.5; z += 1.6) {
+        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, bodyRearZ + bodyLength / 2]);
+        for (let z = bodyRearZ + 0.2; z < bodyFrontZ - 0.5; z += 1.6) {
           box('dark', [0.07, 0.45, 0.07], [side * (halfW - 0.035), deckY + 0.22, z]);
         }
       }
-      box('metal', [W, 1.35, 0.08], [0, deckY + 0.675, boxFront - 0.04]);
-      box('dark', [W, 0.08, 0.1], [0, deckY + 1.35, boxFront - 0.04]);
+      box('metal', [W, 1.35, 0.08], [0, deckY + 0.675, bodyFrontZ - 0.04]);
+      box('dark', [W, 0.08, 0.1], [0, deckY + 1.35, bodyFrontZ - 0.04]);
       sideMarkers(halfW + 0.01, deckY - 0.1);
       // The load: pallets of bricks under ratchet straps, shown while loaded (setLoaded).
       const palletLength = Math.min(2.2, (bodyLength - 0.9) / 3);
       for (let i = 0; i < 3; i++) {
-        const z = boxFront - 0.35 - (palletLength + 0.1) * (i + 0.5);
+        const z = bodyFrontZ - 0.35 - (palletLength + 0.1) * (i + 0.5);
         loadParts.push(colored(new BoxGeometry(W * 0.86, 0.14, palletLength).translate(0, deckY + 0.07, z), PALLET_COLOR));
         loadParts.push(
           colored(new BoxGeometry(W * 0.8, 0.85, palletLength - 0.12).translate(0, deckY + 0.565, z), BRICK_COLOR),
@@ -563,8 +596,8 @@ export class TruckView {
       // A polished tank of oval section on saddles, bands in the truck's colour round it, a walkway with
       // handrails and manhole covers along its top, a ladder up the back, and underrun rails along the sides.
       const tankLength = bodyLength - 0.3;
-      const tankZ = rearZ + 0.1 + tankLength / 2;
-      const radius = Math.min(halfW - 0.05, (H - deckY - 0.62) / 2);
+      const tankZ = bodyRearZ + 0.1 + tankLength / 2;
+      const radius = Math.min(halfW - 0.05, (bodyTop - deckY - 0.62) / 2);
       const widen = (halfW - 0.06) / radius;
       const tankY = deckY + 0.16 + radius;
       const tankTop = tankY + radius;
@@ -575,7 +608,7 @@ export class TruckView {
         tube('paint', radius + 0.015, 0.14, z);
         box('dark', [W * 0.72, 0.34, 0.24], [0, deckY + 0.05, z]);
       }
-      box('dark', [W * 0.5, 0.16, bodyLength], [0, deckY - 0.08, rearZ + bodyLength / 2]);
+      box('dark', [W * 0.5, 0.16, bodyLength], [0, deckY - 0.08, bodyRearZ + bodyLength / 2]);
       box('dark', [0.55, 0.04, tankLength * 0.86], [0, tankTop + 0.02, tankZ]);
       for (let i = -1; i <= 1; i++) {
         add('dark', new CylinderGeometry(0.24, 0.24, 0.1, 16).translate(0, tankTop + 0.05, tankZ + i * tankLength * 0.3));
@@ -585,37 +618,37 @@ export class TruckView {
         for (let i = 0; i < 4; i++) {
           box('metal', [0.03, 0.4, 0.03], [side * 0.32, tankTop + 0.22, tankZ + (i / 3 - 0.5) * tankLength * 0.8]);
         }
-        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, rearZ + bodyLength / 2]);
+        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, bodyRearZ + bodyLength / 2]);
       }
       const ladderX = -halfW * 0.45;
       for (const dx of [-0.17, 0.17]) {
-        box('metal', [0.04, tankTop - deckY, 0.04], [ladderX + dx, (deckY + tankTop) / 2, rearZ + 0.02]);
+        box('metal', [0.04, tankTop - deckY, 0.04], [ladderX + dx, (deckY + tankTop) / 2, bodyRearZ + 0.02]);
       }
       for (let y = deckY + 0.25; y < tankTop; y += 0.3) {
-        box('metal', [0.34, 0.03, 0.03], [ladderX, y, rearZ + 0.02]);
+        box('metal', [0.34, 0.03, 0.03], [ladderX, y, bodyRearZ + 0.02]);
       }
       sideMarkers(halfW + 0.01, deckY - 0.1);
     } else if (bodyType === 'tipper') {
       // An open steel tub in the truck's colour with ribs down its sides, its front wall up to the cab's roof, a
       // tailgate, and the ram that tips it under its front.
       const tubLength = bodyLength - 0.1;
-      const tubZ = rearZ + tubLength / 2;
-      const tubHeight = Math.min(1.4, (H - deckY) * 0.7);
+      const tubZ = bodyRearZ + tubLength / 2;
+      const tubHeight = Math.min(1.4, (bodyTop - deckY) * 0.7);
       const floorTop = deckY + 0.12;
-      box('dark', [W * 0.5, 0.16, bodyLength], [0, deckY - 0.08, rearZ + bodyLength / 2]);
+      box('dark', [W * 0.5, 0.16, bodyLength], [0, deckY - 0.08, bodyRearZ + bodyLength / 2]);
       box('paint', [W, 0.12, tubLength], [0, deckY + 0.06, tubZ]);
-      box('paint', [W, tubHeight, 0.1], [0, deckY + tubHeight / 2, rearZ + 0.05]);
-      box('paint', [W, H - deckY, 0.1], [0, deckY + (H - deckY) / 2, boxFront - 0.05]);
-      box('dark', [W + 0.04, 0.1, 0.16], [0, H - 0.05, boxFront - 0.05]);
+      box('paint', [W, tubHeight, 0.1], [0, deckY + tubHeight / 2, bodyRearZ + 0.05]);
+      box('paint', [W, bodyTop - deckY, 0.1], [0, deckY + (bodyTop - deckY) / 2, bodyFrontZ - 0.05]);
+      box('dark', [W + 0.04, 0.1, 0.16], [0, bodyTop - 0.05, bodyFrontZ - 0.05]);
       for (const side of [1, -1] as const) {
         box('paint', [0.08, tubHeight, tubLength], [side * (halfW - 0.04), deckY + tubHeight / 2, tubZ]);
         box('dark', [0.12, 0.08, tubLength], [side * (halfW - 0.04), deckY + tubHeight, tubZ]);
-        for (let z = rearZ + 0.4; z < boxFront - 0.3; z += 1.2) {
+        for (let z = bodyRearZ + 0.4; z < bodyFrontZ - 0.3; z += 1.2) {
           box('dark', [0.06, tubHeight, 0.08], [side * (halfW + 0.01), deckY + tubHeight / 2, z]);
         }
-        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, rearZ + bodyLength / 2]);
+        box('dark', [0.06, 0.2, bodyLength], [side * (halfW - 0.03), deckY - 0.1, bodyRearZ + bodyLength / 2]);
       }
-      add('chrome', new CylinderGeometry(0.1, 0.1, 0.5, 12).translate(0, deckY - 0.2, boxFront - 0.45));
+      add('chrome', new CylinderGeometry(0.1, 0.1, 0.5, 12).translate(0, deckY - 0.2, bodyFrontZ - 0.45));
       sideMarkers(halfW + 0.01, deckY - 0.1);
       // The load: a heap of gravel or ore filling the tub, shown while loaded (setLoaded).
       const fillHeight = tubHeight * 0.6;
@@ -634,29 +667,60 @@ export class TruckView {
       );
     } else {
       // Cargo box: livery on both sides, doors at the back, plain white roof and front, metal corner posts.
-      const boxHeight = H - deckY;
+      const boxHeight = bodyTop - deckY;
       for (const side of [1, -1] as const) {
-        add('livery', sideQuad(side, side * (halfW + 0.02), deckY, boxHeight, rearZ, bodyLength));
+        add('livery', sideQuad(side, side * (halfW + 0.02), deckY, boxHeight, bodyRearZ, bodyLength));
       }
-      add('doors', rearQuad(W + 0.04, boxHeight, rearZ, deckY));
-      box('panels', [W + 0.04, 0.02, bodyLength], [0, H - 0.01, rearZ + bodyLength / 2]);
-      box('panels', [W + 0.04, boxHeight, 0.02], [0, deckY + boxHeight / 2, boxFront - 0.01]);
+      add('doors', rearQuad(W + 0.04, boxHeight, bodyRearZ, deckY));
+      box('panels', [W + 0.04, 0.02, bodyLength], [0, bodyTop - 0.01, bodyRearZ + bodyLength / 2]);
+      box('panels', [W + 0.04, boxHeight, 0.02], [0, deckY + boxHeight / 2, bodyFrontZ - 0.01]);
       for (const x of [halfW + 0.02, -(halfW + 0.02)]) {
-        for (const z of [rearZ, boxFront]) {
+        for (const z of [bodyRearZ, bodyFrontZ]) {
           box('metal', [0.07, boxHeight, 0.07], [x, deckY + boxHeight / 2, z]);
         }
       }
       // Rails along the top and the foot of each side, marker lamps along the foot and up at the back, and the
       // doors' hinges.
       for (const side of [1, -1] as const) {
-        box('metal', [0.03, 0.07, bodyLength], [side * (halfW + 0.035), H - 0.035, rearZ + bodyLength / 2]);
-        box('dark', [0.04, 0.12, bodyLength], [side * (halfW + 0.03), deckY + 0.06, rearZ + bodyLength / 2]);
-        lamp(0xd4261c, [0.1, 0.05, 0.02], [side * (halfW - 0.12), H - 0.08, rearZ - 0.03]);
+        box('metal', [0.03, 0.07, bodyLength], [side * (halfW + 0.035), bodyTop - 0.035, bodyRearZ + bodyLength / 2]);
+        box('dark', [0.04, 0.12, bodyLength], [side * (halfW + 0.03), deckY + 0.06, bodyRearZ + bodyLength / 2]);
+        lamp(0xd4261c, [0.1, 0.05, 0.02], [side * (halfW - 0.12), bodyTop - 0.08, bodyRearZ - 0.03]);
         for (let i = 0; i < 4; i++) {
-          box('dark', [0.06, 0.1, 0.025], [side * (halfW - 0.04), deckY + 0.25 + (i * (boxHeight - 0.5)) / 3, rearZ - 0.025]);
+          box('dark', [0.06, 0.1, 0.025], [side * (halfW - 0.04), deckY + 0.25 + (i * (boxHeight - 0.5)) / 3, bodyRearZ - 0.025]);
         }
       }
       sideMarkers(halfW + 0.055, deckY + 0.06);
+    }
+    if (rig !== null) {
+      // The semi-trailer's own: a cooling unit on a refrigerated one's front, the frame under it, the landing legs
+      // near its front, guards along its sides, mudguards over its axles, and its back's underrun bar and lamps.
+      if (bodyType === 'refrigerated') {
+        const unitHeight = Math.min(1.4, bodyTop - deckY - 0.4);
+        box('panels', [W * 0.72, unitHeight, 0.5], [0, bodyTop - 0.2 - unitHeight / 2, bodyFrontZ + 0.25]);
+        add('grille', frontQuad(W * 0.6, unitHeight * 0.7, bodyFrontZ + 0.505, bodyTop - 0.2 - unitHeight * 0.85));
+      }
+      const middle = (bodyFrontZ + bodyRearZ) / 2;
+      for (const side of [1, -1] as const) {
+        box('dark', [0.14, 0.32, bodyLength - 0.4], [side * 0.5, deckY - 0.22, middle]);
+        const legZ = bodyFrontZ - 2.4;
+        box('metal', [0.1, deckY - 0.5, 0.1], [side * (halfW - 0.55), 0.25 + (deckY - 0.5) / 2, legZ]);
+        box('dark', [0.22, 0.05, 0.3], [side * (halfW - 0.55), 0.26, legZ]);
+        const guardFrom = rig.axles * TRAILER_AXLE_SPACING * 0.5 + R + 0.3;
+        const guardTo = legZ - 0.3;
+        if (guardTo - guardFrom > 0.5) {
+          box('metal', [0.04, 0.12, guardTo - guardFrom], [side * (halfW - 0.06), 0.62, (guardFrom + guardTo) / 2]);
+        }
+        const axleSpan = (rig.axles - 1) * TRAILER_AXLE_SPACING;
+        box('dark', [TIRE_WIDTH + 0.08, 0.05, axleSpan + 2 * R + 0.3], [side * (halfW - 0.2), 2 * R + 0.05, 0]);
+      }
+      box('dark', [W - 0.3, 0.12, 0.1], [0, R + 0.02, bodyRearZ + 0.08]);
+      box('dark', [W, 0.2, 0.08], [0, R + 0.26, bodyRearZ + 0.02]);
+      for (const side of [1, -1] as const) {
+        lamp(0xd4261c, [0.34, 0.14, 0.05], [side * (halfW - 0.3), R + 0.26, bodyRearZ - 0.03]);
+        lamp(0xf2f2f2, [0.12, 0.1, 0.05], [side * (halfW - 0.56), R + 0.26, bodyRearZ - 0.03]);
+        lamp(0xffa21c, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, bodyRearZ - 0.03]);
+      }
+      into = parts;
     }
 
     const accentRgb: Rgb = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
@@ -708,6 +772,18 @@ export class TruckView {
         geometry.dispose();
       }
     }
+    if (rig !== null) {
+      this.trailerRoot = new Group();
+      this.trailerRoot.name = 'semi-trailer';
+      this.trailerFrame = new Group();
+      for (const [material, geometries] of trailerParts) {
+        this.trailerFrame.add(new Mesh(this.track(mergeGeometries(geometries)), materials[material]));
+        for (const geometry of geometries) {
+          geometry.dispose();
+        }
+      }
+      this.trailerRoot.add(this.trailerFrame);
+    }
 
     // The windshield is its own mesh: the cabin camera hides it.
     this.windshield = new Mesh(
@@ -732,7 +808,7 @@ export class TruckView {
         part.dispose();
       }
       this.load.visible = false;
-      this.body.add(this.load);
+      (this.trailerFrame ?? this.body).add(this.load);
     }
 
     // Front wheels first: they steer.
@@ -752,21 +828,38 @@ export class TruckView {
     if (brakes > 0) {
       this.calipers = this.createCalipers(R, this.wheelPositions.length, CALIPER_COLORS[brakes]);
     }
+    if (rig !== null) {
+      this.trailerWheelPositions = Array.from({ length: rig.axles }, (_, index) => (index - (rig.axles - 1) / 2) * TRAILER_AXLE_SPACING).flatMap(
+        (z) => [[trackHalf, R, z] as const, [-trackHalf, R, z] as const],
+      );
+      this.trailerWheels = this.createWheels(R, this.trailerWheelPositions.length, level('wheels'));
+      this.trailerFrame!.add(this.trailerWheels);
+    }
     this.updateWheels(0);
 
-    // A soft shadow under the truck; it stays flat on the road while the body leans.
-    const shadow = new Mesh(
-      this.track(new PlaneGeometry(W + 1.6, L + 2).rotateX(-Math.PI / 2).translate(0, 0.075, centreZ)),
-      this.track(
-        new MeshBasicMaterial({
-          map: this.texture(toTexture(softBoxShadowImage(), { srgb: false })),
-          color: 0x000000,
-          transparent: true,
-          opacity: 0.55,
-          depthWrite: false,
-        }),
-      ),
+    // A soft shadow under the truck (and its trailer); it stays flat on the road while the body leans.
+    const shadowMaterial = this.track(
+      new MeshBasicMaterial({
+        map: this.texture(toTexture(softBoxShadowImage(), { srgb: false })),
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      }),
     );
+    const shadow = new Mesh(this.track(new PlaneGeometry(W + 1.6, L + 2).rotateX(-Math.PI / 2).translate(0, 0.075, centreZ)), shadowMaterial);
+    if (rig !== null) {
+      this.trailerRoot!.add(
+        new Mesh(
+          this.track(
+            new PlaneGeometry(W + 1.6, rig.lengthMeters + 2)
+              .rotateX(-Math.PI / 2)
+              .translate(0, 0.07, (bodyFrontZ + bodyRearZ) / 2),
+          ),
+          shadowMaterial,
+        ),
+      );
+    }
 
     // At night: a glow on each headlight and tail light (they lean with the body, and show only from in front of
     // them), and light on the road ahead.
@@ -781,11 +874,23 @@ export class TruckView {
       this.glows.setColor(index + 2, TAIL_LIGHT_GLOW);
       this.glows.setFacing(index + 2, 0, 0, -1);
     }
-    this.glows.setCount(4);
+    // A tractor unit's tail lights that show are the trailer's.
+    this.glows.setCount(rig === null ? 4 : 2);
     this.body.add(this.glows.points);
+    if (rig !== null) {
+      this.trailerGlows = this.track(new LampGlows(2, GLOW_SIZE_METERS));
+      for (const side of [1, -1] as const) {
+        const index = side === 1 ? 0 : 1;
+        this.trailerGlows.setPosition(index, side * (halfW - 0.3), R + 0.26, bodyRearZ - 0.12);
+        this.trailerGlows.setColor(index, TAIL_LIGHT_GLOW);
+        this.trailerGlows.setFacing(index, 0, 0, -1);
+      }
+      this.trailerGlows.setCount(2);
+      this.trailerFrame!.add(this.trailerGlows.points);
+    }
     // Where the headlights light the world from (LampLighting): on the body, as low as the suspension sets it.
     this.headlampAt = [headlightX, bumperTop + 0.2 - drop, frontZ + 0.12];
-    this.taillampAt = [halfW - 0.3, R + 0.26 - drop, rearZ - 0.12];
+    this.taillampAt = rig === null ? [halfW - 0.3, R + 0.26 - drop, rearZ - 0.12] : [halfW - 0.3, R + 0.26, bodyRearZ - 0.12];
     this.shadeBox = [(frontZ + rearZ) / 2, (frontZ - rearZ) / 2, halfW, H];
 
     // An upgraded suspension sets the body lower over its wheels.
@@ -804,7 +909,7 @@ export class TruckView {
     if (options.castShadows === true) {
       // The truck itself, not its soft shadow, the light on the road, the glows, the glass seen from inside or the
       // cab's inside (which shades nothing outside).
-      for (const part of [this.body, this.wheels]) {
+      for (const part of [this.body, this.wheels, ...(this.trailerFrame === null ? [] : [this.trailerFrame])]) {
         part.traverse((object) => {
           if (object instanceof Mesh && object !== this.wipers.glass) {
             object.castShadow = true;
@@ -813,6 +918,9 @@ export class TruckView {
       }
     }
     scene.add(this.root);
+    if (this.trailerRoot !== null) {
+      scene.add(this.trailerRoot);
+    }
   }
 
   /**
@@ -829,6 +937,7 @@ export class TruckView {
     state: Readonly<VehicleRuntimeState>,
     deltaSeconds: number,
     body: Readonly<BodyPose> = LEVEL,
+    trailer: Readonly<TrailerPose> | null = null,
   ): void {
     this.root.position.set(pose.x, 0, pose.z);
     this.root.rotation.y = pose.heading;
@@ -842,6 +951,7 @@ export class TruckView {
 
     this.wheelSpin += (state.speed * deltaSeconds) / this.definition.body.wheelRadiusMeters;
     this.updateWheels(state.steerAngle);
+    this.placeTrailer(pose, trailer, body);
     this.wipers.update(deltaSeconds, this.rain);
 
     if (this.interior !== null && this.cabin.visible) {
@@ -859,6 +969,35 @@ export class TruckView {
    */
   setBuild(build: Readonly<BodyBuild>): void {
     this.build = build;
+  }
+
+  /**
+   * Puts a tractor unit's semi-trailer where it stands (`trailer`; straight
+   * behind the tractor without one), leaning on its springs as the tractor
+   * does, its wheels turning with the tractor's.
+   */
+  private placeTrailer(pose: Readonly<VehiclePose>, trailer: Readonly<TrailerPose> | null, body: Readonly<BodyPose>): void {
+    const root = this.trailerRoot;
+    const rig = this.definition.trailer;
+    if (root === null || rig === undefined) {
+      return;
+    }
+    let at = trailer;
+    if (at === null) {
+      straightenTrailer(this.straightTrailer, pose.x, pose.z, pose.heading, rig);
+      at = this.straightTrailer;
+    }
+    root.position.set(at.x, 0, at.z);
+    root.rotation.y = at.heading;
+    this.trailerFrame!.rotation.set(0, 0, body.lean);
+    const wheels = this.trailerWheels!;
+    for (let i = 0; i < this.trailerWheelPositions.length; i++) {
+      const [x, y, z] = this.trailerWheelPositions[i]!;
+      this.rotation.setFromEuler(this.euler.set(this.wheelSpin, 0, 0));
+      this.position.set(x, y, z);
+      wheels.setMatrixAt(i, this.matrix.compose(this.position, this.rotation, this.unitScale));
+    }
+    wheels.instanceMatrix.needsUpdate = true;
   }
 
   /** Turns the chassis as the body last stood, about the centre of mass. */
@@ -900,6 +1039,12 @@ export class TruckView {
    */
   behindRearWheel(side: 1 | -1, out: Vector3): Vector3 {
     const [x, y, z] = this.behindRearWheelAt;
+    const rig = this.definition.trailer;
+    if (this.trailerRoot !== null && rig !== undefined) {
+      // A semi-trailer's last axle throws it.
+      const last = -((rig.axles - 1) / 2) * TRAILER_AXLE_SPACING;
+      return this.trailerToWorld(x * side, y, last - this.definition.body.wheelRadiusMeters * 1.05, out);
+    }
     return this.toWorld(x * side, y, z, out);
   }
 
@@ -923,6 +1068,7 @@ export class TruckView {
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
     this.interior?.setLamps(level);
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
+    this.trailerGlows?.setLevel(this.options.lampGlows === false ? 0 : level);
   }
 
   /**
@@ -968,11 +1114,19 @@ export class TruckView {
     const at = this.lampAt;
     this.toWorld(0, 0, middle, at);
     into.shade(at.x, at.z, heading, halfLength, halfWidth, height);
+    // A tractor unit's tail lights are on its trailer's back, facing the way it does.
+    const trailerHeading = this.trailerRoot?.rotation.y ?? heading;
+    const backX = -Math.sin(trailerHeading);
+    const backZ = -Math.cos(trailerHeading);
     for (let side = 1; side >= -1; side -= 2) {
       this.toWorld(side * headX, headY, headZ, at);
       into.add('head', at.x, at.y, at.z, forwardX, forwardZ);
-      this.toWorld(side * tailX, tailY, tailZ, at);
-      into.add('tail', at.x, at.y, at.z, -forwardX, -forwardZ);
+      if (this.trailerRoot === null) {
+        this.toWorld(side * tailX, tailY, tailZ, at);
+      } else {
+        this.trailerToWorld(side * tailX, tailY, tailZ, at);
+      }
+      into.add('tail', at.x, at.y, at.z, backX, backZ);
     }
   }
 
@@ -993,6 +1147,9 @@ export class TruckView {
 
   dispose(): void {
     this.scene.remove(this.root);
+    if (this.trailerRoot !== null) {
+      this.scene.remove(this.trailerRoot);
+    }
     for (const resource of this.resources) {
       resource.dispose();
     }
@@ -1079,6 +1236,15 @@ export class TruckView {
     const along = out.z;
     const across = out.x;
     return out.set(this.root.position.x + across * cos + along * sin, out.y, this.root.position.z - across * sin + along * cos);
+  }
+
+  /** A point in the semi-trailer's frame to the world, by where it stood at the last update() (level). */
+  private trailerToWorld(x: number, y: number, z: number, out: Vector3): Vector3 {
+    const root = this.trailerRoot!;
+    const heading = root.rotation.y;
+    const cos = Math.cos(heading);
+    const sin = Math.sin(heading);
+    return out.set(root.position.x + x * cos + z * sin, y, root.position.z - x * sin + z * cos);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {

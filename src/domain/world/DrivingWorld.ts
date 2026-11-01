@@ -1017,6 +1017,8 @@ export class DrivingWorld implements DebrisSolids {
    * noted in `knocks`, and the truck drives on through it; so are vehicles
    * the obstacles let give way (wrecked), which the truck rides up over
    * (rideUp). Without `body`, a typical build for the footprint is taken.
+   * With `more`, what this call knocks over is added to `knocks` from a
+   * call before it in the same step (a semi-trailer's, after its tractor's).
    * Allocation-free: it runs every fixed step.
    */
   resolveCollisions(
@@ -1025,12 +1027,17 @@ export class DrivingWorld implements DebrisSolids {
     obstacles: MovingObstacles | null = null,
     knockOvers = false,
     body: CollisionBody | null = null,
+    more = false,
   ): number {
     this.worstImpact = 0;
     this.contactCount = 0;
-    this.knocks.count = 0;
+    if (!more) {
+      this.knocks.count = 0;
+    }
     this.knockingOver = knockOvers;
-    this.collisionSteps++;
+    if (!more) {
+      this.collisionSteps++;
+    }
     const build = body?.build ?? this.buildFor(footprint);
     const massKg = body?.totalMassKg ?? FALLBACK_MASS_KG;
     for (let i = 0; i < footprint.offsets.length; i++) {

@@ -71,7 +71,7 @@ export function play(game: Game, seconds: number, throttle = 0): void {
 
 /** Puts the truck, at rest, squarely in the bay the contract needs next. */
 export function parkInTargetBay(game: Game): void {
-  const pose = bayParkingPose(game.missions.target!.depot.bay, game.driving.definition.body);
+  const pose = bayParkingPose(game.missions.target!.depot.bay, game.driving.definition.body, game.driving.definition.trailer);
   game.driving.placeTruck(pose.x, pose.z, pose.heading);
 }
 
@@ -81,7 +81,7 @@ export function parkAtDepot(game: Game, cityId = 'city_a'): void {
   if (depot === undefined) {
     throw new Error(`No depot for ${cityId} on this map.`);
   }
-  const pose = bayParkingPose(depot.bay, game.driving.definition.body);
+  const pose = bayParkingPose(depot.bay, game.driving.definition.body, game.driving.definition.trailer);
   game.driving.placeTruck(pose.x, pose.z, pose.heading);
 }
 

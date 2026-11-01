@@ -31,11 +31,17 @@ function setup(mapOverrides: Partial<MapDefinition> = {}) {
   const map = mapFixture(mapOverrides);
   const bigTruck = vehicleFixture({ id: 'big_truck', maxPayloadTons: 20 });
   const content = ContentCatalog.create(
-    contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }] }),
+    contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }, RIG] }),
   );
   const driving = new DrivingService(content, events, logger);
   return { driving, collisions, overturned };
 }
+
+/** A tractor unit with a semi-trailer: its axles 7 m behind the coupling, its back 4.3 m behind them. */
+const RIG = vehicleFixture({
+  id: 'test_rig',
+  trailer: { lengthMeters: 12.5, heightMeters: 4, couplingAheadMeters: 0.35, kingpinMeters: 1.2, axleBehindKingpinMeters: 7, axles: 3 },
+});
 
 /** Steps at 60 Hz for `seconds`, or until `until` returns true. */
 function stepFor(driving: DrivingService, seconds: number, driverInput = input(), until = (): boolean => false): void {
@@ -345,6 +351,54 @@ describe('DrivingService', () => {
     driving.setCargoMass(5000);
 
     expect(driving.build.cogHeight).toBeGreaterThan(empty);
+  });
+
+  it('couples a tractor unit\'s semi-trailer straight behind it at the start, on a swap and wherever it is placed; a rigid truck has none', () => {
+    const { driving } = setup({ spawn: { x: 0, z: -40, headingDegrees: 0 } });
+    driving.start('test_truck', 'test_map');
+    expect(driving.trailer).toBeNull();
+    expect(driving.trailerFootprint).toBeNull();
+
+    driving.switchVehicle('test_rig');
+    expect(driving.trailer).toEqual({ x: 0, z: -40 - 6.65, heading: 0 });
+    expect(driving.trailerFootprint!.radius).toBe(RIG.body.widthMeters / 2);
+    stepFor(driving, 3, input({ throttle: 1, steer: -1 }));
+    expect(Math.abs(driving.trailer!.heading - driving.vehicle.heading)).toBeGreaterThan(0.05);
+
+    driving.placeTruck(100, -60, Math.PI / 2);
+    expect(driving.trailer!.x).toBeCloseTo(100 - 6.65, 9);
+    expect(driving.trailer!.z).toBeCloseTo(-60, 9);
+    expect(driving.trailer!.heading).toBe(Math.PI / 2);
+    expect(driving.previousTrailer).toEqual(driving.trailer);
+    driving.switchVehicle('test_truck');
+    expect(driving.trailer).toBeNull();
+  });
+
+  it('strikes what the semi-trailer backs into: the rig stops, the trailer kept outside, one collision', () => {
+    // Facing away from the building (z 35..45), the trailer's back 4.3 + 6.65 m behind the rear axle, 4 m short of it.
+    const { driving, collisions } = setup({ spawn: { x: 0, z: 20, headingDegrees: 180 } });
+    driving.start('test_rig', 'test_map');
+    expect(driving.trailer!.z + 4.3).toBeCloseTo(30.95, 9);
+
+    stepFor(driving, 20, input({ brake: 1 }));
+
+    expect(collisions.length).toBe(1);
+    expect(driving.trailer!.z + 4.3).toBeLessThanOrEqual(35 + 1e-6);
+    expect(Math.abs(driving.vehicle.speed)).toBeLessThan(0.5);
+    // Backed straight, it stayed straight.
+    expect(driving.trailer!.heading).toBeCloseTo(Math.PI, 6);
+    expect(driving.jackknifed).toBe(false);
+  });
+
+  it('jackknifes a semi-trailer backed while steering, and holds it at the limit', () => {
+    const { driving } = setup({ spawn: { x: -60, z: -60, headingDegrees: 0 } });
+    driving.start('test_rig', 'test_map');
+
+    stepFor(driving, 30, input({ brake: 1, steer: 0.6 }), () => driving.jackknifed);
+
+    expect(driving.jackknifed).toBe(true);
+    const turned = Math.abs(driving.trailer!.heading - driving.vehicle.heading);
+    expect(turned).toBeCloseTo((75 * Math.PI) / 180, 3);
   });
 
   it('stops driving on stop() and on dispose()', () => {

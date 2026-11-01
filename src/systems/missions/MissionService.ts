@@ -7,10 +7,11 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { CargoDefinition } from '../../data/definitions/CargoDefinition';
 import type { DepotDefinition } from '../../data/definitions/MapDefinition';
 import { vehicleCanHaul, type MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { RectangleDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import { addCargoDamage, cargoDamageFromImpact, isWithinTolerance } from '../../domain/missions/cargoDamage';
-import { isParkedInBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
+import { isParkedInBay, isTrailerInsideBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
 import {
   createMissionInstance,
   failMission,
@@ -311,8 +312,7 @@ export class MissionService {
    */
   private standsInTargetBay(mission: MissionInstance, dt: number): boolean {
     const target = this.currentTarget;
-    const parked =
-      target !== null && isParkedInBay(target.depot.bay, this.driving.vehicle, this.driving.definition.body);
+    const parked = target !== null && this.parkedIn(target.depot.bay);
     this.holdInBay(parked);
     if (!parked) {
       mission.handlingSeconds = 0;
@@ -320,6 +320,18 @@ export class MissionService {
     }
     mission.handlingSeconds += dt;
     return mission.handlingSeconds >= this.loadingSeconds;
+  }
+
+  /**
+   * Whether the truck stands still in `bay`: all of it, or a tractor unit's
+   * semi-trailer, which carries the load (the tractor may stand out of it).
+   */
+  private parkedIn(bay: RectangleDefinition): boolean {
+    const { vehicle, definition, trailer } = this.driving;
+    if (definition.trailer === undefined || trailer === null) {
+      return isParkedInBay(bay, vehicle, definition.body);
+    }
+    return Math.abs(vehicle.speed) < STOPPED_SPEED_METERS_PER_SECOND && isTrailerInsideBay(bay, trailer, definition.trailer, definition.body.widthMeters);
   }
 
   /** How long loading or unloading takes: research takes a share off. */

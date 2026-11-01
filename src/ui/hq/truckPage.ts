@@ -75,7 +75,7 @@ export function truckPage(
   const serviceNote = el('p', 'hq__service-note', strings.t('hq.serviceAway'));
   serviceNote.hidden = servicePoint !== null;
   identity.append(
-    el('p', 'hq__truck-name', `${strings.vehicleName(definition.id)} · ${strings.t(`body.${definition.bodyType}`)}`),
+    el('p', 'hq__truck-name', `${strings.vehicleName(definition.id)} · ${strings.bodyName(definition)}`),
     location,
     serviceNote,
   );

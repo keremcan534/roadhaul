@@ -6,7 +6,7 @@ import type { Clock } from '../../core/time/Clock';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { MapDefinition } from '../../data/definitions/MapDefinition';
-import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import { validateCompanyName, type CompanyNameError } from '../../domain/company/companyName';
 import type { TruckPose } from '../../domain/missions/loadingBay';
@@ -213,7 +213,7 @@ export class GameSessionService {
           : { x: saved.truck.x, z: saved.truck.z, heading: saved.truck.headingRadians };
     return this.placesOn(
       saved?.mapId ?? config.newGame.startingMapId,
-      content.vehicles.get(saved?.truckModelId ?? config.newGame.startingVehicleId).body,
+      content.vehicles.get(saved?.truckModelId ?? config.newGame.startingVehicleId),
       left,
     );
   }
@@ -399,10 +399,10 @@ export class GameSessionService {
     }
   }
 
-  /** The start places on map `mapId`, parked for a truck of `body`; `left` as in startPlaces. */
-  private placesOn(mapId: string, body: VehicleBody, left: TruckPose | null): StartPlace[] {
+  /** The start places on map `mapId`, parked for a `truck` of the model (with its trailer); `left` as in startPlaces. */
+  private placesOn(mapId: string, truck: VehicleDefinition, left: TruckPose | null): StartPlace[] {
     const map = this.deps.content.maps.get(mapId);
-    return startPlaces({ spawn: mapStart(map), depots: map.depots, restAreas: map.restAreas }, body, left);
+    return startPlaces({ spawn: mapStart(map), depots: map.depots, restAreas: map.restAreas }, truck, left);
   }
 
   /**
@@ -428,7 +428,7 @@ export class GameSessionService {
    */
   private startAt(startId: string): void {
     const { driving, logger } = this.deps;
-    const place = this.placesOn(driving.world.id, driving.definition.body, null).find((candidate) => candidate.id === startId);
+    const place = this.placesOn(driving.world.id, driving.definition, null).find((candidate) => candidate.id === startId);
     if (place === undefined || place.kind === 'home') {
       return;
     }

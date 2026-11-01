@@ -6,6 +6,7 @@ import {
   type LanguageChoice,
 } from '../../data/config/languages';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 
 export { LANGUAGES, type Language } from '../../data/config/languages';
@@ -71,6 +72,12 @@ export class Strings {
 
   vehicleName(vehicleId: string): string {
     return this.t(`vehicle.${vehicleId}.name`);
+  }
+
+  /** What a truck carries its load in: its body, or a tractor unit's semi-trailer of that body. */
+  bodyName(vehicle: Pick<VehicleDefinition, 'bodyType' | 'trailer'>): string {
+    const body = this.t(`body.${vehicle.bodyType}`);
+    return vehicle.trailer === undefined ? body : this.t('body.semi', { body });
   }
 
   upgradeName(upgradeId: string): string {

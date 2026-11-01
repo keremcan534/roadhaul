@@ -1,5 +1,5 @@
 import type { DepotDefinition, RestAreaDefinition } from '../../data/definitions/MapDefinition';
-import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import { bayParkingPose, type TruckPose } from '../missions/loadingBay';
 
 /**
@@ -40,7 +40,11 @@ export interface StartPlaceWorld {
  * truck parked squarely in its bay, and each rest area, in the middle of
  * its lot, in the map's order.
  */
-export function startPlaces(world: StartPlaceWorld, body: VehicleBody, left: TruckPose | null): StartPlace[] {
+export function startPlaces(
+  world: StartPlaceWorld,
+  truck: Pick<VehicleDefinition, 'body' | 'trailer'>,
+  left: TruckPose | null,
+): StartPlace[] {
   const first = left ?? world.spawn;
   const places: StartPlace[] = [
     {
@@ -53,10 +57,10 @@ export function startPlaces(world: StartPlaceWorld, body: VehicleBody, left: Tru
     },
   ];
   for (const depot of world.depots) {
-    places.push({ id: depot.id, kind: 'depot', cityId: depot.cityId, ...bayParkingPose(depot.bay, body) });
+    places.push({ id: depot.id, kind: 'depot', cityId: depot.cityId, ...bayParkingPose(depot.bay, truck.body, truck.trailer) });
   }
   for (const restArea of world.restAreas) {
-    const parked = bayParkingPose(restArea.lot, body);
+    const parked = bayParkingPose(restArea.lot, truck.body, truck.trailer);
     places.push({ id: restArea.id, kind: 'restArea', cityId: nearestDepotCity(world.depots, parked.x, parked.z), ...parked });
   }
   return places;

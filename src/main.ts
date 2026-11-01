@@ -14,6 +14,7 @@ import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { Credits } from './data/units';
 import type { KnockableKind } from './domain/crash/knockables';
 import { bayParkingPose } from './domain/missions/loadingBay';
+import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrailer';
 import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
@@ -582,7 +583,7 @@ async function start(strings: Strings): Promise<void> {
   let sinceHqTick = 0;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky, light: environment.light });
-  const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
+  const cameraRig = new CameraRig(renderHost.camera, driving.definition.body, driving.definition.trailer ?? null);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
   const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
@@ -1369,7 +1370,7 @@ async function start(strings: Strings): Promise<void> {
       // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it), and the
       // clouds shade it.
       shadeScene();
-      cameraRig.setBody(definition.body);
+      cameraRig.setBody(definition.body, definition.trailer ?? null);
       showCamera(onRoad());
     }
     truck.setLoaded(truckPreview?.kind !== 'truck' && driving.cargoMassKg > 0);
@@ -2641,7 +2642,7 @@ async function start(strings: Strings): Promise<void> {
       const restArea = driving.world.restAreas[0];
       const spot = event.code === 'KeyT' ? target?.depot.bay : event.code === 'KeyY' ? restArea?.lot : undefined;
       if (spot !== undefined) {
-        const parked = bayParkingPose(spot, driving.definition.body);
+        const parked = bayParkingPose(spot, driving.definition.body, driving.definition.trailer);
         driving.placeTruck(parked.x, parked.z, parked.heading);
       }
     });
@@ -2674,6 +2675,8 @@ async function start(strings: Strings): Promise<void> {
   /** The last frame's own work on the main thread (AdaptiveResolution: slow frames that are the CPU's keep their pixels). */
   let lastFrameWorkSeconds = 0;
   const pose = { x: 0, z: 0, heading: 0 };
+  /** Where a tractor unit's semi-trailer stands between fixed steps (no allocation). */
+  const trailerPose = createTrailerPose();
   /** How the truck's body stands between fixed steps (no allocation). */
   const bodyPose = createTruckPose();
   /** The truck's attitude as last shown (html[data-attitude]). */
@@ -2735,7 +2738,14 @@ async function start(strings: Strings): Promise<void> {
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         interpolateBodyPose(bodyPose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        // The semi-trailer where it stands, for the model of the truck driven (another model shown stands straight).
+        const trailer = driving.trailer;
+        let shownTrailer: TrailerPose | null = null;
+        if (trailer !== null && driving.previousTrailer !== null && truck.definition.id === driving.definition.id) {
+          shownTrailer = interpolatePose(trailerPose, driving.previousTrailer, trailer, simulating ? alpha : 1);
+        }
         if (menuPreview !== null && gameState.current === 'mainMenu') {
+          shownTrailer = null;
           // Behind the main menu, the truck stands, level, where the drive would start.
           pose.x = menuPreview.x;
           pose.z = menuPreview.z;
@@ -2828,7 +2838,8 @@ async function start(strings: Strings): Promise<void> {
         truck.setDashboard(dashboard);
         truck.setNavigation(minimap.picture, minimap.paintCount);
         truck.setBuild(driving.build);
-        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose);
+        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
+        cameraRig.setTrailerPose(shownTrailer);
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
         streetLamps.showKnocked(world.knocked, world.knockVersion);

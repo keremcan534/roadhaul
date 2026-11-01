@@ -23,9 +23,14 @@ import { TruckView, truckViewKey } from '../../../../src/presentation/vehicles/T
 import { EnvironmentView } from '../../../../src/presentation/world/EnvironmentView';
 import { gpuResources, watchDisposal } from '../../../support/threeResources';
 
+/** The truck's own group: the first in the scene (a tractor unit's semi-trailer is a group of its own after it). */
+function truckOf(scene: Scene): Object3D {
+  return scene.children[0]!;
+}
+
 function wheelsOf(scene: Scene): InstancedMesh {
   let wheels: InstancedMesh | undefined;
-  scene.traverse((object) => {
+  truckOf(scene).traverse((object) => {
     if (object instanceof InstancedMesh) {
       wheels = object;
     }
@@ -38,7 +43,7 @@ function wheelsOf(scene: Scene): InstancedMesh {
 
 function glowsOf(scene: Scene): Points {
   let glows: Points | undefined;
-  scene.traverse((object) => {
+  truckOf(scene).traverse((object) => {
     if (object instanceof Points) {
       glows = object;
     }
@@ -139,7 +144,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     view.update({ x: 0, z: 0, heading: 0 }, new VehicleDynamics(truck).createState(0, 0, 0), 0);
     scene.updateMatrixWorld(true);
     const bounds = new Box3();
-    scene.traverseVisible((object) => {
+    truckOf(scene).traverseVisible((object) => {
       if (object instanceof Mesh && !(object.material instanceof MeshBasicMaterial && object.material.transparent)) {
         bounds.expandByObject(object);
       }
@@ -151,7 +156,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(bounds.max.y).toBeLessThanOrEqual(heightMeters + 1e-6);
     expect(bounds.min.y).toBeGreaterThanOrEqual(-1e-6);
     expect(bounds.max.z).toBeLessThanOrEqual(wheelbaseMeters / 2 + lengthMeters / 2 + 0.15);
-    expect(bounds.min.z).toBeGreaterThanOrEqual(wheelbaseMeters / 2 - lengthMeters / 2 - 0.1);
+    expect(bounds.min.z).toBeGreaterThanOrEqual(wheelbaseMeters / 2 - lengthMeters / 2 - 0.1 - 1e-6);
   });
 
   it('rounds the cab, arches its sides over the front wheels, and keeps the tyres in sight under them', () => {
@@ -165,7 +170,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     /** The first solid surface a ray meets: the object and the point. */
     const firstHit = (from: Vector3, toward: Vector3): { object: Object3D; point: Vector3 } => {
       raycaster.set(from, toward.normalize());
-      const hit = raycaster.intersectObjects(scene.children, true).find((candidate) => candidate.object instanceof Mesh)!;
+      const hit = raycaster.intersectObjects([truckOf(scene)], true).find((candidate) => candidate.object instanceof Mesh)!;
       return { object: hit.object, point: hit.point };
     };
 
@@ -240,7 +245,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     const view = new TruckView(scene, truck);
     const visible = (): Set<unknown> => {
       const objects = new Set<unknown>();
-      scene.traverseVisible((object) => objects.add(object));
+      truckOf(scene).traverseVisible((object) => objects.add(object));
       return objects;
     };
     const outside = visible();
@@ -487,12 +492,14 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(glows.visible).toBe(true);
     expect(lamps.color.r).toBeGreaterThan(dayBrightness * 2);
     const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
-    // A glow on each headlight, ahead of the nose, and on each tail light, behind the back.
-    expect(glows.geometry.drawRange.count).toBe(4);
+    // A glow on each headlight, ahead of the nose, and on each tail light, behind the back (a tractor unit's are its
+    // trailer's).
+    const count = truck.trailer === undefined ? 4 : 2;
+    expect(glows.geometry.drawRange.count).toBe(count);
     const positions = glows.geometry.getAttribute('position');
     const colors = glows.geometry.getAttribute('color');
     const facings = glows.geometry.getAttribute('facing');
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < count; i++) {
       if (i < 2) {
         expect(positions.getZ(i)).toBeGreaterThan(front);
         expect(colors.getX(i) - colors.getZ(i)).toBeLessThan(0.5); // White, a little warm.
@@ -737,3 +744,67 @@ describe('TruckView upgrades', () => {
     expect(scene.children).toEqual([]);
   });
 });
+
+describe.each(VEHICLES.filter((vehicle) => vehicle.trailer !== undefined))('the semi-trailer of $id', (truck) => {
+  const trailer = truck.trailer!;
+  const front = trailer.axleBehindKingpinMeters + trailer.kingpinMeters;
+
+  it('stands as a group of its own where the trailer stands, straight behind the tractor without a pose', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const state = new VehicleDynamics(truck).createState(0, 0, 0);
+    expect(scene.children).toHaveLength(2);
+    const group = scene.children[1]!;
+    expect(group.name).toBe('semi-trailer');
+
+    view.update({ x: 10, z: 20, heading: 0 }, state, 0);
+    expect(group.position.x).toBeCloseTo(10, 9);
+    expect(group.position.z).toBeCloseTo(20 - (trailer.axleBehindKingpinMeters - trailer.couplingAheadMeters), 9);
+    expect(group.rotation.y).toBe(0);
+
+    view.update({ x: 10, z: 20, heading: 0 }, state, 0, undefined, { x: 3, z: 14, heading: 0.9 });
+    expect(group.position.toArray()).toEqual([3, 0, 14]);
+    expect(group.rotation.y).toBe(0.9);
+  });
+
+  it('keeps the trailer within its length and height, its wheels on the ground under its back, its tail lamps glowing at night', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    view.setLoaded(true);
+    view.update({ x: 0, z: 0, heading: 0 }, new VehicleDynamics(truck).createState(0, 0, 0), 0, undefined, { x: 0, z: 0, heading: 0 });
+    scene.updateMatrixWorld(true);
+    const group = scene.children[1]!;
+    const bounds = new Box3();
+    let wheels: InstancedMesh | undefined;
+    let glows: Points | undefined;
+    group.traverse((object) => {
+      if (object instanceof InstancedMesh) {
+        wheels = object;
+      } else if (object instanceof Points) {
+        glows = object;
+      } else if (object instanceof Mesh && !(object.material instanceof MeshBasicMaterial && object.material.transparent)) {
+        bounds.expandByObject(object);
+      }
+    });
+
+    expect(bounds.max.x).toBeLessThanOrEqual(truck.body.widthMeters / 2 + 0.1);
+    expect(bounds.max.y).toBeLessThanOrEqual(trailer.heightMeters + 1e-6);
+    expect(bounds.max.z).toBeLessThanOrEqual(front + 0.55);
+    expect(bounds.min.z).toBeGreaterThanOrEqual(front - trailer.lengthMeters - 0.1);
+    expect(wheels!.count).toBe(trailer.axles * 2);
+    const matrix = new Matrix4();
+    const position = new Vector3();
+    for (let i = 0; i < wheels!.count; i++) {
+      wheels!.getMatrixAt(i, matrix);
+      position.setFromMatrixPosition(matrix);
+      expect(position.y).toBeCloseTo(truck.body.wheelRadiusMeters, 5);
+      expect(Math.abs(position.z)).toBeLessThanOrEqual(1.3 + 1e-6);
+    }
+    expect(glows!.visible).toBe(false);
+    view.setLamps(1);
+    expect(glows!.visible).toBe(true);
+    expect(glows!.geometry.drawRange.count).toBe(2);
+    expect(glows!.geometry.getAttribute('position').getZ(0)).toBeLessThan(front - trailer.lengthMeters);
+  });
+});
+
