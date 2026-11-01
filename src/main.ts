@@ -37,6 +37,7 @@ import {
   requestedMist,
   requestedSkyWonder,
   requestedCityIncident,
+  requestedRoadEvent,
   requestedSimulations,
   requestedSpawn,
   requestedTimeOfDay,
@@ -54,6 +55,7 @@ import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
 import { PhotoCamera } from './presentation/cameras/PhotoCamera';
+import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
@@ -132,6 +134,7 @@ import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import type { CareerShown } from './ui/menus/careerSheet';
 import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
+import { RoadAlert } from './ui/hud/RoadAlert';
 import { photoFileName } from './ui/photo/photoFileName';
 import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
@@ -288,6 +291,7 @@ async function start(strings: Strings): Promise<void> {
   if (shownIncident !== null) {
     cityIncidents.force(shownIncident);
   }
+
   // The game's clock: the time the player picked and the way it goes (Settings), unless the address sets it
   // (`?time=`, `?weather=dawn|dusk|night`), which stops it there and keeps the player's own for later.
   const requestedTime = requestedTimeOfDay(query);
@@ -332,6 +336,10 @@ async function start(strings: Strings): Promise<void> {
   const facilities = services.resolve(ServiceKeys.facilities);
   const research = services.resolve(ServiceKeys.research);
   const career = services.resolve(ServiceKeys.career);
+  const roadEvents = services.resolve(ServiceKeys.roadEvents);
+  if (requestedRoadEvent(query) === 'stranded') {
+    roadEvents.sendStrandedDriver();
+  }
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const casino = services.resolve(ServiceKeys.casino);
   const review = services.resolve(ServiceKeys.review);
@@ -510,6 +518,8 @@ async function start(strings: Strings): Promise<void> {
   const birds = new BirdsView(renderHost.scene, driving.world, prelit);
   // The region's happenings: a fire, a chase, fireworks; and planes, a helicopter and a ship passing by.
   const cityLife = new CityLifeView(renderHost.scene, coast, driving.world.halfSizeMeters, prelit);
+  // The road's events: the speed cameras, the day's road works, a stranded car.
+  const roadEventsView = new RoadEventsView(renderHost.scene);
   // Tractors at work in the fields, by day, out of the rain and the winter.
   const tractors = new FieldWorkView(renderHost.scene, driving.world.fields, driving.world.fieldWork, castShadows);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
@@ -1050,6 +1060,29 @@ async function start(strings: Strings): Promise<void> {
     },
   );
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
+  // The road's events: a camera or road works ahead, under the minimap; a camera's flash over the screen.
+  const roadAlert = new RoadAlert(ui, strings);
+  const speedFlash = document.createElement('div');
+  speedFlash.className = 'speed-flash';
+  speedFlash.addEventListener('animationend', () => speedFlash.classList.remove('is-flashing'));
+  ui.append(speedFlash);
+  events.on('SpeedingCaught', ({ speedKmh, limitKmh, fine, warning, workZone }) => {
+    audio.shutter();
+    speedFlash.classList.remove('is-flashing');
+    void speedFlash.offsetWidth; // Starts the flash over.
+    speedFlash.classList.add('is-flashing');
+    roadEventsView.flash(driving.vehicle.x, driving.vehicle.z);
+    const caught = { speed: strings.number(speedKmh), limit: strings.number(limitKmh), fine: strings.money(fine) };
+    toasts.show(
+      strings.t(warning ? 'road.warning' : workZone ? 'road.fineWorks' : 'road.fine', caught),
+      'warning',
+    );
+  });
+  events.on('StrandedDriverAppeared', () => toasts.show(strings.t('road.stranded'), 'info'));
+  events.on('RoadsideHelped', ({ reward }) => {
+    audio.chime();
+    toasts.show(strings.t('road.helped', { reward: strings.money(reward) }), 'success');
+  });
   const roadsideFuelOffer = (): RoadsideFuelOffer => {
     if (fuel.missingLiters < 0.5) {
       return null;
@@ -1991,6 +2024,8 @@ async function start(strings: Strings): Promise<void> {
     // The research's pay bonus, already paid, and the research points earned (ResearchService has seen it too).
     const researched = research.lastDelivery;
     result.showResearch(strings.percent(research.perks.deliveryPayBonus), researched.pay, researched.points);
+    // The safe-driving bonus, already paid: no fine and no knock on the way.
+    result.showSafeDriving(strings.percent(config.roadEvents.safeDrivingShare), roadEvents.lastDelivery.pay);
     // A share of the pay again for a rewarded ad, if the player wants it (none in a build without ads).
     const bonus = monetization.deliveryBonusOffer;
     if (bonus > 0) {
@@ -2483,6 +2518,7 @@ async function start(strings: Strings): Promise<void> {
         fuel.update();
         session.update(stepSeconds);
         career.update(stepSeconds);
+        roadEvents.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -2565,6 +2601,8 @@ async function start(strings: Strings): Promise<void> {
         parkView?.update(paused ? 0 : deltaSeconds);
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
+        roadEventsView.setWorld(driving.world);
+        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps);
         if (cityLife.sounds.bursts > 0) {
           audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
         }
@@ -2725,6 +2763,17 @@ async function start(strings: Strings): Promise<void> {
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);
         rollover.visible = simulating;
         rollover.update(vehicle.attitude, sliding, vehicle.bank);
+        roadAlert.visible = simulating;
+        roadAlert.show(
+          roadEvents.workZoneLimitKmh,
+          roadEvents.cameraAheadLimitKmh,
+          roadEvents.cameraAheadMeters,
+          roadEvents.cameraAheadIsWorks,
+        );
+        const stranded = roadEvents.stranded === null ? 'none' : 'waiting';
+        if (root.dataset.stranded !== stranded) {
+          root.dataset.stranded = stranded;
+        }
         const tutorialStep = tutorial.step;
         const tutorialAt = hintPlace();
         tutorialHint.show(tutorialAt !== null && tutorialShows(tutorialStep, tutorialAt) ? tutorialStep : null, tutorialAt);

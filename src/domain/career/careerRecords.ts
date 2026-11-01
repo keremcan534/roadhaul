@@ -17,6 +17,9 @@ export function emptyCareer(): CareerSaveData {
     carsWrecked: 0,
     propsKnocked: 0,
     fleetDeliveries: 0,
+    fines: 0,
+    finesPaid: 0,
+    roadsideHelps: 0,
     cargo: {},
     destinations: {},
   };

@@ -258,6 +258,31 @@ export interface GameEvents {
     readonly weatherId: string;
     readonly previousId: string;
   };
+  /**
+   * A speed camera caught the truck over the limit (RoadEventService): the
+   * first time ever a warning, else a fine (already paid), doubled at road
+   * works.
+   */
+  SpeedingCaught: {
+    readonly speedKmh: number;
+    readonly limitKmh: number;
+    readonly fine: Credits;
+    readonly warning: boolean;
+    readonly workZone: boolean;
+  };
+  /** The day's road works changed (RoadEventService.workZones): a new day, or a new drive. */
+  WorkZonesChanged: {
+    readonly count: number;
+  };
+  /** A stranded driver waits ahead with their hazard lights on (RoadEventService.stranded). */
+  StrandedDriverAppeared: {
+    readonly x: number;
+    readonly z: number;
+  };
+  /** The truck stopped and helped the stranded driver: `reward` paid. */
+  RoadsideHelped: {
+    readonly reward: Credits;
+  };
   /** Something rare began near the truck (CityIncidentService): a fire, a police chase, fireworks. */
   CityIncidentStarted: {
     readonly kind: CityIncidentKind;

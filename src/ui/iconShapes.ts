@@ -96,6 +96,8 @@ const ICONS = {
   tilt: `<rect x="7.6" y="3" width="8.8" height="18" rx="2.2" transform="rotate(24 12 12)"/><rect ${ACCENT} x="9.2" y="5.4" width="5.6" height="11.6" rx=".8" transform="rotate(24 12 12)"/><path d="M2.4 9.4a9.6 9.6 0 0 0 1.4 7.4" ${line(2)}/><path d="M21.6 14.6a9.6 9.6 0 0 0-1.4-7.4" ${line(2)}/>`,
   arrows: `<rect x="1.6" y="5.6" width="9.8" height="12.8" rx="2.6"/><rect x="12.6" y="5.6" width="9.8" height="12.8" rx="2.6"/><path ${ACCENT} d="M8.4 8.8L4.6 12l3.8 3.2z"/><path ${ACCENT} d="M15.6 8.8l3.8 3.2-3.8 3.2z"/>`,
   camera: `<rect x="1.8" y="6.2" width="14" height="11.6" rx="2.4"/><path d="M17 10.4l5.2-3.2v9.6L17 13.6z"/><circle ${ACCENT} cx="6.2" cy="10" r="1.7"/>`,
+  // The road's events: a traffic cone, its band amber.
+  roadWorks: `<path d="M10.3 2.4h3.4l1.1 4H9.2z"/><path ${ACCENT} d="M8.8 8h6.4l1 3.7H7.8z"/><path d="M7.4 13.3h9.2l1.3 4.6H6.1z"/><rect x="3" y="19.2" width="18" height="2.6" rx=".8"/>`,
   // Photo mode: a still camera, its lens amber; the shutter; sharing.
   photo: `<path ${HOLES} d="M8.6 3.6h6.8l1.7 2.6H20a2 2 0 0 1 2 2v10.4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.2a2 2 0 0 1 2-2h2.9zM12 8.6a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z"/><circle ${ACCENT} cx="12" cy="13.4" r="2.9"/>`,
   share: `<circle cx="18" cy="5.4" r="3.2"/><circle cx="18" cy="18.6" r="3.2"/><circle ${ACCENT} cx="6" cy="12" r="3.2"/><path d="M8.6 10.6l6.8-3.8M8.6 13.4l6.8 3.8" ${line(2.2)}/>`,

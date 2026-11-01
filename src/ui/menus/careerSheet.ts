@@ -43,6 +43,7 @@ export function careerSheet(document: Document, strings: Strings, shown: CareerS
         ['drivingTime', 'clock', strings.timeSpan(records.drivingSeconds * 1000)],
         ['topSpeed', 'express', strings.t('format.kmh', { value: strings.number(Math.floor(records.topSpeedKmh)) })],
         ['longestHaul', 'pin', distance(records.longestHaulMeters)],
+        ['roadsideHelps', 'reputation', count(records.roadsideHelps)],
       ],
     ],
     [
@@ -74,6 +75,8 @@ export function careerSheet(document: Document, strings: Strings, shown: CareerS
         ['overturns', 'truck', count(records.overturns)],
         ['carsWrecked', 'close', count(records.carsWrecked)],
         ['propsKnocked', 'pin', count(records.propsKnocked)],
+        ['fines', 'camera', count(records.fines)],
+        ['finesPaid', 'coins', strings.money(records.finesPaid)],
       ],
     ],
     [

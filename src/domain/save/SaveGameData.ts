@@ -39,8 +39,11 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v18: adds the career's records (CareerService): tons delivered, the
  *   longest haul, the top speed, the time on the road, fuel and repairs,
  *   knocks and crashes, deliveries by cargo and by town.
+ * - v19: adds the road's events (the first speeding's warning given, the
+ *   contract's fines and knocks for the safe-driving bonus), and the
+ *   career's tickets, fines paid and stranded drivers helped.
  */
-export const CURRENT_SAVE_VERSION = 18;
+export const CURRENT_SAVE_VERSION = 19;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -74,6 +77,16 @@ export interface SaveGameData {
   readonly liveries: LiveriesSaveData;
   readonly research: ResearchSaveData;
   readonly career: CareerSaveData;
+  readonly roadEvents: RoadEventsSaveData;
+}
+
+/** The road's events (RoadEventService). */
+export interface RoadEventsSaveData {
+  /** The first speeding was let off with a warning: from then on, fines. */
+  readonly warned: boolean;
+  /** The contract under way was fined, or the truck knocked: no safe-driving bonus for it. */
+  readonly fined: boolean;
+  readonly knocked: boolean;
 }
 
 /**
@@ -103,6 +116,10 @@ export interface CareerSaveData {
   readonly propsKnocked: number;
   /** The hired drivers' deliveries (a driver dismissed keeps their count here). */
   readonly fleetDeliveries: number;
+  /** Speed cameras' tickets (warnings aside), what they cost, and stranded drivers helped. */
+  readonly fines: number;
+  readonly finesPaid: Credits;
+  readonly roadsideHelps: number;
   /** The player's deliveries by CargoDefinition id, and by destination CityDefinition id. */
   readonly cargo: Readonly<Record<string, number>>;
   readonly destinations: Readonly<Record<string, number>>;

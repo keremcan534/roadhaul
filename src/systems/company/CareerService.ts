@@ -92,6 +92,15 @@ export class CareerService {
       events.on('FleetJobCompleted', () => {
         this.record.fleetDeliveries++;
       }),
+      events.on('SpeedingCaught', ({ fine, warning }) => {
+        if (!warning) {
+          this.record.fines++;
+          this.record.finesPaid += fine;
+        }
+      }),
+      events.on('RoadsideHelped', () => {
+        this.record.roadsideHelps++;
+      }),
     ];
   }
 

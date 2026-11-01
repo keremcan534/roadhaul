@@ -63,9 +63,12 @@ test('pays a bonus on a delivery for a rewarded ad watched to its end', async ({
   await expect(ad).toHaveAttribute('data-rewarded', 'true', { timeout: 10_000 });
   await ad.locator('[data-action="close-ad"]').click();
   await expect(claim).toHaveCount(0);
-  await expect(result.locator('.result-dialog__rivalry.is-bonus')).toContainText(`+${bonus.toLocaleString('en-GB')} credits`);
+  await expect(result.locator('.result-dialog__rivalry.is-bonus:not([data-value="safe-driving"])')).toContainText(`+${bonus.toLocaleString('en-GB')} credits`);
+  // The safe-driving bonus too, where the drive had no fine and no knock.
+  const safeLine = result.locator('[data-value="safe-driving"] .result-dialog__rivalry-amount');
+  const safe = (await safeLine.count()) > 0 ? credits(await safeLine.textContent()) : 0;
   await expect(result.locator('.result-dialog__line').last()).toContainText(
-    `${(5000 + total + bonus).toLocaleString('en-GB')} credits`,
+    `${(5000 + total + bonus + safe).toLocaleString('en-GB')} credits`,
   );
 
   await result.locator('[data-action="continue"]').click();
@@ -172,6 +175,6 @@ test('offers "Remove ads" where there are ads, and then gives the bonus without 
   await expect(claim).toContainText('Collect a bonus');
   await claim.click();
   await expect(page.locator('.simulated')).toHaveCount(0);
-  await expect(page.locator('.result-dialog__rivalry.is-bonus')).toBeVisible();
+  await expect(page.locator('.result-dialog__rivalry.is-bonus:not([data-value="safe-driving"])')).toBeVisible();
   expect(problems).toEqual([]);
 });

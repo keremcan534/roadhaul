@@ -18,6 +18,7 @@ import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
 import type { ResearchService } from '../company/ResearchService';
 import type { CareerService } from '../company/CareerService';
+import type { RoadEventService } from '../world/RoadEventService';
 import type { DailyRewardService } from '../rewards/DailyRewardService';
 import type { AchievementService } from '../achievements/AchievementService';
 import type { LevelRewardService } from '../company/LevelRewardService';
@@ -60,6 +61,8 @@ export interface GameSessionDependencies {
   readonly research: ResearchService;
   /** The career's records. */
   readonly career: CareerService;
+  /** The road's events: the warning given, the contract's fines and knocks. */
+  readonly roadEvents: RoadEventService;
   /** The daily reward's streak. */
   readonly dailyReward: DailyRewardService;
   /** The company's goals. */
@@ -288,6 +291,7 @@ export class GameSessionService {
       facilities,
       research,
       career,
+      roadEvents,
       dailyReward,
       achievements,
       crates,
@@ -324,6 +328,7 @@ export class GameSessionService {
       facilities: facilities.snapshot(),
       research: research.snapshot(),
       career: career.snapshot(),
+      roadEvents: roadEvents.snapshot(),
       daily: dailyReward.snapshot(),
       achievements: achievements.snapshot(),
       crates: crates.snapshot(),
@@ -390,6 +395,7 @@ export class GameSessionService {
       facilities,
       research,
       career,
+      roadEvents,
       dailyReward,
       achievements,
       crates,
@@ -414,6 +420,7 @@ export class GameSessionService {
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
     research.restore(save.research);
     career.restore(save.career);
+    roadEvents.restore(save.roadEvents);
     dailyReward.restore(save.daily);
     crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
     levelRewards.restore(save.levelRewards);

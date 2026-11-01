@@ -39,6 +39,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     facilities: services.resolve(ServiceKeys.facilities),
     research: services.resolve(ServiceKeys.research),
     career: services.resolve(ServiceKeys.career),
+    roadEvents: services.resolve(ServiceKeys.roadEvents),
     crates: services.resolve(ServiceKeys.crates),
     supplies: services.resolve(ServiceKeys.supplies),
     quests: services.resolve(ServiceKeys.quests),

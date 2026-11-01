@@ -87,6 +87,14 @@ export function requestedCityIncident(query: QueryParameters): CityIncidentKind 
 }
 
 /**
+ * `?road=stranded` sends a stranded driver ahead of the truck as soon as it
+ * drives (RoadEventService), for a look. Null when the URL does not say.
+ */
+export function requestedRoadEvent(query: QueryParameters): 'stranded' | null {
+  return query.get('road')?.trim() === 'stranded' ? 'stranded' : null;
+}
+
+/**
  * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
  * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
  * along +x; 0 if left out), to look round a place without driving to it.

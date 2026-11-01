@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Point2, RoadDefinition } from '../../../../src/data/definitions/MapDefinition';
-import { RoadNetwork } from '../../../../src/domain/world/RoadNetwork';
+import { createRouteTrace, RoadNetwork } from '../../../../src/domain/world/RoadNetwork';
 import { RoadPath } from '../../../../src/domain/world/RoadPath';
 import { createRouteGuidance, ROUTE_LOOK_AHEAD_METERS } from '../../../../src/domain/world/roadRoute';
 
@@ -156,5 +156,36 @@ describe('RoadNetwork', () => {
     expect(distances[west]).toBeLessThan(spur.lengthMeters + 410);
     // The island's far end, reached only from its own start.
     expect(distances[network.nodeOf(2, island.pointCount - 1)]).toBeCloseTo(island.lengthMeters, 0);
+  });
+
+  it('goes round road works that cost more than the way round, and back through them once they are gone', () => {
+    const network = new RoadNetwork([loop]);
+    const paces = [10];
+    const route = createRouteTrace(network);
+    // Works on the south side between the start and the east: the short way (about 200 m) runs through them.
+    const works: number[] = [];
+    for (let i = 0; i < loop.pointCount; i++) {
+      if (Math.abs(loop.z(i) + 100) < 1 && loop.x(i) > 20 && loop.x(i) < 80) {
+        works.push(network.nodeOf(0, i));
+      }
+    }
+    expect(works.length).toBeGreaterThan(3);
+    const firstStepX = (): number => {
+      network.trace(0, -100, 100, 0, paces, route);
+      return route.x[3]!;
+    };
+    expect(firstStepX()).toBeGreaterThan(0); // East, the short way.
+
+    // Counted 1 km longer: the long way round (about 600 m) is shorter now; its length is the real one.
+    network.setDetour([works], 1000);
+    expect(firstStepX()).toBeLessThan(0);
+    expect(route.distanceMeters).toBeGreaterThan(550);
+    expect(route.distanceMeters).toBeLessThan(650);
+    // Counted 300 m longer, the short way is still shorter.
+    network.setDetour([works], 300);
+    expect(firstStepX()).toBeGreaterThan(0);
+    network.setDetour([works], 1000);
+    network.setDetour([], 1000);
+    expect(firstStepX()).toBeGreaterThan(0);
   });
 });

@@ -448,7 +448,7 @@ function roomAt(road: RoadPath, along: number, alongs: readonly number[], own: n
 }
 
 /** Per road (by index), how far along it each junction on it is. */
-function junctionsAlongRoads(ground: SignGround): Map<number, number[]> {
+export function junctionsAlongRoads(ground: Pick<SignGround, 'roads' | 'network'>): Map<number, number[]> {
   const alongs = new Map<number, number[]>();
   for (const junction of ground.network.junctions) {
     for (const member of junction.members) {

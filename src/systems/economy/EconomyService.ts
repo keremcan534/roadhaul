@@ -34,6 +34,9 @@ export const MONEY_REASONS = [
   'booster',
   'livery',
   'research',
+  'fine',
+  'roadside',
+  'safeDriving',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 

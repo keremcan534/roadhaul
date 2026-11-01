@@ -236,6 +236,13 @@ export class GameAudio {
     this.note(1100, 0, 0.05, 0.08, 'sine');
   }
 
+  /** A speed camera's shutter: a sharp double click and a hiss of its flash. */
+  shutter(): void {
+    this.noiseBurst('highpass', 4200, 0.05, 0.12);
+    this.note(1800, 0, 0.03, 0.06, 'square');
+    this.note(1400, 0.07, 0.03, 0.05, 'square');
+  }
+
   /** A contract delivered: a rising chord. */
   chime(): void {
     [523.25, 659.25, 783.99].forEach((frequency, i) => this.note(frequency, i * 0.12, 0.5, 0.14, 'sine'));

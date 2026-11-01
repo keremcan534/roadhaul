@@ -70,6 +70,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     liveries: { bought: [], worn: {}, text: null },
     research: { points: 0, researched: [] },
     career: emptyCareer(),
+    roadEvents: { warned: false, fined: false, knocked: false },
   };
 }
 

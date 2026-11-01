@@ -36,6 +36,7 @@ const PAGES_FIGURES_AND_MENUS = [
   'arrows',
   'camera',
   'photo',
+  'roadWorks',
   'share',
   'keyboard',
   'plus',

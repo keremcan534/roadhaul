@@ -99,7 +99,8 @@ describe('ResearchService', () => {
     const pay = Math.round((total * 0.07) / 10) * 10;
     expect(pay).toBeGreaterThan(0);
     expect(game.research.lastDelivery).toEqual({ pay, points: 2 });
-    expect(game.economy.credits).toBe(credits + total + pay);
+    // The safe-driving bonus too: delivered without a fine or a knock.
+    expect(game.economy.credits).toBe(credits + total + pay + game.roadEvents.lastDelivery.pay);
   });
 
   it('loads faster, keeps the cargo whole and saves diesel for the whole company', async () => {

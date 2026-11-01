@@ -180,6 +180,16 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 17,
     migrate: (save) => ({ ...save, version: 18, career: emptyCareer() }),
   },
+  {
+    // v19 adds the road's events (no warning given yet, the contract clean) and the career's fines and helps.
+    from: 18,
+    migrate: (save) => ({
+      ...save,
+      version: 19,
+      career: { ...(isJsonObject(save['career']) ? save['career'] : emptyCareer()), fines: 0, finesPaid: 0, roadsideHelps: 0 },
+      roadEvents: { warned: false, fined: false, knocked: false },
+    }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

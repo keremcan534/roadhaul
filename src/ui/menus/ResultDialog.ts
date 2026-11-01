@@ -293,6 +293,14 @@ export class ResultDialog {
     }
   }
 
+  /** Adds the safe-driving bonus (`percent` of the pay) to the open result, if the delivery earned one. */
+  showSafeDriving(percent: string, pay: Credits): void {
+    if (pay > 0) {
+      const row = this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.safeDriving', { percent }), this.strings.signedMoney(pay));
+      row.dataset.value = 'safe-driving';
+    }
+  }
+
   /** Adds the leader's bonus the delivery earned in `city` to the open result. */
   showLeaderBonus(city: string, bonus: Credits): void {
     this.addLine('result-dialog__rivalry is-bonus', this.strings.t('result.leaderBonus', { city }), this.strings.signedMoney(bonus));

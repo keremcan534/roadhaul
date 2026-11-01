@@ -1342,3 +1342,74 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 .perf-overlay {
   z-index: 20;
 }
+
+/* ---- The road's alert (src/ui/hud/RoadAlert.ts): a camera or road works ahead, over the speedometer ---- */
+
+.road-alert {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 7px;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 20px;
+  background: var(--rh-plate);
+  color: var(--rh-fg);
+  font: 500 13px/1 var(--rh-numeric);
+  pointer-events: none;
+}
+
+.road-alert[hidden] {
+  display: none;
+}
+
+.road-alert[data-alert='works'],
+.road-alert[data-alert='worksAhead'] {
+  border-color: rgb(255 106 19 / 70%);
+}
+
+.road-alert__icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* A round limit sign: a red ring, the number in black. */
+.road-alert__limit {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border: 3px solid #d5281b;
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  font: 700 11px/1 var(--rh-numeric);
+}
+
+/* The camera's flash, over the whole screen for a moment. */
+.speed-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.speed-flash.is-flashing {
+  animation: speed-flash 0.35s ease-out;
+}
+
+@keyframes speed-flash {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+  }
+}

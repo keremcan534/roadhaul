@@ -335,6 +335,38 @@ export interface GameConfig {
     /** How fast the chase goes, m/s. */
     readonly chaseSpeed: number;
   };
+  /** The road's events (RoadEventService): speed cameras, road works, stranded drivers, the safe-driving bonus. */
+  readonly roadEvents: {
+    /** A camera checks a truck passing within this of the road beside it, meters. */
+    readonly cameraReachMeters: number;
+    /** Over the limit by this share and this many km/h more, a truck is caught. */
+    readonly toleranceShare: Fraction;
+    readonly toleranceKmh: number;
+    /** A fine: this, and this for every km/h over the limit, in tens of credits, at most this; doubled at road works. */
+    readonly fineBase: Credits;
+    readonly finePerKmh: Credits;
+    readonly fineMost: Credits;
+    /** Road works on the main roads each day, their limit, and how much longer the GPS counts each, meters. */
+    readonly workZonesPerDay: number;
+    readonly workZoneLimitKmh: number;
+    readonly workZoneDetourMeters: number;
+    /** A stranded driver after this many seconds on the road, then again after a gap from–to. */
+    readonly strandedFirstSeconds: number;
+    readonly strandedGapSeconds: readonly [number, number];
+    /** Placed this far ahead of the truck, from–to, meters; gone after this long or this far behind. */
+    readonly strandedAheadMeters: readonly [number, number];
+    readonly strandedSeconds: number;
+    readonly strandedBehindMeters: number;
+    /** Helping: stopped within this of the car (meters, below this speed in m/s) for this long. */
+    readonly helpMeters: number;
+    readonly helpSpeed: number;
+    readonly helpSeconds: number;
+    /** What helping pays: this, and this per company level. */
+    readonly helpReward: Credits;
+    readonly helpRewardPerLevel: Credits;
+    /** A contract delivered without a fine or a knock pays this share of its pay more, in tens. */
+    readonly safeDrivingShare: Fraction;
+  };
   /** The research tree (ResearchService): the points the company's own deliveries earn toward it. */
   readonly research: {
     /** Research points a delivery earns… */
@@ -662,6 +694,28 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     pointsPerDelivery: 1,
     perfectBonusPoints: 1,
   },
+  roadEvents: {
+    cameraReachMeters: 14,
+    toleranceShare: 0.08,
+    toleranceKmh: 2,
+    fineBase: 150,
+    finePerKmh: 20,
+    fineMost: 1500,
+    workZonesPerDay: 3,
+    workZoneLimitKmh: 40,
+    workZoneDetourMeters: 1500,
+    strandedFirstSeconds: 240,
+    strandedGapSeconds: [420, 780],
+    strandedAheadMeters: [280, 620],
+    strandedSeconds: 300,
+    strandedBehindMeters: 450,
+    helpMeters: 16,
+    helpSpeed: 1.2,
+    helpSeconds: 3,
+    helpReward: 250,
+    helpRewardPerLevel: 50,
+    safeDrivingShare: 0.05,
+  },
   cityLife: {
     firstAfterSeconds: 120,
     gapSeconds: [300, 540],
@@ -771,6 +825,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     casino,
     skyWonders,
     research,
+    roadEvents,
     cityLife,
     review,
     debug,
@@ -1025,6 +1080,20 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
   validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
   validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
+  for (const key of ['cameraReachMeters', 'workZoneLimitKmh', 'workZoneDetourMeters', 'strandedFirstSeconds', 'strandedSeconds', 'strandedBehindMeters', 'helpMeters', 'helpSpeed', 'helpSeconds'] as const) {
+    validator.positiveNumber(roadEvents[key], `roadEvents.${key}`);
+  }
+  for (const key of ['fineBase', 'finePerKmh', 'fineMost', 'helpReward', 'helpRewardPerLevel'] as const) {
+    validator.nonNegativeInteger(roadEvents[key], `roadEvents.${key}`);
+  }
+  validator.nonNegativeInteger(roadEvents.workZonesPerDay, 'roadEvents.workZonesPerDay');
+  validator.check(roadEvents.toleranceKmh >= 0, 'roadEvents.toleranceKmh', 'must be 0 or more');
+  validator.fraction(roadEvents.toleranceShare, 'roadEvents.toleranceShare');
+  validator.fraction(roadEvents.safeDrivingShare, 'roadEvents.safeDrivingShare');
+  for (const key of ['strandedGapSeconds', 'strandedAheadMeters'] as const) {
+    const [least, most] = roadEvents[key];
+    validator.check(least > 0 && most >= least, `roadEvents.${key}`, 'must be a range above 0, the least first');
+  }
   validator.positiveNumber(cityLife.firstAfterSeconds, 'cityLife.firstAfterSeconds');
   validator.check(
     cityLife.gapSeconds[0] > 0 && cityLife.gapSeconds[1] >= cityLife.gapSeconds[0],

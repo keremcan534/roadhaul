@@ -55,6 +55,7 @@ import {
 import { fieldArea } from './fields';
 import { cellKey, cellOf } from './gridCells';
 import { placeGuardRails, type GuardRail } from './guardRails';
+import { placeSpeedCameras, speedCameraPosts, type SpeedCamera } from './speedCameras';
 import { CountryPlan } from './countryPlan';
 import { OpenLand } from './openLand';
 import { hedgeWalls, layoutPark, onParkPath, type Park } from './parks';
@@ -491,6 +492,8 @@ export class DrivingWorld implements DebrisSolids {
   readonly speedSigns: readonly SpeedSign[];
   /** The country roads' signs (roadSigns.ts): warnings, chevrons, give way and stop, and the direction boards. */
   readonly roadSigns: readonly RoadSign[];
+  /** The speed cameras along the main roads, with their warning signs (speedCameras.ts). */
+  readonly speedCameras: readonly SpeedCamera[];
   readonly directionBoards: readonly DirectionBoard[];
   /**
    * The solid circles (tree trunks, lamp and sign posts, bales, turbine
@@ -780,6 +783,7 @@ export class DrivingWorld implements DebrisSolids {
     };
     this.directionBoards = roadSigns ? placeDirectionBoards(signGround, occupancy) : [];
     this.roadSigns = roadSigns ? placeRoadSigns(signGround, occupancy) : [];
+    this.speedCameras = roadSigns ? placeSpeedCameras(signGround, occupancy) : [];
     // Along the map's own country roads: the villages and farms off them are fed from there.
     this.powerLines = countryside ? placePowerLines({ ...ground, roads: this.roads.slice(0, this.mapRoadCount) }, occupancy) : [];
     this.fieldEdges = countryside ? placeFieldEdges(ground) : [];
@@ -837,6 +841,7 @@ export class DrivingWorld implements DebrisSolids {
     add(this.billboards.flatMap(billboardLegs));
     add(this.speedSigns, () => 'speedSign');
     add(this.roadSigns, () => 'roadSign');
+    add(this.speedCameras.flatMap(speedCameraPosts));
     add(this.directionBoards.flatMap(directionBoardLegs));
     add(this.farmGates.flatMap((gate) => gate.pillars));
     add(

@@ -85,6 +85,8 @@ export class RoadNetwork {
   private readonly neighbours: Int32Array;
   private readonly edgeLengths: Float64Array;
   private readonly fields = new Map<number, RouteField>();
+  /** What passing each node costs on top of its roads' length, meters: road works (setDetour). */
+  private readonly detour: Float64Array;
   /** Where roads meet (one entry per junction). */
   readonly junctions: readonly Junction[];
   /** Ends of open roads that join no other road: traffic turns round there. */
@@ -96,6 +98,7 @@ export class RoadNetwork {
     this.nodeX = new Float64Array(count);
     this.nodeZ = new Float64Array(count);
     this.roadOf = new Int32Array(count);
+    this.detour = new Float64Array(count);
     const links: number[][] = Array.from({ length: count }, () => []);
     const link = (a: number, b: number): void => {
       if (a !== b && !links[a]!.includes(b)) {
@@ -210,6 +213,24 @@ export class RoadNetwork {
       }
     }
     return best;
+  }
+
+  /**
+   * Routes from now on count each stretch of `stretches` (its nodes) as
+   * `extraMeters` longer than it is, so they go round it where another way
+   * is not that much longer: road works. Replaces the stretches set before;
+   * none for none. The routes already worked out are forgotten.
+   */
+  setDetour(stretches: readonly (readonly number[])[], extraMeters: number): void {
+    this.detour.fill(0);
+    for (const nodes of stretches) {
+      for (const node of nodes) {
+        if (node >= 0 && node < this.nodeCount) {
+          this.detour[node] = extraMeters / nodes.length;
+        }
+      }
+    }
+    this.fields.clear();
   }
 
   /** The node of road `roadIndex`'s sample `sampleIndex`. */
@@ -379,7 +400,7 @@ export class RoadNetwork {
       const node = queue.pop();
       for (let edge = this.firstNeighbour[node]!; edge < this.firstNeighbour[node + 1]!; edge++) {
         const neighbour = this.neighbours[edge]!;
-        const viaNode = distance[node]! + this.edgeLengths[edge]!;
+        const viaNode = distance[node]! + this.edgeLengths[edge]! + this.detour[neighbour]!;
         if (viaNode < distance[neighbour]!) {
           distance[neighbour] = viaNode;
           next[neighbour] = node;

@@ -8,6 +8,7 @@ import type { CompanyService } from '../systems/company/CompanyService';
 import type { FacilityService } from '../systems/company/FacilityService';
 import type { ResearchService } from '../systems/company/ResearchService';
 import type { CareerService } from '../systems/company/CareerService';
+import type { RoadEventService } from '../systems/world/RoadEventService';
 import type { CityIncidentService } from '../systems/world/CityIncidentService';
 import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -99,6 +100,8 @@ export const ServiceKeys = Object.freeze({
   research: serviceKey<ResearchService>('ResearchService'),
   /** The career's records, for the career page. */
   career: serviceKey<CareerService>('CareerService'),
+  /** Speed cameras, road works, stranded drivers and the safe-driving bonus. */
+  roadEvents: serviceKey<RoadEventService>('RoadEventService'),
   /** The company levels' rewards, waiting to be collected. */
   levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),

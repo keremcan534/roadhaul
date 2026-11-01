@@ -284,7 +284,7 @@ export function validateSaveGameData(
     for (const key of ['tonsDelivered', 'longestHaulMeters', 'haulMeters', 'topSpeedKmh', 'drivingSeconds', 'fuelLiters'] as const) {
       validator.check(isFiniteNumber(career[key]) && (career[key] as number) >= 0, `career.${key}`, 'must be a number, 0 or more');
     }
-    for (const key of ['bestPay', 'fuelSpent', 'repairsSpent', 'knocks', 'overturns', 'carsWrecked', 'propsKnocked', 'fleetDeliveries'] as const) {
+    for (const key of ['bestPay', 'fuelSpent', 'repairsSpent', 'knocks', 'overturns', 'carsWrecked', 'propsKnocked', 'fleetDeliveries', 'fines', 'finesPaid', 'roadsideHelps'] as const) {
       validator.nonNegativeInteger(career[key], `career.${key}`);
     }
     for (const key of ['cargo', 'destinations'] as const) {
@@ -295,6 +295,11 @@ export function validateSaveGameData(
           validator.nonNegativeInteger(count, `career.${key}.${id}`);
         }
       }
+    }
+  });
+  section('roadEvents', (roadEvents) => {
+    for (const key of ['warned', 'fined', 'knocked'] as const) {
+      validator.boolean(roadEvents[key], `roadEvents.${key}`);
     }
   });
   return validator.issues;

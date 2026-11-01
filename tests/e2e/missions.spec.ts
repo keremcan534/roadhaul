@@ -81,7 +81,10 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   const total = Number((await result.locator('.result-dialog__line.is-total dd').textContent())!.replace(/\D/g, ''));
   expect(total).toBeGreaterThan(900);
   await expect(result.locator('.result-dialog__line.is-progress').first()).toContainText('XP');
-  await expect(result.locator('.result-dialog__line').last()).toContainText(`${(5000 + total).toLocaleString('en-GB')} credits`);
+  // Delivered without a fine or a knock: the safe-driving bonus, 5% of the pay in tens, on top.
+  const safe = Math.round((total * 0.05) / 10) * 10;
+  await expect(result.locator('[data-value="safe-driving"]')).toContainText(`+${safe.toLocaleString('en-GB')} credits`);
+  await expect(result.locator('.result-dialog__line').last()).toContainText(`${(5000 + total + safe).toLocaleString('en-GB')} credits`);
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
 
   // Straight on to the next job.
@@ -89,7 +92,7 @@ test('delivers a contract from the pickup bay to the delivery bay', async ({ pag
   await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
   await expect(html(page)).toHaveAttribute('data-panel', 'open');
   await expect(page.locator('.hq__tab[data-tab="jobs"]')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total).toLocaleString('en-GB')} credits`);
+  await expect(page.locator('.hq__credits')).toHaveText(`${(5000 + total + safe).toLocaleString('en-GB')} credits`);
   await expect(page.locator('.job-card:not(.job-card--tender)')).toHaveCount(41);
   // The truck waits in the delivery depot's yard, where it can be serviced.
   await openPanel(page, 'truck');

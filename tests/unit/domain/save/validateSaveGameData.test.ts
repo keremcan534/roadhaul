@@ -85,6 +85,7 @@ describe('validateSaveGameData', () => {
       'liveries',
       'research',
       'career',
+      'roadEvents',
     ]);
   });
 
