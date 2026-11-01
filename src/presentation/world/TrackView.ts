@@ -65,6 +65,7 @@ import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
+import { ForestBatch } from './ForestBatch';
 import { FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
@@ -440,6 +441,8 @@ export class TrackView {
   private readonly culling = new FarCulling();
   /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
   private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
+  /** The forest's tiles in view, drawn a kind of mesh at a time (ForestBatch); null without trees. */
+  private forestBatch: ForestBatch | null = null;
   /** The towns' districts' building details, in smaller tiles (TOWN_TILE_METERS), by key. */
   private readonly townTiles = new Map<string, Group>();
   /** …hidden past TOWN_DETAIL_METERS: in a town, nearer buildings stand before the far ones. */
@@ -468,7 +471,8 @@ export class TrackView {
     if (world.trees.length > 0) {
       const forest = new Group();
       forest.name = 'forest';
-      for (const tile of this.createTrees(world.trees)) {
+      const tiles = this.createTrees(world.trees);
+      for (const tile of tiles) {
         forest.add(tile);
         this.culling.add(tile);
         for (const mesh of tile.children) {
@@ -477,7 +481,11 @@ export class TrackView {
           }
         }
       }
-      this.root.add(forest);
+      // The tiles stay to be culled; the batches draw what of them is in view, a kind at a time.
+      const batches = new Group();
+      batches.name = 'forest:batches';
+      this.forestBatch = new ForestBatch(tiles, batches);
+      this.root.add(forest, batches);
     }
     if (world.buildings.length > 0) {
       this.root.add(...this.createBuildings(world.buildings, (box, reach) => world.frontOf(box, reach)));
@@ -508,12 +516,15 @@ export class TrackView {
    * Shows the forest's and the country's tiles near (x, z), the camera, and
    * hides the ones lost in the haze (FAR_CULL_METERS); the forest's further
    * than TREE_DETAIL_METERS without their shadows and inner trunks; given
-   * the camera's `view`, also the tiles out of it (FarCulling.update).
+   * the camera's `view`, also the tiles out of it (FarCulling.update). The
+   * forest's tiles are left out of view by `eyeView` (the camera's view, even
+   * where `view` is null for the shadow map: the trees cast no shadow there).
    * Allocation-free: call it every frame once the camera has moved.
    */
-  showAround(x: number, z: number, view: Frustum | null = null): void {
+  showAround(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
     this.culling.update(x, z, view);
     this.treeDetail.update(x, z);
+    this.forestBatch?.update(eyeView);
     this.townDetail.update(x, z, view);
   }
 
@@ -551,6 +562,7 @@ export class TrackView {
 
   dispose(): void {
     this.scene.remove(this.root);
+    this.forestBatch?.dispose();
     for (const resource of this.resources) {
       resource.dispose();
     }

@@ -2823,8 +2823,9 @@ async function start(strings: Strings): Promise<void> {
         const eye = renderHost.camera.position;
         // What lies far off in the haze is not drawn, nor whole tiles out of view (but where the sun's shadow map
         // is drawn: a tile out of view can cast a shadow into it).
-        const view = renderHost.shadowsOn ? null : renderHost.currentView();
-        track.showAround(eye.x, eye.z, view);
+        const eyeView = renderHost.currentView();
+        const view = renderHost.shadowsOn ? null : eyeView;
+        track.showAround(eye.x, eye.z, view, eyeView);
         scenery.showAround(eye.x, eye.z, view);
         streetLamps.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);

@@ -42,10 +42,20 @@ describe('TrackView', () => {
     const forest = scene.getObjectByName('forest')!;
     const country = scene.getObjectByName('country')!;
     const town = scene.getObjectByName('town')!;
+    const batches = scene.getObjectByName('forest:batches')!;
     const treeTiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 500)},${Math.floor(tree.z / 500)}`));
 
     // The ground, the map's own roads and the towns' buildings.
-    expect(drawCallCount(scene) - drawCallCount(forest) - drawCallCount(country) - drawCallCount(town)).toBeLessThanOrEqual(12);
+    expect(
+      drawCallCount(scene) - drawCallCount(forest) - drawCallCount(batches) - drawCallCount(country) - drawCallCount(town),
+    ).toBeLessThanOrEqual(12);
+    // The forest's tiles in view are drawn a kind at a time (ForestBatch): trunks, inner trunks, shadows and each crown.
+    expect(drawCallCount(batches)).toBeLessThanOrEqual(10);
+    forest.traverse((object) => {
+      if (object instanceof Mesh) {
+        expect(object.layers.mask, object.name).toBe(0); // The tiles' own meshes: culled, not drawn.
+      }
+    });
     // A tile of a town's districts: its buildings' details, in one draw.
     expect(town.children.length).toBeGreaterThan(1);
     for (const tile of town.children) {
@@ -56,7 +66,7 @@ describe('TrackView', () => {
     for (const tile of country.children) {
       expect(drawCallCount(tile), tile.name).toBeLessThanOrEqual(3);
     }
-    // Trunks and shadows per tile, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
+    // The tiles hold trunks and shadows each, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
     // the planted poplars, olives and cypresses where people planted them, and in the forests their inner trees'
     // simpler crowns and trunks.
     expect(drawCallCount(forest)).toBeLessThanOrEqual(6 * treeTiles.size);
@@ -95,14 +105,18 @@ describe('TrackView', () => {
     camera.position.set(x - Math.sin(heading) * 8, 5, z - Math.cos(heading) * 8);
     camera.lookAt(x + Math.sin(heading) * 30, 2, z + Math.cos(heading) * 30);
     camera.updateMatrixWorld(true);
-    view.showAround(camera.position.x, camera.position.z);
     const frustum = new Frustum().setFromProjectionMatrix(
       new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
     );
+    // As the game does: the forest's tiles left out of view by the camera's view, the rest by the shadow-map preset's
+    // rule (none given).
+    view.showAround(camera.position.x, camera.position.z, null, frustum);
     let drawCalls = 0;
     let triangles = 0;
     scene.traverseVisible((object) => {
-      if (object instanceof Mesh && frustum.intersectsObject(object)) {
+      // What the renderer draws: in the camera's layer (the forest tiles' own meshes are not: their batches draw them),
+      // and in view (the batches, culled by their tiles, always are).
+      if (object instanceof Mesh && object.layers.test(camera.layers) && (!object.frustumCulled || frustum.intersectsObject(object))) {
         const geometry = object.geometry;
         const perCopy = (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
         drawCalls++;
