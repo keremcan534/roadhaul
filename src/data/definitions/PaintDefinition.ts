@@ -36,6 +36,12 @@ export interface PaintDefinition {
    * shows it locked until a crate has given it, then paints it for free.
    */
   readonly crate?: PaintRarity;
+  /**
+   * One of the Road Pass's colours (RoadPassService), of this group (the
+   * groups take turns, a season each): given on Road Pass Plus's track, never
+   * sold for credits; the garage shows it locked until collected.
+   */
+  readonly pass?: number;
 }
 
 export function validatePaintDefinition(paint: PaintDefinition, path: string, validator: Validator): void {
@@ -52,8 +58,12 @@ export function validatePaintDefinition(paint: PaintDefinition, path: string, va
     validator.check(isPaintRarity(paint.crate), `${path}.crate`, `unknown rarity "${String(paint.crate)}"`);
     validator.check(paint.premium !== true, `${path}.premium`, 'a crate colour is never a premium one');
   }
-  if (paint.premium === true || paint.crate !== undefined) {
-    validator.check(paint.price === 0, `${path}.price`, 'must be 0 for a premium or crate colour: never sold for credits');
+  if (paint.pass !== undefined) {
+    validator.nonNegativeInteger(paint.pass, `${path}.pass`);
+    validator.check(paint.premium !== true && paint.crate === undefined, `${path}.pass`, 'a pass colour is neither premium nor a crate one');
+  }
+  if (paint.premium === true || paint.crate !== undefined || paint.pass !== undefined) {
+    validator.check(paint.price === 0, `${path}.price`, 'must be 0 for a premium, crate or pass colour: never sold for credits');
   } else {
     validator.positiveInteger(paint.price, `${path}.price`);
   }

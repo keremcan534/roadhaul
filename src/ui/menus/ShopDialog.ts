@@ -16,6 +16,7 @@ const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = {
   designs_street: 'truck',
   designs_neon: 'truck',
   supporter_pack: 'star',
+  road_pass: 'route',
 };
 
 /**

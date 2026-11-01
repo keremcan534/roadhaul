@@ -17,7 +17,7 @@ import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
 
 /** What earned a crate. */
-export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup';
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -130,6 +130,15 @@ export interface GameEvents {
     readonly instanceId: string;
     readonly definitionId: string;
     readonly price: Credits;
+  };
+  /** The season's points reached a new Road Pass tier (RoadPassService): the highest reached now. */
+  RoadPassTierReached: {
+    readonly tier: number;
+  };
+  /** A Road Pass reward was collected: a tier's free one, or its Plus colour. */
+  RoadPassClaimed: {
+    readonly tier: number;
+    readonly premium: boolean;
   };
   /** A convoy set off on a road ahead (ConvoyService). */
   ConvoyStarted: {

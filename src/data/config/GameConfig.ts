@@ -336,6 +336,22 @@ export interface GameConfig {
     /** How fast the chase goes, m/s. */
     readonly chaseSpeed: number;
   };
+  /** The Road Pass (RoadPassService): seasons of tiers climbed by deliveries and quests. */
+  readonly roadPass: {
+    /** The first season starts on this day of the player's calendar (days since 1970), each lasts this many days. */
+    readonly firstSeasonDay: number;
+    readonly seasonDays: number;
+    /** Points for each tier. */
+    readonly pointsPerTier: number;
+    /** A delivery earns a point per this many credits of its pay, at least this many; a quest done, this many. */
+    readonly creditsPerPoint: Credits;
+    readonly leastDeliveryPoints: number;
+    readonly questPoints: number;
+    /** Each tier's free reward, the first first: as many tiers as rewards. */
+    readonly freeRewards: readonly PassReward[];
+    /** The tiers (1 the first) where Road Pass Plus gives one of the season's colours, in their order. */
+    readonly premiumTiers: readonly number[];
+  };
   /** The convoys (ConvoyService): three trucks to ride with now and then, paid by the kilometre. */
   readonly convoy: {
     /** The first after this many seconds on the road, then again after a gap from–to. */
@@ -439,6 +455,13 @@ export interface GameConfig {
 }
 
 export { CRATE_TIERS, isCrateTier, type CrateTier } from '../definitions/CrateTier';
+
+/** A reward on the Road Pass's free track: credits, a crate, upgrade parts or a booster. */
+export type PassReward =
+  | { readonly kind: 'credits'; readonly amount: Credits }
+  | { readonly kind: 'crate'; readonly tier: CrateTier }
+  | { readonly kind: 'parts'; readonly amount: number }
+  | { readonly kind: 'booster'; readonly booster: BoosterKind };
 
 /** What a crate of one tier holds. */
 export interface CrateTierConfig {
@@ -740,6 +763,38 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     pointsPerDelivery: 1,
     perfectBonusPoints: 1,
   },
+  roadPass: {
+    // Monday 2 November 2026.
+    firstSeasonDay: 20_759,
+    seasonDays: 28,
+    pointsPerTier: 60,
+    creditsPerPoint: 100,
+    leastDeliveryPoints: 5,
+    questPoints: 20,
+    freeRewards: [
+      { kind: 'credits', amount: 1_000 },
+      { kind: 'parts', amount: 2 },
+      { kind: 'crate', tier: 'bronze' },
+      { kind: 'booster', booster: 'pay_boost' },
+      { kind: 'credits', amount: 2_000 },
+      { kind: 'booster', booster: 'free_refuel' },
+      { kind: 'crate', tier: 'bronze' },
+      { kind: 'parts', amount: 3 },
+      { kind: 'credits', amount: 3_000 },
+      { kind: 'booster', booster: 'xp_boost' },
+      { kind: 'crate', tier: 'silver' },
+      { kind: 'booster', booster: 'free_repair' },
+      { kind: 'credits', amount: 4_000 },
+      { kind: 'parts', amount: 4 },
+      { kind: 'crate', tier: 'silver' },
+      { kind: 'booster', booster: 'pay_boost' },
+      { kind: 'credits', amount: 6_000 },
+      { kind: 'parts', amount: 5 },
+      { kind: 'booster', booster: 'xp_boost' },
+      { kind: 'crate', tier: 'gold' },
+    ],
+    premiumTiers: [4, 8, 12, 16, 20],
+  },
   convoy: {
     firstAfterSeconds: 360,
     gapSeconds: [540, 900],
@@ -905,6 +960,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     casino,
     skyWonders,
     research,
+    roadPass,
     convoy,
     weeklyCup,
     usedTrucks,
@@ -1163,6 +1219,36 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
   validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
   validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
+  validator.nonNegativeInteger(roadPass.firstSeasonDay, 'roadPass.firstSeasonDay');
+  for (const key of ['seasonDays', 'pointsPerTier', 'creditsPerPoint', 'questPoints'] as const) {
+    validator.positiveInteger(roadPass[key], `roadPass.${key}`);
+  }
+  validator.nonNegativeInteger(roadPass.leastDeliveryPoints, 'roadPass.leastDeliveryPoints');
+  validator.check(roadPass.freeRewards.length > 0, 'roadPass.freeRewards', 'must have a tier at least');
+  roadPass.freeRewards.forEach((reward, index) => {
+    const path = `roadPass.freeRewards[${index}]`;
+    switch (reward.kind) {
+      case 'credits':
+      case 'parts':
+        validator.positiveInteger(reward.amount, `${path}.amount`);
+        break;
+      case 'crate':
+        validator.check(isCrateTier(reward.tier), `${path}.tier`, 'must be a crate tier');
+        break;
+      case 'booster':
+        validator.check((BOOSTER_KINDS as readonly string[]).includes(reward.booster), `${path}.booster`, 'must be a booster');
+        break;
+      default:
+        validator.check(false, `${path}.kind`, 'must be credits, parts, a crate or a booster');
+    }
+  });
+  roadPass.premiumTiers.forEach((tier, index) => {
+    validator.check(
+      Number.isInteger(tier) && tier >= 1 && tier <= roadPass.freeRewards.length && (index === 0 || tier > roadPass.premiumTiers[index - 1]!),
+      `roadPass.premiumTiers[${index}]`,
+      'must be a tier of the pass, after the one before',
+    );
+  });
   for (const key of ['firstAfterSeconds', 'speed', 'mostSeconds', 'rideMeters', 'leastSpeed', 'creditsPerKm', 'leastRiddenMeters'] as const) {
     validator.positiveNumber(convoy[key], `convoy.${key}`);
   }

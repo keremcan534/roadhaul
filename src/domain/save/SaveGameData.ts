@@ -46,8 +46,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v20: adds the used-truck market's trucks sold in its period.
  * - v21: adds the weekly cup (the week, the company's points, how the last
  *   one it played ended).
+ * - v22: adds the Road Pass (the season, its points, the tiers collected on
+ *   each track, the pass colours the company has).
  */
-export const CURRENT_SAVE_VERSION = 21;
+export const CURRENT_SAVE_VERSION = 22;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -84,6 +86,17 @@ export interface SaveGameData {
   readonly roadEvents: RoadEventsSaveData;
   readonly usedTrucks: UsedTrucksSaveData;
   readonly weeklyCup: WeeklyCupSaveData;
+  readonly roadPass: RoadPassSaveData;
+}
+
+/** The Road Pass (RoadPassService): the season the points are for (null before any), tiers collected, colours kept. */
+export interface RoadPassSaveData {
+  readonly season: number | null;
+  readonly points: number;
+  readonly freeClaimed: readonly number[];
+  readonly premiumClaimed: readonly number[];
+  /** PaintDefinition ids of the pass colours collected: the company's for good. */
+  readonly paints: readonly string[];
 }
 
 /** The weekly cup (WeeklyCupService): the week the points are for (null before any), and the last cup's result. */

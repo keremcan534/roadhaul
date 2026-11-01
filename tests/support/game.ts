@@ -36,6 +36,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     fleet: services.resolve(ServiceKeys.fleet),
     rivals: services.resolve(ServiceKeys.rivals),
     weeklyCup: services.resolve(ServiceKeys.weeklyCup),
+    roadPass: services.resolve(ServiceKeys.roadPass),
     traffic: services.resolve(ServiceKeys.traffic),
     companyTraffic: services.resolve(ServiceKeys.companyTraffic),
     facilities: services.resolve(ServiceKeys.facilities),

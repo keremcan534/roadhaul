@@ -12,6 +12,7 @@ import type { RoadEventService } from '../systems/world/RoadEventService';
 import type { ConvoyService } from '../systems/world/ConvoyService';
 import type { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
 import type { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
+import type { RoadPassService } from '../systems/rewards/RoadPassService';
 import type { CityIncidentService } from '../systems/world/CityIncidentService';
 import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -125,6 +126,8 @@ export const ServiceKeys = Object.freeze({
   rivals: serviceKey<RivalService>('RivalService'),
   /** The weekly cup against the rivals. */
   weeklyCup: serviceKey<WeeklyCupService>('WeeklyCupService'),
+  /** The Road Pass: seasons of tiers, and Road Pass Plus's colours. */
+  roadPass: serviceKey<RoadPassService>('RoadPassService'),
   /** The fleet's and the rivals' trucks in the traffic around the truck. */
   companyTraffic: serviceKey<CompanyTraffic>('CompanyTraffic'),
   saves: serviceKey<SaveService>('SaveService'),

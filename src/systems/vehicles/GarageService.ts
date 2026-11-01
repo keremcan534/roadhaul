@@ -29,6 +29,13 @@ export type SwitchTruckError = 'unknownTruck' | 'alreadyActive' | 'missionInProg
 export type PaintTruckError = 'unknownTruck' | 'unknownPaint' | 'alreadyPainted' | 'locked' | SpendError;
 export type SellTruckError = 'unknownTruck' | 'activeTruck' | 'onTheRoad';
 
+/** Which of the Road Pass's colours the company has collected: RoadPassService. */
+export interface PassPaintSource {
+  ownsPassPaint(paintId: string): boolean;
+}
+
+export const NO_PASS_PAINTS: PassPaintSource = Object.freeze({ ownsPassPaint: () => false });
+
 /** A used truck as the used-truck market sells it (UsedTruckMarket): its model, price, wear, colour and upgrades. */
 export interface UsedTruck {
   readonly definition: VehicleDefinition;
@@ -72,6 +79,8 @@ export interface PaintOffer {
   readonly premium: boolean;
   /** One of the colours only crates hold (PaintDefinition.crate): given by a crate, never sold. */
   readonly crate: boolean;
+  /** One of the Road Pass's colours (PaintDefinition.pass): collected on Road Pass Plus's track, never sold for credits. */
+  readonly pass: boolean;
 }
 
 /**
@@ -148,6 +157,8 @@ export class GarageService {
     private readonly premiumPaints: PremiumPaintSource = NO_PREMIUM_PAINTS,
     /** Which of the crate colours the crates have given. */
     private readonly cratePaints: CratePaintSource = NO_CRATE_PAINTS,
+    /** Which of the Road Pass's colours the company has collected. */
+    private readonly passPaints: PassPaintSource = NO_PASS_PAINTS,
   ) {}
 
   /** How many trucks the garage holds at the company's level, and in the yard it has built. */
@@ -297,12 +308,14 @@ export class GarageService {
         continue;
       }
       const crate = paint.crate !== undefined;
+      const pass = paint.pass !== undefined;
       const requiredCompanyLevel = paint.requiredCompanyLevel ?? 1;
       const locked =
         this.company.level < requiredCompanyLevel ||
         (premium && access !== 'owned') ||
-        (crate && !this.cratePaints.ownsCratePaint(paint.id));
-      offers.push({ paint, requiredCompanyLevel, locked, premium, crate });
+        (crate && !this.cratePaints.ownsCratePaint(paint.id)) ||
+        (pass && !this.passPaints.ownsPassPaint(paint.id));
+      offers.push({ paint, requiredCompanyLevel, locked, premium, crate, pass });
     }
     return offers;
   }

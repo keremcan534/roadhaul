@@ -88,6 +88,7 @@ describe('validateSaveGameData', () => {
       'roadEvents',
       'usedTrucks',
       'weeklyCup',
+      'roadPass',
     ]);
   });
 

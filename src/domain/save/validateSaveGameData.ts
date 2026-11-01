@@ -322,6 +322,21 @@ export function validateSaveGameData(
       validator.check(result['crate'] === null || isCrateTier(result['crate']), 'weeklyCup.last.crate', 'must be a crate tier or null');
     }
   });
+  section('roadPass', (pass) => {
+    validator.check(pass['season'] === null || Number.isInteger(pass['season']), 'roadPass.season', 'must be null or a whole number');
+    validator.nonNegativeInteger(pass['points'], 'roadPass.points');
+    for (const key of ['freeClaimed', 'premiumClaimed'] as const) {
+      const tiers = pass[key];
+      if (validator.check(Array.isArray(tiers), `roadPass.${key}`, 'must be a list')) {
+        (tiers as unknown[]).forEach((tier, index) => validator.positiveInteger(tier, `roadPass.${key}[${index}]`));
+      }
+    }
+    const paints = pass['paints'];
+    if (validator.check(Array.isArray(paints), 'roadPass.paints', 'must be a list')) {
+      // A colour the content no longer has is dropped on loading (RoadPassService.restore), not refused.
+      (paints as unknown[]).forEach((id, index) => validator.check(typeof id === 'string', `roadPass.paints[${index}]`, 'must be an id'));
+    }
+  });
   return validator.issues;
 }
 

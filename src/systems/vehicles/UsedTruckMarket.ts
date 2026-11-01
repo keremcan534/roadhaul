@@ -109,7 +109,7 @@ export class UsedTruckMarket {
     const level = this.company.level;
     const models = this.content.vehicles.all.filter((vehicle) => (vehicle.requiredCompanyLevel ?? 1) <= level);
     const paints = this.content.paints.all.filter(
-      (paint) => paint.premium !== true && paint.crate === undefined && (paint.requiredCompanyLevel ?? 1) <= level,
+      (paint) => paint.premium !== true && paint.crate === undefined && paint.pass === undefined && (paint.requiredCompanyLevel ?? 1) <= level,
     );
     const upgrades = this.content.upgrades.all.filter((upgrade) => (upgrade.levels[0]?.requiredCompanyLevel ?? 1) <= level);
     const random = new SeededRandom(0x7ac0 + period * 104_729);

@@ -1990,6 +1990,15 @@
   opacity: 0.4;
 }
 
+/* A Road Pass colour: a teal ring; not collected yet, faded. */
+.paint-picker__swatch.is-pass {
+  box-shadow: 0 0 0 2px var(--rh-teal);
+}
+
+.paint-picker__swatch.is-pass.is-locked {
+  opacity: 0.4;
+}
+
 /* An upgrade's price with the crates' parts: the list price struck through, the parts used. */
 .upgrade-card__parts {
   display: flex;

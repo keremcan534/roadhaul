@@ -200,6 +200,15 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 20,
     migrate: (save) => ({ ...save, version: 21, weeklyCup: { week: null, points: 0, last: null } }),
   },
+  {
+    // v22 adds the Road Pass: no points yet, nothing collected.
+    from: 21,
+    migrate: (save) => ({
+      ...save,
+      version: 22,
+      roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
+    }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

@@ -29,4 +29,15 @@ export const PAINTS: readonly PaintDefinition[] = [
   { id: 'arctic_cyan', color: 0x22c2e2, price: 0, crate: 'epic' },
   { id: 'aurora_green', color: 0x2ee6a0, price: 0, crate: 'legendary' },
   { id: 'neon_lime', color: 0xa6ec22, price: 0, crate: 'legendary' },
+  // The Road Pass's colours, two groups taking turns a season each (RoadPassService): Plus's track gives them.
+  { id: 'pass_neon_lime', color: 0x9be22e, price: 0, pass: 0 },
+  { id: 'pass_ice_chrome', color: 0xc9d6df, price: 0, pass: 0 },
+  { id: 'pass_deep_ocean', color: 0x0b3d63, price: 0, pass: 0 },
+  { id: 'pass_copper', color: 0xb8673a, price: 0, pass: 0 },
+  { id: 'pass_twilight', color: 0x4b2a6e, price: 0, pass: 0 },
+  { id: 'pass_hot_magenta', color: 0xd61c8a, price: 0, pass: 1 },
+  { id: 'pass_desert_sand', color: 0xd8b47a, price: 0, pass: 1 },
+  { id: 'pass_jade', color: 0x1f8f6b, price: 0, pass: 1 },
+  { id: 'pass_steel_blue', color: 0x46648c, price: 0, pass: 1 },
+  { id: 'pass_flame_yellow', color: 0xffc21a, price: 0, pass: 1 },
 ];

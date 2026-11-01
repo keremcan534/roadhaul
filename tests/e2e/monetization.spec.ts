@@ -109,12 +109,13 @@ test('sells the premium paints in the shop, keeps them, and paints a truck in on
   const problems = watchForProblems(page);
   await openMainMenu(page, '?lang=en&store=simulated');
 
-  // Without ads there is nothing to remove: the shop sells the looks (the paints, the design packs, the bundle).
+  // Without ads there is nothing to remove: the shop sells the looks (the paints, the design packs, the bundle, Road
+  // Pass Plus).
   const shopButton = page.locator('[data-action="shop"]');
   await expect(shopButton).toBeVisible();
   await shopButton.click();
   const shop = page.locator('.shop');
-  await expect(shop.locator('.shop__product')).toHaveCount(4);
+  await expect(shop.locator('.shop__product')).toHaveCount(5);
   await expect(shop.locator('.shop__product[data-product="remove_ads"]')).toHaveCount(0);
   const paints = shop.locator('.shop__product[data-product="premium_paints"]');
   await expect(paints.locator('.shop__product-name')).toHaveText('Premium paints');
@@ -162,7 +163,7 @@ test('offers "Remove ads" where there are ads, and then gives the bonus without 
 
   await page.locator('[data-action="shop"]').click();
   const removeAds = page.locator('.shop__product[data-product="remove_ads"]');
-  await expect(page.locator('.shop__product')).toHaveCount(5);
+  await expect(page.locator('.shop__product')).toHaveCount(6);
   await removeAds.locator('[data-action="buy-product"]').click();
   await page.locator('.simulated [data-action="simulated-buy"]').click();
   await expect(removeAds.locator('.shop__owned')).toHaveText('Owned');

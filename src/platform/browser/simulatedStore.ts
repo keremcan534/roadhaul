@@ -12,6 +12,7 @@ const PRICES: Readonly<Record<ProductId, string>> = {
   designs_street: '€1.99',
   designs_neon: '€1.99',
   supporter_pack: '€6.99',
+  road_pass: '€3.99',
 };
 
 /**

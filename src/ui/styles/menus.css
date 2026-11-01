@@ -4033,3 +4033,136 @@ html[data-photo='on'] body > :not(#game-canvas, .photo-mode) {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
   }
 }
+
+/* ---- The Road Pass (src/ui/menus/roadPassSheet.ts), the goals dialog's third tab ---- */
+
+.road-pass {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.road-pass__head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.road-pass__season,
+.road-pass__progress {
+  margin: 0;
+  font-size: 13px;
+}
+
+.road-pass__season {
+  color: var(--rh-fg-2);
+}
+
+.road-pass__meter .meter__fill {
+  transform-origin: left center;
+}
+
+.road-pass__plus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgb(92 200 188 / 45%);
+  border-radius: var(--rh-radius-small);
+  background: rgb(92 200 188 / 8%);
+  font-size: 13px;
+}
+
+.road-pass__plus.is-owned {
+  border-color: var(--rh-teal);
+}
+
+.road-pass__plus-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--rh-teal);
+}
+
+.road-pass__plus-text {
+  flex: 1 1 200px;
+}
+
+.road-pass__tiers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.road-pass__tier {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+  opacity: 0.6;
+}
+
+.road-pass__tier.is-reached {
+  border-color: rgb(242 163 58 / 45%);
+  opacity: 1;
+}
+
+.road-pass__number {
+  color: var(--rh-accent);
+  font: 500 18px/1 var(--rh-display);
+  text-align: center;
+}
+
+.road-pass__reward {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.road-pass__reward--plus {
+  padding-left: 8px;
+  border-left: 1px solid var(--rh-line);
+}
+
+.road-pass__reward-text {
+  flex: 1 1 auto;
+}
+
+.road-pass__swatch {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--rh-teal);
+}
+
+.button.road-pass__claim {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.road-pass__done {
+  color: var(--rh-good);
+  font: 500 12px/1.2 var(--rh-display);
+}
+
+.road-pass__lock {
+  width: 14px;
+  height: 14px;
+  color: var(--rh-muted);
+}
+
+.goals__list.goals__pass[hidden] {
+  display: none;
+}

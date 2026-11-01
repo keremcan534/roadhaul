@@ -134,6 +134,7 @@ import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import type { CareerShown } from './ui/menus/careerSheet';
+import { passRewardText, type RoadPassShown } from './ui/menus/roadPassSheet';
 import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
 import { RoadAlert } from './ui/hud/RoadAlert';
 import { RadioButton } from './ui/hud/RadioButton';
@@ -335,6 +336,7 @@ async function start(strings: Strings): Promise<void> {
   const garage = services.resolve(ServiceKeys.garage);
   const usedTrucks = services.resolve(ServiceKeys.usedTrucks);
   const weeklyCup = services.resolve(ServiceKeys.weeklyCup);
+  const roadPass = services.resolve(ServiceKeys.roadPass);
   const upgrades = services.resolve(ServiceKeys.upgrades);
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
@@ -741,6 +743,18 @@ async function start(strings: Strings): Promise<void> {
       skyWonders: measured.skyWonders,
     };
   };
+  /** The Road Pass as the goals dialog's third tab shows it. */
+  const passShown = (): RoadPassShown => ({
+    season: roadPass.currentSeason,
+    endsInMs: roadPass.endsInMs,
+    points: roadPass.seasonPoints,
+    pointsPerTier: config.roadPass.pointsPerTier,
+    tierReached: roadPass.tierReached,
+    tiers: roadPass.tiers(),
+    plus: roadPass.plus,
+    plusForSale: monetization.storeEnabled && !roadPass.plus,
+    paintColor: (paintId) => content.paints.get(paintId).color,
+  });
   const goalsDialog = new AchievementsDialog(ui, strings, {
     onClaim: (achievementId) => {
       if (achievements.claim(achievementId).ok) {
@@ -748,11 +762,43 @@ async function start(strings: Strings): Promise<void> {
         goalsDialog.showClaimed(achievementId);
       }
     },
+    onClaimFree: (tier) => {
+      const claimed = roadPass.claimFree(tier);
+      if (claimed.ok) {
+        audio.chime();
+        toasts.show(strings.t('toast.passClaimed', { reward: passRewardText(strings, claimed.value) }), 'success');
+        goalsDialog.showPass(passShown());
+      }
+    },
+    onClaimPremium: (tier) => {
+      const claimed = roadPass.claimPremium(tier);
+      if (claimed.ok) {
+        audio.chime();
+        toasts.show(strings.t('toast.passClaimed', { reward: strings.t(`paint.${claimed.value.id}.name`) }), 'success');
+        goalsDialog.showPass(passShown());
+      }
+    },
+    onGetPlus: () => {
+      goalsDialog.close();
+      openShop();
+    },
     onClose: () => goalsDialog.close(),
   });
+  /** The rewards waiting: the goals' and the Road Pass's, on the cup in the panel's header. */
   const showGoalsWaiting = (): void => {
-    hq.goalsWaiting = achievements.claimable;
+    hq.goalsWaiting = achievements.claimable + roadPass.claimable;
   };
+  events.on('RoadPassTierReached', ({ tier }) => {
+    toasts.show(strings.t('toast.passTier', { tier: strings.number(tier) }), 'success');
+    showGoalsWaiting();
+  });
+  events.on('RoadPassClaimed', showGoalsWaiting);
+  events.on('PurchasesChanged', () => {
+    showGoalsWaiting();
+    if (goalsDialog.isOpen) {
+      goalsDialog.showPass(passShown());
+    }
+  });
   events.on('AchievementReached', ({ achievementId }) => {
     const goal = content.achievements.get(achievementId);
     toasts.show(
@@ -1914,7 +1960,7 @@ async function start(strings: Strings): Promise<void> {
       },
       onOpenMap: () => openMap(),
       onOpenCasino: () => openCasino(),
-      onOpenGoals: () => goalsDialog.open(goalsShown(), careerShown()),
+      onOpenGoals: () => goalsDialog.open(goalsShown(), careerShown(), passShown()),
       onOpenCrates: () => openCrates(),
       onClose: () => closePanel(),
     },
@@ -2580,6 +2626,7 @@ async function start(strings: Strings): Promise<void> {
         rivals.update(stepSeconds);
         companyTraffic.update(stepSeconds);
         weeklyCup.update();
+        roadPass.update();
         if (!onRoad()) {
           return;
         }

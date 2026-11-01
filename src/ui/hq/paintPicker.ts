@@ -111,6 +111,19 @@ export function paintPicker(
     swatches.append(node);
   };
 
+  /** A Road Pass colour not collected yet: shown, marked, for nothing yet. */
+  const fromPass = (paintId: string, color: number): void => {
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.className = 'paint-picker__swatch is-pass is-locked';
+    node.dataset.paintId = paintId;
+    node.disabled = true;
+    node.style.setProperty('--rh-swatch', `#${color.toString(16).padStart(6, '0')}`);
+    node.setAttribute('aria-label', `${nameOf(paintId)} · ${strings.t('pass.title')}`);
+    node.title = node.getAttribute('aria-label')!;
+    swatches.append(node);
+  };
+
   /** A premium colour not bought yet: shown, and a tap on it opens the shop. */
   const forSale = (paintId: string, color: number): void => {
     const node = document.createElement('button');
@@ -131,6 +144,8 @@ export function paintPicker(
       forSale(offer.paint.id, offer.paint.color);
     } else if (rarity !== undefined && offer.locked) {
       fromCrate(offer.paint.id, offer.paint.color, rarity);
+    } else if (offer.pass && offer.locked) {
+      fromPass(offer.paint.id, offer.paint.color);
     } else {
       swatch(
         offer.paint.id,

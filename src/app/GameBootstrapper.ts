@@ -16,6 +16,7 @@ import { RoadEventService } from '../systems/world/RoadEventService';
 import { ConvoyService } from '../systems/world/ConvoyService';
 import { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
 import { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
+import { RoadPassService } from '../systems/rewards/RoadPassService';
 import { CityIncidentService } from '../systems/world/CityIncidentService';
 import { NewsService } from '../systems/world/NewsService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -328,6 +329,23 @@ export class GameBootstrapper {
         ServiceKeys.review,
         new ReviewService(config.review, clock, storage, events, logger.withCategory('Review')),
       );
+      // The Road Pass: seasons of tiers, its Plus track (looks only) through the store; before the garage, whose
+      // paint shop asks it which pass colours are the company's.
+      const roadPass = container.register(
+        ServiceKeys.roadPass,
+        new RoadPassService(
+          catalog,
+          economy,
+          crates,
+          supplies,
+          monetization,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          config.roadPass,
+          events,
+          logger.withCategory('RoadPass'),
+        ),
+      );
       const garage = container.register(
         ServiceKeys.garage,
         new GarageService(
@@ -344,6 +362,7 @@ export class GameBootstrapper {
           perks,
           monetization,
           crates,
+          roadPass,
         ),
       );
       // The used-truck market: a few used trucks every few hours, sold through the garage.
@@ -500,6 +519,7 @@ export class GameBootstrapper {
           roadEvents,
           usedTrucks,
           weeklyCup,
+          roadPass,
           dailyReward,
           achievements,
           crates,

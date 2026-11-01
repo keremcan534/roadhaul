@@ -21,6 +21,7 @@ import type { CareerService } from '../company/CareerService';
 import type { RoadEventService } from '../world/RoadEventService';
 import type { UsedTruckMarket } from '../vehicles/UsedTruckMarket';
 import type { WeeklyCupService } from '../rivals/WeeklyCupService';
+import type { RoadPassService } from '../rewards/RoadPassService';
 import type { DailyRewardService } from '../rewards/DailyRewardService';
 import type { AchievementService } from '../achievements/AchievementService';
 import type { LevelRewardService } from '../company/LevelRewardService';
@@ -69,6 +70,8 @@ export interface GameSessionDependencies {
   readonly usedTrucks: UsedTruckMarket;
   /** The weekly cup: the week's points, the last cup's result. */
   readonly weeklyCup: WeeklyCupService;
+  /** The Road Pass: the season's points, the tiers collected, the colours kept. */
+  readonly roadPass: RoadPassService;
   /** The daily reward's streak. */
   readonly dailyReward: DailyRewardService;
   /** The company's goals. */
@@ -126,6 +129,7 @@ export class GameSessionService {
       events.on('VehiclePurchased', saveNow),
       events.on('VehicleSold', saveNow),
       events.on('WeeklyCupEnded', saveNow),
+      events.on('RoadPassClaimed', saveNow),
       events.on('UpgradePurchased', saveNow),
       events.on('VehiclePainted', saveNow),
       events.on('ActiveVehicleChanged', saveNow),
@@ -302,6 +306,7 @@ export class GameSessionService {
       roadEvents,
       usedTrucks,
       weeklyCup,
+      roadPass,
       dailyReward,
       achievements,
       crates,
@@ -341,6 +346,7 @@ export class GameSessionService {
       roadEvents: roadEvents.snapshot(),
       usedTrucks: usedTrucks.snapshot(),
       weeklyCup: weeklyCup.snapshot(),
+      roadPass: roadPass.snapshot(),
       daily: dailyReward.snapshot(),
       achievements: achievements.snapshot(),
       crates: crates.snapshot(),
@@ -410,6 +416,7 @@ export class GameSessionService {
       roadEvents,
       usedTrucks,
       weeklyCup,
+      roadPass,
       dailyReward,
       achievements,
       crates,
@@ -437,6 +444,7 @@ export class GameSessionService {
     roadEvents.restore(save.roadEvents);
     usedTrucks.restore(save.usedTrucks);
     weeklyCup.restore(save.weeklyCup);
+    roadPass.restore(save.roadPass);
     dailyReward.restore(save.daily);
     crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
     levelRewards.restore(save.levelRewards);

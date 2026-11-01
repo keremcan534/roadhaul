@@ -64,6 +64,7 @@ describe('createNewSaveGameData', () => {
       roadEvents: { warned: false, fined: false, knocked: false },
       usedTrucks: { period: null, sold: [] },
       weeklyCup: { week: null, points: 0, last: null },
+      roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
     });
   });
 

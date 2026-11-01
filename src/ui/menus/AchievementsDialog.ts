@@ -4,11 +4,12 @@ import type { Strings } from '../i18n';
 import { icon, withIcon } from '../icons';
 import type { IconName } from '../iconShapes';
 import { careerSheet, type CareerShown } from './careerSheet';
+import { roadPassSheet, type RoadPassActions, type RoadPassShown } from './roadPassSheet';
 
-/** The dialog's two pages: the goals, and the career's record. */
-export type GoalsPage = 'goals' | 'career';
+/** The dialog's pages: the goals, the career's record, the Road Pass. */
+export type GoalsPage = 'goals' | 'career' | 'pass';
 
-export interface AchievementsActions {
+export interface AchievementsActions extends RoadPassActions {
   readonly onClaim: (achievementId: string) => void;
   readonly onClose: () => void;
 }
@@ -61,6 +62,7 @@ export class AchievementsDialog {
   private readonly intro: HTMLParagraphElement;
   private readonly list: HTMLDivElement;
   private readonly career: HTMLDivElement;
+  private readonly pass: HTMLDivElement;
   private readonly tabs: Readonly<Record<GoalsPage, HTMLButtonElement>>;
   private page: GoalsPage = 'goals';
 
@@ -86,16 +88,22 @@ export class AchievementsDialog {
       tabRow.append(node);
       return node;
     };
-    this.tabs = { goals: tab('goals', strings.t('career.tab.goals'), 'trophy'), career: tab('career', strings.t('career.tab.career'), 'route') };
+    this.tabs = {
+      goals: tab('goals', strings.t('career.tab.goals'), 'trophy'),
+      career: tab('career', strings.t('career.tab.career'), 'route'),
+      pass: tab('pass', strings.t('pass.tab'), 'star'),
+    };
     this.intro = element(document, 'p', 'goals__intro', strings.t('achievements.intro'));
     this.list = element(document, 'div', 'goals__list');
     this.career = element(document, 'div', 'goals__list goals__career');
+    this.pass = element(document, 'div', 'goals__list goals__pass');
     panel.append(
       head,
       tabRow,
       this.intro,
       this.list,
       this.career,
+      this.pass,
       withIcon(button(document, 'button--secondary goals__close', strings.t('settings.close'), 'close-goals', actions.onClose), 'close'),
     );
     this.overlay.append(panel);
@@ -106,12 +114,20 @@ export class AchievementsDialog {
     return !this.overlay.hidden;
   }
 
-  /** Opens on the goals, the career's record ready on its tab. */
-  open(goals: readonly AchievementShown[], career: CareerShown): void {
+  /** Opens on `page` (the goals unless said), the career's record and the Road Pass ready on their tabs. */
+  open(goals: readonly AchievementShown[], career: CareerShown, pass: RoadPassShown, page: GoalsPage = 'goals'): void {
     this.show(goals);
     this.career.replaceChildren(careerSheet(this.overlay.ownerDocument, this.strings, career));
-    this.showPage('goals');
+    this.showPass(pass);
+    this.showPage(page);
     this.overlay.hidden = false;
+  }
+
+  /** The Road Pass as it stands now (after a reward is collected, or Plus bought). */
+  showPass(pass: RoadPassShown): void {
+    const scroll = this.pass.scrollTop;
+    this.pass.replaceChildren(roadPassSheet(this.overlay.ownerDocument, this.strings, pass, this.actions));
+    this.pass.scrollTop = scroll;
   }
 
   /** The page shown: the goals or the career. */
@@ -128,11 +144,15 @@ export class AchievementsDialog {
     }
     this.list.hidden = page !== 'goals';
     this.career.hidden = page !== 'career';
+    this.pass.hidden = page !== 'pass';
     this.overlay.dataset.page = page;
-    this.title.textContent = this.strings.t(page === 'goals' ? 'achievements.title' : 'career.title');
-    this.intro.textContent = this.strings.t(page === 'goals' ? 'achievements.intro' : 'career.intro');
+    const [title, intro] =
+      page === 'goals' ? ['achievements.title', 'achievements.intro'] : page === 'career' ? ['career.title', 'career.intro'] : ['pass.title', 'pass.intro'];
+    this.title.textContent = this.strings.t(title);
+    this.intro.textContent = this.strings.t(intro);
     this.list.scrollTop = 0;
     this.career.scrollTop = 0;
+    this.pass.scrollTop = 0;
   }
 
   /** The goals as they stand: to collect first, then the closest to done, then those collected. */

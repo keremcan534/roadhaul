@@ -6,8 +6,9 @@
  * - `premium_paints`: the garage's premium colours (PaintDefinition.premium).
  * - `designs_street`, `designs_neon`: three truck designs each (LiveryDefinition.pack).
  * - `supporter_pack`: all of the above in one (PRODUCT_BUNDLES).
+ * - `road_pass`: Road Pass Plus, the pass's second track of the season's colours, every season (RoadPassService).
  */
-export const PRODUCT_IDS = ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon', 'supporter_pack'] as const;
+export const PRODUCT_IDS = ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon', 'supporter_pack', 'road_pass'] as const;
 export type ProductId = (typeof PRODUCT_IDS)[number];
 
 export function isProductId(value: unknown): value is ProductId {

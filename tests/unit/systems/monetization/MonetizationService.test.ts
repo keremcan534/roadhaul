@@ -310,6 +310,7 @@ describe('purchases', () => {
       'designs_street',
       'designs_neon',
       'supporter_pack',
+      'road_pass',
     ]);
 
     context.monetization.attachAds(context.ads);
@@ -319,6 +320,7 @@ describe('purchases', () => {
       'designs_street',
       'designs_neon',
       'supporter_pack',
+      'road_pass',
     ]);
   });
 
