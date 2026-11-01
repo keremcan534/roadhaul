@@ -2567,9 +2567,11 @@ async function start(strings: Strings): Promise<void> {
         skyWonders.observe('meteor', shootingStars.streaking, watchingSky);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
-        // What lies far off in the haze is not drawn.
-        track.showAround(eye.x, eye.z);
-        scenery.showAround(eye.x, eye.z);
+        // What lies far off in the haze is not drawn, nor whole tiles out of view (but where the sun's shadow map
+        // is drawn: a tile out of view can cast a shadow into it).
+        const view = renderHost.shadowsOn ? null : renderHost.currentView();
+        track.showAround(eye.x, eye.z, view);
+        scenery.showAround(eye.x, eye.z, view);
         streetLamps.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);

@@ -1291,8 +1291,11 @@ export class DrivingWorld implements DebrisSolids {
         }
       }
     }
-    for (let i = 0; i < this.buildings.length; i++) {
-      const box = this.buildings[i]!;
+    // Only the buildings filed where the debris is can reach it (BUCKET_METERS, filed NEAR_BUILDING_METERS wider).
+    const near = radius <= NEAR_BUILDING_METERS ? this.buildingBuckets.at(x, z) : null;
+    const count = near === null ? this.buildings.length : near.length;
+    for (let n = 0; n < count; n++) {
+      const box = this.buildings[near === null ? n : near[n]!]!;
       const dx = x - clamp(x, box.minX, box.maxX);
       const dz = z - clamp(z, box.minZ, box.maxZ);
       const distanceSquared = dx * dx + dz * dz;
@@ -1440,8 +1443,12 @@ export class DrivingWorld implements DebrisSolids {
       }
     }
 
-    for (let i = 0; i < this.buildings.length; i++) {
-      const box = this.buildings[i]!;
+    // Only the buildings filed in the circle's cell can reach it, even once pushed by them (at most its radius):
+    // each is filed NEAR_BUILDING_METERS beyond its walls. Over 800 boxes a circle, every step, before.
+    const near = radius * 2 <= NEAR_BUILDING_METERS ? this.buildingBuckets.at(cx, cz) : null;
+    const count = near === null ? this.buildings.length : near.length;
+    for (let n = 0; n < count; n++) {
+      const box = this.buildings[near === null ? n : near[n]!]!;
       const nearestX = clamp(cx, box.minX, box.maxX);
       const nearestZ = clamp(cz, box.minZ, box.maxZ);
       const dx = cx - nearestX;

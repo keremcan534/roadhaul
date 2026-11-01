@@ -18,6 +18,7 @@ import {
   Quaternion,
   Vector2,
   Vector3,
+  type Frustum,
   type Material,
   type Scene,
   type Texture,
@@ -506,13 +507,14 @@ export class TrackView {
   /**
    * Shows the forest's and the country's tiles near (x, z), the camera, and
    * hides the ones lost in the haze (FAR_CULL_METERS); the forest's further
-   * than TREE_DETAIL_METERS without their shadows and inner trunks.
+   * than TREE_DETAIL_METERS without their shadows and inner trunks; given
+   * the camera's `view`, also the tiles out of it (FarCulling.update).
    * Allocation-free: call it every frame once the camera has moved.
    */
-  showAround(x: number, z: number): void {
-    this.culling.update(x, z);
+  showAround(x: number, z: number, view: Frustum | null = null): void {
+    this.culling.update(x, z, view);
     this.treeDetail.update(x, z);
-    this.townDetail.update(x, z);
+    this.townDetail.update(x, z, view);
   }
 
   /** How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): lit windows glow. Cheap to call every frame. */

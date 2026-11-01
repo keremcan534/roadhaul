@@ -22,6 +22,7 @@ import {
   UniformsUtils,
   Vector2,
   Vector3,
+  type Frustum,
   type Scene,
 } from 'three';
 import type { DebrisSimulation } from '../../domain/crash/DebrisSimulation';
@@ -430,9 +431,12 @@ export class SceneryView {
     this.resolution.value.set(Math.max(1, widthPixels), Math.max(1, heightPixels));
   }
 
-  /** Shows the tiles near (x, z), the camera, and hides the ones lost in the haze (FAR_CULL_METERS). Allocation-free. */
-  showAround(x: number, z: number): void {
-    this.culling.update(x, z);
+  /**
+   * Shows the tiles near (x, z), the camera, and hides the ones lost in the haze (FAR_CULL_METERS); given the
+   * camera's `view`, also those out of it (FarCulling.update). Allocation-free.
+   */
+  showAround(x: number, z: number, view: Frustum | null = null): void {
+    this.culling.update(x, z, view);
   }
 
   /**

@@ -1,5 +1,16 @@
-import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import {
+  ACESFilmicToneMapping,
+  Frustum,
+  Matrix4,
+  PCFShadowMap,
+  PerspectiveCamera,
+  Scene,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
 import { compilePieces } from './compilePieces';
+import { opaqueByProgram } from './opaqueByProgram';
 import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
@@ -33,6 +44,8 @@ export class RenderHost {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(55, 1, 0.5, 1000);
+  private readonly view = new Frustum();
+  private readonly viewProjection = new Matrix4();
   /**
    * True when WebGL is emulated on the CPU (no GPU acceleration, headless
    * test browsers). Every pixel is then expensive, so the host renders at
@@ -77,6 +90,7 @@ export class RenderHost {
     // would rebuild every lit shader.
     this.renderer.shadowMap.enabled = settings.shadowMapSize > 0;
     this.renderer.shadowMap.type = PCFShadowMap;
+    this.renderer.setOpaqueSort(opaqueByProgram(this.renderer.properties));
     this.post =
       settings.postProcessing && PostProcessing.supported(this.renderer)
         ? new PostProcessing(this.renderer, {
@@ -210,6 +224,22 @@ export class RenderHost {
       }
     }
     this.precompile();
+  }
+
+  /** Whether the preset draws shadow maps: then things out of view can still cast shadows into it. */
+  get shadowsOn(): boolean {
+    return this.renderer.shadowMap.enabled;
+  }
+
+  /**
+   * The camera's view as it stands now (its matrices brought up to date),
+   * for leaving out whole tiles beyond it (FarCulling). Call it once the
+   * camera has moved for the frame. Allocation-free.
+   */
+  currentView(): Frustum {
+    this.camera.updateMatrixWorld();
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    return this.view.setFromProjectionMatrix(this.viewProjection);
   }
 
   private programCount(): number {
