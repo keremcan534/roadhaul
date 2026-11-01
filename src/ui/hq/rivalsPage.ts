@@ -1,3 +1,6 @@
+import type { CrateTier } from '../../data/definitions/CrateTier';
+import type { Credits } from '../../data/units';
+import type { WeeklyCupService } from '../../systems/rivals/WeeklyCupService';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
@@ -20,6 +23,10 @@ export interface RivalsPageServices {
   readonly now: () => number;
   /** The region's Gazette. */
   readonly news: NewsService;
+  /** The weekly cup against the rivals. */
+  readonly cup: WeeklyCupService;
+  /** What first, second and third place win, in order (GameConfig.weeklyCup.rewards). */
+  readonly cupRewards: readonly { readonly credits: Credits; readonly crate: CrateTier | null }[];
 }
 
 export interface RivalsPageActions {
@@ -83,6 +90,7 @@ export class RivalsPage {
         'hq__note',
         strings.t('hq.rivals.note', { share: strings.percent(terms.leadShare), bonus: strings.percent(terms.leaderBonus) }),
       ),
+      this.section('cup', strings.t('hq.cup.title'), this.cupNote(), this.cupTable()),
       this.section('gazette', strings.t('news.title'), null, gazette(document, strings, this.services.news.items, this.services.company.companyName)),
       this.section('league', strings.t('hq.rivals.league'), strings.t('hq.rivals.leagueNote'), league),
       this.section('cities', strings.t('hq.rivals.cities'), strings.t('hq.rivals.citiesNote'), cities),
@@ -123,6 +131,47 @@ export class RivalsPage {
     }
     node.append(content);
     return node;
+  }
+
+  /** When the week's cup ends, what its top three win, and how the last one went. */
+  private cupNote(): string {
+    const { strings } = this;
+    const { cup, cupRewards } = this.services;
+    const prizes = cupRewards
+      .map((prize, index) =>
+        strings.t('hq.cup.prize', {
+          place: strings.number(index + 1),
+          credits: strings.money(prize.credits),
+          crate: prize.crate === null ? '' : strings.t(`crate.name.${prize.crate}`),
+        }),
+      )
+      .join(' · ');
+    const last = cup.lastResult;
+    const lastText = last === null ? '' : ` ${strings.t('hq.cup.last', { place: strings.number(last.rank) })}`;
+    return `${strings.t('hq.cup.note', { time: strings.timeSpan(cup.endsInMs) })} ${prizes}.${lastText}`;
+  }
+
+  /** The week's standings: place, company, points. */
+  private cupTable(): HTMLElement {
+    const { document, strings } = this;
+    const table = element(document, 'ol', 'league cup');
+    this.services.cup.standings().forEach((entry, index) => {
+      const row = element(document, 'li', 'league__row');
+      row.dataset.companyId = entry.companyId;
+      row.classList.toggle('is-player', entry.companyId === PLAYER_COMPANY_ID);
+      row.classList.toggle('is-prize', index < this.services.cupRewards.length);
+      const name = element(document, 'span', 'league__name');
+      name.append(this.swatch(entry.companyId), element(document, 'span', '', this.companyName(entry.companyId, true)));
+      const who = element(document, 'div', 'league__who');
+      who.append(name);
+      row.append(
+        element(document, 'span', 'league__rank', String(index + 1)),
+        who,
+        element(document, 'span', 'league__value', strings.t('hq.cup.points', { points: strings.number(entry.points) })),
+      );
+      table.append(row);
+    });
+    return table;
   }
 
   private leagueRow(entry: LeagueEntry, rank: number): HTMLElement {

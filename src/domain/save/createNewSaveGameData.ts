@@ -71,6 +71,8 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     research: { points: 0, researched: [] },
     career: emptyCareer(),
     roadEvents: { warned: false, fined: false, knocked: false },
+    usedTrucks: { period: null, sold: [] },
+    weeklyCup: { week: null, points: 0, last: null },
   };
 }
 

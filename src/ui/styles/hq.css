@@ -2118,3 +2118,100 @@
   padding: 4px 8px;
   font-size: 13px;
 }
+
+/* ---- The used-truck market and the company's own trucks (src/ui/hq/usedTrucks.ts) ---- */
+
+.used-truck__badge {
+  border-color: rgb(92 200 188 / 55%);
+  color: var(--rh-teal);
+}
+
+.used-truck.is-sold {
+  opacity: 0.55;
+}
+
+/* What it costs new, struck through, and how much less it is. */
+.used-truck__prices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-right: auto;
+}
+
+.used-truck__new {
+  color: var(--rh-muted);
+  font: 500 12px/1.2 var(--rh-numeric);
+  text-decoration: line-through;
+}
+
+.used-truck__saving {
+  color: var(--rh-good);
+  font: 600 13px/1.2 var(--rh-numeric);
+}
+
+.owned-trucks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.owned-trucks__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--rh-line);
+  border-radius: var(--rh-radius-small);
+  background: var(--rh-surface-2);
+}
+
+.owned-trucks__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.owned-trucks__name {
+  font: 500 15px/1.2 var(--rh-display);
+  letter-spacing: 0.03em;
+}
+
+.owned-trucks__details {
+  color: var(--rh-muted);
+  font-size: 12px;
+}
+
+.button.owned-trucks__sell {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* ---- The weekly cup (rivalsPage.ts): the top three's places in gold, silver and bronze ---- */
+
+.cup .league__row.is-prize .league__rank {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--rh-accent-ink);
+  font-size: 15px;
+  line-height: 26px;
+}
+
+.cup .league__row.is-prize:nth-child(1) .league__rank {
+  background: #f2c230;
+}
+
+.cup .league__row.is-prize:nth-child(2) .league__rank {
+  background: #c7ced6;
+}
+
+.cup .league__row.is-prize:nth-child(3) .league__rank {
+  background: #c98a4b;
+}

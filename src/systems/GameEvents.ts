@@ -17,7 +17,7 @@ import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
 
 /** What earned a crate. */
-export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad';
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -127,6 +127,29 @@ export interface GameEvents {
   };
   /** The company bought a truck at the dealer. It waits in the garage. */
   VehiclePurchased: {
+    readonly instanceId: string;
+    readonly definitionId: string;
+    readonly price: Credits;
+  };
+  /** A convoy set off on a road ahead (ConvoyService). */
+  ConvoyStarted: {
+    readonly x: number;
+    readonly z: number;
+  };
+  /** The convoy reached its end: how far the truck rode with it, and what that paid (already paid; 0 for too little). */
+  ConvoyEnded: {
+    readonly riddenMeters: number;
+    readonly reward: Credits;
+  };
+  /** A week's cup ended (WeeklyCupService): where the company finished, and what it won (already paid). */
+  WeeklyCupEnded: {
+    readonly week: number;
+    readonly rank: number;
+    readonly credits: Credits;
+    readonly crate: CrateTier | null;
+  };
+  /** The company sold a truck (GarageService.sell): `price` paid. */
+  VehicleSold: {
     readonly instanceId: string;
     readonly definitionId: string;
     readonly price: Credits;

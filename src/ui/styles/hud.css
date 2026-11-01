@@ -1377,6 +1377,14 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   height: 20px;
 }
 
+.road-alert__limit[hidden] {
+  display: none;
+}
+
+.road-alert[data-alert='riding'] {
+  border-color: rgb(85 197 133 / 70%);
+}
+
 /* A round limit sign: a red ring, the number in black. */
 .road-alert__limit {
   display: grid;
@@ -1412,4 +1420,43 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   to {
     opacity: 0;
   }
+}
+
+/* ---- The cab radio's button (src/ui/hud/RadioButton.ts), beside the camera button ---- */
+
+.radio-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: calc(env(safe-area-inset-right, 0px) + 70px);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg-2);
+  touch-action: manipulation;
+  transition: transform var(--rh-quick) var(--rh-ease);
+}
+
+.radio-button[hidden] {
+  display: none;
+}
+
+.radio-button:active {
+  transform: scale(0.95);
+}
+
+.radio-button.is-on {
+  border-color: var(--rh-accent);
+  color: var(--rh-fg);
+}
+
+.radio-button__icon {
+  width: 24px;
+  height: 24px;
 }

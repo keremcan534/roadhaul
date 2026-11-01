@@ -18,6 +18,7 @@ import {
 } from '../../data/config/controls';
 import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfig';
 import { isLanguageChoice, type LanguageChoice } from '../../data/config/languages';
+import { isRadioChoice, type RadioChoice } from '../../data/config/radio';
 
 /** Settings of this device, kept apart from the company's save: they belong to the phone, not the game. */
 export interface DeviceSettings {
@@ -44,6 +45,8 @@ export interface DeviceSettings {
   readonly weather: WeatherChoice;
   /** The season: the calendar's, or held as one. */
   readonly season: SeasonChoice;
+  /** The cab radio: off, or the station last tuned to. */
+  readonly radio: RadioChoice;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
@@ -61,6 +64,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   clockMinutes: 10 * 60,
   weather: 'auto',
   season: 'auto',
+  radio: 'off',
 });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
@@ -70,8 +74,22 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { language, quality, sound, vibration, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather, season } =
-      parsed as Record<string, unknown>;
+    const {
+      language,
+      quality,
+      sound,
+      vibration,
+      stats,
+      steering,
+      tiltSensitivity,
+      controlSize,
+      camera,
+      timeFlow,
+      clockMinutes,
+      weather,
+      season,
+      radio,
+    } = parsed as Record<string, unknown>;
     return {
       language: isLanguageChoice(language) ? language : DEFAULT_SETTINGS.language,
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
@@ -89,6 +107,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
           : DEFAULT_SETTINGS.clockMinutes,
       weather: isWeatherChoice(weather) ? weather : DEFAULT_SETTINGS.weather,
       season: isSeasonChoice(season) ? season : DEFAULT_SETTINGS.season,
+      radio: isRadioChoice(radio) ? radio : DEFAULT_SETTINGS.radio,
     };
   } catch {
     return DEFAULT_SETTINGS;

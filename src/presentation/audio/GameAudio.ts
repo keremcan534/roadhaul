@@ -231,6 +231,11 @@ export class GameAudio {
     }
   }
 
+  /** Where the cab radio plays (CabRadio): the context and the master volume, once the sound has started; else null. */
+  get output(): { readonly context: AudioContext; readonly destination: AudioNode } | null {
+    return this.context === null || this.graph === null ? null : { context: this.context, destination: this.graph.master };
+  }
+
   /** A button pressed. */
   click(): void {
     this.note(1100, 0, 0.05, 0.08, 'sine');

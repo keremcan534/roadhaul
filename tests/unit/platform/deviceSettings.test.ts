@@ -16,6 +16,7 @@ const DEFAULTS: DeviceSettings = {
   clockMinutes: 600,
   weather: 'auto',
   season: 'auto',
+  radio: 'off',
 };
 
 describe('device settings', () => {
@@ -37,6 +38,7 @@ describe('device settings', () => {
       clockMinutes: 21 * 60 + 15,
       weather: 'rain',
       season: 'winter',
+      radio: 'night',
     };
     expect(saveSettings(storage, picked)).toBe(true);
 

@@ -9,6 +9,9 @@ import type { FacilityService } from '../systems/company/FacilityService';
 import type { ResearchService } from '../systems/company/ResearchService';
 import type { CareerService } from '../systems/company/CareerService';
 import type { RoadEventService } from '../systems/world/RoadEventService';
+import type { ConvoyService } from '../systems/world/ConvoyService';
+import type { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
+import type { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
 import type { CityIncidentService } from '../systems/world/CityIncidentService';
 import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -102,11 +105,15 @@ export const ServiceKeys = Object.freeze({
   career: serviceKey<CareerService>('CareerService'),
   /** Speed cameras, road works, stranded drivers and the safe-driving bonus. */
   roadEvents: serviceKey<RoadEventService>('RoadEventService'),
+  /** Convoys to ride with. */
+  convoy: serviceKey<ConvoyService>('ConvoyService'),
   /** The company levels' rewards, waiting to be collected. */
   levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),
+  /** The used-truck market: a few used trucks every few hours. */
+  usedTrucks: serviceKey<UsedTruckMarket>('UsedTruckMarket'),
   /** Ads and purchases (spec §35–36), behind the platform's AdService and PurchaseStore. */
   monetization: serviceKey<MonetizationService>('MonetizationService'),
   upgrades: serviceKey<UpgradeService>('UpgradeService'),
@@ -116,6 +123,8 @@ export const ServiceKeys = Object.freeze({
   fleet: serviceKey<FleetService>('FleetService'),
   /** The rival companies, the cities' standing, campaigns and tenders (spec §65 V3). */
   rivals: serviceKey<RivalService>('RivalService'),
+  /** The weekly cup against the rivals. */
+  weeklyCup: serviceKey<WeeklyCupService>('WeeklyCupService'),
   /** The fleet's and the rivals' trucks in the traffic around the truck. */
   companyTraffic: serviceKey<CompanyTraffic>('CompanyTraffic'),
   saves: serviceKey<SaveService>('SaveService'),

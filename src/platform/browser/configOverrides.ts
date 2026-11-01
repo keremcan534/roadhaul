@@ -88,10 +88,12 @@ export function requestedCityIncident(query: QueryParameters): CityIncidentKind 
 
 /**
  * `?road=stranded` sends a stranded driver ahead of the truck as soon as it
- * drives (RoadEventService), for a look. Null when the URL does not say.
+ * drives (RoadEventService), `?road=convoy` a convoy (ConvoyService), for a
+ * look. Null when the URL does not say.
  */
-export function requestedRoadEvent(query: QueryParameters): 'stranded' | null {
-  return query.get('road')?.trim() === 'stranded' ? 'stranded' : null;
+export function requestedRoadEvent(query: QueryParameters): 'stranded' | 'convoy' | null {
+  const text = query.get('road')?.trim();
+  return text === 'stranded' || text === 'convoy' ? text : null;
 }
 
 /**

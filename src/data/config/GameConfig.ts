@@ -8,6 +8,7 @@ import { ROAD_KINDS, type RoadKind } from '../definitions/MapDefinition';
 import { BOOSTER_KINDS, type BoosterKind } from '../definitions/BoosterKind';
 import { CRATE_TIERS, isCrateTier, type CrateTier } from '../definitions/CrateTier';
 import { PAINT_RARITIES, type PaintRarity } from '../definitions/PaintDefinition';
+import { RIVAL_PERSONALITIES, type RivalPersonality } from '../definitions/RivalCompanyDefinition';
 import { SEASONS, type Season } from '../definitions/Season';
 import type { Credits, Fraction } from '../units';
 
@@ -334,6 +335,51 @@ export interface GameConfig {
     readonly farMeters: number;
     /** How fast the chase goes, m/s. */
     readonly chaseSpeed: number;
+  };
+  /** The convoys (ConvoyService): three trucks to ride with now and then, paid by the kilometre. */
+  readonly convoy: {
+    /** The first after this many seconds on the road, then again after a gap from–to. */
+    readonly firstAfterSeconds: number;
+    readonly gapSeconds: readonly [number, number];
+    /** It forms on a road this far ahead, from–to, bound for one this far, meters. */
+    readonly aheadMeters: readonly [number, number];
+    readonly routeMeters: readonly [number, number];
+    /** Its pace, m/s, and the longest it drives, seconds. */
+    readonly speed: number;
+    readonly mostSeconds: number;
+    /** The truck rides with it within this of one of its trucks, meters, faster than this, m/s. */
+    readonly rideMeters: number;
+    readonly leastSpeed: number;
+    /** Riding with it pays this a kilometre, in tens, if at least this far. */
+    readonly creditsPerKm: Credits;
+    readonly leastRiddenMeters: number;
+  };
+  /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
+  readonly weeklyCup: {
+    /** A delivery of the company's own earns a point per this many credits of its pay, at least this many… */
+    readonly creditsPerPoint: Credits;
+    readonly leastDeliveryPoints: number;
+    /** …and a hired driver's a point per this many credits of its profit. */
+    readonly fleetCreditsPerPoint: Credits;
+    /** A rival earns this many points a week for each truck it runs, by its manner, its luck that week from–to. */
+    readonly rivalPointsPerTruck: number;
+    readonly mannerFactors: Readonly<Record<RivalPersonality, number>>;
+    readonly rivalLuck: readonly [number, number];
+    /** What first, second and third place win: credits and a crate (null for none). */
+    readonly rewards: readonly { readonly credits: Credits; readonly crate: CrateTier | null }[];
+  };
+  /** The used-truck market in the garage (UsedTruckMarket). */
+  readonly usedTrucks: {
+    /** A new list every this many hours of the clock, of this many trucks. */
+    readonly refreshHours: number;
+    readonly offers: number;
+    /** Cheaper than new by a share from–to, worn from–to, driven from–to km. */
+    readonly discount: readonly [Fraction, Fraction];
+    readonly damage: readonly [Fraction, Fraction];
+    readonly odometerKm: readonly [number, number];
+    /** How likely one is in another colour, and with an upgrade fitted. */
+    readonly paintChance: Fraction;
+    readonly upgradeChance: Fraction;
   };
   /** The road's events (RoadEventService): speed cameras, road works, stranded drivers, the safe-driving bonus. */
   readonly roadEvents: {
@@ -694,6 +740,40 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     pointsPerDelivery: 1,
     perfectBonusPoints: 1,
   },
+  convoy: {
+    firstAfterSeconds: 360,
+    gapSeconds: [540, 900],
+    aheadMeters: [120, 320],
+    routeMeters: [2200, 3800],
+    speed: 17,
+    mostSeconds: 420,
+    rideMeters: 45,
+    leastSpeed: 5,
+    creditsPerKm: 160,
+    leastRiddenMeters: 300,
+  },
+  weeklyCup: {
+    creditsPerPoint: 100,
+    leastDeliveryPoints: 5,
+    fleetCreditsPerPoint: 200,
+    rivalPointsPerTruck: 90,
+    mannerFactors: { ruthless: 1.2, flashy: 1.05, steady: 0.95, thrifty: 0.85 },
+    rivalLuck: [0.8, 1.2],
+    rewards: [
+      { credits: 15_000, crate: 'gold' },
+      { credits: 8_000, crate: 'silver' },
+      { credits: 4_000, crate: 'bronze' },
+    ],
+  },
+  usedTrucks: {
+    refreshHours: 6,
+    offers: 3,
+    discount: [0.25, 0.45],
+    damage: [0.08, 0.35],
+    odometerKm: [40_000, 420_000],
+    paintChance: 0.5,
+    upgradeChance: 0.4,
+  },
   roadEvents: {
     cameraReachMeters: 14,
     toleranceShare: 0.08,
@@ -825,6 +905,9 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     casino,
     skyWonders,
     research,
+    convoy,
+    weeklyCup,
+    usedTrucks,
     roadEvents,
     cityLife,
     review,
@@ -1080,6 +1163,42 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
   validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
   validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
+  for (const key of ['firstAfterSeconds', 'speed', 'mostSeconds', 'rideMeters', 'leastSpeed', 'creditsPerKm', 'leastRiddenMeters'] as const) {
+    validator.positiveNumber(convoy[key], `convoy.${key}`);
+  }
+  for (const key of ['gapSeconds', 'aheadMeters', 'routeMeters'] as const) {
+    const [least, most] = convoy[key];
+    validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
+  }
+  for (const key of ['creditsPerPoint', 'fleetCreditsPerPoint', 'rivalPointsPerTruck'] as const) {
+    validator.positiveNumber(weeklyCup[key], `weeklyCup.${key}`);
+  }
+  validator.nonNegativeInteger(weeklyCup.leastDeliveryPoints, 'weeklyCup.leastDeliveryPoints');
+  for (const personality of RIVAL_PERSONALITIES) {
+    validator.positiveNumber(weeklyCup.mannerFactors[personality], `weeklyCup.mannerFactors.${personality}`);
+  }
+  validator.check(
+    weeklyCup.rivalLuck[0] > 0 && weeklyCup.rivalLuck[1] >= weeklyCup.rivalLuck[0],
+    'weeklyCup.rivalLuck',
+    'must be a range above 0, the least first',
+  );
+  weeklyCup.rewards.forEach((reward, index) => {
+    validator.nonNegativeInteger(reward.credits, `weeklyCup.rewards[${index}].credits`);
+    validator.check(reward.crate === null || isCrateTier(reward.crate), `weeklyCup.rewards[${index}].crate`, 'must be a crate tier or null');
+  });
+  validator.positiveNumber(usedTrucks.refreshHours, 'usedTrucks.refreshHours');
+  validator.nonNegativeInteger(usedTrucks.offers, 'usedTrucks.offers');
+  validator.fraction(usedTrucks.paintChance, 'usedTrucks.paintChance');
+  validator.fraction(usedTrucks.upgradeChance, 'usedTrucks.upgradeChance');
+  for (const key of ['discount', 'damage'] as const) {
+    const [least, most] = usedTrucks[key];
+    validator.check(least >= 0 && most <= 1 && most >= least, `usedTrucks.${key}`, 'must be a range within 0 to 1, the least first');
+  }
+  validator.check(
+    usedTrucks.odometerKm[0] >= 0 && usedTrucks.odometerKm[1] >= usedTrucks.odometerKm[0],
+    'usedTrucks.odometerKm',
+    'must be a range from 0, the least first',
+  );
   for (const key of ['cameraReachMeters', 'workZoneLimitKmh', 'workZoneDetourMeters', 'strandedFirstSeconds', 'strandedSeconds', 'strandedBehindMeters', 'helpMeters', 'helpSpeed', 'helpSeconds'] as const) {
     validator.positiveNumber(roadEvents[key], `roadEvents.${key}`);
   }

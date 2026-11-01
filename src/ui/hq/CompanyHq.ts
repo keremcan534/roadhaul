@@ -1,3 +1,6 @@
+import type { CrateTier } from '../../data/definitions/CrateTier';
+import type { Credits } from '../../data/units';
+import type { WeeklyCupService } from '../../systems/rivals/WeeklyCupService';
 import type { Clock } from '../../core/time/Clock';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
@@ -15,6 +18,7 @@ import type { MonetizationService } from '../../systems/monetization/Monetizatio
 import type { RivalService } from '../../systems/rivals/RivalService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
+import type { UsedTruckMarket } from '../../systems/vehicles/UsedTruckMarket';
 import type { GarageService, OwnedTruck } from '../../systems/vehicles/GarageService';
 import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
 import { element, setText } from '../dom';
@@ -27,6 +31,7 @@ import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
 import { FleetPage } from './fleetPage';
 import { truckCard } from './garageCards';
+import { ownedTruckRows, usedTruckCards } from './usedTrucks';
 import { HQ_TABS, type HqTab } from './hqTabs';
 import { jobCard, routeText, type JobRivalry } from './jobCards';
 import { sortJobOffers } from './jobOrder';
@@ -49,6 +54,10 @@ export interface CompanyHqServices {
   readonly fuel: FuelService;
   readonly damage: DamageService;
   readonly garage: GarageService;
+  readonly usedTrucks: UsedTruckMarket;
+  /** The weekly cup, and what its top three win. */
+  readonly weeklyCup: WeeklyCupService;
+  readonly cupRewards: readonly { readonly credits: Credits; readonly crate: CrateTier | null }[];
   readonly upgrades: UpgradeService;
   readonly specialEvents: EventService;
   readonly dailyContracts: DailyContracts;
@@ -93,6 +102,10 @@ export interface CompanyHqActions {
   readonly onRepairToken: () => void;
   readonly onRepairDiscounted: () => void;
   readonly onBuyTruck: (definitionId: string) => void;
+  /** Buys truck `index` of the used-truck market's list. */
+  readonly onBuyUsedTruck: (index: number) => void;
+  /** Sells truck `instanceId` (the garage refuses the one driven and those out). */
+  readonly onSellTruck: (instanceId: string) => void;
   readonly onSwitchTruck: (instanceId: string) => void;
   readonly onPaintTruck: (instanceId: string, paintId: string | null) => void;
   /** Opens the shop, from a premium colour not bought yet. */
@@ -274,7 +287,15 @@ export class CompanyHq {
     this.rivalsPage = new RivalsPage(
       document,
       strings,
-      { rivals: services.rivals, economy: services.economy, company: services.company, now: () => services.clock.now(), news: services.news },
+      {
+        rivals: services.rivals,
+        economy: services.economy,
+        company: services.company,
+        now: () => services.clock.now(),
+        news: services.news,
+        cup: services.weeklyCup,
+        cupRewards: services.cupRewards,
+      },
       { onCampaign: actions.onCampaign, onBuyOut: actions.onBuyOut },
     );
   }
@@ -649,7 +670,37 @@ export class CompanyHq {
       ),
     );
     const trucksSection = section('trucks', strings.t('hq.garage.trucks'), truckCards);
-    return [paint, designs, upgradesSection, trucksSection];
+    const usedSection = section(
+      'used',
+      strings.t('hq.used.title'),
+      ...usedTruckCards(
+        document,
+        strings,
+        {
+          offers: this.services.usedTrucks.offers(),
+          nextListInMs: this.services.usedTrucks.nextListInMs,
+          canAfford,
+          hasRoom: garage.hasRoom,
+          colorOf: (paintId, factoryColor) => (paintId === null ? factoryColor : this.services.content.paints.get(paintId).color),
+        },
+        actions.onBuyUsedTruck,
+      ),
+    );
+    const ownedSection = section(
+      'owned',
+      strings.t('hq.used.owned', { count: owned.length, capacity: garage.capacity }),
+      ownedTruckRows(
+        document,
+        strings,
+        {
+          trucks: owned,
+          saleValue: (instanceId) => garage.saleValue(instanceId),
+          driverName: (driverId) => strings.t(`driver.${driverId}.name`),
+        },
+        actions.onSellTruck,
+      ),
+    );
+    return [paint, designs, upgradesSection, trucksSection, usedSection, ownedSection];
   }
 }
 

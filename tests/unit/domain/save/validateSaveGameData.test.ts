@@ -86,6 +86,8 @@ describe('validateSaveGameData', () => {
       'research',
       'career',
       'roadEvents',
+      'usedTrucks',
+      'weeklyCup',
     ]);
   });
 

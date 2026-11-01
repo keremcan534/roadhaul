@@ -13,6 +13,9 @@ import { FacilityService } from '../systems/company/FacilityService';
 import { ResearchService } from '../systems/company/ResearchService';
 import { CareerService } from '../systems/company/CareerService';
 import { RoadEventService } from '../systems/world/RoadEventService';
+import { ConvoyService } from '../systems/world/ConvoyService';
+import { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
+import { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
 import { CityIncidentService } from '../systems/world/CityIncidentService';
 import { NewsService } from '../systems/world/NewsService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
@@ -257,6 +260,12 @@ export class GameBootstrapper {
           logger.withCategory('Road'),
         ),
       );
+      // Convoys to ride with now and then, paid by the kilometre.
+      const convoyLuck = new SeededRandom((clock.now() * 19 + 23) % 2_147_483_647);
+      container.register(
+        ServiceKeys.convoy,
+        new ConvoyService(driving, economy, config.convoy, () => convoyLuck.next(), events, logger.withCategory('Convoy')),
+      );
       container.register(
         ServiceKeys.navigation,
         new NavigationService(
@@ -337,6 +346,11 @@ export class GameBootstrapper {
           crates,
         ),
       );
+      // The used-truck market: a few used trucks every few hours, sold through the garage.
+      const usedTrucks = container.register(
+        ServiceKeys.usedTrucks,
+        new UsedTruckMarket(catalog, garage, company, clock, config.usedTrucks, logger.withCategory('UsedTrucks')),
+      );
       container.register(
         ServiceKeys.upgrades,
         new UpgradeService(
@@ -397,6 +411,20 @@ export class GameBootstrapper {
           config.missions.loadingSeconds,
           logger.withCategory('Rivals'),
           perks,
+        ),
+      );
+      // The weekly cup: the company's deliveries against the rivals' week, the top three paid on Monday.
+      const weeklyCup = container.register(
+        ServiceKeys.weeklyCup,
+        new WeeklyCupService(
+          rivals,
+          economy,
+          crates,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          config.weeklyCup,
+          events,
+          logger.withCategory('Cup'),
         ),
       );
       container.register(
@@ -470,6 +498,8 @@ export class GameBootstrapper {
           research,
           career,
           roadEvents,
+          usedTrucks,
+          weeklyCup,
           dailyReward,
           achievements,
           crates,

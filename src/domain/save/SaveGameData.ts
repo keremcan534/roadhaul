@@ -1,4 +1,5 @@
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { CrateTier } from '../../data/definitions/CrateTier';
 import type { Credits, Fraction } from '../../data/units';
 import type { MissionFailureReason, MissionState } from '../missions/MissionInstance';
 import type { TutorialStep } from '../tutorial/tutorialSteps';
@@ -42,8 +43,11 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v19: adds the road's events (the first speeding's warning given, the
  *   contract's fines and knocks for the safe-driving bonus), and the
  *   career's tickets, fines paid and stranded drivers helped.
+ * - v20: adds the used-truck market's trucks sold in its period.
+ * - v21: adds the weekly cup (the week, the company's points, how the last
+ *   one it played ended).
  */
-export const CURRENT_SAVE_VERSION = 19;
+export const CURRENT_SAVE_VERSION = 21;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -78,6 +82,26 @@ export interface SaveGameData {
   readonly research: ResearchSaveData;
   readonly career: CareerSaveData;
   readonly roadEvents: RoadEventsSaveData;
+  readonly usedTrucks: UsedTrucksSaveData;
+  readonly weeklyCup: WeeklyCupSaveData;
+}
+
+/** The weekly cup (WeeklyCupService): the week the points are for (null before any), and the last cup's result. */
+export interface WeeklyCupSaveData {
+  readonly week: number | null;
+  readonly points: number;
+  readonly last: {
+    readonly week: number;
+    readonly rank: number;
+    readonly credits: Credits;
+    readonly crate: CrateTier | null;
+  } | null;
+}
+
+/** The used-truck market (UsedTruckMarket): which of a period's trucks were bought; null before the first. */
+export interface UsedTrucksSaveData {
+  readonly period: number | null;
+  readonly sold: readonly number[];
 }
 
 /** The road's events (RoadEventService). */

@@ -98,6 +98,8 @@ const ICONS = {
   camera: `<rect x="1.8" y="6.2" width="14" height="11.6" rx="2.4"/><path d="M17 10.4l5.2-3.2v9.6L17 13.6z"/><circle ${ACCENT} cx="6.2" cy="10" r="1.7"/>`,
   // The road's events: a traffic cone, its band amber.
   roadWorks: `<path d="M10.3 2.4h3.4l1.1 4H9.2z"/><path ${ACCENT} d="M8.8 8h6.4l1 3.7H7.8z"/><path d="M7.4 13.3h9.2l1.3 4.6H6.1z"/><rect x="3" y="19.2" width="18" height="2.6" rx=".8"/>`,
+  // The cab radio: a radio with its dial amber and an aerial.
+  radio: `<path d="M4.6 8.2l12.8-5.4" ${line(1.8)}/><path ${HOLES} d="M4 8h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2zm1.6 3.4v2h6.4v-2zm0 3.6v2h6.4v-2z"/><circle ${ACCENT} cx="17" cy="15" r="2.6"/>`,
   // Photo mode: a still camera, its lens amber; the shutter; sharing.
   photo: `<path ${HOLES} d="M8.6 3.6h6.8l1.7 2.6H20a2 2 0 0 1 2 2v10.4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.2a2 2 0 0 1 2-2h2.9zM12 8.6a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z"/><circle ${ACCENT} cx="12" cy="13.4" r="2.9"/>`,
   share: `<circle cx="18" cy="5.4" r="3.2"/><circle cx="18" cy="18.6" r="3.2"/><circle ${ACCENT} cx="6" cy="12" r="3.2"/><path d="M8.6 10.6l6.8-3.8M8.6 13.4l6.8 3.8" ${line(2.2)}/>`,

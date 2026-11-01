@@ -24,6 +24,29 @@ export interface RoadEventsSource {
   readonly stranded: Readonly<StrandedDriver> | null;
 }
 
+/** The convoy, as ConvoyService has it: its trucks, the lead first. */
+export interface ConvoySource {
+  readonly active: boolean;
+  readonly vehicleX: Float64Array;
+  readonly vehicleZ: Float64Array;
+  readonly vehicleHeading: Float64Array;
+}
+
+/** The convoy's trucks' cabs, lead first. */
+const CONVOY_PAINTS = [0xe8742a, 0x2f6dff, 0x35a46b] as const;
+/** The convoy's trucks, after the traffic's. */
+const CONVOY_TRUCK: TrafficVehicleDefinition = {
+  id: 'convoy_truck',
+  kind: 'truck',
+  lengthMeters: 9.4,
+  widthMeters: 2.5,
+  heightMeters: 3.5,
+  cruiseSpeedFactor: 1,
+  accelerationMetersPerSecondSquared: 1,
+  spawnWeight: 0,
+  colors: [0xffffff],
+};
+
 const ORANGE = 0xff6a13;
 const AMBER = 0xffa31a;
 /** Hazard lights and the arrow board blink this many times a second. */
@@ -62,15 +85,18 @@ export class RoadEventsView {
   private readonly lambert = new MeshLambertMaterial({ vertexColors: true });
   /** What shines with its own light: the arrow boards' lamps, the hazard lights. */
   private readonly lit = new MeshBasicMaterial({ vertexColors: true, toneMapped: false });
-  private cameras: Mesh | null = null;
+  /**
+   * Each camera with its signs, and each of the day's works, a mesh of its
+   * own: drawn only when in view (a few draw calls near them, none elsewhere).
+   */
+  private readonly fixtures: Mesh[] = [];
   private world: DrivingWorld | null = null;
-  private works: Mesh | null = null;
-  private worksLamps: Mesh | null = null;
   private shownZones: readonly WorkZone[] | null = null;
   private readonly car: Group;
   private readonly hazards: Mesh;
   private readonly triangle: Mesh;
   private readonly carGeometries: BufferGeometry[];
+  private readonly convoyTrucks: Mesh[];
   /** The hazard lights' and the arrow boards' glows (at night), and a camera's flash. */
   private readonly glows = new LampGlows(16, 2.2);
   private readonly flashGlow = new LampGlows(1, 9);
@@ -94,31 +120,23 @@ export class RoadEventsView {
     this.triangle = new Mesh(triangle, this.lambert);
     this.triangle.visible = false;
     this.root.add(this.car, this.triangle);
+    this.convoyTrucks = CONVOY_PAINTS.map((paint) => {
+      const geometry = paintedVehicle(CONVOY_TRUCK, paint);
+      this.carGeometries.push(geometry);
+      const truck = new Mesh(geometry, this.lambert);
+      truck.visible = false;
+      this.root.add(truck);
+      return truck;
+    });
   }
 
-  /** The world the truck drives in: its speed cameras are drawn. */
+  /** The world the truck drives in: its speed cameras are drawn (with the works). */
   setWorld(world: DrivingWorld): void {
     if (world === this.world) {
       return;
     }
     this.world = world;
-    if (this.cameras !== null) {
-      this.cameras.geometry.dispose();
-      this.cameras.removeFromParent();
-      this.cameras = null;
-    }
-    const parts: BufferGeometry[] = [];
-    for (const camera of world.speedCameras) {
-      parts.push(placed(cameraGeometry(), camera.x, camera.z, camera.heading));
-      for (const sign of camera.signs) {
-        parts.push(placed(cameraSignGeometry(), sign.x, sign.z, sign.heading));
-      }
-    }
-    if (parts.length > 0) {
-      this.cameras = new Mesh(merge(parts), this.lambert);
-      this.cameras.name = 'speedCameras';
-      this.root.add(this.cameras);
-    }
+    this.build(this.shownZones ?? []);
   }
 
   /** A camera caught the truck at (x, z): the camera there flashes. */
@@ -139,15 +157,13 @@ export class RoadEventsView {
   }
 
   /** Per frame: the works as they are today, the stranded car, the blinking and the flash. `night` 0..1 lights the glows. */
-  update(dt: number, source: RoadEventsSource, night: number): void {
+  update(dt: number, source: RoadEventsSource, night: number, convoy: ConvoySource): void {
     this.time += dt;
     if (source.workZones !== this.shownZones) {
-      this.showWorks(source.workZones);
+      this.shownZones = source.workZones;
+      this.build(source.workZones);
     }
     const blinkOn = (this.time * BLINK_HZ) % 1 < 0.5;
-    if (this.worksLamps !== null) {
-      this.worksLamps.visible = blinkOn;
-    }
     let glows = 0;
     const stranded = source.stranded;
     this.car.visible = stranded !== null;
@@ -168,6 +184,20 @@ export class RoadEventsView {
         }
       }
     }
+    for (let i = 0; i < this.convoyTrucks.length; i++) {
+      const truck = this.convoyTrucks[i]!;
+      truck.visible = convoy.active;
+      if (convoy.active) {
+        truck.position.set(convoy.vehicleX[i]!, 0, convoy.vehicleZ[i]!);
+        truck.rotation.y = convoy.vehicleHeading[i]!;
+      }
+    }
+    // The lead truck's amber beacon, blinking.
+    if (convoy.active && blinkOn && glows < 16) {
+      this.glows.setPosition(glows, convoy.vehicleX[0]!, CONVOY_TRUCK.heightMeters + 0.4, convoy.vehicleZ[0]!);
+      this.glows.setColor(glows, AMBER);
+      glows++;
+    }
     if (blinkOn) {
       for (const zone of this.shownZones ?? []) {
         if (glows >= 16) {
@@ -187,9 +217,9 @@ export class RoadEventsView {
 
   dispose(): void {
     this.root.removeFromParent();
-    this.cameras?.geometry.dispose();
-    this.works?.geometry.dispose();
-    this.worksLamps?.geometry.dispose();
+    for (const fixture of this.fixtures) {
+      fixture.geometry.dispose();
+    }
     for (const geometry of this.carGeometries) {
       geometry.dispose();
     }
@@ -199,37 +229,48 @@ export class RoadEventsView {
     this.flashGlow.dispose();
   }
 
-  /** The works of the day, made into one mesh (and one for their lamps). */
-  private showWorks(zones: readonly WorkZone[]): void {
-    this.shownZones = zones;
-    for (const mesh of [this.works, this.worksLamps]) {
-      if (mesh !== null) {
-        mesh.geometry.dispose();
-        mesh.removeFromParent();
-      }
+  /**
+   * The world's speed cameras with their signs, and the day's works
+   * (`zones`), a mesh each, made again when the works change (once a day):
+   * the arrow boards' lamps in them, their glow blinking over them.
+   */
+  private build(zones: readonly WorkZone[]): void {
+    for (const fixture of this.fixtures) {
+      fixture.geometry.dispose();
+      fixture.removeFromParent();
     }
-    this.works = null;
-    this.worksLamps = null;
-    if (zones.length === 0) {
-      return;
+    this.fixtures.length = 0;
+    const add = (parts: BufferGeometry[], name: string): void => {
+      const fixture = new Mesh(merge(parts), this.lambert);
+      fixture.name = name;
+      // It never moves: its matrix is worked out once.
+      fixture.matrixAutoUpdate = false;
+      fixture.updateMatrix();
+      this.fixtures.push(fixture);
+      this.root.add(fixture);
+    };
+    for (const camera of this.world?.speedCameras ?? []) {
+      add(
+        [
+          placed(cameraGeometry(), camera.x, camera.z, camera.heading),
+          ...camera.signs.map((sign) => placed(cameraSignGeometry(), sign.x, sign.z, sign.heading)),
+        ],
+        'speedCamera',
+      );
     }
-    const parts: BufferGeometry[] = [];
-    const lamps: BufferGeometry[] = [];
     const at = (geometry: BufferGeometry, piece: ZonePiece): BufferGeometry => placed(geometry, piece.x, piece.z, piece.heading);
     for (const zone of zones) {
-      for (const cone of zone.cones) {
-        parts.push(at(coneGeometry(), cone));
-      }
-      for (const sign of zone.signs) {
-        parts.push(at(worksSignGeometry(), sign));
-      }
-      parts.push(at(arrowBoardGeometry(), zone.arrowBoard), at(rollerGeometry(), zone.machine));
-      lamps.push(at(arrowLampsGeometry(), zone.arrowBoard));
+      add(
+        [
+          ...zone.cones.map((cone) => at(coneGeometry(), cone)),
+          ...zone.signs.map((sign) => at(worksSignGeometry(), sign)),
+          at(arrowBoardGeometry(), zone.arrowBoard),
+          at(arrowLampsGeometry(), zone.arrowBoard),
+          at(rollerGeometry(), zone.machine),
+        ],
+        'roadWorks',
+      );
     }
-    this.works = new Mesh(merge(parts), this.lambert);
-    this.works.name = 'roadWorks';
-    this.worksLamps = new Mesh(merge(lamps), this.lit);
-    this.root.add(this.works, this.worksLamps);
   }
 }
 
@@ -244,10 +285,10 @@ const HAZARD_CORNERS: readonly (readonly [number, number])[] = [
 /** A speed camera: a grey post, a grey box with a yellow face and a black lens, looking along +z. */
 function cameraGeometry(): BufferGeometry {
   return merge([
-    cylinder(0.09, 0.11, CAMERA_HEIGHT, 8, 0x7c838c, 0, CAMERA_HEIGHT / 2, 0),
+    cylinder(0.09, 0.11, CAMERA_HEIGHT, 6, 0x7c838c, 0, CAMERA_HEIGHT / 2, 0),
     box(0.5, 0.56, 0.74, 0, CAMERA_HEIGHT, 0, 0x34383e),
     box(0.54, 0.6, 0.05, 0, CAMERA_HEIGHT, 0.39, 0xf2c230),
-    turned(cylinder(0.11, 0.11, 0.1, 10, 0x101214, 0, 0, 0), Math.PI / 2, 0, CAMERA_HEIGHT + 0.06, 0.45),
+    turned(cylinder(0.11, 0.11, 0.1, 8, 0x101214, 0, 0, 0), Math.PI / 2, 0, CAMERA_HEIGHT + 0.06, 0.45),
   ]);
 }
 
@@ -266,8 +307,8 @@ function cameraSignGeometry(): BufferGeometry {
 function coneGeometry(): BufferGeometry {
   return merge([
     box(0.42, 0.04, 0.42, 0, 0.02, 0, 0x16181b),
-    cylinder(0.02, 0.21, 0.72, 8, ORANGE, 0, 0.4, 0),
-    cylinder(0.11, 0.145, 0.13, 8, 0xf4f4f0, 0, 0.42, 0),
+    cylinder(0.02, 0.21, 0.72, 6, ORANGE, 0, 0.4, 0),
+    cylinder(0.11, 0.145, 0.13, 6, 0xf4f4f0, 0, 0.42, 0),
   ]);
 }
 
@@ -315,7 +356,12 @@ function rollerGeometry(): BufferGeometry {
 
 /** The stranded car, in `hex`, standing on the ground with +z its front. */
 function paintedCar(hex: number): BufferGeometry {
-  const body = vehicleGeometry(STRANDED_CAR);
+  return paintedVehicle(STRANDED_CAR, hex);
+}
+
+/** A traffic body of `type` in `hex`, only its position, normal and colour kept. */
+function paintedVehicle(type: TrafficVehicleDefinition, hex: number): BufferGeometry {
+  const body = vehicleGeometry(type);
   const painted = body.getAttribute('paint');
   const colors = body.getAttribute('color');
   const color = new Color(hex);

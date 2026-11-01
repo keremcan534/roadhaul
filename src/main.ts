@@ -55,6 +55,7 @@ import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
 import { PhotoCamera } from './presentation/cameras/PhotoCamera';
+import { CabRadio } from './presentation/audio/CabRadio';
 import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
@@ -135,6 +136,8 @@ import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import type { CareerShown } from './ui/menus/careerSheet';
 import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
 import { RoadAlert } from './ui/hud/RoadAlert';
+import { RadioButton } from './ui/hud/RadioButton';
+import { nextRadioChoice } from './data/config/radio';
 import { photoFileName } from './ui/photo/photoFileName';
 import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
@@ -330,6 +333,8 @@ async function start(strings: Strings): Promise<void> {
   const fuel = services.resolve(ServiceKeys.fuel);
   const damage = services.resolve(ServiceKeys.damage);
   const garage = services.resolve(ServiceKeys.garage);
+  const usedTrucks = services.resolve(ServiceKeys.usedTrucks);
+  const weeklyCup = services.resolve(ServiceKeys.weeklyCup);
   const upgrades = services.resolve(ServiceKeys.upgrades);
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
@@ -337,8 +342,12 @@ async function start(strings: Strings): Promise<void> {
   const research = services.resolve(ServiceKeys.research);
   const career = services.resolve(ServiceKeys.career);
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
-  if (requestedRoadEvent(query) === 'stranded') {
+  const convoy = services.resolve(ServiceKeys.convoy);
+  const requestedRoad = requestedRoadEvent(query);
+  if (requestedRoad === 'stranded') {
     roadEvents.sendStrandedDriver();
+  } else if (requestedRoad === 'convoy') {
+    convoy.sendConvoy();
   }
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const casino = services.resolve(ServiceKeys.casino);
@@ -1079,6 +1088,24 @@ async function start(strings: Strings): Promise<void> {
     );
   });
   events.on('StrandedDriverAppeared', () => toasts.show(strings.t('road.stranded'), 'info'));
+  events.on('ConvoyStarted', () => toasts.show(strings.t('road.convoy'), 'info'));
+  events.on('ConvoyEnded', ({ riddenMeters, reward }) => {
+    if (reward > 0) {
+      audio.chime();
+      toasts.show(strings.t('road.convoyPaid', { distance: strings.distance(riddenMeters), reward: strings.money(reward) }), 'success');
+    } else {
+      toasts.show(strings.t('road.convoyGone'), 'info');
+    }
+  });
+  events.on('WeeklyCupEnded', ({ rank, credits, crate }) => {
+    const place = strings.number(rank);
+    if (credits > 0 && crate !== null) {
+      audio.fanfare();
+      toasts.show(strings.t('toast.cupWon', { place, credits: strings.money(credits), crate: strings.t(`crate.name.${crate}`) }), 'success');
+    } else {
+      toasts.show(strings.t('toast.cupEnded', { place }), 'info');
+    }
+  });
   events.on('RoadsideHelped', ({ reward }) => {
     audio.chime();
     toasts.show(strings.t('road.helped', { reward: strings.money(reward) }), 'success');
@@ -1179,8 +1206,28 @@ async function start(strings: Strings): Promise<void> {
       pauseMenu.open(missions.active !== null, roadsideFuelOffer());
     }
   };
+  // The cab radio: music made as it plays, a station at a tap (the button beside the camera's, or R).
+  const radio = new CabRadio((run, ms) => {
+    const timer = window.setInterval(run, ms);
+    return () => window.clearInterval(timer);
+  });
+  radio.station = settings.radio;
+  const tuneRadio = (): void => {
+    if (!isDriving()) {
+      return;
+    }
+    const next = nextRadioChoice(radio.station);
+    radio.station = next;
+    radioButton.show(next);
+    settings = { ...settings, radio: next };
+    saveSettings(storage, settings);
+    toasts.show(next === 'off' ? strings.t('radio.off') : strings.t('radio.tuned', { station: strings.t(`radio.station.${next}`) }), 'info');
+  };
+  const radioButton = new RadioButton(ui, strings, tuneRadio);
+  radioButton.show(settings.radio);
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
+    onRadio: tuneRadio,
     onHorn: honk,
     onMap: () => {
       if (worldMap.isOpen) {
@@ -1635,6 +1682,9 @@ async function start(strings: Strings): Promise<void> {
       fuel,
       damage,
       garage,
+      usedTrucks,
+      weeklyCup,
+      cupRewards: config.weeklyCup.rewards,
       upgrades,
       specialEvents,
       dailyContracts,
@@ -1701,6 +1751,28 @@ async function start(strings: Strings): Promise<void> {
           toasts.show(strings.t('toast.garageFull'), 'warning');
         } else {
           logger.warn(`Could not buy ${definitionId}: ${bought.error}.`);
+        }
+      },
+      onBuyUsedTruck: (index) => {
+        const bought = usedTrucks.buy(index);
+        if (bought.ok) {
+          toasts.show(strings.t('toast.usedTruckBought', { truck: strings.vehicleName(bought.value.definition.id) }), 'success');
+        } else if (bought.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (bought.error === 'garageFull') {
+          toasts.show(strings.t('toast.garageFull'), 'warning');
+        } else {
+          logger.warn(`Could not buy used truck ${index}: ${bought.error}.`);
+        }
+      },
+      onSellTruck: (instanceId) => {
+        const definitionId = garage.trucks.find((truck) => truck.instanceId === instanceId)?.definition.id;
+        const sold = garage.sell(instanceId);
+        if (sold.ok && definitionId !== undefined) {
+          audio.chime();
+          toasts.show(strings.t('toast.truckSold', { truck: strings.vehicleName(definitionId), price: strings.money(sold.value) }), 'success');
+        } else if (!sold.ok) {
+          logger.warn(`Could not sell ${instanceId}: ${sold.error}.`);
         }
       },
       onPaintTruck: (instanceId, paintId) => {
@@ -2112,6 +2184,7 @@ async function start(strings: Strings): Promise<void> {
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
+  events.on('VehicleSold', refreshHq);
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
   events.on('ResearchCompleted', refreshHq);
@@ -2303,6 +2376,7 @@ async function start(strings: Strings): Promise<void> {
     if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
       audio.unlock();
       tilt.unlock();
+      radio.connect(audio.output);
     }
   };
   window.addEventListener('pointerup', unlockSound, { capture: true });
@@ -2505,6 +2579,7 @@ async function start(strings: Strings): Promise<void> {
         fleet.update(stepSeconds);
         rivals.update(stepSeconds);
         companyTraffic.update(stepSeconds);
+        weeklyCup.update();
         if (!onRoad()) {
           return;
         }
@@ -2519,6 +2594,7 @@ async function start(strings: Strings): Promise<void> {
         session.update(stepSeconds);
         career.update(stepSeconds);
         roadEvents.update(stepSeconds);
+        convoy.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -2602,7 +2678,7 @@ async function start(strings: Strings): Promise<void> {
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
         roadEventsView.setWorld(driving.world);
-        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps);
+        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy);
         if (cityLife.sounds.bursts > 0) {
           audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
         }
@@ -2764,12 +2840,15 @@ async function start(strings: Strings): Promise<void> {
         rollover.visible = simulating;
         rollover.update(vehicle.attitude, sliding, vehicle.bank);
         roadAlert.visible = simulating;
+        radio.playing = onRoad() && !paused;
+        radioButton.visible = onRoad() && !paused;
         roadAlert.show(
           roadEvents.workZoneLimitKmh,
           roadEvents.cameraAheadLimitKmh,
           roadEvents.cameraAheadMeters,
           roadEvents.cameraAheadIsWorks,
         );
+        roadAlert.showConvoy(convoy.active, convoy.riding, convoy.riding ? convoy.riddenMetersSoFar : convoy.distanceMeters);
         const stranded = roadEvents.stranded === null ? 'none' : 'waiting';
         if (root.dataset.stranded !== stranded) {
           root.dataset.stranded = stranded;

@@ -68,7 +68,12 @@ export class LiveryService {
     private readonly packs: LiveryPackSource,
     private readonly events: EventBus<GameEvents>,
     private readonly logger: Logger,
-  ) {}
+  ) {
+    // A truck sold takes its design with it: a truck bought later under its number starts in the classic.
+    events.on('VehicleSold', ({ instanceId }) => {
+      this.worn.delete(instanceId);
+    });
+  }
 
   /** Every design, in content order, with whether the company has it and how it is got. */
   offers(): readonly LiveryOffer[] {

@@ -37,6 +37,7 @@ const PAGES_FIGURES_AND_MENUS = [
   'camera',
   'photo',
   'roadWorks',
+  'radio',
   'share',
   'keyboard',
   'plus',

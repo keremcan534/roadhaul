@@ -27,6 +27,22 @@ import { NO_CRATE_PAINTS, type CratePaintSource } from '../rewards/CrateService'
 export type BuyTruckError = 'unknownVehicle' | 'garageFull' | 'locked' | SpendError;
 export type SwitchTruckError = 'unknownTruck' | 'alreadyActive' | 'missionInProgress' | 'onTheRoad';
 export type PaintTruckError = 'unknownTruck' | 'unknownPaint' | 'alreadyPainted' | 'locked' | SpendError;
+export type SellTruckError = 'unknownTruck' | 'activeTruck' | 'onTheRoad';
+
+/** A used truck as the used-truck market sells it (UsedTruckMarket): its model, price, wear, colour and upgrades. */
+export interface UsedTruck {
+  readonly definition: VehicleDefinition;
+  readonly price: Credits;
+  readonly damage: Fraction;
+  readonly paintId: string | null;
+  readonly upgrades: Readonly<Record<string, number>>;
+}
+
+/** A truck sold fetches this share of its model's price, less up to this share of that for its damage… */
+export const SALE_SHARE = 0.55;
+export const SALE_DAMAGE_LOSS = 0.5;
+/** …and this share of what its upgrades cost. */
+export const SALE_UPGRADE_SHARE = 0.4;
 
 /** A truck the company owns. The active truck's fuel and damage are live. */
 export interface OwnedTruck {
@@ -197,30 +213,52 @@ export class GarageService {
     if (offer.locked) {
       return err('locked');
     }
-    if (!this.hasRoom) {
-      return err('garageFull');
+    return this.acquire({ definition: offer.definition, price: offer.price, damage: 0, paintId: null, upgrades: {} });
+  }
+
+  /**
+   * Buys a used truck (UsedTruckMarket checks its model's level), if the
+   * garage has room: it comes full, in its wear, colour and upgrades.
+   */
+  buyUsed(truck: UsedTruck): Result<OwnedTruck, BuyTruckError> {
+    return this.acquire(truck);
+  }
+
+  /**
+   * What truck `instanceId` fetches sold: SALE_SHARE of its model's price,
+   * less for its damage (SALE_DAMAGE_LOSS of that at the worst), and
+   * SALE_UPGRADE_SHARE of what its upgrades cost, in hundreds. Throws for a
+   * truck the company does not own.
+   */
+  saleValue(instanceId: string): Credits {
+    const truck = this.view(this.requireTruck(instanceId));
+    const upgrades = this.content.upgrades.all.reduce((sum, upgrade) => {
+      const fitted = truck.upgrades[upgrade.id] ?? 0;
+      return sum + upgrade.levels.slice(0, fitted).reduce((paid, level) => paid + level.cost, 0);
+    }, 0);
+    const value = truck.definition.purchasePrice * SALE_SHARE * (1 - SALE_DAMAGE_LOSS * truck.damage) + upgrades * SALE_UPGRADE_SHARE;
+    return Math.max(0, Math.round(value / 100) * 100);
+  }
+
+  /** Sells truck `instanceId`: not the one driven, nor one a hired driver has out. Its price is paid at once. */
+  sell(instanceId: string): Result<Credits, SellTruckError> {
+    const index = this.records.findIndex((record) => record.instanceId === instanceId);
+    if (index < 0) {
+      return err('unknownTruck');
     }
-    const paid = this.economy.spend(offer.price, 'vehicle');
-    if (!paid.ok) {
-      return err(paid.error);
+    const record = this.records[index]!;
+    if (instanceId === this.activeId) {
+      return err('activeTruck');
     }
-    const record: TruckRecord = {
-      instanceId: this.nextInstanceId(),
-      definition: offer.definition,
-      fuelLiters: offer.definition.fuelCapacityLiters,
-      damage: 0,
-      upgrades: {},
-      paintId: null,
-      driverId: null,
-    };
-    this.records.push(record);
-    this.logger.info(`Bought ${definitionId} as ${record.instanceId} for ${offer.price}.`);
-    this.events.emit('VehiclePurchased', {
-      instanceId: record.instanceId,
-      definitionId,
-      price: offer.price,
-    });
-    return ok(this.view(record));
+    if (record.driverId !== null) {
+      return err('onTheRoad');
+    }
+    const price = this.saleValue(instanceId);
+    this.records.splice(index, 1);
+    this.economy.earn(price, 'vehicleSale');
+    this.logger.info(`Sold ${instanceId} (${record.definition.id}) for ${price}.`);
+    this.events.emit('VehicleSold', { instanceId, definitionId: record.definition.id, price });
+    return ok(price);
   }
 
   /** Drives another owned truck from now on. It takes the active truck's place on the map. */
@@ -409,6 +447,34 @@ export class GarageService {
       active,
       driverId: record.driverId,
     };
+  }
+
+  /** Pays for `truck` and puts it in the garage, full, if there is room. */
+  private acquire(truck: UsedTruck): Result<OwnedTruck, BuyTruckError> {
+    if (!this.hasRoom) {
+      return err('garageFull');
+    }
+    const paid = this.economy.spend(truck.price, 'vehicle');
+    if (!paid.ok) {
+      return err(paid.error);
+    }
+    const record: TruckRecord = {
+      instanceId: this.nextInstanceId(),
+      definition: truck.definition,
+      fuelLiters: truck.definition.fuelCapacityLiters,
+      damage: truck.damage,
+      upgrades: { ...truck.upgrades },
+      paintId: truck.paintId,
+      driverId: null,
+    };
+    this.records.push(record);
+    this.logger.info(`Bought ${truck.definition.id} as ${record.instanceId} for ${truck.price}.`);
+    this.events.emit('VehiclePurchased', {
+      instanceId: record.instanceId,
+      definitionId: truck.definition.id,
+      price: truck.price,
+    });
+    return ok(this.view(record));
   }
 
   /** One more than the highest truck number so far: ids are never reused. */

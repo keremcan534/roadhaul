@@ -190,6 +190,16 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       roadEvents: { warned: false, fined: false, knocked: false },
     }),
   },
+  {
+    // v20 adds the used-truck market: nothing bought from it yet.
+    from: 19,
+    migrate: (save) => ({ ...save, version: 20, usedTrucks: { period: null, sold: [] } }),
+  },
+  {
+    // v21 adds the weekly cup: no points yet, no cup played.
+    from: 20,
+    migrate: (save) => ({ ...save, version: 21, weeklyCup: { week: null, points: 0, last: null } }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

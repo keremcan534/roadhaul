@@ -302,6 +302,26 @@ export function validateSaveGameData(
       validator.boolean(roadEvents[key], `roadEvents.${key}`);
     }
   });
+  section('usedTrucks', (usedTrucks) => {
+    const period = usedTrucks['period'];
+    validator.check(period === null || Number.isInteger(period), 'usedTrucks.period', 'must be null or a whole number');
+    const sold = usedTrucks['sold'];
+    if (validator.check(Array.isArray(sold), 'usedTrucks.sold', 'must be a list')) {
+      (sold as unknown[]).forEach((index, i) => validator.nonNegativeInteger(index, `usedTrucks.sold[${i}]`));
+    }
+  });
+  section('weeklyCup', (cup) => {
+    validator.check(cup['week'] === null || Number.isInteger(cup['week']), 'weeklyCup.week', 'must be null or a whole number');
+    validator.nonNegativeInteger(cup['points'], 'weeklyCup.points');
+    const last = cup['last'];
+    if (last !== null && validator.check(isJson(last), 'weeklyCup.last', 'must be null or an object')) {
+      const result = last as Json;
+      validator.check(Number.isInteger(result['week']), 'weeklyCup.last.week', 'must be a whole number');
+      validator.positiveInteger(result['rank'], 'weeklyCup.last.rank');
+      validator.nonNegativeInteger(result['credits'], 'weeklyCup.last.credits');
+      validator.check(result['crate'] === null || isCrateTier(result['crate']), 'weeklyCup.last.crate', 'must be a crate tier or null');
+    }
+  });
   return validator.issues;
 }
 
