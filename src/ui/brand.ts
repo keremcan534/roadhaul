@@ -56,3 +56,50 @@ export function brandWordmark(document: Document, className = 'brand-wordmark'):
     `<g fill="currentColor">${letters(WORD_ROAD)}</g><g style="fill:var(--rh-accent,#f2a33a)">${letters(WORD_HAUL)}</g>`,
   );
 }
+
+/** The brand's amber, for what is drawn outside CSS (drawBrand). */
+const BRAND_AMBER = '#f2a33a';
+/** The mark's ink spans these units of its 100 square, across and down. */
+const MARK_LEFT = 18;
+const MARK_TOP = 10;
+const MARK_WIDTH = 78;
+const MARK_HEIGHT = 80;
+
+/**
+ * Draws the mark and the wordmark onto a picture (photo mode's), `height`
+ * pixels tall, ending at (`right`, `bottom`): white with amber, lifted off any
+ * background by a soft shadow.
+ */
+export function drawBrand(context: CanvasRenderingContext2D, right: number, bottom: number, height: number): void {
+  const markScale = height / MARK_HEIGHT;
+  const wordHeight = height * 0.42;
+  const wordScale = wordHeight / 40;
+  const wordLeft = right - WORD_WIDTH * wordScale;
+  const markLeft = wordLeft - height * 0.25 - MARK_WIDTH * markScale;
+  context.save();
+  context.globalAlpha = 0.92;
+  context.shadowColor = 'rgba(0, 0, 0, 0.5)';
+  context.shadowBlur = height * 0.15;
+  context.save();
+  context.translate(markLeft - MARK_LEFT * markScale, bottom - height - MARK_TOP * markScale);
+  context.scale(markScale, markScale);
+  context.fillStyle = '#ffffff';
+  context.fill(new Path2D(MARK_INK));
+  context.fillStyle = BRAND_AMBER;
+  context.fill(new Path2D(MARK_DASHES));
+  context.restore();
+  for (const [word, colour] of [
+    [WORD_ROAD, '#ffffff'],
+    [WORD_HAUL, BRAND_AMBER],
+  ] as const) {
+    for (const [x, d] of word) {
+      context.save();
+      context.translate(wordLeft + x * wordScale, bottom - height / 2 - wordHeight / 2);
+      context.scale(wordScale, wordScale);
+      context.fillStyle = colour;
+      context.fill(new Path2D(d));
+      context.restore();
+    }
+  }
+  context.restore();
+}

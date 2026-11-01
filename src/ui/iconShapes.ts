@@ -96,6 +96,9 @@ const ICONS = {
   tilt: `<rect x="7.6" y="3" width="8.8" height="18" rx="2.2" transform="rotate(24 12 12)"/><rect ${ACCENT} x="9.2" y="5.4" width="5.6" height="11.6" rx=".8" transform="rotate(24 12 12)"/><path d="M2.4 9.4a9.6 9.6 0 0 0 1.4 7.4" ${line(2)}/><path d="M21.6 14.6a9.6 9.6 0 0 0-1.4-7.4" ${line(2)}/>`,
   arrows: `<rect x="1.6" y="5.6" width="9.8" height="12.8" rx="2.6"/><rect x="12.6" y="5.6" width="9.8" height="12.8" rx="2.6"/><path ${ACCENT} d="M8.4 8.8L4.6 12l3.8 3.2z"/><path ${ACCENT} d="M15.6 8.8l3.8 3.2-3.8 3.2z"/>`,
   camera: `<rect x="1.8" y="6.2" width="14" height="11.6" rx="2.4"/><path d="M17 10.4l5.2-3.2v9.6L17 13.6z"/><circle ${ACCENT} cx="6.2" cy="10" r="1.7"/>`,
+  // Photo mode: a still camera, its lens amber; the shutter; sharing.
+  photo: `<path ${HOLES} d="M8.6 3.6h6.8l1.7 2.6H20a2 2 0 0 1 2 2v10.4a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.2a2 2 0 0 1 2-2h2.9zM12 8.6a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z"/><circle ${ACCENT} cx="12" cy="13.4" r="2.9"/>`,
+  share: `<circle cx="18" cy="5.4" r="3.2"/><circle cx="18" cy="18.6" r="3.2"/><circle ${ACCENT} cx="6" cy="12" r="3.2"/><path d="M8.6 10.6l6.8-3.8M8.6 13.4l6.8 3.8" ${line(2.2)}/>`,
   keyboard: `<path ${HOLES} d="M3 5.2h18a1.8 1.8 0 0 1 1.8 1.8v10a1.8 1.8 0 0 1-1.8 1.8H3A1.8 1.8 0 0 1 1.2 17V7A1.8 1.8 0 0 1 3 5.2zM4.4 8v2.2h2.2V8zm3.7 0v2.2h2.2V8zm3.7 0v2.2H14V8zm3.7 0v2.2h2.2V8zM4.4 11.4v2.2h2.2v-2.2zm13 0v2.2h2.2v-2.2zM7.6 14.6v1.8h8.8v-1.8z"/><rect ${ACCENT} x="17.4" y="8" width="2.2" height="2.2" rx=".4"/>`,
   plus: `<path d="M12 4v16M4 12h16" ${line(3)}/>`,
   home: `<path ${HOLES} d="M11.2 2.6a1.2 1.2 0 0 1 1.6 0l9 7.6a.8.8 0 0 1-.5 1.4H19.6v8.8a1.2 1.2 0 0 1-1.2 1.2H5.6a1.2 1.2 0 0 1-1.2-1.2v-8.8H2.7a.8.8 0 0 1-.5-1.4zM9.8 14v7.6h4.4V14z"/>`,

@@ -48,10 +48,12 @@ import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
+import { sharePictureInBrowser } from './platform/browser/photoShare';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
+import { PhotoCamera } from './presentation/cameras/PhotoCamera';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
@@ -128,6 +130,9 @@ import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
+import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
+import { photoFileName } from './ui/photo/photoFileName';
+import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
@@ -1070,19 +1075,73 @@ async function start(strings: Strings): Promise<void> {
     onControls: () => openControls(),
     onSettings: () => openSettings(),
     onMap: () => openMap(),
+    onPhoto: () => openPhoto(),
   });
+  // Photo mode, from the pause menu: the drive stays paused, the camera circles the truck, nothing else on the screen.
+  const photoCamera = new PhotoCamera(driving.definition.body);
+  /** Hands a picture on: Android's share sheet in the app (its module loaded at the first picture), else the browser's. */
+  const sharePicture = async (picture: Blob, fileName: string): Promise<PhotoOutcome> => {
+    if (!isNativeApp(window)) {
+      return sharePictureInBrowser(window, picture, fileName, strings.t('photo.shareText'));
+    }
+    const { sharePictureInApp } = await import('./platform/native/photoShare');
+    return sharePictureInApp(picture, fileName, strings.t('photo.shareText'), strings.t('photo.sheetTitle'));
+  };
+  const photoMode = new PhotoMode(ui, strings, {
+    onOrbit: (dx, dy) => photoCamera.orbit(dx, dy),
+    onZoom: (factor) => photoCamera.zoom(factor),
+    onLook: (filter) => {
+      renderHost.filter = filter;
+    },
+    onShoot: async (filter) => {
+      try {
+        const picture = await renderHost.capture((canvas) => photoPicture(document, canvas, filter));
+        return await sharePicture(picture, photoFileName(new Date()));
+      } catch (error) {
+        logger.warn('The photo was not taken.', error);
+        return 'failed';
+      }
+    },
+    onClose: () => closePhoto(),
+  });
+  const openPhoto = (): void => {
+    if (!isDriving() || photoMode.isOpen) {
+      return;
+    }
+    paused = true;
+    pauseMenu.close();
+    photoCamera.setBody(driving.definition.body);
+    photoCamera.start(renderHost.camera, pose);
+    showCamera(false); // The whole truck, the picture the right way round.
+    root.dataset.photo = 'on';
+    photoMode.open();
+  };
+  /** Back to the pause menu, the driving camera where it was. */
+  const closePhoto = (): void => {
+    if (!photoMode.isOpen) {
+      return;
+    }
+    photoMode.close();
+    delete root.dataset.photo;
+    showCamera(onRoad());
+    if (isDriving()) {
+      pauseMenu.open(missions.active !== null, roadsideFuelOffer());
+    }
+  };
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
     onHorn: honk,
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
-      } else if (!settingsDialog.isOpen && !controlsDialog.isOpen && !newCompany.isOpen && !result.isOpen && isDriving()) {
+      } else if (!settingsDialog.isOpen && !controlsDialog.isOpen && !newCompany.isOpen && !result.isOpen && !photoMode.isOpen && isDriving()) {
         openMap();
       }
     },
     onPause: () => {
-      if (casinoDialog.isOpen) {
+      if (photoMode.isOpen) {
+        closePhoto();
+      } else if (casinoDialog.isOpen) {
         if (!casinoDialog.isSpinning) {
           casinoDialog.close(); // Over the company panel, which stays.
         }
@@ -2206,13 +2265,24 @@ async function start(strings: Strings): Promise<void> {
   const goBack = (): boolean => {
     const action = backAction({
       gameState: gameState.current,
-      menuDialogOpen: settingsDialog.isOpen || controlsDialog.isOpen || newCompany.isOpen || worldMap.isOpen || casinoDialog.isOpen || goalsDialog.isOpen,
+      menuDialogOpen:
+        settingsDialog.isOpen ||
+        controlsDialog.isOpen ||
+        newCompany.isOpen ||
+        worldMap.isOpen ||
+        casinoDialog.isOpen ||
+        goalsDialog.isOpen ||
+        photoMode.isOpen,
       panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
     });
     switch (action) {
       case 'closeDialog':
+        if (photoMode.isOpen) {
+          closePhoto();
+          break;
+        }
         if (casinoDialog.isOpen) {
           if (!casinoDialog.isSpinning) {
             casinoDialog.close();
@@ -2522,15 +2592,19 @@ async function start(strings: Strings): Promise<void> {
           shownCompanyTrucks = companyTrucks;
           root.dataset.companyTrucks = String(companyTrucks);
         }
-        lookAround.update(deltaSeconds);
-        cameraRig.look(lookAround.yaw, lookAround.pitch);
-        // Over, the cameras on the truck give way to the chase camera; back on its wheels, they come back.
-        cameraRig.setBuild(driving.build);
-        cameraRig.setOverturned(vehicle.attitude === 'overturned');
-        if (cameraRig.shownMode !== root.dataset.camera) {
-          showCamera(onRoad());
+        if (photoMode.isOpen) {
+          photoCamera.apply(renderHost.camera, pose);
+        } else {
+          lookAround.update(deltaSeconds);
+          cameraRig.look(lookAround.yaw, lookAround.pitch);
+          // Over, the cameras on the truck give way to the chase camera; back on its wheels, they come back.
+          cameraRig.setBuild(driving.build);
+          cameraRig.setOverturned(vehicle.attitude === 'overturned');
+          if (cameraRig.shownMode !== root.dataset.camera) {
+            showCamera(onRoad());
+          }
+          cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
         }
-        cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
         // The land turns to the season (over a moment, even paused: a season picked in Settings shows behind them),
@@ -2645,7 +2719,8 @@ async function start(strings: Strings): Promise<void> {
         }
         // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
         // saves the battery. The full map hides it all.
-        menuFrames = onRoad() && !paused ? 0 : menuFrames + 1;
+        // Photo mode is the picture itself: every frame.
+        menuFrames = (onRoad() && !paused) || photoMode.isOpen ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.setGrade(environment.grade);
           renderHost.setSun(environment.sunTowards, environment.sunGlare, environment.sunShafts);

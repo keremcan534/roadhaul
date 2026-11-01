@@ -35,6 +35,8 @@ const PAGES_FIGURES_AND_MENUS = [
   'tilt',
   'arrows',
   'camera',
+  'photo',
+  'share',
   'keyboard',
   'plus',
   'home',

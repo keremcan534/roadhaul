@@ -448,6 +448,14 @@ The player found steering by tilt off ("telefonu yamuk tutuyormuşum gibi sayıy
 | The app on its side only | ✅ | The owner found it opening upright now and then, the interface cramped as if never laid out for it ("arada dikey açılıyor, arayüz saçmalıyor"): the manifest asked for no orientation, so the phone's own decided. The activity is now `sensorLandscape`: on its side, either way round. The upright layouts stay for the web build. Not yet seen on a phone: CI's APK |
 | No more "not responding" on entry phones | ✅ | Play's Android vitals (October 2026) showed no crashes but 13 ANRs in 28 days, all "GPU not responding" on phones with an entry GPU (Infinix Smart 8, a Redmi, Galaxy A13): Android's own drawing waited over five seconds for a GPU busy with the game. Eight cores and 4 GB made them mid-range to `detectQuality`, so they drew the medium preset; now the GPU's name decides too (`isWeakGpu`: Mali-4xx, -T, -G31/G51/G52/G57, PowerVR, Adreno under 615 and 70x go low). And a phone's GPU got every shader of the world at once at boot (`precompile`); now it gets them four at a time with a frame drawn between (`RenderHost.precompileGradually`, phones only): 64 shaders, 16 pauses, the boot as quick as before on a desktop GPU. Not yet seen on such a phone: Play's ANR count after the release tells |
 
+### The owner's extras: everything on the list (between steps 28 and 29)
+
+Asked what could be added that is missing or would draw players in, the owner answered "all of it" ("hepsibiyi ya"): photo mode, career statistics, events on the road, a used-truck market, a weekly league, a convoy, a cab radio, a season pass, tractor units with trailers, a second region, the forest drawn in fewer calls and the ground for a cloud save (that last needs the owner's go-ahead and Google Play Games set up in the Play Console).
+
+| Item | Status | Notes |
+|---|---|---|
+| Photo mode | ✅ | From the pause menu (a fourth tool beside the map, the controls and the settings): the drive stays paused and nothing but the picture shows; a drag circles the truck and lifts the camera over it, a pinch or the wheel brings it nearer (`PhotoCamera`: from where the driving camera stood, never under the ground or inside the truck); seven looks (natural, vivid, warm, cinema, vintage, black and white, noir) previewed on the canvas as CSS filters and drawn into the picture by the same colour matrices (`photoFilters`), with the look's darkened corners and the brand in a corner (`photoPicture`). The shutter flashes; in the Android app the picture goes to the share sheet (written to the app's cache by `@capacitor/filesystem`, shared by `@capacitor/share`: save to the gallery or send it on), in a phone's browser to its share sheet, elsewhere it downloads. Escape or Android's back returns to the pause menu. Ten languages |
+
 ## Next step: 29 Device testing
 
 Suggested request:

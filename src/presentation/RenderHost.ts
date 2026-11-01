@@ -256,6 +256,21 @@ export class RenderHost {
   }
 
   /**
+   * Draws a frame and hands the canvas to `take` at once, while the frame is
+   * still in it (the drawing buffer is not kept past the task): photo mode's
+   * picture (photoPicture).
+   */
+  capture<T>(take: (picture: HTMLCanvasElement) => T): T {
+    this.render();
+    return take(this.renderer.domElement);
+  }
+
+  /** Shows the picture through a CSS filter (photo mode's look), 'none' for none. Only the canvas's showing changes. */
+  set filter(filter: string) {
+    this.renderer.domElement.style.filter = filter === 'none' ? '' : filter;
+  }
+
+  /**
    * Shows the picture left to right the other way, like a reversing
    * camera's (the rear camera), so the truck's right is on the screen's
    * right. Only the canvas flips: the controls and menus over it do not.

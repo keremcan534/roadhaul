@@ -639,13 +639,13 @@
 /* ---- Pause menu (src/ui/menus/PauseMenu.ts) ---- */
 
 .pause-menu__panel {
-  width: min(100%, 330px);
+  width: min(100%, 420px);
 }
 
-/* The map, the controls and the settings side by side: each an icon over its name. */
+/* The map, photo mode, the controls and the settings side by side: each an icon over its name. */
 .pause-menu__tools {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
@@ -653,8 +653,19 @@
   flex-direction: column;
   gap: 5px;
   min-height: 62px;
-  padding: 8px 4px;
-  font-size: 12px;
+  padding: 8px 3px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  /* A long name (Einstellungen, Configurações) broken where the language allows, not past the button. */
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+/* Upright on a narrow phone: two by two. */
+@media (max-width: 440px) {
+  .pause-menu__tools {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .pause-menu__tools .button__icon {
@@ -3706,4 +3717,232 @@
   border: 2px solid rgb(255 255 255 / 85%);
   border-radius: var(--rh-radius-small);
   object-fit: cover;
+}
+
+/* ---- Photo mode (src/ui/menus/PhotoMode.ts) ---- */
+
+/* Nothing over the picture but photo mode's own controls. */
+html[data-photo='on'] body > :not(#game-canvas, .photo-mode) {
+  visibility: hidden;
+}
+
+.photo-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 14;
+  color: var(--rh-fg);
+}
+
+.photo-mode[hidden] {
+  display: none;
+}
+
+/* The look's darkened corners, as photoPicture draws them. */
+.photo-mode__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, #000 100%);
+  pointer-events: none;
+  transition: opacity var(--rh-medium) var(--rh-ease);
+}
+
+/* The picture: dragged to turn the camera, pinched to bring it nearer. */
+.photo-mode__stage {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: grab;
+}
+
+.photo-mode__stage:active {
+  cursor: grabbing;
+}
+
+/* The shutter's flash. */
+.photo-mode__flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.photo-mode__flash.is-flashing {
+  animation: photo-flash 0.42s ease-out;
+}
+
+@keyframes photo-flash {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.photo-mode__top {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.photo-mode__top .button {
+  pointer-events: auto;
+}
+
+.photo-mode__title {
+  margin: 0;
+  font: 500 17px/1.2 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 4px rgb(0 0 0 / 70%);
+}
+
+/* How to move the camera: shown a few seconds, gone at the first drag. */
+.photo-mode__hint {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 68px);
+  left: 50%;
+  max-width: min(86vw, 420px);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate);
+  font-size: 13px;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: photo-hint 5s ease forwards;
+}
+
+.photo-mode__hint[hidden] {
+  display: none;
+}
+
+@keyframes photo-hint {
+  0%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Where the picture went: a line over the shutter that fades. */
+.photo-mode__status {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 150px);
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.photo-mode__message {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  font-weight: 600;
+  white-space: nowrap;
+  animation: photo-hint 3s ease forwards;
+}
+
+.photo-mode__message.is-failed {
+  color: var(--rh-danger);
+}
+
+.photo-mode__bottom {
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  left: calc(env(safe-area-inset-left, 0px) + 12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+/* The looks: a row of chips, scrolled sideways where it does not fit. */
+.photo-mode__looks {
+  display: flex;
+  gap: 6px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 2px;
+  scrollbar-width: none;
+  pointer-events: auto;
+}
+
+.photo-mode__looks::-webkit-scrollbar {
+  display: none;
+}
+
+.button.photo-mode__look {
+  flex: none;
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 17px;
+  background: var(--rh-plate);
+  color: var(--rh-fg);
+  font-size: 13px;
+}
+
+.button.photo-mode__look.is-selected {
+  border-color: var(--rh-accent);
+  background: var(--rh-accent);
+  color: var(--rh-accent-ink);
+}
+
+/* The shutter: a big white ring round the camera. */
+.button.photo-mode__shutter {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  min-height: 0;
+  padding: 0;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 22%);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 45%);
+  color: #fff;
+  pointer-events: auto;
+  transition: transform var(--rh-quick) var(--rh-ease);
+}
+
+.button.photo-mode__shutter:active {
+  transform: scale(0.92);
+}
+
+.button.photo-mode__shutter:disabled {
+  opacity: 0.6;
+}
+
+.photo-mode__shutter-icon {
+  width: 30px;
+  height: 30px;
+}
+
+/* On a wide, low screen the shutter stands at the right, the looks along the bottom. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .photo-mode__bottom {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+
+  .photo-mode__looks {
+    flex: 0 1 auto;
+  }
+
+  .photo-mode__status {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 64px);
+  }
 }
