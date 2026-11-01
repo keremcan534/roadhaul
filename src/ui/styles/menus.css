@@ -569,6 +569,25 @@
   text-decoration: none;
 }
 
+/* Restoring a backup: the question naming the company it holds, over its two answers. */
+.settings__confirm {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: 3px;
+  background: var(--rh-surface-2);
+}
+
+.settings__confirm[hidden] {
+  display: none;
+}
+
+.settings__confirm-question {
+  margin: 0;
+  font-size: 14px;
+}
+
 /* The licences' text scrolls within its page. */
 .settings__licenses-text {
   margin: 0;

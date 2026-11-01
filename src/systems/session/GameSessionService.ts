@@ -36,7 +36,7 @@ import type { FleetService } from '../fleet/FleetService';
 import type { GameEvents } from '../GameEvents';
 import type { MissionService } from '../missions/MissionService';
 import type { RivalService } from '../rivals/RivalService';
-import type { LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
+import type { BackupProblem, LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
 import type { TutorialService } from '../tutorial/TutorialService';
 import type { GarageService } from '../vehicles/GarageService';
 
@@ -277,6 +277,42 @@ export class GameSessionService {
     }
     this.sinceAutosave = 0;
     return this.deps.saves.save(this.snapshot());
+  }
+
+  /**
+   * The company as a backup file's text: the latest save, at this version
+   * (written first if a company is loaded, so nothing since the last
+   * autosave is left out).
+   */
+  exportBackup(): Result<string, LoadProblem> {
+    this.save();
+    return this.deps.saves.exportText();
+  }
+
+  /** What a backup holds, at a glance, for the player to confirm; or why it cannot be restored. */
+  readBackup(text: string): Result<SaveSummary, BackupProblem> {
+    const read = this.deps.saves.readText(text);
+    return read.ok ? ok(summarizeSave(read.value, this.deps.content)) : err(read.error);
+  }
+
+  /**
+   * Makes a backup's company the saved one, replacing the company saved
+   * now. A company loaded is closed first (saved, then no longer saved
+   * over): the game starts again after, to load the restored one.
+   */
+  restoreBackup(text: string): Result<void, BackupProblem | SaveProblem> {
+    const read = this.deps.saves.readText(text);
+    if (!read.ok) {
+      return read;
+    }
+    this.save();
+    const restored = this.deps.saves.importText(text);
+    if (!restored.ok) {
+      return restored;
+    }
+    this.active = false;
+    this.deps.logger.info(`Restored "${restored.value.profile.companyName}" from a backup.`);
+    return ok(undefined);
   }
 
   /** Counts driving time and saves every AUTOSAVE_INTERVAL_SECONDS. Call every fixed step while driving. */

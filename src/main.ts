@@ -49,7 +49,7 @@ import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
-import { sharePictureInBrowser } from './platform/browser/photoShare';
+import { shareFileInBrowser } from './platform/browser/fileShare';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
@@ -135,6 +135,7 @@ import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import type { CareerShown } from './ui/menus/careerSheet';
 import { passRewardText, type RoadPassShown } from './ui/menus/roadPassSheet';
+import { backupFileName } from './ui/menus/backupFileName';
 import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
 import { RoadAlert } from './ui/hud/RoadAlert';
 import { RadioButton } from './ui/hud/RadioButton';
@@ -234,6 +235,8 @@ const HQ_TICK_SECONDS = 0.5;
 const FLEET_FAST_FORWARD_SECONDS = 600;
 /** The main menu checks the earnings boost's time left this often, ms. */
 const EARNINGS_BOOST_REFRESH_MS = 15_000;
+/** How long the toast that a backup was restored shows before the game starts again with it. */
+const RESTART_AFTER_RESTORE_MS = 1_200;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
 /** From this thick (0..1, morningMist) the mist hides the road ahead: the driver is told. */
@@ -1206,10 +1209,10 @@ async function start(strings: Strings): Promise<void> {
   /** Hands a picture on: Android's share sheet in the app (its module loaded at the first picture), else the browser's. */
   const sharePicture = async (picture: Blob, fileName: string): Promise<PhotoOutcome> => {
     if (!isNativeApp(window)) {
-      return sharePictureInBrowser(window, picture, fileName, strings.t('photo.shareText'));
+      return shareFileInBrowser(window, picture, fileName, strings.t('photo.shareText'));
     }
-    const { sharePictureInApp } = await import('./platform/native/photoShare');
-    return sharePictureInApp(picture, fileName, strings.t('photo.shareText'), strings.t('photo.sheetTitle'));
+    const { shareFileInApp } = await import('./platform/native/fileShare');
+    return shareFileInApp(picture, fileName, 'photos', strings.t('photo.shareText'), strings.t('photo.sheetTitle'));
   };
   const photoMode = new PhotoMode(ui, strings, {
     onOrbit: (dx, dy) => photoCamera.orbit(dx, dy),
@@ -1511,7 +1514,66 @@ async function start(strings: Strings): Promise<void> {
   const openSettings = (): void => {
     keepClock();
     settingsDialog.showClock(timeOfDay.minutes, clockPresets());
+    settingsDialog.restoreAllowed = gameState.current === 'mainMenu';
     settingsDialog.open();
+  };
+  /**
+   * Settings' backup: the company's save as a file, handed to Android's
+   * share sheet in the app (to the player's files, a drive, a message), in a
+   * browser to its share sheet on a phone where it takes the file, else
+   * downloaded.
+   */
+  const backUpCompany = async (): Promise<void> => {
+    const exported = session.exportBackup();
+    if (!exported.ok) {
+      toasts.show(strings.t(exported.error === 'missing' ? 'backup.none' : 'backup.failed'), 'warning');
+      return;
+    }
+    const read = session.readBackup(exported.value);
+    const file = new Blob([exported.value], { type: 'application/json' });
+    const fileName = backupFileName(read.ok ? read.value.companyName : '', new Date());
+    try {
+      const outcome = isNativeApp(window)
+        ? await (await import('./platform/native/fileShare')).shareFileInApp(
+            file,
+            fileName,
+            'backups',
+            strings.t('backup.shareText'),
+            strings.t('backup.sheetTitle'),
+          )
+        : await shareFileInBrowser(window, file, fileName, strings.t('backup.shareText'));
+      if (outcome !== 'cancelled') {
+        toasts.show(strings.t(outcome === 'saved' ? 'backup.saved' : 'backup.shared'), 'success');
+      }
+    } catch (error) {
+      logger.warn('The backup could not be handed on.', error);
+      toasts.show(strings.t('backup.failed'), 'warning');
+    }
+  };
+  /** The backup file the player picked, read and asked about, until they answer. */
+  let pendingBackup: string | null = null;
+  /** The backup's company replaces the player's; the game starts again to load it. */
+  const restoreBackup = (): void => {
+    const text = pendingBackup;
+    pendingBackup = null;
+    if (text === null || gameState.current !== 'mainMenu') {
+      return;
+    }
+    const read = session.readBackup(text);
+    const restored = session.restoreBackup(text);
+    if (!restored.ok) {
+      const problem = restored.error === 'unreadable' || restored.error === 'tooNew' ? restored.error : 'failed';
+      toasts.show(strings.t(`restore.${problem}`), 'warning');
+      return;
+    }
+    toasts.show(strings.t('restore.done', { company: read.ok ? read.value.companyName : '' }), 'success');
+    if (persistent) {
+      window.setTimeout(() => window.location.reload(), RESTART_AFTER_RESTORE_MS);
+    } else {
+      // Kept only in memory: starting again would lose it. The main menu continues it.
+      settingsDialog.close();
+      showMainMenu();
+    }
   };
   const settingsDialog = new SettingsDialog(
     ui,
@@ -1607,6 +1669,24 @@ async function start(strings: Strings): Promise<void> {
     onAdPrivacy: () => {
       void monetization.showPrivacyOptions().then(showPurchaseOptions);
     },
+    onBackup: () => void backUpCompany(),
+    onBackupFile: (text) => {
+      const read = session.readBackup(text);
+      if (!read.ok) {
+        pendingBackup = null;
+        toasts.show(strings.t(`restore.${read.error}`), 'warning');
+        return;
+      }
+      pendingBackup = text;
+      settingsDialog.confirmRestore(
+        strings.t('settings.restoreConfirm', {
+          company: read.value.companyName,
+          level: strings.number(read.value.level),
+          credits: strings.money(read.value.credits),
+        }),
+      );
+    },
+    onRestoreBackup: () => restoreBackup(),
     onClose: () => settingsDialog.close(),
     },
   );
