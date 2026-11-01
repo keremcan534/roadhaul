@@ -11,6 +11,7 @@ import {
   createTrailerPose,
   followCoupling,
   straightenTrailer,
+  trailerFrontAhead,
   type TrailerPose,
 } from '../../domain/vehicles/semiTrailer';
 import { VehicleDynamics } from '../../domain/vehicles/VehicleDynamics';
@@ -41,6 +42,9 @@ export interface BodyPose {
   rise: number;
   lean: number;
   dip: number;
+  /** The ground under the rear axle (its height, meters) and its rise per meter along the truck: 0 on the flat. */
+  y: number;
+  grade: number;
 }
 
 /** Where the truck is and how its body stands. */
@@ -48,7 +52,7 @@ export type TruckPose = VehiclePose & BodyPose;
 
 /** A level truck at the origin, to write poses into. */
 export function createTruckPose(): TruckPose {
-  return { x: 0, z: 0, heading: 0, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 };
+  return { x: 0, z: 0, heading: 0, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0, y: 0, grade: 0 };
 }
 
 /**
@@ -84,6 +88,8 @@ export function interpolateBodyPose(
   out.rise = previous.rise + (current.rise - previous.rise) * alpha;
   out.lean = previous.lean + (current.lean - previous.lean) * alpha;
   out.dip = previous.dip + (current.dip - previous.dip) * alpha;
+  out.y = previous.y + (current.y - previous.y) * alpha;
+  out.grade = previous.grade + (current.grade - previous.grade) * alpha;
   return out;
 }
 
@@ -102,6 +108,8 @@ function keepPose(out: TruckPose, state: Readonly<VehicleRuntimeState>): void {
   out.rise = state.rise;
   out.lean = state.lean;
   out.dip = state.dip;
+  out.y = state.y;
+  out.grade = state.grade;
 }
 
 /**
@@ -293,7 +301,7 @@ export class DrivingService {
     world.restoreAll();
     this.drives++;
     const dynamics = new VehicleDynamics(definition, cargoMassKg);
-    const state = dynamics.createState(world.spawn.x, world.spawn.z, world.spawn.heading);
+    const state = dynamics.createState(world.spawn.x, world.spawn.z, world.spawn.heading, world.terrain.heightAt(world.spawn.x, world.spawn.z));
     const previousPose = createTruckPose();
     keepPose(previousPose, state);
     this.session = {
@@ -323,7 +331,7 @@ export class DrivingService {
     const definition = this.content.vehicles.get(vehicleId);
     const dynamics = new VehicleDynamics(definition, session.cargoMassKg);
     const { state } = session;
-    Object.assign(state, dynamics.createState(state.x, state.z, state.heading), {
+    Object.assign(state, dynamics.createState(state.x, state.z, state.heading, state.y), {
       odometerMeters: state.odometerMeters,
     });
     keepPose(session.previousPose, state);
@@ -381,7 +389,7 @@ export class DrivingService {
   placeTruck(x: number, z: number, heading: number): void {
     const session = this.requireSession();
     const odometerMeters = session.state.odometerMeters;
-    Object.assign(session.state, session.dynamics.createState(x, z, heading), { odometerMeters });
+    Object.assign(session.state, session.dynamics.createState(x, z, heading, session.world.terrain.heightAt(x, z)), { odometerMeters });
     keepPose(session.previousPose, session.state);
     session.lastImpactSpeed = 0;
     session.over = false;
@@ -460,6 +468,14 @@ export class DrivingService {
       state.z + Math.cos(state.heading) * centreAhead,
     );
     session.surface = surface;
+    // The slope under the truck, from the ground under its axles.
+    const terrain = world.terrain;
+    if (!terrain.flat) {
+      const wheelbase = session.definition.body.wheelbaseMeters;
+      const rear = terrain.heightAt(state.x, state.z);
+      const front = terrain.heightAt(state.x + Math.sin(state.heading) * wheelbase, state.z + Math.cos(state.heading) * wheelbase);
+      state.grade = (front - rear) / wheelbase;
+    }
     session.dynamics.step(state, input, surface, dt);
 
     let impact = world.resolveCollisions(state, session.footprint, this.obstacles, this.knockOvers, session.dynamics);
@@ -470,6 +486,9 @@ export class DrivingService {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }
     session.lastImpactSpeed = impact;
+    if (!terrain.flat) {
+      state.y = terrain.heightAt(state.x, state.z);
+    }
     // The body slamming down is a blow too: each is a step's, so each counts once.
     if (state.groundImpact >= COLLISION_EVENT_MIN_SPEED) {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: state.groundImpact });
@@ -518,6 +537,15 @@ export class DrivingService {
       pose.z = stand.z;
     }
     state.speed += (stand.speed - speedBefore) * along;
+    const terrain = world.terrain;
+    if (!terrain.flat) {
+      // On the ground under its axles, sloped as the ground under its length is.
+      const front = trailerFrontAhead(rig.body);
+      const sin = Math.sin(pose.heading);
+      const cos = Math.cos(pose.heading);
+      pose.y = terrain.heightAt(pose.x, pose.z);
+      pose.grade = (terrain.heightAt(pose.x + sin * front, pose.z + cos * front) - pose.y) / front;
+    }
     return impact;
   }
 

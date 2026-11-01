@@ -22,6 +22,42 @@ export interface RoadDefinition {
   /** A closed road loops back from the last point to the first. */
   readonly closed: boolean;
   readonly controlPoints: readonly Point2[];
+  /**
+   * Heights the road is held at, meters above the flat ground, by distance
+   * along it (a bridge's deck, an overpass); between and around them it
+   * follows the ground, graded smooth (terrainGrading.ts). Absent: it
+   * follows the ground all along.
+   */
+  readonly profile?: readonly RoadHeightDefinition[];
+  /**
+   * Stretches carried on a deck, by distance along the road: the ground is
+   * not raised to meet them (it stays below, as under a bridge or an
+   * overpass). Absent: none.
+   */
+  readonly elevated?: readonly (readonly [fromMeters: number, toMeters: number])[];
+}
+
+/** A road's height held at a distance along it (RoadDefinition.profile). */
+export interface RoadHeightDefinition {
+  readonly atMeters: number;
+  readonly heightMeters: number;
+}
+
+/**
+ * A hill or mountain the ground rises into (MapDefinition.terrain): a
+ * smooth dome `heightMeters` high at its middle, falling to nothing
+ * `radiusMeters` out; overlapping ones add up.
+ */
+export interface HillDefinition {
+  readonly x: number;
+  readonly z: number;
+  readonly radiusMeters: number;
+  readonly heightMeters: number;
+}
+
+/** The ground's shape (terrain.ts); a map without one is flat. */
+export interface TerrainDefinition {
+  readonly hills: readonly HillDefinition[];
 }
 
 /** A solid, axis-aligned block (depot hall, office, warehouse). */
@@ -304,6 +340,8 @@ export interface MapDefinition {
   readonly rivers?: readonly RiverDefinition[];
   /** Forests; absent: none. */
   readonly forests?: readonly ForestDefinition[];
+  /** Hills and mountains the ground rises into, the roads graded through them; absent: flat. */
+  readonly terrain?: TerrainDefinition;
   /** The towns' parks; absent: none. */
   readonly parks?: readonly ParkDefinition[];
   /** Villages the map grows, with their roads; absent: none. */
@@ -460,6 +498,14 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       sizeValid && Math.abs(x) <= map.halfSizeMeters && Math.abs(z) <= map.halfSizeMeters;
     const seen = new Set<string>();
     map.rivers.forEach((river, index) => validateRiver(river, `${path}.rivers[${index}]`, validator, onMap, seen));
+  }
+  if (map.terrain !== undefined && validator.check(typeof map.terrain === 'object' && map.terrain !== null && Array.isArray(map.terrain.hills), `${path}.terrain.hills`, 'must be a list')) {
+    map.terrain.hills.forEach((hill, index) => {
+      const hillPath = `${path}.terrain.hills[${index}]`;
+      validator.check(Number.isFinite(hill.x) && Number.isFinite(hill.z), hillPath, 'must have a place');
+      validator.positiveNumber(hill.radiusMeters, `${hillPath}.radiusMeters`);
+      validator.check(Number.isFinite(hill.heightMeters), `${hillPath}.heightMeters`, 'must be a number (below 0: a hollow)');
+    });
   }
   if (map.forests !== undefined && validator.check(Array.isArray(map.forests), `${path}.forests`, 'must be a list')) {
     const seen = new Set<string>();
@@ -821,6 +867,21 @@ function validateRoad(
         `${path}.controlPoints[${index}]`,
         'must be an [x, z] pair inside the map',
       );
+    });
+  }
+  if (road.profile !== undefined && validator.check(Array.isArray(road.profile), `${path}.profile`, 'must be a list')) {
+    road.profile.forEach((height, index) => {
+      validator.check(
+        Number.isFinite(height.atMeters) && height.atMeters >= 0 && Number.isFinite(height.heightMeters),
+        `${path}.profile[${index}]`,
+        'must hold a height at a distance along the road',
+      );
+      validator.check(index === 0 || height.atMeters > road.profile![index - 1]!.atMeters, `${path}.profile[${index}]`, 'must come after the one before');
+    });
+  }
+  if (road.elevated !== undefined && validator.check(Array.isArray(road.elevated), `${path}.elevated`, 'must be a list')) {
+    road.elevated.forEach(([from, to], index) => {
+      validator.check(Number.isFinite(from) && Number.isFinite(to) && from >= 0 && to > from, `${path}.elevated[${index}]`, 'must run from a distance to a further one');
     });
   }
 }

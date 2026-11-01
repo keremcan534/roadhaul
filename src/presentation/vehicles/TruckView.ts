@@ -191,7 +191,7 @@ export class TruckView {
   /** Where the truck's weight sits (the driven truck's build, which loading moves; setBuild). */
   private build: Readonly<BodyBuild>;
   /** How the body stood at the last update(): what toWorld() turns points by. */
-  private readonly stood: BodyPose = { bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 };
+  private readonly stood: BodyPose = { bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0, y: 0, grade: 0 };
   private readonly body = new Group();
   private readonly windshield: Mesh;
   /** The cab's inside: only shown from the driver's seat. */
@@ -904,6 +904,8 @@ export class TruckView {
     }
     this.chassis.add(this.frame);
     this.root.add(shadow, this.chassis);
+    // Turned to its heading, then pitched with the slope in its own frame.
+    this.root.rotation.order = 'YXZ';
     this.build = createBodyBuild(definition);
     this.placeChassis();
     if (options.castShadows === true) {
@@ -939,14 +941,18 @@ export class TruckView {
     body: Readonly<BodyPose> = LEVEL,
     trailer: Readonly<TrailerPose> | null = null,
   ): void {
-    this.root.position.set(pose.x, 0, pose.z);
+    // On the ground under it, pitched with the slope about the rear axle (heading, then pitch: YXZ).
+    this.root.position.set(pose.x, body.y, pose.z);
     this.root.rotation.y = pose.heading;
+    this.root.rotation.x = -Math.atan(body.grade);
     const stood = this.stood;
     stood.bank = body.bank;
     stood.tilt = body.tilt;
     stood.rise = body.rise;
     stood.lean = body.lean;
     stood.dip = body.dip;
+    stood.y = body.y;
+    stood.grade = body.grade;
     this.placeChassis();
 
     this.wheelSpin += (state.speed * deltaSeconds) / this.definition.body.wheelRadiusMeters;
@@ -985,10 +991,14 @@ export class TruckView {
     let at = trailer;
     if (at === null) {
       straightenTrailer(this.straightTrailer, pose.x, pose.z, pose.heading, rig);
+      this.straightTrailer.y = body.y;
+      this.straightTrailer.grade = body.grade;
       at = this.straightTrailer;
     }
-    root.position.set(at.x, 0, at.z);
+    root.position.set(at.x, at.y, at.z);
+    root.rotation.order = 'YXZ';
     root.rotation.y = at.heading;
+    root.rotation.x = -Math.atan(at.grade);
     this.trailerFrame!.rotation.set(0, 0, body.lean);
     const wheels = this.trailerWheels!;
     for (let i = 0; i < this.trailerWheelPositions.length; i++) {
@@ -1230,12 +1240,21 @@ export class TruckView {
    */
   private toWorld(x: number, y: number, z: number, out: Vector3): Vector3 {
     standingPoint(out, this.stood, this.build.cogHeight, this.build.cogAhead, x, y, z);
+    // Pitched with the slope about the rear axle, then turned to the heading, on the ground's height.
+    const pitch = Math.atan(this.stood.grade);
+    const pitchCos = Math.cos(pitch);
+    const pitchSin = Math.sin(pitch);
+    const along = out.z * pitchCos - out.y * pitchSin;
+    const up = out.y * pitchCos + out.z * pitchSin;
     const heading = this.root.rotation.y;
     const cos = Math.cos(heading);
     const sin = Math.sin(heading);
-    const along = out.z;
     const across = out.x;
-    return out.set(this.root.position.x + across * cos + along * sin, out.y, this.root.position.z - across * sin + along * cos);
+    return out.set(
+      this.root.position.x + across * cos + along * sin,
+      this.stood.y + up,
+      this.root.position.z - across * sin + along * cos,
+    );
   }
 
   /** A point in the semi-trailer's frame to the world, by where it stood at the last update() (level). */
@@ -1244,7 +1263,7 @@ export class TruckView {
     const heading = root.rotation.y;
     const cos = Math.cos(heading);
     const sin = Math.sin(heading);
-    return out.set(root.position.x + x * cos + z * sin, y, root.position.z - x * sin + z * cos);
+    return out.set(root.position.x + x * cos + z * sin, root.position.y + y, root.position.z - x * sin + z * cos);
   }
 
   private track<T extends { dispose(): void }>(resource: T): T {

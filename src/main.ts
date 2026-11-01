@@ -2742,7 +2742,10 @@ async function start(strings: Strings): Promise<void> {
         const trailer = driving.trailer;
         let shownTrailer: TrailerPose | null = null;
         if (trailer !== null && driving.previousTrailer !== null && truck.definition.id === driving.definition.id) {
-          shownTrailer = interpolatePose(trailerPose, driving.previousTrailer, trailer, simulating ? alpha : 1);
+          interpolatePose(trailerPose, driving.previousTrailer, trailer, simulating ? alpha : 1);
+          trailerPose.y = trailer.y;
+          trailerPose.grade = trailer.grade;
+          shownTrailer = trailerPose;
         }
         if (menuPreview !== null && gameState.current === 'mainMenu') {
           shownTrailer = null;

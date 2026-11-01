@@ -333,10 +333,10 @@ export class CameraRig {
         SHOWCASE_DISTANCE_METERS * (1 + SHOWCASE_FRAMED_STEP_BACK * Math.max(this.coveredRight, this.coveredBottom));
       this.position.set(
         centreX + Math.sin(around) * distance,
-        SHOWCASE_HEIGHT_METERS,
+        SHOWCASE_HEIGHT_METERS + body.y,
         centreZ + Math.cos(around) * distance,
       );
-      this.target.set(centreX, SHOWCASE_LOOK_HEIGHT_METERS, centreZ);
+      this.target.set(centreX, SHOWCASE_LOOK_HEIGHT_METERS + body.y, centreZ);
     } else if (mode === 'chase' || mode === 'top') {
       // Both trail the truck, round which the drag swings them.
       let back: number;
@@ -364,6 +364,9 @@ export class CameraRig {
           : 0;
       const lookX = centreX + viewSin * ahead - viewCos * intoTurn;
       const lookZ = centreZ + viewCos * ahead + viewSin * intoTurn;
+      // On a slope: up with the ground under the truck, never into a rise behind it, and looking along the slope.
+      height += body.y + Math.max(0, -body.grade * back);
+      lookHeight += body.y + body.grade * ahead;
       if (this.snapNextFrame) {
         this.position.set(desiredX, height, desiredZ);
         this.target.set(lookX, lookHeight, lookZ);
@@ -383,11 +386,11 @@ export class CameraRig {
       this.swayAhead += (-motion.longitudinalAcceleration * CABIN_SWAY_PER_ACCELERATION - this.swayAhead) * ease;
       this.turnLook += (motion.steerAngle * CABIN_TURN_LOOK - this.turnLook) * ease;
       this.placeOnTruck(pose, body, cab.eyeX + this.swayLeft, cab.eyeY, cab.eyeZ + this.swayAhead);
-      this.lookAlong(view - this.turnLook, this.lookPitch - CABIN_LOOK_DOWN - body.tilt);
+      this.lookAlong(view - this.turnLook, this.lookPitch - CABIN_LOOK_DOWN - body.tilt + Math.atan(body.grade));
       this.turnWithTruck(pose, body);
     } else if (mode === 'hood') {
       this.placeOnTruck(pose, body, 0, cab.cabTop + HOOD_ABOVE_ROOF_METERS, cab.frontZ - HOOD_BEHIND_FRONT_METERS);
-      this.lookAlong(view, this.lookPitch - CABIN_LOOK_DOWN - body.tilt);
+      this.lookAlong(view, this.lookPitch - CABIN_LOOK_DOWN - body.tilt + Math.atan(body.grade));
       this.turnWithTruck(pose, body);
     } else if (this.trailer !== null) {
       // On the semi-trailer's back, looking back: what reversing it into a bay needs.
@@ -399,7 +402,7 @@ export class CameraRig {
       const fromZ = at?.z ?? pose.z - cos * (trailer.axleBehindKingpinMeters - trailer.couplingAheadMeters);
       this.position.set(
         fromX + Math.sin(heading) * behind,
-        trailer.heightMeters - REAR_BELOW_TOP_METERS,
+        (at?.y ?? body.y) + trailer.heightMeters - REAR_BELOW_TOP_METERS,
         fromZ + Math.cos(heading) * behind,
       );
       this.lookAlong(heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN);
@@ -407,7 +410,7 @@ export class CameraRig {
       this.placeOnTruck(pose, body, 0, this.body.heightMeters - REAR_BELOW_TOP_METERS, cab.rearZ - REAR_BEHIND_METERS);
       // Backwards. Its picture is shown mirrored, like a reversing camera's (RenderHost.mirrored): the truck's
       // right is on the screen's right, so a drag to the right turns it toward the truck's right.
-      this.lookAlong(pose.heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN + body.tilt);
+      this.lookAlong(pose.heading + Math.PI + this.lookYaw, this.lookPitch - REAR_LOOK_DOWN + body.tilt - Math.atan(body.grade));
       this.turnWithTruck(pose, body);
     }
     this.widenForSpeed(motion.speed, deltaSeconds);
@@ -420,9 +423,13 @@ export class CameraRig {
   /** Puts the camera at the point (x left, y up, z ahead) of the truck's model as the truck stands. */
   private placeOnTruck(pose: Readonly<VehiclePose>, body: Readonly<BodyPose>, x: number, y: number, z: number): void {
     const local = standingPoint(this.onTruck, body, this.build.cogHeight, this.build.cogAhead, x, y, z);
+    // Pitched with the slope about the rear axle, on the ground's height (as TruckView stands the truck).
+    const pitch = Math.atan(body.grade);
+    const along = local.z * Math.cos(pitch) - local.y * Math.sin(pitch);
+    const up = local.y * Math.cos(pitch) + local.z * Math.sin(pitch);
     const sin = Math.sin(pose.heading);
     const cos = Math.cos(pose.heading);
-    this.position.set(pose.x + cos * local.x + sin * local.z, local.y, pose.z - sin * local.x + cos * local.z);
+    this.position.set(pose.x + cos * local.x + sin * along, body.y + up, pose.z - sin * local.x + cos * along);
   }
 
   /** Tips the camera's up the way the truck's roll and pitch tip it, for a camera riding on it. */
@@ -430,9 +437,11 @@ export class CameraRig {
     // The truck's up, turned by its roll then its pitch (standingPoint's turn), in its frame…
     const bankSin = Math.sin(body.bank);
     const bankCos = Math.cos(body.bank);
+    // Its pitch off its wheels, and the slope it stands on (nose up uphill).
+    const tilt = body.tilt - Math.atan(body.grade);
     const x = -bankSin;
-    const y = bankCos * Math.cos(body.tilt);
-    const z = bankCos * Math.sin(body.tilt);
+    const y = bankCos * Math.cos(tilt);
+    const z = bankCos * Math.sin(tilt);
     // …and in the world.
     const sin = Math.sin(pose.heading);
     const cos = Math.cos(pose.heading);

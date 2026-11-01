@@ -325,7 +325,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
       return new Box3().setFromObject(scene.getObjectByName('windscreen-inside')!).getCenter(new Vector3());
     };
     const brake = (): void => {
-      view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, { bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0.025 });
+      view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, { bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0.025, y: 0, grade: 0 });
     };
     view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60);
     const atRest = glassAt();
@@ -362,7 +362,7 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     const body = scene.getObjectByName('truck-body')!;
     const state = new VehicleDynamics(truck).createState(0, 0, 0);
 
-    view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, { bank: 0, tilt: 0, rise: 0, lean: -0.06, dip: 0.02 });
+    view.update({ x: 0, z: 0, heading: 0 }, state, 1 / 60, { bank: 0, tilt: 0, rise: 0, lean: -0.06, dip: 0.02, y: 0, grade: 0 });
 
     // Its nose down braking, leaning left out of a right turn.
     expect(body.rotation.x).toBeCloseTo(0.02, 9);
@@ -762,7 +762,7 @@ describe.each(VEHICLES.filter((vehicle) => vehicle.trailer !== undefined))('the 
     expect(group.position.z).toBeCloseTo(20 - (trailer.axleBehindKingpinMeters - trailer.couplingAheadMeters), 9);
     expect(group.rotation.y).toBe(0);
 
-    view.update({ x: 10, z: 20, heading: 0 }, state, 0, undefined, { x: 3, z: 14, heading: 0.9 });
+    view.update({ x: 10, z: 20, heading: 0 }, state, 0, undefined, { x: 3, z: 14, heading: 0.9, y: 0, grade: 0 });
     expect(group.position.toArray()).toEqual([3, 0, 14]);
     expect(group.rotation.y).toBe(0.9);
   });
@@ -771,7 +771,7 @@ describe.each(VEHICLES.filter((vehicle) => vehicle.trailer !== undefined))('the 
     const scene = new Scene();
     const view = new TruckView(scene, truck);
     view.setLoaded(true);
-    view.update({ x: 0, z: 0, heading: 0 }, new VehicleDynamics(truck).createState(0, 0, 0), 0, undefined, { x: 0, z: 0, heading: 0 });
+    view.update({ x: 0, z: 0, heading: 0 }, new VehicleDynamics(truck).createState(0, 0, 0), 0, undefined, { x: 0, z: 0, heading: 0, y: 0, grade: 0 });
     scene.updateMatrixWorld(true);
     const group = scene.children[1]!;
     const bounds = new Box3();

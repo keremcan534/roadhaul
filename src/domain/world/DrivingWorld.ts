@@ -78,6 +78,8 @@ import { growSideRoads, layFarmland } from './sideRoads';
 import { growDistricts } from './districts';
 import { workedFields, type FieldWork } from './fieldWork';
 import { growVillages, type Village } from './villages';
+import type { Terrain } from './terrain';
+import { gradeTerrain } from './terrainGrading';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 import {
   billboardLegs,
@@ -468,6 +470,8 @@ export class DrivingWorld implements DebrisSolids {
   readonly rivers: readonly RiverPath[];
   /** Where the roads cross the rivers: decks with parapets (walls) either side. */
   readonly bridges: readonly Bridge[];
+  /** The ground's height (terrain.ts), the roads graded through it (terrainGrading.ts): flat on a map without hills. */
+  readonly terrain: Terrain;
   /** The forests: their trees are among `trees`. */
   readonly forests: readonly Forest[];
   /** The towns' parks and the villages' greens: their trees, benches, bins and lamps are among the others; their hedges are walls. */
@@ -621,6 +625,8 @@ export class DrivingWorld implements DebrisSolids {
     const depotYards = map.depots.map((depot) => depot.yard);
     stackContainers(plan, depotYards, [...depotYards, ...map.restAreas.map((area) => area.lot)], map.buildings, countrySeed + 3);
     this.roads = plan.roads;
+    // The ground's hills, and every road (the map's and the country's) graded through them.
+    this.terrain = gradeTerrain(map.terrain, map.halfSizeMeters, this.roads);
     this.roadGrid = new RoadGrid(this.roads, TREE_ROAD_CLEARANCE);
     this.network = new RoadNetwork(this.roads);
     // What grew: the towns' districts' buildings, and the country's.

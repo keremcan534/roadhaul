@@ -31,6 +31,15 @@ export class RoadPath {
   /** Distance along the road at each sample, meters. */
   readonly distances: Float64Array;
   readonly lengthMeters: number;
+  /**
+   * The road's height at each sample, meters: 0 on a flat map; on hills,
+   * graded through them by the world (terrainGrading.ts).
+   */
+  readonly heights: Float64Array;
+  /** 1 at each sample on a stretch carried on a deck (RoadDefinition.elevated): the ground stays below it. */
+  readonly elevated: Uint8Array;
+  /** The heights the road is held at (RoadDefinition.profile), by distance along it. */
+  readonly profile: RoadDefinition['profile'];
 
   constructor(road: RoadDefinition, spacingMeters = DEFAULT_SPACING_METERS) {
     this.id = road.id;
@@ -50,6 +59,59 @@ export class RoadPath {
       total += Math.hypot(this.x(0) - this.x(count - 1), this.z(0) - this.z(count - 1));
     }
     this.lengthMeters = total;
+    this.heights = new Float64Array(count);
+    this.elevated = new Uint8Array(count);
+    for (const [from, to] of road.elevated ?? []) {
+      for (let i = 0; i < count; i++) {
+        if (this.distances[i]! >= from && this.distances[i]! <= to) {
+          this.elevated[i] = 1;
+        }
+      }
+    }
+    this.profile = road.profile;
+  }
+
+  /** The road's height at sample `index`, meters. */
+  heightAt(index: number): number {
+    return this.heights[index] ?? 0;
+  }
+
+  /**
+   * The road's height at `distance` meters along it (from its first
+   * sample; a closed road wraps), between the samples. Allocation-free,
+   * but it searches the samples: for placing things, not every frame.
+   */
+  heightAtDistance(distance: number): number {
+    const count = this.pointCount;
+    if (count === 1) {
+      return this.heights[0]!;
+    }
+    const last = count - 1;
+    const d = this.closed
+      ? (((distance % this.lengthMeters) + this.lengthMeters) % this.lengthMeters)
+      : Math.min(this.lengthMeters, Math.max(0, distance));
+    if (d >= this.distances[last]!) {
+      // Past the last sample: the end of an open road, or a closed one's last piece back to its first sample.
+      if (!this.closed || this.lengthMeters <= this.distances[last]!) {
+        return this.heights[last]!;
+      }
+      const t = (d - this.distances[last]!) / (this.lengthMeters - this.distances[last]!);
+      return this.heights[last]! + (this.heights[0]! - this.heights[last]!) * t;
+    }
+    let low = 0;
+    let high = last;
+    while (high - low > 1) {
+      const middle = (low + high) >> 1;
+      if (this.distances[middle]! <= d) {
+        low = middle;
+      } else {
+        high = middle;
+      }
+    }
+    const from = this.distances[low]!;
+    const to = this.distances[high]!;
+    const t = to > from ? (d - from) / (to - from) : 0;
+    return this.heights[low]! + (this.heights[high]! - this.heights[low]!) * t;
   }
 
   get pointCount(): number {

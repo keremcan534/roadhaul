@@ -13,16 +13,21 @@ export interface TrailerPose {
   x: number;
   z: number;
   heading: number;
+  /** The ground under its axles (its height, meters) and its rise per meter along the trailer: 0 on the flat. */
+  y: number;
+  grade: number;
 }
 
 export function createTrailerPose(): TrailerPose {
-  return { x: 0, z: 0, heading: 0 };
+  return { x: 0, z: 0, heading: 0, y: 0, grade: 0 };
 }
 
 export function copyTrailerPose(into: TrailerPose, from: Readonly<TrailerPose>): void {
   into.x = from.x;
   into.z = from.z;
   into.heading = from.heading;
+  into.y = from.y;
+  into.grade = from.grade;
 }
 
 /** The angle from π to −π equal to `angle`. */
