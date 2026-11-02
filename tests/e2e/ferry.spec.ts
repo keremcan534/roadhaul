@@ -8,11 +8,11 @@ function companyAtTheFerry(): string {
     createdAtMs: 1_700_000_000_000,
     updatedAtMs: 1_700_000_000_000,
     profile: { companyName: 'Kuzey Lojistik' },
-    company: { level: 3, xp: 2_000, reputation: 20 },
+    company: { level: 3, xp: 3_500, reputation: 20 },
     economy: { credits: 30_000 },
     garage: {
       activeVehicleInstanceId: 'truck_001',
-      vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 200, damage: 0, upgrades: {} }],
+      vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 120, damage: 0, upgrades: {} }],
     },
     world: { mapId: 'north_valley', truck: { x: -2560, z: -2090, headingRadians: (53 * Math.PI) / 180 } },
     missions: { active: null },
