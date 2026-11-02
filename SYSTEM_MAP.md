@@ -203,7 +203,7 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 
 | System | Layer | Location | Responsibility | Depends on | Events |
 |---|---|---|---|---|---|
-| TrafficVehicleDefinition, trafficVehicles | data | `src/data/definitions/TrafficVehicleDefinition.ts`, `src/data/content/trafficVehicles.ts` | Kinds of NPC vehicle (spec §19: car, minibus, lorry, bus; a car a hatchback or a saloon): size, share of the speed limit, pull-away, how common, paint colours | Validator | none |
+| TrafficVehicleDefinition, trafficVehicles | data | `src/data/definitions/TrafficVehicleDefinition.ts`, `src/data/content/trafficVehicles.ts` | Kinds of NPC vehicle (spec §19: car, minibus, lorry, bus; a car a hatchback, a saloon or a taxi with a roof sign): size, share of the speed limit, pull-away, how common, paint colours | Validator | none |
 | GameConfig.traffic | data | `src/data/config/GameConfig.ts` | How many vehicles, how far round the truck, speed limits by road kind | ROAD_KINDS | none |
 | Lanes, turning circles | domain | `src/domain/world/lanes.ts`, `DrivingWorld.turningCircles`, `RoadNetwork.junctions` / `deadEnds` | Right-hand lanes by road kind; a paved circle at every dead end; which roads meet at each junction | RoadPath | none |
 | LaneGraph | domain | `src/domain/traffic/LaneGraph.ts`, `laneRoutes.ts` | Waypoint links: lanes between junctions, turns across junctions (which conflict), U-turns round turning circles; advisory speeds for bends; how much traffic each lane draws (`spawnWeights`) and each turn (the roads the country grew are quiet, its lanes quietest); the lane a vehicle at a place would drive (`locate`); how far every link is from a depot through the lanes (`laneRouteTo`) | DrivingWorld, RoadNetwork | none |
