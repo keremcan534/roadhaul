@@ -234,6 +234,8 @@ export interface MovingObstacles {
   readonly circleX: Float64Array;
   readonly circleZ: Float64Array;
   readonly circleRadius: Float64Array;
+  /** The height the circle's vehicle drives at (its road's), meters: one on another level is passed by. Absent: 0. */
+  readonly circleY?: Float64Array;
   /** Velocity of the circle's vehicle, m/s. */
   readonly circleVelocityX: Float64Array;
   readonly circleVelocityZ: Float64Array;
@@ -419,6 +421,16 @@ const FALLBACK_MASS_KG = 10_000;
 const BUCKET_METERS = 60;
 const NEAR_BUILDING_METERS = TREE_BUILDING_CLEARANCE;
 const NEAR_FIELD_METERS = TREE_FIELD_CLEARANCE;
+/**
+ * What stands, or is driven, further above or below the truck than this,
+ * meters, is on another level (under a deck it crosses, on a deck over it):
+ * the truck passes it by.
+ */
+export const LEVEL_METERS = 4;
+/** A deck within this far above the truck is one it drives up onto (a ramp's end); higher, it passes under it. */
+const DECK_STEP_METERS = 2;
+/** A deck's side walls stand this far out past its edge. */
+const DECK_WALL_OUT_METERS = 0.4;
 const NEAR_CIRCLE_METERS = Math.max(LAMP_YARD_CLEARANCE, RAIL_YARD_CLEARANCE, WALK_YARD_CLEARANCE, TREE_ROAD_CLEARANCE);
 /**
  * A truck moving into a moving obstacle slower than this is not to blame for
@@ -543,6 +555,14 @@ export class DrivingWorld implements DebrisSolids {
    */
   private readonly railGrid = new Map<number, number[]>();
   private readonly railAX: Float64Array;
+  /** The height each wall piece stands at (its ground's, or its deck's), meters. */
+  private readonly railY: Float64Array;
+  /** The height each solid circle stands at (its ground's), meters. */
+  private readonly circleY: Float64Array;
+  /** The road segments carried on decks (RoadDefinition.elevated): their road and first sample, filed by cell. */
+  private readonly deckRoad: Int32Array;
+  private readonly deckSample: Int32Array;
+  private readonly deckGrid = new Map<number, number[]>();
   private readonly railAZ: Float64Array;
   private readonly railBX: Float64Array;
   private readonly railBZ: Float64Array;
@@ -695,12 +715,47 @@ export class DrivingWorld implements DebrisSolids {
         return { a, b, nx: ((b[1] - a[1]) / length) * toRoad, nz: (-(b[0] - a[0]) / length) * toRoad };
       }),
     );
-    // The rivers' banks, the bridges' parapets and the parks' hedges are walls like the rails.
+    // The rivers' banks, the bridges' parapets and the parks' hedges are walls like the rails; then the decks' sides.
     pieces.push(
       ...bankWalls(this.roads, this.rivers, this.bridges),
       ...parapetWalls(this.roads, this.bridges),
       ...this.parks.flatMap(hedgeWalls),
     );
+    const groundPieces = pieces.length;
+    const decks = deckWalls(this.roads);
+    pieces.push(...decks.pieces);
+    this.railY = Float64Array.from(pieces, (piece, index) =>
+      index < groundPieces
+        ? this.terrain.heightAt((piece.a[0] + piece.b[0]) / 2, (piece.a[1] + piece.b[1]) / 2)
+        : decks.heights[index - groundPieces]!,
+    );
+    // The decks' segments, for the height of the road the truck is on (groundAt).
+    const deckSegments: [number, number][] = [];
+    this.roads.forEach((road, roadIndex) => {
+      for (let i = 0; i < road.segmentCount; i++) {
+        if (road.elevated[i] === 1 || road.elevated[(i + 1) % road.pointCount] === 1) {
+          deckSegments.push([roadIndex, i]);
+        }
+      }
+    });
+    this.deckRoad = Int32Array.from(deckSegments, ([road]) => road);
+    this.deckSample = Int32Array.from(deckSegments, ([, sample]) => sample);
+    deckSegments.forEach(([roadIndex, i], index) => {
+      const road = this.roads[roadIndex]!;
+      const next = (i + 1) % road.pointCount;
+      const reach = road.widthMeters / 2 + 1;
+      for (let gx = cellOf(Math.min(road.x(i), road.x(next)) - reach); gx <= cellOf(Math.max(road.x(i), road.x(next)) + reach); gx++) {
+        for (let gz = cellOf(Math.min(road.z(i), road.z(next)) - reach); gz <= cellOf(Math.max(road.z(i), road.z(next)) + reach); gz++) {
+          const key = cellKey(gx, gz);
+          const bucket = this.deckGrid.get(key);
+          if (bucket === undefined) {
+            this.deckGrid.set(key, [index]);
+          } else {
+            bucket.push(index);
+          }
+        }
+      }
+    });
     this.railAX = Float64Array.from(pieces, (piece) => piece.a[0]);
     this.railAZ = Float64Array.from(pieces, (piece) => piece.a[1]);
     this.railBX = Float64Array.from(pieces, (piece) => piece.b[0]);
@@ -860,6 +915,7 @@ export class DrivingWorld implements DebrisSolids {
     this.circleX = Float64Array.from(circles, (circle) => circle.x);
     this.circleZ = Float64Array.from(circles, (circle) => circle.z);
     this.circleRadius = Float64Array.from(circles, (circle) => circle.radius);
+    this.circleY = Float64Array.from(circles, (circle) => this.terrain.heightAt(circle.x, circle.z));
     this.maxCircleRadius = Math.max(0, ...this.circleRadius);
     circles.forEach((circle, index) => {
       const key = cellKey(cellOf(circle.x), cellOf(circle.z));
@@ -1003,6 +1059,54 @@ export class DrivingWorld implements DebrisSolids {
 
   depotOf(cityId: string): DepotDefinition | undefined {
     return this.depots.find((depot) => depot.cityId === cityId);
+  }
+
+  /**
+   * The height of what the truck drives on at (x, z), meters: the ground's,
+   * or a deck's (RoadDefinition.elevated) where one carries the road there
+   * and the truck, at `nearY`, is on it or a little below it (a ramp's top);
+   * one far above it is a bridge it passes under. Allocation-free.
+   */
+  /** Whether a road other than road `roadIndex` runs within `clearanceMeters` of (x, z): where a deck's pier may not stand. */
+  nearOtherRoad(x: number, z: number, roadIndex: number, clearanceMeters: number): boolean {
+    return this.roadGrid.nearOtherRoad(x, z, clearanceMeters, roadIndex);
+  }
+
+  /** Whether everything is driven at height 0: no hills and no decks (most maps). */
+  get flat(): boolean {
+    return this.terrain.flat && this.deckRoad.length === 0;
+  }
+
+  groundAt(x: number, z: number, nearY: number): number {
+    let ground = this.terrain.heightAt(x, z);
+    if (this.deckRoad.length === 0) {
+      return ground;
+    }
+    const bucket = this.deckGrid.get(cellKey(cellOf(x), cellOf(z)));
+    if (bucket === undefined) {
+      return ground;
+    }
+    for (let k = 0; k < bucket.length; k++) {
+      const road = this.roads[this.deckRoad[bucket[k]!]!]!;
+      const i = this.deckSample[bucket[k]!]!;
+      const next = (i + 1) % road.pointCount;
+      const ax = road.x(i);
+      const az = road.z(i);
+      const dx = road.x(next) - ax;
+      const dz = road.z(next) - az;
+      const t = clamp01(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1));
+      const offX = x - (ax + dx * t);
+      const offZ = z - (az + dz * t);
+      const half = road.widthMeters / 2 + DECK_WALL_OUT_METERS;
+      if (offX * offX + offZ * offZ > half * half) {
+        continue;
+      }
+      const deck = road.heights[i]! + (road.heights[next]! - road.heights[i]!) * t;
+      if (deck > ground && deck <= nearY + DECK_STEP_METERS) {
+        ground = deck;
+      }
+    }
+    return ground;
   }
 
   /**
@@ -1179,7 +1283,11 @@ export class DrivingWorld implements DebrisSolids {
   ): void {
     let cx = state.x + Math.sin(state.heading) * offset;
     let cz = state.z + Math.cos(state.heading) * offset;
+    const levels = obstacles.circleY;
     for (let k = 0; k < obstacles.circleCount; k++) {
+      if (levels !== undefined && Math.abs(levels[k]! - state.y) > LEVEL_METERS) {
+        continue;
+      }
       const dx = cx - obstacles.circleX[k]!;
       const dz = cz - obstacles.circleZ[k]!;
       const minDistance = radius + obstacles.circleRadius[k]!;
@@ -1403,7 +1511,8 @@ export class DrivingWorld implements DebrisSolids {
         }
         for (let k = 0; k < bucket.length; k++) {
           const index = bucket[k]!;
-          if (this.knocked[index] === 1) {
+          // Knocked over, or on another level (under the deck the truck is on).
+          if (this.knocked[index] === 1 || Math.abs(this.circleY[index]! - state.y) > LEVEL_METERS) {
             continue;
           }
           const dx = cx - this.circleX[index]!;
@@ -1437,6 +1546,9 @@ export class DrivingWorld implements DebrisSolids {
         }
         for (let k = 0; k < bucket.length; k++) {
           const index = bucket[k]!;
+          if (Math.abs(this.railY[index]! - state.y) > LEVEL_METERS) {
+            continue;
+          }
           const ax = this.railAX[index]!;
           const az = this.railAZ[index]!;
           const dx = this.railBX[index]! - ax;
@@ -2009,4 +2121,39 @@ function placeHayBales(fields: readonly Field[], mapFieldCount: number, seed: nu
     }
   }
   return bales;
+}
+
+/**
+ * Walls along both sides of every stretch of road carried on a deck
+ * (RoadDefinition.elevated), just past its edge, facing the road: with the
+ * deck's height at each piece.
+ */
+function deckWalls(roads: readonly RoadPath[]): { pieces: WallPiece[]; heights: number[] } {
+  const pieces: WallPiece[] = [];
+  const heights: number[] = [];
+  for (const road of roads) {
+    const out = road.widthMeters / 2 + DECK_WALL_OUT_METERS;
+    for (let i = 0; i < road.segmentCount; i++) {
+      const next = (i + 1) % road.pointCount;
+      if (road.elevated[i] !== 1 || road.elevated[next] !== 1) {
+        continue;
+      }
+      const dx = road.x(next) - road.x(i);
+      const dz = road.z(next) - road.z(i);
+      const length = Math.hypot(dx, dz) || 1;
+      // Right of the road's run is (-dz, dx).
+      const rightX = -dz / length;
+      const rightZ = dx / length;
+      for (const side of [1, -1] as const) {
+        pieces.push({
+          a: [road.x(i) + rightX * out * side, road.z(i) + rightZ * out * side],
+          b: [road.x(next) + rightX * out * side, road.z(next) + rightZ * out * side],
+          nx: -rightX * side,
+          nz: -rightZ * side,
+        });
+        heights.push((road.heights[i]! + road.heights[next]!) / 2);
+      }
+    }
+  }
+  return { pieces, heights };
 }

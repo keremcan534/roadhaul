@@ -97,6 +97,7 @@ import { RiverView } from './presentation/world/RiverView';
 import { ParkView } from './presentation/world/ParkView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { DeckView } from './presentation/world/DeckView';
 import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
 import { RoadsideView } from './presentation/world/RoadsideView';
 import { SceneryView } from './presentation/world/SceneryView';
@@ -502,6 +503,8 @@ async function start(strings: Strings): Promise<void> {
     renderHost.precompile();
   }
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
+  // The decks the roads are carried on (overpasses, viaducts): none on a map without them.
+  new DeckView(renderHost.scene, driving.world);
   // At night the towns glow on the horizon, over their depots.
   environment.setTowns(driving.world.depots.map((depot) => depot.yard));
   // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
@@ -569,7 +572,6 @@ async function start(strings: Strings): Promise<void> {
     sky: environment.sky,
     wrecks: debrisCapacity,
   });
-  trafficView.terrain = driving.world.terrain;
   /** What carries lamps for a wet road to mirror: the truck (set every frame: it changes in the garage) and the traffic. */
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);

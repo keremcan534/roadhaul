@@ -426,6 +426,69 @@ describe('DrivingService', () => {
     expect(flat.driving.vehicle.grade).toBe(0);
   });
 
+  describe('on a map with a road carried over another on a deck', () => {
+    // A street crossing the test road (z = 0) north to south, up a ramp onto a 7.5 m deck over it and down again.
+    const overpass = {
+      id: 'overpass',
+      kind: 'street' as const,
+      widthMeters: 8,
+      closed: false,
+      controlPoints: [
+        [0, -180],
+        [0, 180],
+      ] as [number, number][],
+      profile: [
+        { atMeters: 60, heightMeters: 0 },
+        { atMeters: 160, heightMeters: 7.5 },
+        { atMeters: 200, heightMeters: 7.5 },
+        { atMeters: 300, heightMeters: 0 },
+      ],
+      elevated: [[150, 210]] as [number, number][],
+    };
+    const roadsWith = mapFixture().roads.concat(overpass);
+
+    it('keeps the two roads apart, and drives on whichever level the truck is at', () => {
+      const { driving } = setup({ roads: roadsWith, buildings: [] });
+      driving.start('test_truck', 'test_map');
+      const world = driving.world;
+
+      expect(world.flat).toBe(false);
+      expect(world.groundAt(0, 0, 0)).toBeCloseTo(0, 6);
+      expect(world.groundAt(0, 0, 7.5)).toBeCloseTo(7.5, 6);
+      // Beside the deck, the ground.
+      expect(world.groundAt(20, 0, 7.5)).toBeCloseTo(0, 6);
+      // No junction where they cross: no junction anywhere near (0, 0).
+      expect(world.network.junctions.some((junction) => Math.hypot(junction.x, junction.z) < 20)).toBe(false);
+    });
+
+    it('drives along the lower road under the deck without touching it', () => {
+      const { driving, collisions } = setup({ roads: roadsWith, buildings: [], spawn: { x: -120, z: 0, headingDegrees: 90 } });
+      driving.start('test_truck', 'test_map');
+
+      stepFor(driving, 30, input({ throttle: 1 }), () => driving.vehicle.x > 60);
+
+      expect(driving.vehicle.x).toBeGreaterThan(60);
+      expect(collisions).toEqual([]);
+      expect(Math.abs(driving.vehicle.y)).toBeLessThan(0.05);
+    });
+
+    it('drives up the ramp, over the deck and down again', () => {
+      const { driving, collisions } = setup({ roads: roadsWith, buildings: [], spawn: { x: 0, z: -170, headingDegrees: 0 } });
+      driving.start('test_truck', 'test_map');
+      let highest = 0;
+
+      stepFor(driving, 40, input({ throttle: 1 }), () => {
+        highest = Math.max(highest, driving.vehicle.y);
+        return driving.vehicle.z > 150;
+      });
+
+      expect(driving.vehicle.z).toBeGreaterThan(150);
+      expect(highest).toBeCloseTo(7.5, 1);
+      expect(collisions).toEqual([]);
+      expect(Math.abs(driving.vehicle.y)).toBeLessThan(0.05);
+    });
+  });
+
   it('stops driving on stop() and on dispose()', () => {
     const { driving } = setup();
     driving.start('test_truck', 'test_map');

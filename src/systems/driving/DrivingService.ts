@@ -302,6 +302,8 @@ export class DrivingService {
     this.drives++;
     const dynamics = new VehicleDynamics(definition, cargoMassKg);
     const state = dynamics.createState(world.spawn.x, world.spawn.z, world.spawn.heading, world.terrain.heightAt(world.spawn.x, world.spawn.z));
+    // Where the map puts it on a deck: on the deck.
+    state.y = world.groundAt(state.x, state.z, Number.POSITIVE_INFINITY);
     const previousPose = createTruckPose();
     keepPose(previousPose, state);
     this.session = {
@@ -389,7 +391,9 @@ export class DrivingService {
   placeTruck(x: number, z: number, heading: number): void {
     const session = this.requireSession();
     const odometerMeters = session.state.odometerMeters;
-    Object.assign(session.state, session.dynamics.createState(x, z, heading, session.world.terrain.heightAt(x, z)), { odometerMeters });
+    // On what is there at about the level it was at (a deck it was on, the ground under one it was below).
+    const y = session.world.groundAt(x, z, session.state.y);
+    Object.assign(session.state, session.dynamics.createState(x, z, heading, y), { odometerMeters });
     keepPose(session.previousPose, session.state);
     session.lastImpactSpeed = 0;
     session.over = false;
@@ -468,12 +472,12 @@ export class DrivingService {
       state.z + Math.cos(state.heading) * centreAhead,
     );
     session.surface = surface;
-    // The slope under the truck, from the ground under its axles.
-    const terrain = world.terrain;
-    if (!terrain.flat) {
+    // The slope under the truck, from what is under its axles (the ground, or a deck it is on).
+    const flat = world.flat;
+    if (!flat) {
       const wheelbase = session.definition.body.wheelbaseMeters;
-      const rear = terrain.heightAt(state.x, state.z);
-      const front = terrain.heightAt(state.x + Math.sin(state.heading) * wheelbase, state.z + Math.cos(state.heading) * wheelbase);
+      const rear = world.groundAt(state.x, state.z, state.y);
+      const front = world.groundAt(state.x + Math.sin(state.heading) * wheelbase, state.z + Math.cos(state.heading) * wheelbase, state.y);
       state.grade = (front - rear) / wheelbase;
     }
     session.dynamics.step(state, input, surface, dt);
@@ -486,8 +490,8 @@ export class DrivingService {
       this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
     }
     session.lastImpactSpeed = impact;
-    if (!terrain.flat) {
-      state.y = terrain.heightAt(state.x, state.z);
+    if (!flat) {
+      state.y = world.groundAt(state.x, state.z, state.y);
     }
     // The body slamming down is a blow too: each is a step's, so each counts once.
     if (state.groundImpact >= COLLISION_EVENT_MIN_SPEED) {
@@ -537,14 +541,13 @@ export class DrivingService {
       pose.z = stand.z;
     }
     state.speed += (stand.speed - speedBefore) * along;
-    const terrain = world.terrain;
-    if (!terrain.flat) {
-      // On the ground under its axles, sloped as the ground under its length is.
+    if (!world.flat) {
+      // On what is under its axles, sloped as what is under its length is (at the tractor's level).
       const front = trailerFrontAhead(rig.body);
       const sin = Math.sin(pose.heading);
       const cos = Math.cos(pose.heading);
-      pose.y = terrain.heightAt(pose.x, pose.z);
-      pose.grade = (terrain.heightAt(pose.x + sin * front, pose.z + cos * front) - pose.y) / front;
+      pose.y = world.groundAt(pose.x, pose.z, state.y);
+      pose.grade = (world.groundAt(pose.x + sin * front, pose.z + cos * front, state.y) - pose.y) / front;
     }
     return impact;
   }

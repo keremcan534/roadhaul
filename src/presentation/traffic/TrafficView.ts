@@ -31,15 +31,12 @@ import { softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { LampGlows } from '../vehicles/LampGlows';
 import type { LampMirror } from '../world/WetReflections';
-import { FLAT_TERRAIN, type Terrain } from '../../domain/world/terrain';
 import type { SkyUniforms } from '../world/EnvironmentView';
 import type { TrafficHeadlamps } from '../world/LampLighting';
 import { ShadowSubset, type ShadowReach } from '../world/ShadowSubset';
 import { reflectSky } from '../world/skyReflection';
 
 /** Parts in white take the vehicle's paint (the instance colour); the rest keep their own colour (`paint` 0). */
-/** A vehicle's pitch on a slope is the ground's rise between this far ahead of it and as far behind, meters. */
-const PITCH_REACH_METERS = 2;
 const PAINT = 0xffffff;
 const GLASS = 0x1d2630;
 const TYRE = 0x161616;
@@ -212,8 +209,6 @@ export class TrafficView implements TrafficHeadlamps {
   private nearest = new Int32Array(0);
   private nearestSq = new Float64Array(0);
 
-  /** The ground the traffic drives on (the map's: its hills, if it has any). */
-  terrain: Terrain = FLAT_TERRAIN;
   private readonly tilt = new Euler(0, 0, 0, 'YXZ');
 
   constructor(
@@ -329,15 +324,13 @@ export class TrafficView implements TrafficHeadlamps {
         const x = traffic.previousX[i]! + (traffic.x[i]! - traffic.previousX[i]!) * alpha;
         const z = traffic.previousZ[i]! + (traffic.z[i]! - traffic.previousZ[i]!) * alpha;
         const heading = traffic.previousHeading[i]! + (traffic.heading[i]! - traffic.previousHeading[i]!) * alpha;
-        const terrain = this.terrain;
-        if (terrain.flat) {
+        const y = traffic.previousY[i]! + (traffic.y[i]! - traffic.previousY[i]!) * alpha;
+        const grade = traffic.grade[i]!;
+        if (y === 0 && grade === 0) {
           this.matrix.makeRotationY(heading).setPosition(x, 0, z);
         } else {
-          // On a map's hills: on the ground, pitched with its slope along the vehicle.
-          const sin = Math.sin(heading) * PITCH_REACH_METERS;
-          const cos = Math.cos(heading) * PITCH_REACH_METERS;
-          const grade = (terrain.heightAt(x + sin, z + cos) - terrain.heightAt(x - sin, z - cos)) / (2 * PITCH_REACH_METERS);
-          this.matrix.makeRotationFromEuler(this.tilt.set(-Math.atan(grade), heading, 0)).setPosition(x, terrain.heightAt(x, z), z);
+          // On its road's height (a map's hills, a deck), pitched with its lane's slope.
+          this.matrix.makeRotationFromEuler(this.tilt.set(-Math.atan(grade), heading, 0)).setPosition(x, y, z);
         }
         mesh.setMatrixAt(slot, this.matrix);
         this.castShadow(type, slot, x, z);
@@ -578,7 +571,8 @@ export class TrafficView implements TrafficHeadlamps {
         const localX = spots[lamp * 3]!;
         const localZ = spots[lamp * 3 + 2]!;
         // Turned by the heading, like makeRotationY: the headlights face ahead, the tail lights back.
-        this.glows.setPosition(first + lamp, x + localX * cos + localZ * sin, spots[lamp * 3 + 1]!, z - localX * sin + localZ * cos);
+        // On the vehicle's height (this.matrix: placed by update()).
+        this.glows.setPosition(first + lamp, x + localX * cos + localZ * sin, this.matrix.elements[13]! + spots[lamp * 3 + 1]!, z - localX * sin + localZ * cos);
         const facing = lamp < 2 ? 1 : -1;
         this.glows.setFacing(first + lamp, facing * sin, 0, facing * cos);
       }

@@ -109,6 +109,29 @@ export class RoadGrid {
     return false;
   }
 
+  /**
+   * True when (x, z) is closer than `clearanceMeters` (at most the grid's
+   * reach) to the edge of a road other than road `except` (one passing
+   * under a deck that road is carried on, say). Allocation-free.
+   */
+  nearOtherRoad(x: number, z: number, clearanceMeters: number, except: number): boolean {
+    const cell = this.cellAt(x, z);
+    if (cell < 0) {
+      return false;
+    }
+    const pieces = this.pieces;
+    for (let k = this.starts[cell]!, end = this.starts[cell + 1]!; k < end; k++) {
+      if (pieces[k * 2] === except) {
+        continue;
+      }
+      const road = this.roads[pieces[k * 2]!]!;
+      if (road.segmentDistance(pieces[k * 2 + 1]!, x, z) < road.widthMeters / 2 + Math.min(clearanceMeters, this.reachMeters)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** True when (x, z) is closer than `clearanceMeters` (at most the grid's reach) to a road's edge. Allocation-free. */
   nearRoad(x: number, z: number, clearanceMeters: number): boolean {
     if (clearanceMeters > this.reachMeters) {

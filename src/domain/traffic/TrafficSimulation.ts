@@ -61,7 +61,12 @@ export interface TrafficTruck {
   readonly z: number;
   readonly heading: number;
   readonly speed: number;
+  /** The height it drives at, meters (VehicleRuntimeState.y): traffic on another level passes it by. Absent: 0. */
+  readonly y?: number;
 }
+
+/** Vehicles further above or below the truck than this, meters, are on another level (DrivingWorld.LEVEL_METERS). */
+const TRAFFIC_LEVEL_METERS = 4;
 
 /** A tractor unit's semi-trailer as the traffic sees it: where its axles stand and the way it faces (semiTrailer.ts). */
 export interface TrafficTrailer {
@@ -172,9 +177,13 @@ export class TrafficSimulation implements MovingObstacles {
   readonly x: Float64Array;
   readonly z: Float64Array;
   readonly heading: Float64Array;
+  /** The height its lane runs at (its road's: LaneGraph.pointY), and the lane's rise per meter along it. */
+  readonly y: Float64Array;
+  readonly grade: Float64Array;
   readonly previousX: Float64Array;
   readonly previousZ: Float64Array;
   readonly previousHeading: Float64Array;
+  readonly previousY: Float64Array;
   readonly speed: Float64Array;
   readonly link: Int32Array;
   readonly s: Float64Array;
@@ -182,6 +191,7 @@ export class TrafficSimulation implements MovingObstacles {
 
   readonly circleX: Float64Array;
   readonly circleZ: Float64Array;
+  readonly circleY: Float64Array;
   readonly circleRadius: Float64Array;
   readonly circleVelocityX: Float64Array;
   readonly circleVelocityZ: Float64Array;
@@ -282,6 +292,9 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly located: LanePosition = { link: -1, s: 0 };
   /** Scratch results of pointAt() and scanTruck(). */
   private pointXOut = 0;
+  private pointYOut = 0;
+  /** The height the truck drives at (TrafficTruck.y). */
+  private truckY = 0;
   private pointZOut = 0;
   private truckGap = Infinity;
   private truckFar = -Infinity;
@@ -303,9 +316,12 @@ export class TrafficSimulation implements MovingObstacles {
     this.x = new Float64Array(capacity);
     this.z = new Float64Array(capacity);
     this.heading = new Float64Array(capacity);
+    this.y = new Float64Array(capacity);
+    this.grade = new Float64Array(capacity);
     this.previousX = new Float64Array(capacity);
     this.previousZ = new Float64Array(capacity);
     this.previousHeading = new Float64Array(capacity);
+    this.previousY = new Float64Array(capacity);
     this.speed = new Float64Array(capacity);
     this.link = new Int32Array(capacity);
     this.s = new Float64Array(capacity);
@@ -337,6 +353,7 @@ export class TrafficSimulation implements MovingObstacles {
     const circles = capacity * MAX_CIRCLES_PER_VEHICLE;
     this.circleX = new Float64Array(circles);
     this.circleZ = new Float64Array(circles);
+    this.circleY = new Float64Array(circles);
     this.circleRadius = new Float64Array(circles);
     this.circleVelocityX = new Float64Array(circles);
     this.circleVelocityZ = new Float64Array(circles);
@@ -504,6 +521,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.truckZ = truck.z;
     this.truckHeading = truck.heading;
     this.truckSpeed = truck.speed;
+    this.truckY = truck.y ?? 0;
     if (this.truckKnown && moved > TELEPORT_METERS) {
       // Placed somewhere new: clear the spot and fill the roads around it.
       const clear = CLEAR_AROUND_TELEPORT_METERS + this.truckReach;
@@ -770,6 +788,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.previousX[i] = this.x[i]!;
     this.previousZ[i] = this.z[i]!;
     this.previousHeading[i] = this.heading[i]!;
+    this.previousY[i] = this.y[i]!;
     return i;
   }
 
@@ -883,6 +902,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.previousX[i] = this.x[i]!;
     this.previousZ[i] = this.z[i]!;
     this.previousHeading[i] = this.heading[i]!;
+    this.previousY[i] = this.y[i]!;
     if (this.bumped[i]! >= 0) {
       this.crashSeconds[i] = CRASH_WAIT_SECONDS;
       this.bumped[i] = -1;
@@ -1159,7 +1179,12 @@ export class TrafficSimulation implements MovingObstacles {
     const reach = lookAhead + this.truckReach + 10;
     const toTruckX = this.truckX - this.x[i]!;
     const toTruckZ = this.truckZ - this.z[i]!;
-    if (this.truckCircleCount === 0 || toTruckX * toTruckX + toTruckZ * toTruckZ > reach * reach) {
+    if (
+      this.truckCircleCount === 0 ||
+      toTruckX * toTruckX + toTruckZ * toTruckZ > reach * reach ||
+      // On another level: over or under a deck the truck is under or on.
+      Math.abs(this.y[i]! - this.truckY) > TRAFFIC_LEVEL_METERS
+    ) {
       return;
     }
     const graph = this.graph;
@@ -1249,6 +1274,9 @@ export class TrafficSimulation implements MovingObstacles {
       if (offset > -behind - this.halfLength[j]! && offset < ahead + this.halfLength[j]!) {
         return false;
       }
+    }
+    if (Math.abs(this.y[i]! - this.truckY) > TRAFFIC_LEVEL_METERS) {
+      return true;
     }
     const s = graph.mapAcross(this.link[i]!, this.s[i]!, lane);
     this.pointAt(lane, s);
@@ -1378,12 +1406,17 @@ export class TrafficSimulation implements MovingObstacles {
     const s = this.s[i]!;
     const length = graph.length[link]!;
     this.segment[i] = graph.segmentAt(link, s);
-    this.pointAt(link, Math.max(0, s - HEADING_SPAN_METERS));
+    const back = Math.max(0, s - HEADING_SPAN_METERS);
+    const ahead = Math.min(length, s + HEADING_SPAN_METERS);
+    this.pointAt(link, back);
     const backX = this.pointXOut;
     const backZ = this.pointZOut;
-    this.pointAt(link, Math.min(length, s + HEADING_SPAN_METERS));
+    const backY = this.pointYOut;
+    this.pointAt(link, ahead);
     let pathHeading = Math.atan2(this.pointXOut - backX, this.pointZOut - backZ);
+    this.grade[i] = ahead > back ? (this.pointYOut - backY) / (ahead - back) : 0;
     this.pointAt(link, s);
+    this.y[i] = this.pointYOut;
 
     const lateral = this.lateral[i]!;
     const lateralSpeed =
@@ -1415,6 +1448,7 @@ export class TrafficSimulation implements MovingObstacles {
     const t = span > 0 ? clamp((s - graph.along[k]!) / span, 0, 1) : 0;
     this.pointXOut = graph.pointX[k]! + (graph.pointX[k + 1]! - graph.pointX[k]!) * t;
     this.pointZOut = graph.pointZ[k]! + (graph.pointZ[k + 1]! - graph.pointZ[k]!) * t;
+    this.pointYOut = graph.pointY[k]! + (graph.pointY[k + 1]! - graph.pointY[k]!) * t;
   }
 
   /** Collision circles along every vehicle, like the truck's footprint. */
@@ -1434,6 +1468,7 @@ export class TrafficSimulation implements MovingObstacles {
         const offset = -reach + (2 * reach * c) / (circles - 1);
         this.circleX[count] = this.x[i]! + sin * offset;
         this.circleZ[count] = this.z[i]! + cos * offset;
+        this.circleY[count] = this.y[i]!;
         this.circleRadius[count] = radius;
         this.circleVelocityX[count] = sin * speed;
         this.circleVelocityZ[count] = cos * speed;
