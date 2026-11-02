@@ -677,13 +677,21 @@ async function start(strings: Strings): Promise<void> {
       toasts.show(strings.t(`camera.${mode}`), 'info');
     }
   };
+  // The page is going (a new language or graphics setting starts the game again): what it was loading is cut off,
+  // which is no fault to report.
+  let leavingPage = false;
+  window.addEventListener('beforeunload', () => {
+    leavingPage = true;
+  });
   // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
   const audio = new GameAudio(
     () => (typeof AudioContext === 'undefined' ? null : new AudioContext()),
     settings.sound,
     (context) =>
       loadEngineLoops(context).catch((error: unknown) => {
-        logger.warn('The engine sound did not load: the truck runs silent.', error);
+        if (!leavingPage) {
+          logger.warn('The engine sound did not load: the truck runs silent.', error);
+        }
         return [];
       }),
   );
