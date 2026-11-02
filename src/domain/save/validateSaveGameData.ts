@@ -298,7 +298,7 @@ export function validateSaveGameData(
     }
   });
   section('roadEvents', (roadEvents) => {
-    for (const key of ['warned', 'fined', 'knocked'] as const) {
+    for (const key of ['warned', 'redLightWarned', 'fined', 'knocked'] as const) {
       validator.boolean(roadEvents[key], `roadEvents.${key}`);
     }
   });

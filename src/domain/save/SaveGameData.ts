@@ -49,7 +49,7 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v22: adds the Road Pass (the season, its points, the tiers collected on
  *   each track, the pass colours the company has).
  */
-export const CURRENT_SAVE_VERSION = 22;
+export const CURRENT_SAVE_VERSION = 23;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -121,6 +121,8 @@ export interface UsedTrucksSaveData {
 export interface RoadEventsSaveData {
   /** The first speeding was let off with a warning: from then on, fines. */
   readonly warned: boolean;
+  /** The first red light run was let off with a warning: from then on, fines (v23). */
+  readonly redLightWarned: boolean;
   /** The contract under way was fined, or the truck knocked: no safe-driving bonus for it. */
   readonly fined: boolean;
   readonly knocked: boolean;

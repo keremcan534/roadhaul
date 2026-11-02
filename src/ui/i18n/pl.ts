@@ -766,6 +766,8 @@ export const PL: StringTable = {
   'road.works': 'Roboty drogowe',
   'road.warning': 'Fotoradar: {speed} km/h przy ograniczeniu {limit}. Tym razem upomnienie, następnym razem mandat.',
   'road.fine': 'Fotoradar: {speed} km/h przy ograniczeniu {limit}. Mandat: {fine}.',
+  'road.redLight.warning': 'Czerwone światło! Złapany przez kamerę: tym razem ostrzeżenie. Zatrzymuj się na czerwonym, bo następnym razem będzie mandat.',
+  'road.redLight.fine': 'Przejazd na czerwonym: mandat {fine}.',
   'road.fineWorks': 'Fotoradar przy robotach: {speed} km/h przy ograniczeniu {limit}. Podwójny mandat: {fine}.',
   'road.stranded': 'Przed tobą stoi kierowca z awarią: zatrzymaj się przy jego światłach awaryjnych, by pomóc.',
   'road.helped': 'Pomogłeś kierowcy z awarią: +{reward}.',

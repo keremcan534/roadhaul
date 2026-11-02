@@ -18,7 +18,7 @@ function listen<K extends keyof GameEvents>(game: Game, name: K): GameEvents[K][
 async function convoyGame() {
   const game = await newCompany(1, 1000);
   const depot = game.driving.world.depotOf('city_a')!.bay;
-  const truck = { x: depot.x, z: depot.z, heading: (depot.headingDegrees * Math.PI) / 180, speed: 0 };
+  const truck = { x: depot.x, z: depot.z, y: 0, heading: (depot.headingDegrees * Math.PI) / 180, speed: 0 };
   const driving = { isDriving: true, vehicle: truck, world: game.driving.world };
   let luck = 0.4;
   const convoy = new ConvoyService(driving, game.economy, CONVOY, () => luck, game.events, new MemoryLogger());

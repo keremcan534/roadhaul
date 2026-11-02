@@ -209,6 +209,19 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
       roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
     }),
   },
+  {
+    // v23 adds the traffic lights' cameras: no red light run yet, so no warning given.
+    from: 22,
+    migrate: (save) => ({
+      ...save,
+      version: 23,
+      // Odd data is left as it is, for validation to refuse.
+      roadEvents:
+        typeof save['roadEvents'] === 'object' && save['roadEvents'] !== null
+          ? { ...(save['roadEvents'] as Record<string, unknown>), redLightWarned: false }
+          : save['roadEvents'],
+    }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

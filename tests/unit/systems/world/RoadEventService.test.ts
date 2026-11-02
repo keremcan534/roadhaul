@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
+import { METROPOL_MAP } from '../../../../src/data/content/metropolMap';
 import { localDay } from '../../../../src/domain/rewards/dailyReward';
+import { placeTrafficSignals, SIGNAL_GREEN_SECONDS, SIGNAL_AMBER_SECONDS } from '../../../../src/domain/traffic/trafficSignals';
+import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { workZonesForDay } from '../../../../src/domain/world/workZones';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { RoadEventService } from '../../../../src/systems/world/RoadEventService';
 import { STEP_SECONDS } from '../../../support/driving';
 import { deliver, newCompany, parkInTargetBay, play, type Game } from '../../../support/game';
+import { laneGraphOf } from '../../../support/trafficFixtures';
 
 const ROAD = DEFAULT_GAME_CONFIG.roadEvents;
 const LIMITS = DEFAULT_GAME_CONFIG.traffic.speedLimitsKmh;
@@ -20,7 +24,7 @@ function listen<K extends keyof GameEvents>(game: Game, name: K): GameEvents[K][
 
 /** The road's events on the game's world, for a truck put anywhere at any speed. */
 function roadEvents(game: Game, level = 3) {
-  const truck = { x: 0, z: 0, heading: 0, speed: 0 };
+  const truck = { x: 0, z: 0, y: 0, heading: 0, speed: 0 };
   const driving = { isDriving: true, vehicle: truck, world: game.driving.world };
   let luck = 0.5;
   const service = new RoadEventService(
@@ -70,7 +74,7 @@ describe('RoadEventService', () => {
     const fine = Math.round((ROAD.fineBase + ROAD.finePerKmh * (108 - limit)) / 10) * 10;
     expect(caught[1]).toEqual({ speedKmh: 108, limitKmh: limit, workZone: false, fine, warning: false });
     expect(game.economy.credits).toBe(20_000 - fine);
-    expect(service.snapshot()).toEqual({ warned: true, fined: true, knocked: false });
+    expect(service.snapshot()).toEqual({ warned: true, redLightWarned: false, fined: true, knocked: false });
     expect(game.career.records.fines).toBe(1);
     expect(game.career.records.finesPaid).toBe(fine);
   });
@@ -78,7 +82,7 @@ describe('RoadEventService', () => {
   it('never fines more than the most, nor more than the company has', async () => {
     const game = await newCompany(3, 300);
     const { service, at } = roadEvents(game);
-    service.restore({ warned: true, fined: false, knocked: false });
+    service.restore({ warned: true, redLightWarned: false, fined: false, knocked: false });
     const camera = game.driving.world.speedCameras[0]!;
 
     at(camera.roadX, camera.roadZ, 200);
@@ -108,7 +112,7 @@ describe('RoadEventService', () => {
     expect(changed).toHaveLength(1);
 
     const zone = zones[0]!;
-    service.restore({ warned: true, fined: false, knocked: false });
+    service.restore({ warned: true, redLightWarned: false, fined: false, knocked: false });
     const caught = listen(game, 'SpeedingCaught');
     at(zone.x, zone.z, 70, zone.heading);
     expect(service.workZoneLimitKmh).toBe(ROAD.workZoneLimitKmh);
@@ -213,12 +217,70 @@ describe('the safe-driving bonus', () => {
     finish();
     expect(game.roadEvents.lastDelivery).toEqual({ pay: 0 });
 
-    game.roadEvents.restore({ warned: true, fined: true, knocked: false });
+    game.roadEvents.restore({ warned: true, redLightWarned: false, fined: true, knocked: false });
     game.missions.accept('first_package'); // A new contract: clean again.
-    expect(game.roadEvents.snapshot()).toEqual({ warned: true, fined: false, knocked: false });
+    expect(game.roadEvents.snapshot()).toEqual({ warned: true, redLightWarned: false, fined: false, knocked: false });
     play(game, STEP_SECONDS);
-    game.roadEvents.restore({ warned: true, fined: true, knocked: false });
+    game.roadEvents.restore({ warned: true, redLightWarned: false, fined: true, knocked: false });
     finish();
     expect(game.roadEvents.lastDelivery).toEqual({ pay: 0 });
   });
 });
+
+describe('red lights', () => {
+  it('warns the first time ever a red light is run, then fines; not on green, nor just as it turns red, nor on a deck above it', async () => {
+    const game = await newCompany(4, 5_000);
+    const world = new DrivingWorld(METROPOL_MAP);
+    const signals = placeTrafficSignals(laneGraphOf(world), world)!;
+    const line = signals.stopLines.find((candidate) => candidate.group === 0)!;
+    // Group 0 is green from 0 s, amber, then red from just after SIGNAL_GREEN_SECONDS + SIGNAL_AMBER_SECONDS.
+    let seconds = 30;
+    const truck = { x: 0, z: 0, y: line.y, heading: Math.atan2(line.dirX, line.dirZ), speed: 6 };
+    const service = new RoadEventService(
+      { isDriving: true, vehicle: truck, world },
+      game.economy,
+      { level: 4 },
+      { now: () => NOW_MS },
+      0,
+      ROAD,
+      LIMITS,
+      () => 0.5,
+      game.events,
+      new MemoryLogger(),
+      { signalsOf: () => signals, get signalSeconds() { return seconds; } },
+    );
+    const caught = listen(game, 'RedLightCaught');
+    /** Drives the truck over the line, from 3 m short of it to 2 m past. */
+    const cross = (): void => {
+      Object.assign(truck, { x: line.x - line.dirX * 3, z: line.z - line.dirZ * 3 });
+      service.update(STEP_SECONDS);
+      Object.assign(truck, { x: line.x + line.dirX * 2, z: line.z + line.dirZ * 2 });
+      service.update(STEP_SECONDS);
+    };
+
+    cross();
+    expect(caught).toEqual([{ fine: 0, warning: true }]);
+    cross();
+    expect(caught[1]).toEqual({ fine: ROAD.redLightFine, warning: false });
+    expect(game.economy.credits).toBe(5_000 - ROAD.redLightFine);
+    expect(service.snapshot()).toMatchObject({ redLightWarned: true, fined: true });
+
+    // On green, and just as it turns red (the end of amber forgiven): nothing.
+    seconds = 5;
+    cross();
+    seconds = SIGNAL_GREEN_SECONDS + SIGNAL_AMBER_SECONDS + 0.5;
+    cross();
+    // On the motorway's deck over the junction: not its road.
+    seconds = 30;
+    truck.y = line.y + 20;
+    cross();
+    // Backing over it the other way: not running it.
+    truck.y = line.y;
+    Object.assign(truck, { x: line.x + line.dirX * 2, z: line.z + line.dirZ * 2 });
+    service.update(STEP_SECONDS);
+    Object.assign(truck, { x: line.x - line.dirX * 3, z: line.z - line.dirZ * 3 });
+    service.update(STEP_SECONDS);
+    expect(caught).toHaveLength(2);
+  });
+});
+

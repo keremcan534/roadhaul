@@ -61,7 +61,7 @@ describe('createNewSaveGameData', () => {
       liveries: { bought: [], worn: {}, text: null },
       research: { points: 0, researched: [] },
       career: emptyCareer(),
-      roadEvents: { warned: false, fined: false, knocked: false },
+      roadEvents: { warned: false, redLightWarned: false, fined: false, knocked: false },
       usedTrucks: { period: null, sold: [] },
       weeklyCup: { week: null, points: 0, last: null },
       roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },

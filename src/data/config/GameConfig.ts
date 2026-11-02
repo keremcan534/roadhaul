@@ -408,6 +408,8 @@ export interface GameConfig {
     readonly fineBase: Credits;
     readonly finePerKmh: Credits;
     readonly fineMost: Credits;
+    /** Running a red light (traffic/trafficSignals.ts): the first time ever a warning, then this fine. */
+    readonly redLightFine: Credits;
     /** Road works on the main roads each day, their limit, and how much longer the GPS counts each, meters. */
     readonly workZonesPerDay: number;
     readonly workZoneLimitKmh: number;
@@ -834,6 +836,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     toleranceShare: 0.08,
     toleranceKmh: 2,
     fineBase: 150,
+    redLightFine: 400,
     finePerKmh: 20,
     fineMost: 1500,
     workZonesPerDay: 3,
@@ -1288,7 +1291,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   for (const key of ['cameraReachMeters', 'workZoneLimitKmh', 'workZoneDetourMeters', 'strandedFirstSeconds', 'strandedSeconds', 'strandedBehindMeters', 'helpMeters', 'helpSpeed', 'helpSeconds'] as const) {
     validator.positiveNumber(roadEvents[key], `roadEvents.${key}`);
   }
-  for (const key of ['fineBase', 'finePerKmh', 'fineMost', 'helpReward', 'helpRewardPerLevel'] as const) {
+  for (const key of ['fineBase', 'finePerKmh', 'fineMost', 'redLightFine', 'helpReward', 'helpRewardPerLevel'] as const) {
     validator.nonNegativeInteger(roadEvents[key], `roadEvents.${key}`);
   }
   validator.nonNegativeInteger(roadEvents.workZonesPerDay, 'roadEvents.workZonesPerDay');

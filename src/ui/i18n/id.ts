@@ -766,6 +766,8 @@ export const ID: StringTable = {
   'road.works': 'Perbaikan jalan',
   'road.warning': 'Kamera kecepatan: {speed} km/j di batas {limit}. Kali ini peringatan; berikutnya denda.',
   'road.fine': 'Kamera kecepatan: {speed} km/j di batas {limit}. Denda: {fine}.',
+  'road.redLight.warning': 'Lampu merah! Tertangkap kamera: kali ini peringatan. Berhentilah saat merah, atau lain kali kena denda.',
+  'road.redLight.fine': 'Menerobos lampu merah: denda {fine}.',
   'road.fineWorks': 'Kamera di perbaikan jalan: {speed} km/j di batas {limit}. Denda ganda: {fine}.',
   'road.stranded': 'Ada pengemudi mogok di depan: berhentilah di dekat lampu hazard-nya untuk membantu.',
   'road.helped': 'Kamu membantu pengemudi yang mogok: +{reward}.',

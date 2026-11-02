@@ -58,6 +58,14 @@ describe('placeTrafficSignals', () => {
       expect(nearest, `head at ${Math.round(head.x)}, ${Math.round(head.z)}`).toBeGreaterThan(0.3);
       expect(nearest).toBeLessThan(3);
     }
+    // A stop line for each head, across its approach's lanes on the road.
+    expect(signals.stopLines).toHaveLength(signals.heads.length);
+    for (const line of signals.stopLines) {
+      const onRoad = metropol.roads.some((road) => road.distanceTo(line.x, line.z) < road.widthMeters / 2);
+      expect(onRoad, `stop line at ${Math.round(line.x)}, ${Math.round(line.z)}`).toBe(true);
+      expect(line.halfWidth).toBeGreaterThan(1.5);
+      expect(Math.hypot(line.dirX, line.dirZ)).toBeCloseTo(1, 6);
+    }
     // None where the motorway meets the boulevards and the avenue.
     const motorway = metropol.roads.findIndex((road) => road.id === 'm1_motorway');
     for (const junction of metropol.network.junctions.filter((candidate) => candidate.members.some((member) => member.roadIndex === motorway))) {

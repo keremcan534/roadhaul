@@ -41,10 +41,27 @@ export interface SignalHead {
   readonly group: number;
 }
 
+/**
+ * Where an approach's traffic stops for its lights: the middle of the line
+ * across its lanes, the way the traffic drives over it (a unit vector), half
+ * the line's length, the road's height there, and its lights' group.
+ */
+export interface StopLine {
+  readonly x: number;
+  readonly z: number;
+  readonly y: number;
+  readonly dirX: number;
+  readonly dirZ: number;
+  readonly halfWidth: number;
+  readonly group: number;
+}
+
 export interface TrafficSignals {
   /** Per link: the group of the lights a lane ends at (0 or 1), or -1 (no lights there, or not a lane). */
   readonly groupOf: Int8Array;
   readonly heads: readonly SignalHead[];
+  /** One for each head: the line its approach stops at. */
+  readonly stopLines: readonly StopLine[];
   /** How many junctions have lights. */
   readonly junctionCount: number;
 }
@@ -66,6 +83,7 @@ export function placeTrafficSignals(graph: LaneGraph, world: DrivingWorld): Traf
   const junctions = world.network.junctions;
   const groupOf = new Int8Array(graph.linkCount).fill(-1);
   const heads: SignalHead[] = [];
+  const stopLines: StopLine[] = [];
   const lanesInto: number[][] = junctions.map(() => []);
   for (let link = 0; link < graph.linkCount; link++) {
     const node = graph.node[link]!;
@@ -95,6 +113,25 @@ export function placeTrafficSignals(graph: LaneGraph, world: DrivingWorld): Traf
       }
       const last = graph.pointStart[lane + 1]! - 1;
       const [dx, dz] = endDirection(graph, lane);
+      // The approach's other lanes: those ending here the same way, left of this one.
+      let width = graph.laneWidth[lane]!;
+      for (const other of lanes) {
+        const [ox, oz] = endDirection(graph, other);
+        if (other !== lane && ox * dx + oz * dz > 0.98) {
+          width += graph.laneWidth[other]!;
+        }
+      }
+      // Its middle: from the rightmost lane's middle, left (+dz, -dx) by half the rest.
+      const toMiddle = (width - graph.laneWidth[lane]!) / 2;
+      stopLines.push({
+        x: graph.pointX[last]! + dz * toMiddle,
+        z: graph.pointZ[last]! - dx * toMiddle,
+        y: graph.pointY[last]!,
+        dirX: dx,
+        dirZ: dz,
+        halfWidth: width / 2,
+        group,
+      });
       // Right of the way the traffic drives (dx, dz) is (-dz, dx); the kerb is the rightmost lane's edge.
       const out = graph.laneWidth[lane]! / 2 + HEAD_OUT_METERS;
       heads.push({
@@ -106,7 +143,31 @@ export function placeTrafficSignals(graph: LaneGraph, world: DrivingWorld): Traf
       });
     });
   });
-  return { groupOf, heads, junctionCount };
+  return { groupOf, heads, stopLines, junctionCount };
+}
+
+/** How far over or under a stop line, meters, the truck still counts as on its road (not on a deck above it). */
+const STOP_LINE_LEVEL_METERS = 4;
+
+/**
+ * The stop line among `lines` that a point moving from (ax, az) to (bx, bz)
+ * at height `y` crossed, driving the way its traffic does, between its
+ * ends; -1 for none. Allocation-free.
+ */
+export function stopLineCrossed(lines: readonly StopLine[], ax: number, az: number, bx: number, bz: number, y: number): number {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const before = (ax - line.x) * line.dirX + (az - line.z) * line.dirZ;
+    const after = (bx - line.x) * line.dirX + (bz - line.z) * line.dirZ;
+    if (before < 0 && after >= 0 && Math.abs(y - line.y) < STOP_LINE_LEVEL_METERS) {
+      // Across it, from its middle: left of the way it is driven is (dz, -dx).
+      const across = (bx - line.x) * line.dirZ - (bz - line.z) * line.dirX;
+      if (Math.abs(across) <= line.halfWidth) {
+        return i;
+      }
+    }
+  }
+  return -1;
 }
 
 /** The way a lane runs at its end, a unit vector (x, z). */

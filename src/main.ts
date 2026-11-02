@@ -1207,6 +1207,14 @@ async function start(strings: Strings): Promise<void> {
       'warning',
     );
   });
+  // A red light run: the camera's flash, and a warning the first time ever, then the fine.
+  events.on('RedLightCaught', ({ fine, warning }) => {
+    audio.shutter();
+    speedFlash.classList.remove('is-flashing');
+    void speedFlash.offsetWidth; // Starts the flash over.
+    speedFlash.classList.add('is-flashing');
+    toasts.show(strings.t(warning ? 'road.redLight.warning' : 'road.redLight.fine', { fine: strings.money(fine) }), 'warning');
+  });
   events.on('StrandedDriverAppeared', () => toasts.show(strings.t('road.stranded'), 'info'));
   events.on('ConvoyStarted', () => toasts.show(strings.t('road.convoy'), 'info'));
   events.on('ConvoyEnded', ({ riddenMeters, reward }) => {

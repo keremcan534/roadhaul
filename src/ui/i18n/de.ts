@@ -766,6 +766,8 @@ export const DE: StringTable = {
   'road.works': 'Baustelle',
   'road.warning': 'Blitzer: {speed} km/h bei erlaubten {limit}. Diesmal eine Verwarnung, nächstes Mal ein Bußgeld.',
   'road.fine': 'Blitzer: {speed} km/h bei erlaubten {limit}. Bußgeld: {fine}.',
+  'road.redLight.warning': 'Rote Ampel! Geblitzt: diesmal eine Verwarnung. Halte bei Rot, sonst gibt es beim nächsten Mal ein Bußgeld.',
+  'road.redLight.fine': 'Rote Ampel überfahren: {fine} Bußgeld.',
   'road.fineWorks': 'Blitzer an der Baustelle: {speed} km/h bei erlaubten {limit}. Doppeltes Bußgeld: {fine}.',
   'road.stranded': 'Vorne steht ein Fahrer mit Panne: halte neben dem Warnblinker, um zu helfen.',
   'road.helped': 'Du hast einem liegengebliebenen Fahrer geholfen: +{reward}.',

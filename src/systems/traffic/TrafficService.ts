@@ -72,6 +72,11 @@ export class TrafficService {
     this.drive = -1;
   }
 
+  /** The traffic's time its lights keep, seconds (TrafficSimulation.signalSeconds); null while no traffic is simulated. */
+  get signalSeconds(): number | null {
+    return this.current?.signalSeconds ?? null;
+  }
+
   /** `world`'s traffic lights (worked out once a map, with its lanes); null where it has none. */
   signalsOf(world: DrivingWorld): TrafficSignals | null {
     let signals = this.signals.get(world.id);

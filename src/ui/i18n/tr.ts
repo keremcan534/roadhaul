@@ -766,6 +766,8 @@ export const TR: StringTable = {
   'road.works': 'Yol çalışması',
   'road.warning': 'Hız kamerası: sınır {limit} iken {speed} km/sa. Bu sefer uyarı; bir dahakine ceza.',
   'road.fine': 'Hız kamerası: sınır {limit} iken {speed} km/sa. Ceza: {fine}.',
+  'road.redLight.warning': 'Kırmızı ışık! Kameraya yakalandın: bu sefer uyarı. Kırmızıda dur, yoksa bir dahakine ceza var.',
+  'road.redLight.fine': 'Kırmızıda geçtin: {fine} ceza.',
   'road.fineWorks': 'Yol çalışmasında hız kamerası: sınır {limit} iken {speed} km/sa. Çift ceza: {fine}.',
   'road.stranded': 'İleride yolda kalmış bir sürücü var: yardım için dörtlülerinin yanında dur.',
   'road.helped': 'Yolda kalan bir sürücüye yardım ettin: +{reward}.',

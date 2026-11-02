@@ -766,6 +766,8 @@ export const IT: StringTable = {
   'road.works': 'Lavori in corso',
   'road.warning': 'Autovelox: {speed} km/h con limite {limit}. Questa volta un avvertimento; la prossima una multa.',
   'road.fine': 'Autovelox: {speed} km/h con limite {limit}. Multa: {fine}.',
+  'road.redLight.warning': 'Semaforo rosso! Ripreso dalla telecamera: per questa volta un avvertimento. Fermati col rosso, o la prossima volta è multa.',
+  'road.redLight.fine': 'Passato col rosso: multa di {fine}.',
   'road.fineWorks': 'Autovelox ai lavori: {speed} km/h con limite {limit}. Multa doppia: {fine}.',
   'road.stranded': 'Più avanti c\'è un automobilista in panne: fermati accanto alle sue quattro frecce per aiutarlo.',
   'road.helped': 'Hai aiutato un automobilista in panne: +{reward}.',

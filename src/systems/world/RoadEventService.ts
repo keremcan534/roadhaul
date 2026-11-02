@@ -6,6 +6,7 @@ import type { Credits } from '../../data/units';
 import { localDay } from '../../domain/rewards/dailyReward';
 import type { RoadEventsSaveData } from '../../domain/save/SaveGameData';
 import { createRoadSpot, pickRoadSpot } from '../../domain/world/cityIncidents';
+import { RED_LIGHT, signalLight, stopLineCrossed, type TrafficSignals } from '../../domain/traffic/trafficSignals';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import { workZonesForDay, type WorkZone } from '../../domain/world/workZones';
 import type { EconomyService } from '../economy/EconomyService';
@@ -25,11 +26,21 @@ const STRANDED_OUT_METERS = 1.8;
 /** What the road's events read of the drive: DrivingService. */
 export interface RoadEventDriving {
   readonly isDriving: boolean;
-  readonly vehicle: { readonly x: number; readonly z: number; readonly heading: number; readonly speed: number };
+  readonly vehicle: { readonly x: number; readonly z: number; readonly y: number; readonly heading: number; readonly speed: number };
   readonly world: DrivingWorld;
 }
 
 /** A stranded driver waiting by the road: their car on the shoulder, facing along the road. */
+/** The traffic's lights (TrafficService): where they are on a world, and the time they keep. */
+export interface RoadSignals {
+  signalsOf(world: DrivingWorld): TrafficSignals | null;
+  /** Seconds; null while no traffic is simulated. */
+  readonly signalSeconds: number | null;
+}
+
+/** A light red this long already, seconds, before a truck crossing its line runs it: the end of amber is forgiven. */
+const RED_GRACE_SECONDS = 1.5;
+
 export interface StrandedDriver {
   x: number;
   z: number;
@@ -65,7 +76,11 @@ export class RoadEventService {
   private zones: readonly WorkZone[] = [];
   private zonesDay = Number.NaN;
   private warned = false;
+  private redLightWarned = false;
   private fined = false;
+  /** The truck's last place, for the stop lines it crosses; NaN before its first step on a world. */
+  private lastX = Number.NaN;
+  private lastZ = Number.NaN;
   private knocked = false;
   /** The camera the truck is passing (its number, see ZONE_CAMERA_BASE), -1 for none: each judges a pass once. */
   private passing = -1;
@@ -96,6 +111,8 @@ export class RoadEventService {
     private readonly random: () => number,
     private readonly events: EventBus<GameEvents>,
     private readonly logger: Logger,
+    /** The traffic's lights; absent: no lights watched. */
+    private readonly signals: RoadSignals | null = null,
   ) {
     this.untilStranded = config.strandedFirstSeconds;
     this.unsubscribe = [
@@ -130,6 +147,7 @@ export class RoadEventService {
           this.strandedActive = false;
           this.untilStranded = this.config.strandedFirstSeconds;
           this.passing = -1;
+          this.lastX = Number.NaN;
         }
       }),
     ];
@@ -185,6 +203,7 @@ export class RoadEventService {
       this.zonesDay = Number.NaN;
       this.passing = -1;
       this.strandedActive = false;
+      this.lastX = Number.NaN;
     }
     const day = localDay(this.clock.now(), this.localOffsetMinutes);
     if (day !== this.zonesDay) {
@@ -240,15 +259,54 @@ export class RoadEventService {
       this.lookAhead(dx, dz, Math.sqrt(dx * dx + dz * dz), headingX, headingZ, this.config.workZoneLimitKmh, toStart, true);
     }
     this.passing = passing;
+    this.watchLights(world, truck.x, truck.z, truck.y);
     this.updateStranded(world, stepSeconds);
   }
 
+  /** The truck moving to (x, z) at height y: over a stop line whose light has been red a while, it ran it. */
+  private watchLights(world: DrivingWorld, x: number, z: number, y: number): void {
+    const lastX = this.lastX;
+    const lastZ = this.lastZ;
+    this.lastX = x;
+    this.lastZ = z;
+    const signals = this.signals?.signalsOf(world) ?? null;
+    const seconds = this.signals?.signalSeconds ?? null;
+    if (signals === null || seconds === null || Number.isNaN(lastX)) {
+      return;
+    }
+    const crossed = stopLineCrossed(signals.stopLines, lastX, lastZ, x, z, y);
+    if (crossed < 0) {
+      return;
+    }
+    const group = signals.stopLines[crossed]!.group;
+    if (signalLight(seconds, group) === RED_LIGHT && signalLight(seconds - RED_GRACE_SECONDS, group) === RED_LIGHT) {
+      this.ranRedLight();
+    }
+  }
+
+  /** A red light run: a warning the first time ever, else the fine (never more than the company has). */
+  private ranRedLight(): void {
+    if (!this.redLightWarned) {
+      this.redLightWarned = true;
+      this.events.emit('RedLightCaught', { fine: 0, warning: true });
+      return;
+    }
+    const paid = Math.min(this.config.redLightFine, this.economy.credits);
+    if (paid > 0) {
+      this.economy.spend(paid, 'fine');
+    }
+    this.fined = true;
+    this.logger.info(`Ran a red light: ${paid}.`);
+    this.events.emit('RedLightCaught', { fine: paid, warning: false });
+  }
+
   snapshot(): RoadEventsSaveData {
-    return { warned: this.warned, fined: this.fined, knocked: this.knocked };
+    return { warned: this.warned, redLightWarned: this.redLightWarned, fined: this.fined, knocked: this.knocked };
   }
 
   restore(data: RoadEventsSaveData): void {
     this.warned = data.warned;
+    this.redLightWarned = data.redLightWarned;
     this.fined = data.fined;
     this.knocked = data.knocked;
     this.last = { pay: 0 };

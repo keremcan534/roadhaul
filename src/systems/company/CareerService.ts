@@ -98,6 +98,12 @@ export class CareerService {
           this.record.finesPaid += fine;
         }
       }),
+      events.on('RedLightCaught', ({ fine, warning }) => {
+        if (!warning) {
+          this.record.fines++;
+          this.record.finesPaid += fine;
+        }
+      }),
       events.on('RoadsideHelped', () => {
         this.record.roadsideHelps++;
       }),

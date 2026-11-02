@@ -766,6 +766,8 @@ export const FR: StringTable = {
   'road.works': 'Travaux',
   'road.warning': 'Radar : {speed} km/h pour une limite de {limit}. Un avertissement cette fois ; la prochaine fois, une amende.',
   'road.fine': 'Radar : {speed} km/h pour une limite de {limit}. Amende : {fine}.',
+  'road.redLight.warning': 'Feu rouge ! Flashé : cette fois, un avertissement. Arrête-toi au rouge, sinon c\'est l\'amende la prochaine fois.',
+  'road.redLight.fine': 'Feu rouge grillé : {fine} d\'amende.',
   'road.fineWorks': 'Radar de chantier : {speed} km/h pour une limite de {limit}. Amende doublée : {fine}.',
   'road.stranded': 'Un conducteur est en panne plus loin : arrêtez-vous près de ses feux de détresse pour l\'aider.',
   'road.helped': 'Vous avez aidé un conducteur en panne : +{reward}.',

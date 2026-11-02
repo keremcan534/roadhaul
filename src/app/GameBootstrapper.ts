@@ -259,6 +259,7 @@ export class GameBootstrapper {
           () => roadLuck.next(),
           events,
           logger.withCategory('Road'),
+          traffic,
         ),
       );
       // Convoys to ride with now and then, paid by the kilometre.

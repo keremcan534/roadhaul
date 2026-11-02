@@ -302,6 +302,14 @@ export interface GameEvents {
     readonly warning: boolean;
     readonly workZone: boolean;
   };
+  /**
+   * The truck ran a red light (RoadEventService): the first time ever a
+   * warning, else a fine (already paid).
+   */
+  RedLightCaught: {
+    readonly fine: Credits;
+    readonly warning: boolean;
+  };
   /** The day's road works changed (RoadEventService.workZones): a new day, or a new drive. */
   WorkZonesChanged: {
     readonly count: number;
