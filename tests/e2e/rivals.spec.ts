@@ -14,7 +14,8 @@ test('ranks the companies, runs a campaign, buys a rival out and races another f
 
   // The league: the two flatbed firms first, the company (60,000 and a 12,000 truck) third.
   await openPanel(page, 'rivals');
-  const league = page.locator('.league__row');
+  // The standings' league, not the weekly cup's table below it.
+  const league = page.locator('.league:not(.cup) .league__row');
   await expect(league).toHaveCount(5);
   await expect(league.nth(0)).toHaveAttribute('data-company-id', 'rival_demirkent');
   await expect(league.nth(1)).toHaveAttribute('data-company-id', 'rival_bakirdere');

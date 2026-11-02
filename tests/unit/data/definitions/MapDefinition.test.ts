@@ -164,6 +164,8 @@ describe('validateMapDefinition', () => {
     expect(issuePaths(dressed({}))).toEqual([]);
     expect(issuePaths(dressed({ streetscape: true, countryside: false }))).toEqual([]);
     expect(issuePaths(dressed({ streetscape: 'yes', countryside: 1 }))).toEqual(['map.scenery.streetscape', 'map.scenery.countryside']);
+    expect(issuePaths(dressed({ trafficSignals: true }))).toEqual([]);
+    expect(issuePaths(dressed({ trafficSignals: 'on' }))).toEqual(['map.scenery.trafficSignals']);
   });
 
   it('reports depots that are not objects or have broken rectangles', () => {

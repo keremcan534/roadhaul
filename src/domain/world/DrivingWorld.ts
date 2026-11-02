@@ -451,6 +451,8 @@ const AT_FAULT_SPEED = 0.5;
 export class DrivingWorld implements DebrisSolids {
   readonly id: string;
   readonly halfSizeMeters: number;
+  /** Traffic lights where the town's streets cross (MapDefinition.scenery.trafficSignals; traffic/trafficSignals.ts). */
+  readonly trafficSignals: boolean;
   readonly roads: readonly RoadPath[];
   /** The roads joined at their junctions, for routes by road. */
   readonly network: RoadNetwork;
@@ -609,6 +611,7 @@ export class DrivingWorld implements DebrisSolids {
   constructor(map: MapDefinition) {
     this.id = map.id;
     this.halfSizeMeters = map.halfSizeMeters;
+    this.trafficSignals = map.scenery.trafficSignals ?? false;
     this.buildingBuckets = new Buckets(BUCKET_METERS, map.halfSizeMeters);
     this.fieldBuckets = new Buckets(BUCKET_METERS, map.halfSizeMeters);
     this.circleBuckets = new Buckets(BUCKET_METERS, map.halfSizeMeters);

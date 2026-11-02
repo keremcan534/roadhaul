@@ -7,6 +7,7 @@ import type { MovingObstacles } from '../world/DrivingWorld';
 import { COMFORTABLE_DECELERATION, type LaneGraph, type LanePosition } from './LaneGraph';
 import { TRAFFIC_MASS_KG } from './trafficMass';
 import type { LaneRoute } from './laneRoutes';
+import { GREEN_LIGHT, signalLight, type TrafficSignals } from './trafficSignals';
 
 /** What a vehicle is doing (spec §19's traffic behaviours). */
 export const TRAFFIC_BEHAVIOURS = ['cruise', 'follow', 'stop', 'avoid', 'changeLane', 'turn', 'emergencyStop'] as const;
@@ -34,6 +35,8 @@ export interface TrafficSettings {
    * every vehicle the truck hits stops.
    */
   readonly wrecks?: boolean;
+  /** The traffic lights the vehicles stop at (placeTrafficSignals); absent: none. */
+  readonly signals?: TrafficSignals | null;
 }
 
 /** Up to this many vehicles are wrecked between two updates. */
@@ -147,6 +150,9 @@ const NO_LEADER = 0;
 const VEHICLE_LEADER = 1;
 const TRUCK_LEADER = 2;
 const STOP_LINE_LEADER = 3;
+/** At an amber light a vehicle stops if it can within this much past its comfortable braking, meters; slower than this it always can. */
+const SIGNAL_STOP_MARGIN_METERS = 1.5;
+const SIGNAL_CREEP_SPEED = 2;
 
 /**
  * Waypoint-based NPC traffic around the truck (roadmap step 22, spec §19).
@@ -243,6 +249,9 @@ export class TrafficSimulation implements MovingObstacles {
   private activeCount = 0;
   /** Everyone drives at this share of their usual speed (the weather). */
   private speedFactor = 1;
+  /** The traffic lights, and the traffic's time they keep, seconds (signalSeconds). */
+  private readonly signals: TrafficSignals | null;
+  private signalClock = 0;
   /** Vehicles holding each turn (they may drive it; conflicting turns wait). */
   private readonly holders: Int32Array;
   /**
@@ -309,6 +318,7 @@ export class TrafficSimulation implements MovingObstacles {
     const capacity = types.length === 0 || graph.spawnLanes.length === 0 ? 0 : Math.max(0, settings.maxVehicles);
     this.capacity = capacity;
     this.random = new SeededRandom(seed);
+    this.signals = settings.signals ?? null;
     this.active = new Uint8Array(capacity);
     this.serial = new Int32Array(capacity);
     this.type = new Uint8Array(capacity);
@@ -400,6 +410,11 @@ export class TrafficSimulation implements MovingObstacles {
     });
   }
 
+  /** The traffic's own time, seconds: what the traffic lights keep (signalLight). */
+  get signalSeconds(): number {
+    return this.signalClock;
+  }
+
   /** Vehicles on the road now. */
   get vehicleCount(): number {
     return this.activeCount;
@@ -464,6 +479,7 @@ export class TrafficSimulation implements MovingObstacles {
     trailerFootprint: VehicleFootprint | null = null,
   ): void {
     this.wrecks.count = 0;
+    this.signalClock += dt;
     this.readTruck(truck, footprint, trailer, trailerFootprint);
     if (this.capacity === 0) {
       return;
@@ -784,6 +800,12 @@ export class TrafficSimulation implements MovingObstacles {
     this.leaderKind[i] = NO_LEADER;
     this.speed[i] =
       speed ?? 0.8 * Math.min(this.cruiseSpeed(i), graph.advisorySpeed[graph.pointStart[lane]! + this.segment[i]! + 1]!);
+    const group = this.signals?.groupOf[lane] ?? -1;
+    if (speed === null && group >= 0 && signalLight(this.signalClock, group) !== GREEN_LIGHT) {
+      // Appearing before lights that are not green: no faster than it can stop at their line.
+      const toLine = graph.length[lane]! - s - this.halfLength[i]! - 1;
+      this.speed[i] = Math.min(this.speed[i]!, Math.sqrt(2 * COMFORTABLE_DECELERATION * Math.max(0, toLine)));
+    }
     this.updatePose(i, 0);
     this.previousX[i] = this.x[i]!;
     this.previousZ[i] = this.z[i]!;
@@ -1070,6 +1092,26 @@ export class TrafficSimulation implements MovingObstacles {
     let waiting = false;
     const speed = this.speed[i]!;
     const toLine = toEnd - half;
+    // At the lights: stop at the line on red, and on amber where there is room to; too close to stop, go on.
+    let atLights = false;
+    const signals = this.signals;
+    if (signals !== null && nextIsTurn) {
+      const group = signals.groupOf[link]!;
+      if (group >= 0 && signalLight(this.signalClock, group) !== GREEN_LIGHT && toLine > 0.5) {
+        const stopping = (speed * speed) / (2 * COMFORTABLE_DECELERATION);
+        if (toLine - 1 >= stopping - SIGNAL_STOP_MARGIN_METERS || speed < SIGNAL_CREEP_SPEED) {
+          atLights = true;
+          if (this.holding[i] === next) {
+            this.release(i); // Claimed on green further back: there is room to stop, so it waits after all.
+          }
+          if (toLine - 1 < gap) {
+            gap = Math.max(0, toLine - 1);
+            leaderSpeed = 0;
+            kind = STOP_LINE_LEADER;
+          }
+        }
+      }
+    }
     if (
       nextIsTurn &&
       this.holding[i] === next &&
@@ -1078,7 +1120,7 @@ export class TrafficSimulation implements MovingObstacles {
     ) {
       this.release(i); // The truck turned up: still time to stop, so give way after all.
     }
-    if (nextIsTurn && this.holding[i] !== next && this.needsReservation(next)) {
+    if (!atLights && nextIsTurn && this.holding[i] !== next && this.needsReservation(next)) {
       const commit = (speed * speed) / (2 * COMFORTABLE_DECELERATION) + speed + 12;
       if (toLine <= commit) {
         if (this.canEnter(i, next, toEnd)) {

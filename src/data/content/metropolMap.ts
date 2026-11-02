@@ -445,6 +445,7 @@ const LAID_OUT: MapDefinition = {
     countryside: false,
     roadSigns: true,
     sideRoadsPerKilometer: 0,
+    trafficSignals: true,
   },
 };
 

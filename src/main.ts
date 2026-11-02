@@ -76,6 +76,7 @@ import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { ShootingStars } from './presentation/world/ShootingStars';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
+import { TrafficSignalView } from './presentation/traffic/TrafficSignalView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { LightningView } from './presentation/weather/LightningView';
 import { RainView } from './presentation/weather/RainView';
@@ -594,6 +595,9 @@ async function start(strings: Strings): Promise<void> {
     sky: environment.sky,
     wrecks: debrisCapacity,
   });
+  // The traffic lights where the region's streets cross (Metropol's), lit by the traffic's time.
+  const signalHeads = traffic.signalsOf(driving.world)?.heads ?? [];
+  const trafficSignals = signalHeads.length > 0 ? new TrafficSignalView(renderHost.scene, signalHeads) : null;
   /** What carries lamps for a wet road to mirror: the truck (set every frame: it changes in the garage) and the traffic. */
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
@@ -2918,6 +2922,7 @@ async function start(strings: Strings): Promise<void> {
         farmland.drawDebris(debris, debrisAlpha);
         scenery.drawDebris(debris, debrisAlpha);
         trafficView.update(traffic.simulation, worldStill ? 1 : alpha, debris, crashes);
+        trafficSignals?.update(traffic.simulation?.signalSeconds ?? 0);
         gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
         const vehicles = traffic.simulation?.vehicleCount ?? 0;
         if (vehicles !== shownTraffic) {
@@ -2985,6 +2990,7 @@ async function start(strings: Strings): Promise<void> {
         track.showAround(eye.x, eye.z, view, eyeView);
         scenery.showAround(eye.x, eye.z, view);
         streetLamps.showAround(eye.x, eye.z);
+        trafficSignals?.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         // On a map's hills the drops fall round the camera from the ground under it (at the truck's level: a deck).

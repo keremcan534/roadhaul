@@ -417,6 +417,11 @@ export interface MapDefinition {
      * along them; the longer ones have lanes of their own. Absent or 0: none.
      */
     readonly sideRoadsPerKilometer?: number;
+    /**
+     * Traffic lights where the town's streets cross (no highway among the
+     * roads): the traffic stops at red. Absent or false: none.
+     */
+    readonly trafficSignals?: boolean;
   };
 }
 
@@ -649,7 +654,7 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
         `must be 0 to ${MAX_SIDE_ROADS_PER_KILOMETER}`,
       );
     }
-    for (const flag of ['streetscape', 'countryside', 'roadSigns'] as const) {
+    for (const flag of ['streetscape', 'countryside', 'roadSigns', 'trafficSignals'] as const) {
       const value = scenery[flag];
       if (value !== undefined) {
         validator.check(typeof value === 'boolean', `${path}.scenery.${flag}`, 'must be true or false');
