@@ -2944,8 +2944,10 @@ async function start(strings: Strings): Promise<void> {
         streetLamps.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
-        rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
-        snowfall.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.snow);
+        // On a map's hills the drops fall round the camera from the ground under it (at the truck's level: a deck).
+        const fallsFrom = driving.world.flat ? 0 : Math.min(eye.y - 1, driving.world.groundAt(eye.x, eye.z, bodyPose.y + 1));
+        rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain, fallsFrom);
+        snowfall.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.snow, fallsFrom);
         // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
         effectsState.driving = simulating;
         effectsState.engineRunning = driving.isEngineRunning;
