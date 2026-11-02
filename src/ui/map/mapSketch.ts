@@ -1,6 +1,7 @@
 import {
   shorelineXAt,
   type FieldCrop,
+  type HillDefinition,
   type MapDefinition,
   type Point2,
   type RectangleDefinition,
@@ -16,22 +17,46 @@ export const MAX_RUN_POINTS = 32;
 export const SIMPLIFY_TOLERANCE_METERS = 1.5;
 /** Blank ground round the drawn map, meters. */
 const MARGIN_METERS = 150;
-/** The sea's polygon reaches this far west of the map, past anything a map zooms out to. */
-const SEA_REACH_METERS = 60_000;
-/** Past the map's edges the coast runs on this far, a point every COAST_STEP_METERS, wandering this much either way, meters. */
-const COAST_ON_METERS = 30_000;
-const COAST_STEP_METERS = 450;
-const COAST_WANDER_METERS = 220;
 /** A river is drawn this much wider each side than its water, meters, and from every this many of its samples. */
 const RIVER_MAP_WIDENING_METERS = 3;
 const RIVER_MAP_SAMPLE_STEP = 3;
 /** The other regions' roads, drawn from their maps' data alone, keep their points within this of the road, meters. */
 const REGION_SIMPLIFY_METERS = 4;
-/** A region without a sea is drawn as an island across the water from the others: its corners rounded this much, meters. */
-const ISLAND_CORNER_METERS = 900;
-/** The island's coast is drawn through a point every this far, wandering in up to ISLAND_WOBBLE_METERS from its square. */
-const ISLAND_STEP_METERS = 250;
-const ISLAND_WOBBLE_METERS = 110;
+/**
+ * Past its square a region's land runs on through the mountains round it
+ * (the 3D backdrop's ranges stand there) to a coast about this far out,
+ * meters, wandering this much either way in bays and headlands, and never
+ * nearer the square than LAND_CLEARANCE_METERS. The sea is all the rest.
+ */
+const LAND_REACH_METERS = 2600;
+const LAND_WANDER_METERS = 1100;
+const LAND_CLEARANCE_METERS = 450;
+/** Points round a region's coast; the square's corners rounded as a superellipse of this power. */
+const COAST_POINTS = 420;
+const LAND_ROUNDNESS = 4;
+/** The coast's bays and headlands: waves round it, each so many to the turn and this strong (summing to 1). */
+const COAST_WAVES: readonly (readonly [number, number])[] = [
+  [3, 0.4],
+  [5, 0.25],
+  [8, 0.15],
+  [13, 0.09],
+  [21, 0.06],
+  [34, 0.03],
+  [55, 0.02],
+];
+/** Where a shore meets the square's edge, the coast runs on to the land's rim, wandering this much, meters. */
+const SHORE_LINK_WANDER_METERS = 140;
+/** The sea round the lands, as far as the maps move, meters. */
+const SEA_MARGIN_METERS = 1500;
+/**
+ * Water this wide each side or wider is a strait: where it meets the
+ * square's edge it runs on through the mountains to the sea. A river's
+ * source there runs on into them, this share of the way to the coast.
+ */
+const STRAIT_HALF_WIDTH_METERS = 100;
+const RIVER_INTO_MOUNTAINS = 0.55;
+/** A ferry's way runs on out to sea in steps this long, meters, until it is off the land. */
+const SEAWARD_STEP_METERS = 250;
 
 /** An axis-aligned box on the ground, meters. */
 export interface MapBox {
@@ -99,9 +124,10 @@ export interface MapRegionSketch extends MapBox {
   /** Its middle, where its name goes. */
   readonly x: number;
   readonly z: number;
-  /** Its land, for a region without a sea of its own: an island. */
-  readonly land: MapPavedArea | null;
-  readonly sea: MapPavedArea | null;
+  /** Its land (landArea): its square and the mountains round it out to a natural coast; the sea is all the rest. */
+  readonly land: MapPavedArea;
+  /** What its relief is drawn from. */
+  readonly relief: MapRelief;
   readonly runs: readonly MapRoadRun[];
   readonly rivers: readonly MapPavedArea[];
   readonly forests: readonly MapPavedArea[];
@@ -111,6 +137,19 @@ export interface MapRegionSketch extends MapBox {
   readonly cities: readonly MapCityLabel[];
   readonly villages: readonly MapVillageLabel[];
   readonly ferries: readonly MapFerry[];
+}
+
+/**
+ * What a region's relief is drawn from (mapRelief.ts): its square, in this
+ * region's meters, its hills there, and a seed for its rolling ground and
+ * the mountains round it.
+ */
+export interface MapRelief {
+  readonly x: number;
+  readonly z: number;
+  readonly halfSizeMeters: number;
+  readonly hills: readonly HillDefinition[];
+  readonly seed: number;
 }
 
 /** Where a village's name goes: the middle of its street. */
@@ -139,8 +178,6 @@ export interface MapSketch {
   readonly runs: readonly MapRoadRun[];
   /** Depot yards, rest area lots and quays. */
   readonly pavedAreas: readonly MapPavedArea[];
-  /** The sea west of the shore, reaching far past the drawn area; null when the world has none. */
-  readonly sea: MapPavedArea | null;
   /** Each river's water as a polygon, from its source to its mouth. */
   readonly rivers: readonly MapPavedArea[];
   /** Each forest's outline. */
@@ -155,8 +192,14 @@ export interface MapSketch {
   readonly depots: readonly MapDepot[];
   readonly restAreas: readonly MapRestArea[];
   readonly ferries: readonly MapFerry[];
-  /** This region's land when it has no sea and other regions lie across the water: an island. */
-  readonly land: MapPavedArea | null;
+  /**
+   * This region's land (landArea): its square, and past it the mountains out
+   * to a natural coast; a sea of its own west of its shore. The sea is all
+   * the rest.
+   */
+  readonly land: MapPavedArea;
+  /** What its relief is drawn from. */
+  readonly relief: MapRelief;
   /** The other regions, where they lie in the one world. */
   readonly regions: readonly MapRegionSketch[];
   /**
@@ -164,7 +207,7 @@ export interface MapSketch {
    * water to the other side's way in and its terminal (x and z interleaved).
    */
   readonly crossings: readonly Float64Array[];
-  /** This region and the others: as far as the map may be moved. */
+  /** This region's and the others' lands and the sea round them: as far as the map may be moved. */
   readonly worldBounds: MapBox;
   readonly cities: readonly MapCityLabel[];
   readonly villages: readonly MapVillageLabel[];
@@ -200,13 +243,17 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
       : maps
           .filter((map) => map.id !== world.id)
           .map((map) => sketchRegion(map, (map.world?.x ?? 0) - (here.world?.x ?? 0), (map.world?.z ?? 0) - (here.world?.z ?? 0)));
+  const land = landArea(world.halfSizeMeters, 0, 0, seedOf(world.id), world.sea?.shoreline ?? null);
+  const lands = [land, ...regions.map((region) => region.land)];
   const crossings = world.gates.flatMap((gate) => {
     const region = regions.find((candidate) => candidate.mapId === gate.toMapId);
     const other = maps.find((map) => map.id === gate.toMapId)?.gates?.find((candidate) => candidate.id === gate.toGateId);
     if (region === undefined || gate.route === undefined || other?.route === undefined) {
       return [];
     }
-    const way = [...gate.route, ...[...other.route].reverse().map(([x, z]): Point2 => [x + region.x, z + region.z])];
+    const there = other.route.map(([x, z]): Point2 => [x + region.x, z + region.z]);
+    // Each way runs on out to sea, past the mountains round its land, and the crossing is over the open water.
+    const way = [...gate.route, ...seaward(gate.route, lands), ...seaward(there, lands).reverse(), ...[...there].reverse()];
     return [new Float64Array(way.flat())];
   });
   const buildings = world.buildings.map(({ minX, maxX, minZ, maxZ }) => ({ minX, maxX, minZ, maxZ }));
@@ -242,23 +289,24 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
     maxX = maxZ = world.halfSizeMeters;
   }
   const bounds = { minX: minX - MARGIN_METERS, maxX: maxX + MARGIN_METERS, minZ: minZ - MARGIN_METERS, maxZ: maxZ + MARGIN_METERS };
+  // The lands and a strip of sea round them: past that the map does not go, so no empty water or ground fills it.
   const worldBounds = { ...bounds };
-  for (const region of regions) {
-    worldBounds.minX = Math.min(worldBounds.minX, region.minX - MARGIN_METERS);
-    worldBounds.maxX = Math.max(worldBounds.maxX, region.maxX + MARGIN_METERS);
-    worldBounds.minZ = Math.min(worldBounds.minZ, region.minZ - MARGIN_METERS);
-    worldBounds.maxZ = Math.max(worldBounds.maxZ, region.maxZ + MARGIN_METERS);
+  for (const area of lands) {
+    worldBounds.minX = Math.min(worldBounds.minX, area.minX - SEA_MARGIN_METERS);
+    worldBounds.maxX = Math.max(worldBounds.maxX, area.maxX + SEA_MARGIN_METERS);
+    worldBounds.minZ = Math.min(worldBounds.minZ, area.minZ - SEA_MARGIN_METERS);
+    worldBounds.maxZ = Math.max(worldBounds.maxZ, area.maxZ + SEA_MARGIN_METERS);
   }
   return {
     bounds,
     worldBounds,
-    land: world.sea === null && regions.length > 0 ? islandArea(world.halfSizeMeters, 0, 0) : null,
+    land,
+    relief: { x: 0, z: 0, halfSizeMeters: world.halfSizeMeters, hills: here?.terrain?.hills ?? [], seed: seedOf(world.id) },
     regions,
     crossings,
     runs,
     pavedAreas,
-    sea: world.sea === null ? null : seaArea(world.sea, world.halfSizeMeters),
-    rivers: world.rivers.map(riverArea),
+    rivers: world.rivers.map((river) => riverArea(river, world.halfSizeMeters)),
     forests: world.forests.map((forest) => polygon(forest.outline)),
     parks: world.parks.map((park) => rectangleCorners(park.area)),
     fields,
@@ -359,59 +407,30 @@ export function splitRuns(kind: RoadKind, widthMeters: number, points: Float64Ar
  * A river's water as a polygon, a little wider than it is so it shows on the
  * minimap: down one bank from the source to the mouth, and back up the other.
  */
-function riverArea(river: RiverPath): MapPavedArea {
-  const half = river.halfWidthMeters + RIVER_MAP_WIDENING_METERS;
+function riverArea(river: RiverPath, half: number): MapPavedArea {
+  const widen = river.halfWidthMeters + RIVER_MAP_WIDENING_METERS;
   const last = Math.min(river.mouthIndex, river.pointCount - 1);
   const samples: number[] = [];
   for (let i = 0; i < last; i += RIVER_MAP_SAMPLE_STEP) {
     samples.push(i);
   }
   samples.push(last);
-  const bank = (side: 1 | -1) =>
-    samples.map((i): readonly [number, number] => [
-      river.x(i) + river.directionZ(i) * half * side,
-      river.z(i) - river.directionX(i) * half * side,
-    ]);
+  // Its course: where it is and which way it flows at each sample.
+  const course = samples.map((i): readonly [number, number, number, number] => [river.x(i), river.z(i), river.directionX(i), river.directionZ(i)]);
+  // Where it meets the square's edge it runs on: a strait out to the sea, a river's source into the mountains.
+  const reach = river.halfWidthMeters >= STRAIT_HALF_WIDTH_METERS ? LAND_REACH_METERS + LAND_WANDER_METERS + 600 : LAND_REACH_METERS * RIVER_INTO_MOUNTAINS;
+  const atEdge = ([x, z]: readonly [number, number, number, number]): boolean => Math.max(Math.abs(x), Math.abs(z)) > half - 80;
+  const onward = ([x, z, dx, dz]: readonly [number, number, number, number], way: 1 | -1): (readonly [number, number, number, number])[] =>
+    [0.5, 1].map((share) => [x + dx * way * reach * share, z + dz * way * reach * share, dx, dz] as const);
+  const first = course[0]!;
+  const end = course[course.length - 1]!;
+  const ways = [
+    ...(atEdge(first) ? onward(first, -1).reverse() : []),
+    ...course,
+    ...(atEdge(end) && river.halfWidthMeters >= STRAIT_HALF_WIDTH_METERS ? onward(end, 1) : []),
+  ];
+  const bank = (side: 1 | -1) => ways.map(([x, z, dx, dz]): readonly [number, number] => [x + dz * widen * side, z - dx * widen * side]);
   return polygon([...bank(1), ...bank(-1).reverse()]);
-}
-
-/** The sea as a polygon: along the shore from north to south, then round by the far west. */
-function seaArea(sea: Sea, halfSize: number): MapPavedArea {
-  return seaPolygon(sea.shoreline, halfSize, 0, 0);
-}
-
-/**
- * The sea west of `shoreline` (north to south) as a polygon, moved by
- * (dx, dz). Past the map's north and south edges the coast runs on,
- * wandering a little, before it straightens far out of sight: zoomed out
- * to the other regions, no ruler-straight shore shows.
- */
-function seaPolygon(shoreline: readonly Point2[], halfSize: number, dx: number, dz: number): MapPavedArea {
-  const first = shoreline[0]!;
-  const last = shoreline[shoreline.length - 1]!;
-  const west = -halfSize - SEA_REACH_METERS;
-  const north = first[1] - SEA_REACH_METERS;
-  const south = last[1] + SEA_REACH_METERS;
-  // The coast on past the map, a point every COAST_STEP_METERS for COAST_ON_METERS each way.
-  const onward = (from: Point2, way: 1 | -1): Point2[] =>
-    Array.from({ length: Math.round(COAST_ON_METERS / COAST_STEP_METERS) }, (_, index): Point2 => {
-      const step = index + 1;
-      const wander = COAST_WANDER_METERS * (Math.sin(step * 0.7 + from[1] * 0.001) + 0.5 * Math.sin(step * 0.23));
-      return [from[0] + wander, from[1] + way * step * COAST_STEP_METERS];
-    });
-  const northward = onward(first, -1).reverse();
-  const southward = onward(last, 1);
-  return polygon(
-    [
-      [northward[0]![0], north] as Point2,
-      ...northward,
-      ...shoreline,
-      ...southward,
-      [southward[southward.length - 1]![0], south] as Point2,
-      [west, south] as Point2,
-      [west, north] as Point2,
-    ].map(([x, z]): Point2 => [x + dx, z + dz]),
-  );
 }
 
 /**
@@ -441,10 +460,16 @@ export function sketchRegion(map: MapDefinition, dx: number, dz: number): MapReg
     maxX: dx + half,
     minZ: dz - half,
     maxZ: dz + half,
-    land: map.sea === undefined ? islandArea(half, dx, dz) : null,
-    sea: map.sea === undefined ? null : seaPolygon(map.sea.shoreline, half, dx, dz),
+    land: landArea(half, dx, dz, seedOf(map.id), map.sea?.shoreline ?? null),
+    relief: {
+      x: dx,
+      z: dz,
+      halfSizeMeters: half,
+      hills: (map.terrain?.hills ?? []).map((hill) => ({ ...hill, x: hill.x + dx, z: hill.z + dz })),
+      seed: seedOf(map.id),
+    },
     runs,
-    rivers: (map.rivers ?? []).map((river) => movedArea(riverArea(new RiverPath(river, map.sea?.shoreline ?? null)), dx, dz)),
+    rivers: (map.rivers ?? []).map((river) => movedArea(riverArea(new RiverPath(river, map.sea?.shoreline ?? null), half), dx, dz)),
     forests: (map.forests ?? []).map((forest) => polygon(moved(forest.outline))),
     parks: (map.parks ?? []).map((park) => movedArea(rectangleCorners(park.area), dx, dz)),
     blocks,
@@ -468,45 +493,124 @@ function movedArea(area: MapPavedArea, dx: number, dz: number): MapPavedArea {
 }
 
 /**
- * A region without a sea seen from across the water: its square as an
- * island, the corners rounded and the coast wandering in a little, so it
- * does not read as a tile. Its middle at (dx, dz).
+ * A region's land as the maps draw it, its middle at (dx, dz): its square,
+ * and past it the mountains round it out to a coast LAND_REACH_METERS off
+ * on average, in bays and headlands (COAST_WAVES, from `seed`), the square's
+ * corners rounded away. With a `shoreline` (north to south: the sea west of
+ * it), the land's west is that shore, which runs on from the square's edges
+ * to the rim. The same every time.
  */
-function islandArea(half: number, dx: number, dz: number): MapPavedArea {
-  const r = Math.min(ISLAND_CORNER_METERS, half / 2);
-  const inner = half - r;
-  // Round the rounded square, a point every ISLAND_STEP_METERS or so: the corners' arcs and the sides between.
+export function landArea(half: number, dx: number, dz: number, seed: number, shoreline: readonly Point2[] | null): MapPavedArea {
+  const reach = half + LAND_REACH_METERS;
+  // A point of the rim at `turn` radians from north (−z), clockwise (east is a quarter turn).
+  const rim = (turn: number): Point2 => {
+    const sin = Math.sin(turn);
+    const cos = Math.cos(turn);
+    const rounded = reach / (Math.abs(sin) ** LAND_ROUNDNESS + Math.abs(cos) ** LAND_ROUNDNESS) ** (1 / LAND_ROUNDNESS);
+    const square = half / Math.max(Math.abs(sin), Math.abs(cos));
+    const radius = Math.max(square + LAND_CLEARANCE_METERS, rounded + LAND_WANDER_METERS * coastWaves(turn, seed));
+    return [sin * radius, -cos * radius];
+  };
+  const step = (Math.PI * 2) / COAST_POINTS;
   const outline: Point2[] = [];
-  const corners: readonly (readonly [number, number, number])[] = [
-    [inner, inner, 0],
-    [-inner, inner, Math.PI / 2],
-    [-inner, -inner, Math.PI],
-    [inner, -inner, (3 * Math.PI) / 2],
-  ];
-  corners.forEach(([cx, cz, from], index) => {
-    for (let a = 0; a <= 6; a++) {
-      const angle = from + (a / 6) * (Math.PI / 2);
-      outline.push([cx + Math.cos(angle) * r, cz + Math.sin(angle) * r]);
+  if (shoreline === null || shoreline.length < 2) {
+    for (let i = 0; i < COAST_POINTS; i++) {
+      outline.push(rim(i * step));
     }
-    const [nx, nz] = corners[(index + 1) % corners.length]!;
-    const endAngle = from + Math.PI / 2;
-    const sx = cx + Math.cos(endAngle) * r;
-    const sz = cz + Math.sin(endAngle) * r;
-    const ex = nx + Math.cos(endAngle) * r;
-    const ez = nz + Math.sin(endAngle) * r;
-    const steps = Math.max(1, Math.round(Math.hypot(ex - sx, ez - sz) / ISLAND_STEP_METERS));
-    for (let step = 1; step < steps; step++) {
-      outline.push([sx + ((ex - sx) * step) / steps, sz + ((ez - sz) * step) / steps]);
+  } else {
+    const north = shoreline[0]!;
+    const south = shoreline[shoreline.length - 1]!;
+    // Where the shore's ends meet the rim: due north and due south of them.
+    const fromTurn = Math.atan2(north[0], reach);
+    const toTurn = Math.PI - Math.atan2(south[0], reach);
+    outline.push(north, ...shoreLink(north, rim(fromTurn), seed));
+    for (let turn = fromTurn; turn < toTurn; turn += step) {
+      outline.push(rim(turn));
     }
-  });
-  // The coast wanders in toward the middle by up to ISLAND_WOBBLE_METERS, the same each time.
-  return polygon(
-    outline.map(([x, z], i): Point2 => {
-      const wobble = Math.max(0, ISLAND_WOBBLE_METERS * (0.45 + 0.35 * Math.sin(i * 0.9) + 0.2 * Math.sin(i * 0.37 + 1)));
-      const length = Math.hypot(x, z) || 1;
-      return [x - (x / length) * wobble + dx, z - (z / length) * wobble + dz];
-    }),
-  );
+    outline.push(rim(toTurn), ...shoreLink(rim(toTurn), south, seed + 1), ...[...shoreline].reverse().slice(0, -1));
+  }
+  return polygon(outline.map(([x, z]): Point2 => [x + dx, z + dz]));
+}
+
+/** The coast's swing out (+) or in (−) at `turn` (radians round the land), in about −1..1: its bays and headlands. */
+function coastWaves(turn: number, seed: number): number {
+  let sum = 0;
+  for (const [count, strength] of COAST_WAVES) {
+    sum += strength * Math.sin(count * turn + phaseOf(seed, count));
+  }
+  return sum;
+}
+
+/** The points from `from` to `to` (both left out), a coast wandering a little either side of the line between. */
+function shoreLink(from: Point2, to: Point2, seed: number): Point2[] {
+  const length = Math.hypot(to[0] - from[0], to[1] - from[1]);
+  const steps = Math.max(2, Math.round(length / 300));
+  const acrossX = -(to[1] - from[1]) / (length || 1);
+  const acrossZ = (to[0] - from[0]) / (length || 1);
+  const points: Point2[] = [];
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const wander = SHORE_LINK_WANDER_METERS * Math.sin(Math.PI * t) * Math.sin(i * 1.7 + phaseOf(seed, 7));
+    points.push([from[0] + (to[0] - from[0]) * t + acrossX * wander, from[1] + (to[1] - from[1]) * t + acrossZ * wander]);
+  }
+  return points;
+}
+
+/** A phase (radians) from a seed and a wave's count: the same each time. */
+function phaseOf(seed: number, count: number): number {
+  const value = Math.sin(seed * 12.9898 + count * 78.233) * 43758.5453;
+  return (value - Math.floor(value)) * Math.PI * 2;
+}
+
+/** A map's id as a number, for its coast's seed. */
+function seedOf(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) % 9973;
+  }
+  return hash;
+}
+
+/** Whether (x, z) lies inside `area`'s polygon. */
+export function insideArea(area: MapPavedArea, x: number, z: number): boolean {
+  if (x < area.minX || x > area.maxX || z < area.minZ || z > area.maxZ) {
+    return false;
+  }
+  const corners = area.corners;
+  let inside = false;
+  for (let i = 0, j = corners.length - 2; i < corners.length; j = i, i += 2) {
+    const xi = corners[i]!;
+    const zi = corners[i + 1]!;
+    const xj = corners[j]!;
+    const zj = corners[j + 1]!;
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * A ferry's way out (`route`, from its terminal) run on, the way its last
+ * leg points, until it is off every land in `lands`: the points added.
+ */
+function seaward(route: readonly Point2[], lands: readonly MapPavedArea[]): Point2[] {
+  const onLand = (x: number, z: number): boolean => lands.some((land) => insideArea(land, x, z));
+  if (route.length < 2 || !onLand(...route[route.length - 1]!)) {
+    return [];
+  }
+  const [x, z] = route[route.length - 1]!;
+  const [px, pz] = route[route.length - 2]!;
+  const length = Math.hypot(x - px, z - pz) || 1;
+  const points: Point2[] = [];
+  for (let i = 1; i <= 60; i++) {
+    const at: Point2 = [x + ((x - px) / length) * SEAWARD_STEP_METERS * i, z + ((z - pz) / length) * SEAWARD_STEP_METERS * i];
+    points.push(at);
+    if (!onLand(at[0], at[1])) {
+      break;
+    }
+  }
+  return points;
 }
 
 /** Each quay as a polygon: along the water's edge, then back along its landward side. */

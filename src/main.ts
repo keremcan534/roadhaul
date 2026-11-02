@@ -311,7 +311,8 @@ async function start(strings: Strings): Promise<void> {
             ...GAME_CONTENT,
             maps: GAME_CONTENT.maps.map((map) => ({
               ...map,
-              ...(spawn === null ? {} : { spawn }),
+              // On the map new companies start on only: the same spot on another may lie in its sea.
+              ...(spawn === null || map.id !== config.newGame.startingMapId ? {} : { spawn }),
               ...(hills === null ? {} : { terrain: { hills: [...(map.terrain?.hills ?? []), ...hills] } }),
             })),
           },
@@ -709,7 +710,7 @@ async function start(strings: Strings): Promise<void> {
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
   // The region driven, and the others across the water where they lie in the one world, with the ferry crossings.
   const mapSketch = sketchWorld(driving.world, content.maps.all);
-  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic, company }, strings);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic, company }, strings, document);
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 

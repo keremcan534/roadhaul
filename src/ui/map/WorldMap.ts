@@ -59,6 +59,8 @@ export class WorldMap {
   private tapping: { readonly id: number; readonly x: number; readonly y: number; moved: boolean } | null = null;
   private pixelRatio = 1;
   private dirty = true;
+  /** The painter's version as last painted (MapPainter.version: the lands' relief comes in after the map opens). */
+  private paintedVersion = -1;
 
   constructor(
     parent: HTMLElement,
@@ -132,12 +134,13 @@ export class WorldMap {
     this.tapping = null;
   }
 
-  /** Per frame: repaints after the map moved, zoomed or was resized. */
+  /** Per frame: repaints after the map moved, zoomed or was resized, or the lands' relief came in. */
   frame(): void {
-    if (!this.dirty || this.overlay.hidden || this.context === null || this.canvas.width === 0) {
+    if ((!this.dirty && this.painter.version === this.paintedVersion) || this.overlay.hidden || this.context === null || this.canvas.width === 0) {
       return;
     }
     this.dirty = false;
+    this.paintedVersion = this.painter.version;
     this.painter.paint(this.context, this.viewport, this.pixelRatio, OPTIONS);
     this.overlay.dataset.scale = this.viewport.scale.toFixed(3);
   }

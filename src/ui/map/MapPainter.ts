@@ -9,6 +9,7 @@ import type { CompanyTraffic } from '../../systems/traffic/CompanyTraffic';
 import type { Strings } from '../i18n';
 import { pickOnMap, type MapPick } from './mapPicking';
 import type { MapCityLabel, MapDepot, MapFerry, MapPavedArea, MapRoadRun, MapSketch, MapVillageLabel } from './mapSketch';
+import { MapTerrain } from './MapTerrain';
 import { createCanvasTransform, type MapViewport } from './MapViewport';
 
 /**
@@ -38,21 +39,36 @@ const ROAD_STYLES: readonly { readonly kind: RoadKind; readonly minPixels: numbe
 ];
 /** The edge adds this much to a road's width on screen, px. */
 const EDGE_PIXELS = 2;
-/** Fields, muted so the roads stand out on them. */
+/** Fields, a little see-through so the land's relief shows through, muted so the roads stand out on them. */
 const FIELD_COLORS: Readonly<Record<FieldCrop, string>> = {
-  wheat: '#5e5a2e',
-  stubble: '#4f5236',
-  green: '#2c4a2a',
-  ploughed: '#4a3a2c',
+  wheat: 'rgb(166 152 86 / 82%)',
+  stubble: 'rgb(140 132 92 / 82%)',
+  green: 'rgb(88 134 66 / 82%)',
+  ploughed: 'rgb(122 96 70 / 82%)',
 };
+/**
+ * The sea's shallows round every coast, widest and faintest first: meters
+ * wide, but between these many pixels (a wide stroke round a long coast is
+ * costly to draw: zoomed in, the band narrows instead), then the beach:
+ * sand along the water's edge.
+ */
+const SHALLOWS: readonly (readonly [number, number, number, string])[] = [
+  [1300, 26, 70, 'rgb(44 112 146 / 30%)'],
+  [620, 14, 36, 'rgb(64 140 168 / 34%)'],
+  [220, 6, 14, 'rgb(96 170 188 / 38%)'],
+];
+const BEACH_METERS = 45;
+const BEACH_PIXELS = 1.2;
 const COLORS = {
-  ground: '#1b2923',
-  sea: '#1d4a66',
-  forest: '#1f3d24',
-  park: '#2f5a33',
-  turbine: '#9fb0bd',
-  building: '#33443b',
-  paved: '#46525c',
+  /** The land, flat, until its relief is drawn (MapTerrain). */
+  ground: '#56774a',
+  sea: '#174761',
+  beach: '#cdb98d',
+  forest: 'rgb(28 64 34 / 78%)',
+  park: '#6a9a56',
+  turbine: '#e3e9ee',
+  building: '#4c535a',
+  paved: '#6c747c',
   route: '#2e9bff',
   routeEdge: '#0b2a4a',
   pickup: '#ffa726',
@@ -63,7 +79,7 @@ const COLORS = {
   ferryClosed: '#5b6b70',
   ferryGlow: 'rgb(22 169 156 / 35%)',
   crossing: '#3fd0c2',
-  regionBlocks: '#2c3a33',
+  regionBlocks: '#5a6169',
   regionLabel: 'rgb(244 246 248 / 70%)',
   truck: '#ffffff',
   truckEdge: '#0d1116',
@@ -113,10 +129,10 @@ export class MapPainter {
   private readonly fields: readonly { readonly color: string; readonly path: Path2D }[];
   /** Depot yards, rest area lots, quays and turning circles: paved ground off the roads. */
   private readonly paved = new Path2D();
-  /** The seas: this region's, when it has one, and the other regions' across the water. */
-  private readonly seas: Path2D;
-  /** The land of the regions without a sea of their own (islands across the water), over the seas. */
+  /** Every region's land (this one's and the others' across the water) in one path: the sea is the rest. */
   private readonly lands: Path2D;
+  /** The lands' relief, drawn once each (MapTerrain): grows `version` as each comes in. */
+  private readonly terrain: MapTerrain;
   /** The other regions' towns' districts, built up. */
   private readonly regionBlocks = new Path2D();
   /** The ferry crossings, dashed over the water. */
@@ -138,6 +154,14 @@ export class MapPainter {
   private readonly forests: Path2D;
   private readonly parks: Path2D;
   private readonly transform = createCanvasTransform();
+  /**
+   * The forests' canopy: tree crowns in a tile repeated over them, a few
+   * pixels each whatever the zoom (its matrix set for each paint, in place).
+   * Made with the first paint's context; null where patterns are missing.
+   */
+  private canopy: CanvasPattern | null = null;
+  private canopyTried = false;
+  private readonly canopyMatrix: DOMMatrix | null = typeof DOMMatrix === 'undefined' ? null : new DOMMatrix();
   /** A box round one point, for MapViewport.sees without allocating. */
   private readonly pointBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
   private readonly cityNames: readonly string[];
@@ -159,6 +183,8 @@ export class MapPainter {
     private readonly sketch: MapSketch,
     private readonly sources: MapSources,
     strings: Strings,
+    /** The page, to draw the lands' relief with (null: the lands are drawn flat). */
+    document: Document | null = null,
   ) {
     const allRuns = [...sketch.runs, ...sketch.regions.flatMap((region) => region.runs)];
     this.runPaths = ROAD_STYLES.map((style) =>
@@ -181,8 +207,9 @@ export class MapPainter {
       }
       return path;
     };
-    this.seas = pathOf([...(sketch.sea === null ? [] : [sketch.sea]), ...regions.flatMap((region) => (region.sea === null ? [] : [region.sea]))]);
-    this.lands = pathOf([...(sketch.land === null ? [] : [sketch.land]), ...regions.flatMap((region) => (region.land === null ? [] : [region.land]))]);
+    const lands = [sketch, ...regions].map(({ land, relief }) => ({ land, relief, coast: polygonPath(land.corners) }));
+    this.lands = pathOf(lands.map(({ land }) => land));
+    this.terrain = new MapTerrain(lands, document);
     this.rivers = pathOf([...sketch.rivers, ...regions.flatMap((region) => region.rivers)]);
     this.forests = pathOf([...sketch.forests, ...regions.flatMap((region) => region.forests)]);
     this.parks = pathOf([...sketch.parks, ...regions.flatMap((region) => region.parks)]);
@@ -265,26 +292,48 @@ export class MapPainter {
     );
   }
 
+  /** Grows each time a land's relief comes in: a map that repaints only on a change repaints then. */
+  get version(): number {
+    return this.terrain.version;
+  }
+
   paint(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, options: PaintOptions): void {
     const canvas = context.canvas;
     context.setTransform(1, 0, 0, 1, 0, 0);
-    context.fillStyle = COLORS.ground;
+    // The sea is all that is not land.
+    context.fillStyle = COLORS.sea;
     context.fillRect(0, 0, canvas.width, canvas.height);
 
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
-    // The water first, then the islands across it, then what grows and flows on the land.
-    context.fillStyle = COLORS.sea;
-    context.fill(this.seas);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+    // The shallows round the coasts, then the lands over them, each with its relief, then the beaches.
+    for (let i = 0; i < SHALLOWS.length; i++) {
+      const [meters, fewest, most, color] = SHALLOWS[i]!;
+      context.strokeStyle = color;
+      context.lineWidth = Math.min(Math.max(meters, fewest / view.scale), most / view.scale);
+      context.stroke(this.lands);
+    }
     context.fillStyle = COLORS.ground;
     context.fill(this.lands);
+    this.paintRelief(context, view);
+    context.strokeStyle = COLORS.beach;
+    context.lineWidth = Math.max(BEACH_METERS, BEACH_PIXELS / view.scale);
+    context.stroke(this.lands);
     context.fillStyle = COLORS.forest;
     context.fill(this.forests);
+    this.paintCanopy(context, view, pixelRatio);
     context.fillStyle = COLORS.park;
     context.fill(this.parks);
+    // The rivers and the straits in the sea's own blue, over the land only (a strait runs on out to the sea through
+    // its coast and beach): where one meets the sea, no seam shows.
+    context.save();
+    context.clip(this.lands);
     context.fillStyle = COLORS.sea;
     context.fill(this.rivers);
+    context.restore();
     for (let i = 0; i < this.fields.length; i++) {
       const field = this.fields[i]!;
       context.fillStyle = field.color;
@@ -297,8 +346,6 @@ export class MapPainter {
     context.fillStyle = COLORS.regionBlocks;
     context.fill(this.regionBlocks);
     this.paintTerritory(context, view);
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
     this.paintRoads(context, view, true);
     this.paintRoads(context, view, false);
     // The ferry crossings: dashed, a few pixels wide whatever the zoom.
@@ -322,6 +369,41 @@ export class MapPainter {
     this.paintTruck(context, view, vehicle.x, vehicle.z, vehicle.heading, options.truckPixels);
     if (options.northRimPixels > 0) {
       this.paintNorth(context, view, options.northRimPixels);
+    }
+  }
+
+  /** The forests' crowns over their green, about CANOPY_TILE_PIXELS a tile on the screen at any zoom. */
+  private paintCanopy(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number): void {
+    if (!this.canopyTried) {
+      this.canopyTried = true;
+      this.canopy = canopyPattern(context);
+    }
+    const canopy = this.canopy;
+    const matrix = this.canopyMatrix;
+    if (canopy === null || matrix === null) {
+      return;
+    }
+    // The pattern's pixels are the user space's (meters): scaled back to the screen's.
+    const size = 1 / (view.scale * pixelRatio);
+    matrix.a = size;
+    matrix.d = size;
+    canopy.setTransform(matrix);
+    context.fillStyle = canopy;
+    context.fill(this.forests);
+  }
+
+  /** Each land's relief (MapTerrain) in view, once drawn, clipped to its coast. */
+  private paintRelief(context: CanvasRenderingContext2D, view: MapViewport): void {
+    const layers = this.terrain.layers;
+    for (let i = 0; i < layers.length; i++) {
+      const layer = layers[i]!;
+      if (layer.image === null || !view.sees(layer.land, 0)) {
+        continue;
+      }
+      context.save();
+      context.clip(layer.coast);
+      context.drawImage(layer.image, layer.minX, layer.minZ, layer.widthMeters, layer.heightMeters);
+      context.restore();
     }
   }
 
@@ -747,6 +829,53 @@ function nearName(cities: readonly MapCityLabel[], view: MapViewport, x: number,
     }
   }
   return false;
+}
+
+/** The canopy's tile, pixels square: the crowns repeat this far apart on the screen. */
+const CANOPY_TILE_PIXELS = 30;
+
+/**
+ * A tile of tree crowns for the forests (MapPainter.paintCanopy): round
+ * crowns lit from the north-west, their shadows to the south-east, on
+ * nothing (the forest's green shows between them). Null without a canvas.
+ */
+function canopyPattern(context: CanvasRenderingContext2D): CanvasPattern | null {
+  const document = context.canvas.ownerDocument as Document | undefined;
+  const tile = document?.createElement('canvas');
+  const tileContext = tile?.getContext('2d') ?? null;
+  if (tile === undefined || tileContext === null) {
+    return null;
+  }
+  tile.width = CANOPY_TILE_PIXELS;
+  tile.height = CANOPY_TILE_PIXELS;
+  // Crowns: x, y, radius (px), shade; placed so the tile repeats without a seam.
+  const crowns: readonly (readonly [number, number, number, number])[] = [
+    [5, 6, 4.2, 0],
+    [17, 4, 3.6, 1],
+    [26, 13, 4.4, 2],
+    [11, 16, 4.6, 1],
+    [21, 24, 3.8, 0],
+    [4, 26, 3.4, 2],
+    [14, 27, 3.0, 2],
+  ];
+  const greens = ['#2e5a2c', '#36652f', '#294f28'];
+  for (const [x, y, r, shade] of crowns) {
+    for (const [dx, dy] of [[0, 0], [CANOPY_TILE_PIXELS, 0], [-CANOPY_TILE_PIXELS, 0], [0, CANOPY_TILE_PIXELS], [0, -CANOPY_TILE_PIXELS]] as const) {
+      tileContext.fillStyle = 'rgb(10 24 12 / 45%)';
+      tileContext.beginPath();
+      tileContext.arc(x + dx + 1.2, y + dy + 1.4, r, 0, Math.PI * 2);
+      tileContext.fill();
+      tileContext.fillStyle = greens[shade]!;
+      tileContext.beginPath();
+      tileContext.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+      tileContext.fill();
+      tileContext.fillStyle = 'rgb(140 190 110 / 28%)';
+      tileContext.beginPath();
+      tileContext.arc(x + dx - r * 0.35, y + dy - r * 0.35, r * 0.45, 0, Math.PI * 2);
+      tileContext.fill();
+    }
+  }
+  return context.createPattern(tile, 'repeat');
 }
 
 function polygonPath(corners: Float64Array): Path2D {

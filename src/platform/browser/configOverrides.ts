@@ -97,7 +97,7 @@ export function requestedRoadEvent(query: QueryParameters): 'stranded' | 'convoy
 }
 
 /**
- * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
+ * `?spawn=-1600,700,40` starts a new game's truck there, on the map new companies start on (`?map=`): its
  * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
  * along +x; 0 if left out), to look round a place without driving to it.
  * Null when the URL does not say, or says something else.

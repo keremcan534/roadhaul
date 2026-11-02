@@ -306,9 +306,10 @@ const roads: RoadDefinition[] = [
 const LAID_OUT: MapDefinition = {
   id: 'metropol',
   halfSizeMeters: 4200,
-  // Across the sea north-west of North Valley (its middle there on the game's maps, north toward -z): the ferry
-  // from Gull Point sails out to sea and up the strait.
-  world: { x: -7300, z: 8100 },
+  // Across the sea west-north-west of North Valley (its middle there on the game's maps, north toward -z), far
+  // enough that the two lands and the mountains round each keep a few kilometres of open sea between them: the
+  // ferry from Gull Point sails west over it and up the strait.
+  world: { x: -13500, z: 8100 },
   roads,
   buildings: [
     // The ferry terminal's hall by its quay.
