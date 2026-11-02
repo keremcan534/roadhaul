@@ -17,7 +17,7 @@ npm test            # unit + architecture tests (Vitest)
 npm run build       # production build into dist/
 npm run test:e2e    # Playwright smoke tests against dist/ (run build first)
 npm run check       # everything above, in order
-npm run perf        # the mobile performance run against dist/ (build first): three phones, six scenes (ARCHITECTURE.md §11)
+npm run perf        # the mobile performance run against dist/ (build first): three phones, eight scenes (ARCHITECTURE.md §11)
 npm run android     # build, then copy into the Android project; `cd android && ./gradlew assembleDebug` builds the APK (JDK 21, Android SDK); ROADHAUL_ADS=test puts Google's test ads in it
 ```
 

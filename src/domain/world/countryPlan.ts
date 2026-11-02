@@ -1,3 +1,4 @@
+import { hypot2 } from '../../core/math/scalar';
 import { rectangleContains, rectangleCorners, type BuildingDefinition, type BuildingForm, type FieldDefinition, type ParkDefinition, type Point2, type RectangleDefinition, type DistrictKind } from '../../data/definitions/MapDefinition';
 import { Buckets } from './buckets';
 import { cellOf } from './gridCells';
@@ -275,20 +276,12 @@ export class CountryPlan {
     const minZ = z - sizeZ / 2;
     const maxZ = z + sizeZ / 2;
     const boxDistance = (px: number, pz: number): number =>
-      Math.hypot(px - Math.max(minX, Math.min(px, maxX)), pz - Math.max(minZ, Math.min(pz, maxZ)));
+      hypot2(px - Math.max(minX, Math.min(px, maxX)), pz - Math.max(minZ, Math.min(pz, maxZ)));
     if (this.someCircle((cx, cz) => boxDistance(cx, cz) < TURNING_CIRCLE_RADIUS_METERS + BUILDING_CIRCLE_CLEARANCE_METERS)) {
       return false;
     }
     const gap = town?.gapMeters ?? BUILDING_GAP_METERS;
-    if (
-      this.buildings.some(
-        (other) =>
-          minX < other.x + other.widthMeters / 2 + gap &&
-          maxX > other.x - other.widthMeters / 2 - gap &&
-          minZ < other.z + other.depthMeters / 2 + gap &&
-          maxZ > other.z - other.depthMeters / 2 - gap,
-      )
-    ) {
+    if (this.overlapsBuilding(minX, maxX, minZ, maxZ, gap)) {
       return false;
     }
     const area: RectangleDefinition = { x, z, headingDegrees: 0, lengthMeters: sizeZ, widthMeters: sizeX };
@@ -315,6 +308,26 @@ export class CountryPlan {
       ...(town === undefined ? {} : { district: town.district, ...(town.shops ? { shops: true } : {}) }),
     });
     return true;
+  }
+
+  /**
+   * Whether a building already stands within `gap` of the box: those filed
+   * in the buckets its corners fall in (each building is filed BUILDING_REACH_METERS
+   * round it, at least any gap; a box is smaller than a bucket, so its
+   * corners' buckets are all it touches).
+   */
+  private overlapsBuilding(minX: number, maxX: number, minZ: number, maxZ: number, gap: number): boolean {
+    const near = (x: number, z: number): boolean =>
+      this.buildingBuckets.at(x, z).some((id) => {
+        const other = this.buildings[id]!;
+        return (
+          minX < other.x + other.widthMeters / 2 + gap &&
+          maxX > other.x - other.widthMeters / 2 - gap &&
+          minZ < other.z + other.depthMeters / 2 + gap &&
+          maxZ > other.z - other.depthMeters / 2 - gap
+        );
+      });
+    return near(minX, minZ) || near(maxX, minZ) || near(minX, maxZ) || near(maxX, maxZ);
   }
 
   /** Lays `field` (on `area`) where it has room: clear of the roads, circles, buildings, parks, other fields and whatever the land holds. */
@@ -457,7 +470,7 @@ export function alongRim(area: RectangleDefinition, test: (x: number, z: number)
 
 /** How far (x, z) lies from a building's walls, meters (0 inside). */
 function boxDistance(box: BuildingDefinition, x: number, z: number): number {
-  return Math.hypot(
+  return hypot2(
     x - Math.max(box.x - box.widthMeters / 2, Math.min(x, box.x + box.widthMeters / 2)),
     z - Math.max(box.z - box.depthMeters / 2, Math.min(z, box.z + box.depthMeters / 2)),
   );

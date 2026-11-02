@@ -1,3 +1,4 @@
+import { hypot2 } from '../../core/math/scalar';
 import type { Point2, RoadDefinition, RoadKind } from '../../data/definitions/MapDefinition';
 
 /** Target distance between centreline samples, meters. */
@@ -234,7 +235,8 @@ function distanceToSegment(px: number, pz: number, ax: number, az: number, bx: n
   const dz = bz - az;
   const lengthSquared = dx * dx + dz * dz;
   const t = lengthSquared > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / lengthSquared)) : 0;
-  return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
+  // hypot2, not Math.hypot: asked millions of times as a world is built (the road grid's every check).
+  return hypot2(px - (ax + t * dx), pz - (az + t * dz));
 }
 
 /** Uniform Catmull-Rom spline through `points`, sampled roughly every `spacing` meters. */

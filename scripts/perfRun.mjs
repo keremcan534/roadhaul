@@ -1,6 +1,6 @@
 // The mobile performance run: the production build as phones run it, scene by scene, on three phones.
 //
-//   npm run build && node scripts/perfRun.mjs [low,mid,high] [menu,highway,cityNight,rain,panel,map]
+//   npm run build && node scripts/perfRun.mjs [low,mid,high] [menu,highway,cityNight,rain,panel,map,metropol,pass]
 //                                            [--counters] [--trace] [--heap] [--cpu-profile]
 //
 // Headless Chromium has no GPU, and the game draws a plainer world when it finds itself drawn in software. So the
@@ -106,6 +106,28 @@ const SCENES = {
       await foundCompany(page);
       await page.keyboard.press('KeyM');
       await page.locator('.world-map').waitFor({ state: 'visible' });
+    },
+  },
+  // Metropol: driving into Halverton's towers, the heaviest kind of view, with its traffic lights.
+  metropol: {
+    query: '&map=metropol&spawn=-876.5,300,180',
+    settle: 8000,
+    seconds: 12,
+    reach: async (page) => {
+      await foundCompany(page);
+      await page.keyboard.down('ArrowUp');
+      await sleep(4000);
+    },
+  },
+  // Up Ridgemont's pass through the pines, on the hills.
+  pass: {
+    query: '&map=metropol&spawn=2467,-2262.7,-137.3',
+    settle: 8000,
+    seconds: 12,
+    reach: async (page) => {
+      await foundCompany(page);
+      await page.keyboard.down('ArrowUp');
+      await sleep(4000);
     },
   },
 };

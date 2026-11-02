@@ -482,6 +482,20 @@ The owner asked for more than small roads: big motorways, bridges over a strait,
 
 Known: none of this has been seen on a phone yet. A tower district is the heaviest kind of view; on a low-end phone the low preset's dynamic resolution should hold the floor, to be checked in step 29.
 
+### One map, the ferry earned, red lights and a fuller Metropol (between steps 28 and 29)
+
+Asked what players would make of the new version, I named what worried me: Metropol is hard to find (only a ferry counter at Gull Point leads there), nothing marks the moment it opens, the crossing is a reload with nothing to watch, Metropol has empty land and fewer contracts, the traffic lights have no consequence, and it has not been measured as a phone runs it. The owner asked to fix them all and to see Metropol on the normal map, as if it were one map, a line across the sea for the crossing ("metropolu normal mapte gorebilelim … cizgi seklinde gecis isareti … hepsi tek mapmis gibi").
+
+| Item | Status | Notes |
+|---|---|---|
+| One map | ✅ | The regions lie in one world (`MapDefinition.world`): the full map and the minimap draw Metropol across the sea from North Valley (and North Valley from Metropol), sketched from its definition (`sketchRegion`: its land, roads, rivers, towns and depots, a few hundred simplified lines, built once) with its towns' names. The ferry's way (`GateDefinition.route`) is a dashed line across the sea from terminal to terminal; the sea reaches the horizon with a wandering coast. Nothing of the other region is built in 3D |
+| The ferry opens at level 4 | ✅ | `GateDefinition.requiredCompanyLevel`: before it the counter at Gull Point says which level opens the crossing, and the map shows the ferry's line grey with that level. Reaching it, the level-up celebration lists the new region and the Gazette leads with the ferry's opening (ten languages) |
+| The crossing | ✅ | Boarding, a ferry rides the swell across the screen (CSS transforms, run off the main thread) for the 1.8 s before the game starts again, and from the first moment on the other side until Metropol is built; it fades as the company drives off |
+| Red light cameras | ✅ | Each way into a junction with lights has a stop line (`TrafficSignals.stopLines`). Crossing one at red, the truck is warned the first time ever (save v23), then fined 400 credits (`roadEvents.redLightFine`, never more than the company has), with the camera's flash. It counts as a fine for the safe-driving bonus and the career's record |
+| A fuller Metropol | ✅ | Halverton West's flats beyond the park, Eastmere's works by the port's east quay (a new works street), and three villages on new country roads (Westbrook, Fernhill, Brackenford), so the land between the towns is lived in. Five more contracts (fourteen in Metropol, 56 in all): hospital supplies, office furniture, fuel up the pass, harbour reefers and the foundations of a tower |
+| Metropol builds faster | ✅ | Finding the buildings near a lot by the world's 100 m buckets instead of all of them, and `hypot2` instead of `Math.hypot` in the roads' distances: the world is grown in 1.4 s instead of 1.8 for North Valley and 1.6–1.8 s instead of 2.3 for Metropol (Node, this machine). Same seed, same world |
+| Metropol in the performance run | ✅ | `npm run perf` has two more scenes: `metropol` (driving into Halverton's towers, its traffic lights at work) and `pass` (up Ridgemont's pass through the pines). First run (frame's CPU work, p50; the frame rate it allows): the low-end phone 36.8 ms (≈27 fps) downtown and 46.8 ms (≈21) on the pass, against 29.9 ms (≈33) on North Valley's highway; the mid-range phone 24.4 ms (≈41), 23.7 ms (≈42) and 20.8 ms (≈48). Boot to the main menu 40 s on the low-end phone (26 s for North Valley), 25 s on the mid-range one |
+
 ## Next step: 29 Device testing
 
 Suggested request:
