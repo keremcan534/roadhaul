@@ -9,8 +9,12 @@ export const MAX_ROAD_GRADE = 0.08;
 export const TERRAIN_CELL_METERS = 8;
 /** A road's profile follows the ground smoothed over this far either way, meters: no bumps. */
 const SMOOTH_METERS = 50;
-/** The ground is level with the road this far past its edge (its verge), then eases back to its own over BLEND. */
-const VERGE_METERS = 3;
+/**
+ * The ground is level with the road this far past its edge (its verge), then eases back to its own over BLEND: more
+ * than a grid cell's diagonal, so every cell the road's edge crosses lies level with it. Narrower, a cell straddling
+ * the edge rose toward the slope beyond and showed through the road's edge in steps where it climbs through a cutting.
+ */
+const VERGE_METERS = Math.ceil(TERRAIN_CELL_METERS * Math.SQRT2) + 1;
 const BLEND_METERS = 28;
 /** Which roads are graded first, and so keep their line where later ones meet them: the bigger, the earlier. */
 const GRADING_ORDER: Readonly<Record<RoadKind, number>> = { highway: 0, ringRoad: 1, street: 2, rural: 3, lane: 4 };
