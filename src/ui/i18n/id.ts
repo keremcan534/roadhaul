@@ -369,6 +369,7 @@ export const ID: StringTable = {
   'map.pickup': 'Muat',
   'map.delivery': 'Bongkar',
   'map.legend': 'Perusahaan',
+  'map.ferryClosed': '{name} · level {level}',
   'map.yourFleet': 'Armadamu',
   'map.bound': 'Ke {city}',
   'map.racing': 'Berlomba denganmu untuk tender',

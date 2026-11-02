@@ -698,8 +698,9 @@ async function start(strings: Strings): Promise<void> {
   touch.size = settings.controlSize;
   const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals);
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
-  const mapSketch = sketchWorld(driving.world);
-  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic }, strings);
+  // The region driven, and the others across the water where they lie in the one world, with the ferry crossings.
+  const mapSketch = sketchWorld(driving.world, content.maps.all);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic, company }, strings);
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 

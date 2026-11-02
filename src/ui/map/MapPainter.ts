@@ -8,7 +8,7 @@ import type { RivalService } from '../../systems/rivals/RivalService';
 import type { CompanyTraffic } from '../../systems/traffic/CompanyTraffic';
 import type { Strings } from '../i18n';
 import { pickOnMap, type MapPick } from './mapPicking';
-import type { MapRoadRun, MapSketch } from './mapSketch';
+import type { MapCityLabel, MapDepot, MapFerry, MapPavedArea, MapRoadRun, MapSketch, MapVillageLabel } from './mapSketch';
 import { createCanvasTransform, type MapViewport } from './MapViewport';
 
 /**
@@ -24,6 +24,8 @@ export interface MapSources {
   readonly rivals: RivalService;
   /** Where the fleet's and the rivals' trucks drive in the traffic, which the maps show instead. */
   readonly companyTraffic: CompanyTraffic;
+  /** The company's level: a ferry it has not reached yet is drawn closed. Absent: every ferry open. */
+  readonly company?: { readonly level: number };
 }
 
 /** How each kind of road is drawn, bottom to top: at least this wide on screen (px), its colour and its edge's. */
@@ -58,6 +60,11 @@ const COLORS = {
   depot: '#c9d3dc',
   restArea: '#4aa3ff',
   ferry: '#16a99c',
+  ferryClosed: '#5b6b70',
+  ferryGlow: 'rgb(22 169 156 / 35%)',
+  crossing: '#3fd0c2',
+  regionBlocks: '#2c3a33',
+  regionLabel: 'rgb(244 246 248 / 70%)',
   truck: '#ffffff',
   truckEdge: '#0d1116',
   fleet: '#ffb020',
@@ -67,10 +74,16 @@ const COLORS = {
   north: '#f0643c',
 } as const;
 const ROUTE_PIXELS = 5;
+/** A solid line again after a dashed one. */
+const NO_DASH: number[] = [];
 /** A city's ground is tinted in its leader's colour this far round its middle, meters. */
 const TERRITORY_METERS = 260;
 const LABEL_FONT = '800 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const SMALL_FONT = '800 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+/** Zoomed out further than this (px a meter), the villages' names are left out: they would crowd the towns'. */
+const VILLAGE_LABEL_MIN_SCALE = 0.1;
+/** Another region's name over its middle. */
+const REGION_FONT = '900 26px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
 /** What to draw besides the roads: names and marks for the full map, a compact picture for the minimap. */
 export interface PaintOptions {
@@ -98,8 +111,25 @@ export class MapPainter {
   private readonly fields: readonly { readonly color: string; readonly path: Path2D }[];
   /** Depot yards, rest area lots, quays and turning circles: paved ground off the roads. */
   private readonly paved = new Path2D();
-  /** The sea, when the world has one. */
-  private readonly sea: Path2D | null;
+  /** The seas: this region's, when it has one, and the other regions' across the water. */
+  private readonly seas: Path2D;
+  /** The land of the regions without a sea of their own (islands across the water), over the seas. */
+  private readonly lands: Path2D;
+  /** The other regions' towns' districts, built up. */
+  private readonly regionBlocks = new Path2D();
+  /** The ferry crossings, dashed over the water. */
+  private readonly crossings = new Path2D();
+  /** The ferry terminals here and across the water, their names, and whether any is drawn. */
+  private readonly ferries: readonly MapFerry[];
+  /** Each other region's depots and city names, and its name over its middle. */
+  private readonly regionDepots: readonly MapDepot[];
+  private readonly regionCities: readonly MapCityLabel[];
+  private readonly regionCityNames: readonly string[];
+  private readonly regionVillages: readonly MapVillageLabel[];
+  private readonly regionVillageNames: readonly string[];
+  private readonly regionNames: readonly string[];
+  /** The dash of the crossings, meters on the map: set for each paint (one array, no allocation). */
+  private readonly dash = [0, 0];
   /** The rivers' water, in one path. */
   private readonly rivers: Path2D;
   /** The forests and the parks, each in one path. */
@@ -111,6 +141,8 @@ export class MapPainter {
   private readonly cityNames: readonly string[];
   private readonly villageNames: readonly string[];
   private readonly ferryNames: readonly string[];
+  /** A ferry's name with the level it opens at, while it is closed. */
+  private readonly ferryClosedNames: readonly string[];
   private readonly pickupText: string;
   private readonly deliveryText: string;
   /** Each driver's initials, for their truck's mark on the full map. */
@@ -126,8 +158,9 @@ export class MapPainter {
     private readonly sources: MapSources,
     strings: Strings,
   ) {
+    const allRuns = [...sketch.runs, ...sketch.regions.flatMap((region) => region.runs)];
     this.runPaths = ROAD_STYLES.map((style) =>
-      sketch.runs
+      allRuns
         .filter((run) => run.kind === style.kind)
         .map((run) => {
           const path = new Path2D();
@@ -138,19 +171,33 @@ export class MapPainter {
           return { run, path };
         }),
     );
-    this.sea = sketch.sea === null ? null : polygonPath(sketch.sea.corners);
-    this.rivers = new Path2D();
-    for (const river of sketch.rivers) {
-      this.rivers.addPath(polygonPath(river.corners));
+    const regions = sketch.regions;
+    const pathOf = (areas: readonly MapPavedArea[]): Path2D => {
+      const path = new Path2D();
+      for (const area of areas) {
+        path.addPath(polygonPath(area.corners));
+      }
+      return path;
+    };
+    this.seas = pathOf([...(sketch.sea === null ? [] : [sketch.sea]), ...regions.flatMap((region) => (region.sea === null ? [] : [region.sea]))]);
+    this.lands = pathOf([...(sketch.land === null ? [] : [sketch.land]), ...regions.flatMap((region) => (region.land === null ? [] : [region.land]))]);
+    this.rivers = pathOf([...sketch.rivers, ...regions.flatMap((region) => region.rivers)]);
+    this.forests = pathOf([...sketch.forests, ...regions.flatMap((region) => region.forests)]);
+    this.parks = pathOf([...sketch.parks, ...regions.flatMap((region) => region.parks)]);
+    this.regionBlocks.addPath(pathOf(regions.flatMap((region) => region.blocks)));
+    for (const crossing of sketch.crossings) {
+      this.crossings.moveTo(crossing[0]!, crossing[1]!);
+      for (let i = 2; i < crossing.length; i += 2) {
+        this.crossings.lineTo(crossing[i]!, crossing[i + 1]!);
+      }
     }
-    this.forests = new Path2D();
-    for (const forest of sketch.forests) {
-      this.forests.addPath(polygonPath(forest.corners));
-    }
-    this.parks = new Path2D();
-    for (const park of sketch.parks) {
-      this.parks.addPath(polygonPath(park.corners));
-    }
+    this.ferries = [...sketch.ferries, ...regions.flatMap((region) => region.ferries)];
+    this.regionDepots = regions.flatMap((region) => region.depots);
+    this.regionCities = regions.flatMap((region) => region.cities);
+    this.regionCityNames = this.regionCities.map((city) => strings.cityName(city.cityId));
+    this.regionVillages = regions.flatMap((region) => region.villages);
+    this.regionVillageNames = this.regionVillages.map((village) => strings.villageName(village.villageId));
+    this.regionNames = regions.map((region) => strings.t(`region.${region.mapId}.name`).toLocaleUpperCase());
     for (const area of sketch.pavedAreas) {
       this.paved.moveTo(area.corners[0]!, area.corners[1]!);
       for (let i = 2; i < area.corners.length; i += 2) {
@@ -178,7 +225,8 @@ export class MapPainter {
     });
     this.cityNames = sketch.cities.map((city) => strings.cityName(city.cityId));
     this.villageNames = sketch.villages.map((village) => strings.villageName(village.villageId));
-    this.ferryNames = sketch.ferries.map((ferry) => strings.t('ferry.title', { region: strings.t(`region.${ferry.toMapId}.name`) }));
+    this.ferryNames = this.ferries.map((ferry) => strings.t('ferry.title', { region: strings.t(`region.${ferry.toMapId}.name`) }));
+    this.ferryClosedNames = this.ferries.map((ferry, index) => strings.t('map.ferryClosed', { name: this.ferryNames[index]!, level: ferry.requiredLevel }));
     this.pickupText = strings.t('map.pickup');
     this.deliveryText = strings.t('map.delivery');
     this.driverInitials = new Map(
@@ -224,14 +272,16 @@ export class MapPainter {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    // The water first, then the islands across it, then what grows and flows on the land.
+    context.fillStyle = COLORS.sea;
+    context.fill(this.seas);
+    context.fillStyle = COLORS.ground;
+    context.fill(this.lands);
     context.fillStyle = COLORS.forest;
     context.fill(this.forests);
     context.fillStyle = COLORS.park;
     context.fill(this.parks);
     context.fillStyle = COLORS.sea;
-    if (this.sea !== null) {
-      context.fill(this.sea);
-    }
     context.fill(this.rivers);
     for (let i = 0; i < this.fields.length; i++) {
       const field = this.fields[i]!;
@@ -242,11 +292,23 @@ export class MapPainter {
     context.fill(this.paved);
     context.fillStyle = COLORS.building;
     context.fill(this.buildings);
+    context.fillStyle = COLORS.regionBlocks;
+    context.fill(this.regionBlocks);
     this.paintTerritory(context, view);
     context.lineCap = 'round';
     context.lineJoin = 'round';
     this.paintRoads(context, view, true);
     this.paintRoads(context, view, false);
+    // The ferry crossings: dashed, a few pixels wide whatever the zoom.
+    if (this.sketch.crossings.length > 0) {
+      this.dash[0] = 9 / view.scale;
+      this.dash[1] = 7 / view.scale;
+      context.setLineDash(this.dash);
+      context.strokeStyle = COLORS.crossing;
+      context.lineWidth = 3 / view.scale;
+      context.stroke(this.crossings);
+      context.setLineDash(NO_DASH);
+    }
     this.paintRoute(context, view);
 
     // Screen pixels from here on: marks keep their size whatever the zoom.
@@ -332,31 +394,93 @@ export class MapPainter {
         context.fillText('P', x, y + 0.5);
       }
     }
-    // The ferry terminals: a boat on a teal disc, and where it goes on the full map.
-    for (let i = 0; i < sketch.ferries.length; i++) {
-      const ferry = sketch.ferries[i]!;
-      if (view.sees(this.around(ferry.x, ferry.z), 12)) {
-        const x = view.screenX(ferry.x, ferry.z);
-        const y = view.screenY(ferry.x, ferry.z);
-        disc(context, x, y, 9, COLORS.ferry);
-        context.fillStyle = '#ffffff';
-        context.beginPath();
-        context.moveTo(x - 5.5, y);
-        context.lineTo(x + 5.5, y);
-        context.lineTo(x + 3.5, y + 3.5);
-        context.lineTo(x - 3.5, y + 3.5);
-        context.closePath();
-        context.rect(x - 2.5, y - 4, 4, 3);
-        context.fill();
-        if (options.labels) {
-          context.font = SMALL_FONT;
-          context.textAlign = 'center';
-          context.textBaseline = 'middle';
-          context.lineWidth = 3;
-          context.strokeStyle = COLORS.labelEdge;
-          context.strokeText(this.ferryNames[i]!, x, y + 18);
-          context.fillStyle = COLORS.ferry;
-          context.fillText(this.ferryNames[i]!, x, y + 18);
+    // The other regions' depots, as this region's but quieter: their contracts are over there.
+    for (let i = 0; i < this.regionDepots.length; i++) {
+      const depot = this.regionDepots[i]!;
+      if (view.sees(this.around(depot.x, depot.z), 8)) {
+        const x = view.screenX(depot.x, depot.z);
+        const y = view.screenY(depot.x, depot.z);
+        context.fillStyle = COLORS.truckEdge;
+        context.fillRect(x - 5, y - 5, 10, 10);
+        context.fillStyle = COLORS.ferryClosed;
+        context.fillRect(x - 3.5, y - 3.5, 7, 7);
+      }
+    }
+    // The ferry terminals: a boat on a teal disc (grey while the company has not reached its level), ringed while
+    // open, and where it goes on the full map.
+    const level = this.sources.company?.level ?? Infinity;
+    for (let i = 0; i < this.ferries.length; i++) {
+      const ferry = this.ferries[i]!;
+      if (!view.sees(this.around(ferry.x, ferry.z), 16)) {
+        continue;
+      }
+      const x = view.screenX(ferry.x, ferry.z);
+      const y = view.screenY(ferry.x, ferry.z);
+      const open = level >= ferry.requiredLevel;
+      if (open) {
+        disc(context, x, y, 15, COLORS.ferryGlow);
+      }
+      disc(context, x, y, 9, open ? COLORS.ferry : COLORS.ferryClosed);
+      context.fillStyle = '#ffffff';
+      context.beginPath();
+      context.moveTo(x - 5.5, y);
+      context.lineTo(x + 5.5, y);
+      context.lineTo(x + 3.5, y + 3.5);
+      context.lineTo(x - 3.5, y + 3.5);
+      context.closePath();
+      context.rect(x - 2.5, y - 4, 4, 3);
+      context.fill();
+      if (options.labels) {
+        const name = open ? this.ferryNames[i]! : this.ferryClosedNames[i]!;
+        context.font = SMALL_FONT;
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.lineWidth = 3;
+        context.strokeStyle = COLORS.labelEdge;
+        context.strokeText(name, x, y + 20);
+        context.fillStyle = open ? COLORS.crossing : COLORS.villageLabel;
+        context.fillText(name, x, y + 20);
+      }
+    }
+    if (options.labels && this.regionNames.length > 0) {
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.strokeStyle = COLORS.labelEdge;
+      // The other regions' names over their middles, large and faint; their villages' and cities' names as here.
+      context.font = REGION_FONT;
+      context.lineWidth = 5;
+      context.fillStyle = COLORS.regionLabel;
+      for (let i = 0; i < this.regionNames.length; i++) {
+        const region = this.sketch.regions[i]!;
+        if (view.sees(region, 0)) {
+          const x = view.screenX(region.x, region.z);
+          const y = view.screenY(region.x, region.z);
+          context.strokeText(this.regionNames[i]!, x, y);
+          context.fillText(this.regionNames[i]!, x, y);
+        }
+      }
+      context.font = SMALL_FONT;
+      context.lineWidth = 3;
+      context.fillStyle = COLORS.villageLabel;
+      for (let i = 0; i < this.regionVillages.length; i++) {
+        const village = this.regionVillages[i]!;
+        if (view.scale >= VILLAGE_LABEL_MIN_SCALE && view.sees(this.around(village.x, village.z), 60)) {
+          const x = view.screenX(village.x, village.z);
+          const y = view.screenY(village.x, village.z);
+          context.strokeText(this.regionVillageNames[i]!, x, y);
+          context.fillText(this.regionVillageNames[i]!, x, y);
+        }
+      }
+      context.font = LABEL_FONT;
+      context.lineWidth = 4;
+      context.fillStyle = COLORS.label;
+      for (let i = 0; i < this.regionCities.length; i++) {
+        const city = this.regionCities[i]!;
+        if (view.sees(this.around(city.x, city.z), 80)) {
+          const x = view.screenX(city.x, city.z);
+          const y = view.screenY(city.x, city.z) + 22;
+          context.strokeText(this.regionCityNames[i]!, x, y);
+          context.fillText(this.regionCityNames[i]!, x, y);
         }
       }
     }
@@ -370,7 +494,7 @@ export class MapPainter {
       context.fillStyle = COLORS.villageLabel;
       for (let i = 0; i < sketch.villages.length; i++) {
         const village = sketch.villages[i]!;
-        if (view.sees(this.around(village.x, village.z), 60)) {
+        if (view.scale >= VILLAGE_LABEL_MIN_SCALE && view.sees(this.around(village.x, village.z), 60)) {
           const x = view.screenX(village.x, village.z);
           const y = view.screenY(village.x, village.z);
           context.strokeText(this.villageNames[i]!, x, y);

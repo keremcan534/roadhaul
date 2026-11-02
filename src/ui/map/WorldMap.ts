@@ -250,9 +250,12 @@ export class WorldMap {
     const view = this.viewport;
     view.minScale = 0;
     view.maxScale = MAX_SCALE;
+    // Zoomed out as far as it goes, the whole world (the other regions across the water too) fills most of the screen.
+    view.fit(this.sketch.worldBounds, FIT_PADDING);
+    const widest = view.scale * 0.8;
+    // It opens on the region driven.
     view.fit(this.sketch.bounds, FIT_PADDING);
-    // Zoomed out, the whole region still fills most of the screen.
-    view.minScale = view.scale * 0.8;
+    view.minScale = Math.min(widest, view.scale * 0.8);
     this.dirty = true;
   }
 
@@ -272,7 +275,7 @@ export class WorldMap {
 
   /** After a move or zoom: the middle stays over the map, and it repaints. */
   private changed(): void {
-    this.viewport.keepWithin(this.sketch.bounds);
+    this.viewport.keepWithin(this.sketch.worldBounds);
     this.dirty = true;
   }
 

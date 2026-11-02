@@ -369,6 +369,7 @@ export const TR: StringTable = {
   'map.pickup': 'Yükleme',
   'map.delivery': 'Teslimat',
   'map.legend': 'Şirketler',
+  'map.ferryClosed': '{name} · {level}. seviye',
   'map.yourFleet': 'Filon',
   'map.bound': 'Varış: {city}',
   'map.racing': 'İhalede seninle yarışıyor',

@@ -369,6 +369,7 @@ export const PL: StringTable = {
   'map.pickup': 'Załadunek',
   'map.delivery': 'Dostawa',
   'map.legend': 'Firmy',
+  'map.ferryClosed': '{name} · poziom {level}',
   'map.yourFleet': 'Twoja flota',
   'map.bound': 'Cel: {city}',
   'map.racing': 'Ściga się z tobą o przetarg',
