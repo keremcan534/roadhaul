@@ -991,7 +991,8 @@ html[data-camera='cabin'] .dashboard {
 @media (orientation: landscape) {
   .mission-hud,
   .toasts,
-  .rest-area-panel {
+  .rest-area-panel,
+  .ferry-panel {
     left: calc(50% + 55px);
   }
 
@@ -1005,7 +1006,8 @@ html[data-camera='cabin'] .dashboard {
     width: min(420px, calc(100vw - 250px));
   }
 
-  .rest-area-panel {
+  .rest-area-panel,
+  .ferry-panel {
     width: max-content;
     max-width: min(520px, calc(100vw - 250px));
   }
@@ -1176,7 +1178,8 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 /* ---- Rest area counter (src/ui/hud/RestAreaPanel.ts): under the mission HUD, clear of the truck ---- */
 
-.rest-area-panel {
+.rest-area-panel,
+.ferry-panel {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 92px);
   left: 50%;
@@ -1196,7 +1199,8 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   transform: translateX(-50%);
 }
 
-.rest-area-panel[hidden] {
+.rest-area-panel[hidden],
+.ferry-panel[hidden] {
   display: none;
 }
 
@@ -1245,7 +1249,8 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 /* Upright phones: below the mission HUD, above the truck. */
 @media (orientation: portrait) {
-  .rest-area-panel {
+  .rest-area-panel,
+  .ferry-panel {
     top: calc(env(safe-area-inset-top, 0px) + 170px);
   }
 }

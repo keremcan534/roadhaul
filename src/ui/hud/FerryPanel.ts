@@ -33,7 +33,8 @@ export class FerryPanel {
     actions: FerryPanelActions,
   ) {
     const document = parent.ownerDocument;
-    this.root = element(document, 'div', 'rest-area-panel ferry-panel');
+    // The rest area's counter's look (its title, buttons), on a root of its own.
+    this.root = element(document, 'div', 'ferry-panel');
     this.root.hidden = true;
     this.root.setAttribute('role', 'dialog');
     this.title = element(document, 'h2', 'rest-area-panel__title', '');
