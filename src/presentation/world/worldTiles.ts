@@ -106,6 +106,11 @@ export function freezeTransforms(root: Object3D): void {
 /** A frozen root's updateMatrixWorld (freezeTransforms): its world matrices, and those under it, stay as they are. */
 function keepMatrixWorld(): void {}
 
+/** What FarCulling shows and hides: an object, or a tile of a TileBatch. */
+export interface Cullable {
+  visible: boolean;
+}
+
 /**
  * A tile is kept while its box comes this near the view, meters: the trees
  * sway and the grass bends past the meshes' own bounds in their shaders.
@@ -120,7 +125,7 @@ const VIEW_MARGIN_METERS = 6;
  * does not look over each of a tile's meshes to leave them out one by one.
  */
 export class FarCulling {
-  private readonly objects: Object3D[] = [];
+  private readonly objects: Cullable[] = [];
   /** Each object's box: min x, max x, min z, max z, min y, max y. */
   private bounds = new Float64Array(96);
   private readonly reachSquared: number;
@@ -136,7 +141,11 @@ export class FarCulling {
 
   /** Culls `object` from now on, by the ground its meshes (as they stand now) cover. */
   add(object: Object3D): void {
-    const box = new Box3().setFromObject(object);
+    this.addBox(object, new Box3().setFromObject(object));
+  }
+
+  /** Culls `target` from now on, by `box` (in the world): what it draws. */
+  addBox(target: Cullable, box: Box3): void {
     if (box.isEmpty()) {
       return;
     }
@@ -147,7 +156,7 @@ export class FarCulling {
       this.bounds = grown;
     }
     this.bounds.set([box.min.x, box.max.x, box.min.z, box.max.z, box.min.y, box.max.y], at);
-    this.objects.push(object);
+    this.objects.push(target);
   }
 
   /**

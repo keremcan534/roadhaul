@@ -6,11 +6,12 @@ import {
   Group,
   InstancedMesh,
   Matrix4,
-  Mesh,
   MeshLambertMaterial,
   PlaneGeometry,
   Quaternion,
   Vector3,
+  type Frustum,
+  type Material,
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -21,6 +22,7 @@ import type { GuardRail } from '../../domain/world/guardRails';
 import { createRoadPoint } from '../../domain/world/RoadPath';
 import type { SkyUniforms } from './EnvironmentView';
 import { reflectSky } from './skyReflection';
+import { TileBatch } from './TileBatch';
 import { freezeTransforms } from './worldTiles';
 
 /**
@@ -119,7 +121,8 @@ export class RoadFurnitureView {
   private readonly posts: InstancedMesh;
   private readonly reflectors: InstancedMesh;
   private readonly studs: InstancedMesh;
-  private readonly rails: Mesh[] = [];
+  /** The guard rails' tiles and the median barriers', each drawn as one (TileBatch), culled in showAround. */
+  private readonly rails: TileBatch[] = [];
   private readonly resources: { dispose(): void }[] = [];
   /** Every post: where it stands, its matrix and its two reflectors' (16 floats each), in the same order. */
   private readonly postX: Float32Array;
@@ -208,27 +211,28 @@ export class RoadFurnitureView {
     if (options.sky !== undefined) {
       reflectSky(railMaterial, options.sky, { facing: 0.3, strength: 0.7, metal: true });
     }
-    for (const [tile, parts] of railTiles(world.guardRails, ground)) {
-      const mesh = new Mesh(this.track(mergeGeometries(parts)), railMaterial);
-      for (const part of parts) {
-        part.dispose();
+    const batchOf = (tiles: Iterable<[string, BufferGeometry[]]>, material: Material, name: string): void => {
+      const merged = [...tiles].map(([, parts]) => {
+        const geometry = mergeGeometries(parts);
+        for (const part of parts) {
+          part.dispose();
+        }
+        return geometry;
+      });
+      if (merged.length === 0) {
+        return;
       }
-      mesh.name = `road-furniture:rails:${tile}`;
-      mesh.castShadow = options.castShadows === true;
-      this.rails.push(mesh);
-    }
+      const batch = this.track(new TileBatch(merged, material, name));
+      for (const geometry of merged) {
+        geometry.dispose();
+      }
+      batch.mesh.castShadow = options.castShadows === true;
+      this.rails.push(batch);
+    };
+    batchOf(railTiles(world.guardRails, ground), railMaterial, 'road-furniture:rails');
     // The motorways' median barriers, in concrete, in the rails' tiles.
-    const concrete = this.track(new MeshLambertMaterial({ vertexColors: true }));
-    for (const [tile, parts] of barrierTiles(world.medianBarriers)) {
-      const mesh = new Mesh(this.track(mergeGeometries(parts)), concrete);
-      for (const part of parts) {
-        part.dispose();
-      }
-      mesh.name = `road-furniture:barriers:${tile}`;
-      mesh.castShadow = options.castShadows === true;
-      this.rails.push(mesh);
-    }
-    this.root.add(this.posts, this.reflectors, this.studs, ...this.rails);
+    batchOf(barrierTiles(world.medianBarriers), this.track(new MeshLambertMaterial({ vertexColors: true })), 'road-furniture:barriers');
+    this.root.add(this.posts, this.reflectors, this.studs, ...this.rails.map((batch) => batch.mesh));
     this.root.name = 'road-furniture';
     freezeTransforms(this.root);
     scene.add(this.root);
@@ -236,7 +240,17 @@ export class RoadFurnitureView {
 
   /** How many delineator posts there are, how many are drawn now, how many road studs and rail tiles. */
   get counts(): { readonly posts: number; readonly drawnPosts: number; readonly studs: number; readonly railTiles: number } {
-    return { posts: this.postX.length, drawnPosts: this.posts.count, studs: this.studs.count, railTiles: this.rails.length };
+    return { posts: this.postX.length, drawnPosts: this.posts.count, studs: this.studs.count, railTiles: this.rails.reduce((sum, batch) => sum + batch.size, 0) };
+  }
+
+  /**
+   * Shows the rails' and barriers' tiles near (x, z), the camera, and (given
+   * its view) in it, as FarCulling.update. Allocation-free.
+   */
+  showAround(x: number, z: number, view: Frustum | null = null): void {
+    for (let i = 0; i < this.rails.length; i++) {
+      this.rails[i]!.update(x, z, view);
+    }
   }
 
   /** How brightly the truck's lamps shine, 0..1 (the weather's): the reflectors ahead catch them. Cheap. */

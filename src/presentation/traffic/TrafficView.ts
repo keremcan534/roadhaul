@@ -365,15 +365,19 @@ export class TrafficView implements TrafficHeadlamps {
         mesh.count = counts[type]!;
         mesh.instanceMatrix.needsUpdate = true;
       }
+      // An empty instanced mesh still costs three.js a draw's set-up: none at all while no vehicle of the kind is about.
+      mesh.visible = counts[type]! > 0;
     }
     if (this.lamps.count !== lamps || lamps > 0) {
       this.lamps.count = lamps;
       this.lamps.instanceMatrix.needsUpdate = true;
     }
+    this.lamps.visible = lamps > 0;
     if (this.shadows.count !== shadows || shadows > 0) {
       this.shadows.count = shadows;
       this.shadows.instanceMatrix.needsUpdate = true;
     }
+    this.shadows.visible = shadows > 0;
     this.glows.setCount(glowing ? lamps : 0);
   }
 

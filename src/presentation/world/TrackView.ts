@@ -75,7 +75,8 @@ import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './r
 import { ForestBatch, TREE_DETAIL, TREE_FAR } from './ForestBatch';
 import { TerrainGround, type GroundWindow } from './TerrainGround';
 import type { Terrain } from '../../domain/world/terrain';
-import { FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
+import { TileBatch } from './TileBatch';
+import { FAR_CULL_METERS, FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
 import { createChannelMask } from './riverChannel';
@@ -461,9 +462,16 @@ export class TrackView {
   };
   /** The wind in the trees' crowns: its clock (seconds) and strength. */
   private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
-  /** The country's tiles (COUNTRY_TILE_METERS), by key: the roads and buildings it grew there, a group each. */
-  private readonly countryTiles = new Map<string, Group>();
-  /** The forest's and the country's tiles, hidden while far from the camera (showAround). */
+  /**
+   * What the country grew (COUNTRY_TILE_METERS: its roads and buildings) and
+   * the towns' districts' building details (TOWN_TILE_METERS), by layer (a
+   * material and name): each layer's tiles by key, drawn as one TileBatch.
+   */
+  private readonly tileLayers: { readonly name: string; readonly material: Material; readonly town: boolean; readonly tiles: Map<string, BufferGeometry> }[] = [];
+  /** The country's batches, hidden past FAR_CULL_METERS, and the towns', past TOWN_DETAIL_METERS (showAround). */
+  private readonly countryBatches: TileBatch[] = [];
+  private readonly townBatches: TileBatch[] = [];
+  /** The forest's tiles, hidden while far from the camera (showAround). */
   private readonly culling = new FarCulling();
   /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
   private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
@@ -475,10 +483,6 @@ export class TrackView {
   private readonly terrain: Terrain;
   /** A map with hills' ground (TerrainGround): its fine square moves with the camera (showAround). */
   private terrainGround: TerrainGround | null = null;
-  /** The towns' districts' building details, in smaller tiles (TOWN_TILE_METERS), by key. */
-  private readonly townTiles = new Map<string, Group>();
-  /** …hidden past TOWN_DETAIL_METERS: in a town, nearer buildings stand before the far ones. */
-  private readonly townDetail = new FarCulling(TOWN_DETAIL_METERS);
 
   constructor(
     private readonly scene: Scene,
@@ -523,24 +527,25 @@ export class TrackView {
     if (world.buildings.length > 0) {
       this.root.add(...this.createBuildings(world.buildings, (box, reach) => world.frontOf(box, reach)));
     }
-    if (this.townTiles.size > 0) {
-      const town = new Group();
-      town.name = 'town';
-      for (const tile of this.townTiles.values()) {
-        town.add(tile);
-        this.townDetail.add(tile);
+    // A town's details are hidden past TOWN_DETAIL_METERS: in a town, nearer buildings stand before the far ones.
+    for (const town of [true, false]) {
+      const layers = this.tileLayers.filter((layer) => layer.town === town);
+      if (layers.length === 0) {
+        continue;
       }
-      this.root.add(town);
-    }
-    if (this.countryTiles.size > 0) {
-      const country = new Group();
-      country.name = 'country';
-      for (const tile of this.countryTiles.values()) {
-        country.add(tile);
-        this.culling.add(tile);
+      const group = new Group();
+      group.name = town ? 'town' : 'country';
+      for (const { name, material, tiles } of layers) {
+        const batch = this.track(new TileBatch([...tiles.values()], material, `${group.name}:${name}`, town ? TOWN_DETAIL_METERS : FAR_CULL_METERS));
+        for (const tile of tiles.values()) {
+          tile.dispose();
+        }
+        group.add(batch.mesh);
+        (town ? this.townBatches : this.countryBatches).push(batch);
       }
-      this.root.add(country);
+      this.root.add(group);
     }
+    this.tileLayers.length = 0;
     freezeTransforms(this.root);
     scene.add(this.root);
   }
@@ -562,7 +567,12 @@ export class TrackView {
       this.treeLods[i + 1]!.visible = !this.treeLods[i]!.visible;
     }
     this.forestBatch?.update(eyeView);
-    this.townDetail.update(x, z, view);
+    for (let i = 0; i < this.countryBatches.length; i++) {
+      this.countryBatches[i]!.update(x, z, view);
+    }
+    for (let i = 0; i < this.townBatches.length; i++) {
+      this.townBatches[i]!.update(x, z, view);
+    }
   }
 
   /** How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): lit windows glow. Cheap to call every frame. */
@@ -878,18 +888,23 @@ export class TrackView {
     return dashes;
   }
 
-  /** One mesh of `material` a tile of `parts`, named `name`, in that country tile's group. */
-  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string, tiles = this.countryTiles, prefix = 'country'): void {
+  /** `parts` merged a tile at a time into the layer of `material` (named `name`) of the country's tiles, or the towns'. */
+  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string, town = false): void {
+    if (parts.tiles.size === 0) {
+      return;
+    }
+    let layer = this.tileLayers.find((candidate) => candidate.material === material && candidate.name === name && candidate.town === town);
+    if (layer === undefined) {
+      layer = { name, material, town, tiles: new Map() };
+      this.tileLayers.push(layer);
+    }
     for (const [key, tile] of parts.tiles) {
-      const mesh = new Mesh(this.merged(tile), material);
-      mesh.name = name;
-      let group = tiles.get(key);
-      if (group === undefined) {
-        group = new Group();
-        group.name = `${prefix}:${key}`;
-        tiles.set(key, group);
+      const geometry = mergeGeometries(tile);
+      for (const part of tile) {
+        part.dispose();
       }
-      group.add(mesh);
+      const earlier = layer.tiles.get(key);
+      layer.tiles.set(key, earlier === undefined ? geometry : mergeGeometries([earlier, geometry]));
     }
   }
 
@@ -1225,7 +1240,7 @@ export class TrackView {
         meshes.push(mesh);
       }
       this.addToCountry(parts.country, material, name);
-      this.addToCountry(parts.districts, material, name, this.townTiles, 'town');
+      this.addToCountry(parts.districts, material, name, true);
     }
     return meshes;
   }

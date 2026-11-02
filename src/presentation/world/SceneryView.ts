@@ -18,6 +18,7 @@ import {
   PlaneGeometry,
   Quaternion,
   ShaderMaterial,
+  type Material,
   UniformsLib,
   UniformsUtils,
   Vector2,
@@ -54,6 +55,7 @@ import {
 import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
 import { SHADOW_GATHER_MARGIN_METERS, ShadowSubset, type ShadowReach } from './ShadowSubset';
+import { TileBatch } from './TileBatch';
 import { COUNTRY_TILE_METERS, FarCulling, freezeTransforms, TileParts } from './worldTiles';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
@@ -196,17 +198,19 @@ export class SceneryView {
   private readonly shadowReach: ShadowReach | null;
   private shadowStamp = -1;
   private readonly tileCount: number;
-  /** The tiles, hidden while far from the camera (showAround). */
+  /** The wires' tiles, hidden while far from the camera (showAround). */
   private readonly culling = new FarCulling();
+  /** The props' tiles and the pavements' (TileBatch: a draw call each for all the tiles near and in view). */
+  private readonly batches: TileBatch[] = [];
   private time = 0;
   /**
    * What can be knocked over among the merged props: each one's circle in
-   * the world, the tile mesh it is merged into, and its vertices there
-   * (from, count); whether it lies knocked over, and its vertices as they
-   * were while it does (showKnocked squeezes them to a point).
+   * the world, and its vertices in the props' batch (from, count); whether
+   * it lies knocked over, and its vertices as they were while it does
+   * (showKnocked squeezes them to a point).
    */
   private readonly knockCircles: number[] = [];
-  private readonly knockMeshes: Mesh[] = [];
+  private props: TileBatch | null = null;
   private readonly knockFrom: number[] = [];
   private readonly knockCount: number[] = [];
   private readonly knockDown: Uint8Array;
@@ -306,24 +310,34 @@ export class SceneryView {
       addSidewalk(tiles, paving, world.roads[sidewalk.roadIndex]!, sidewalk);
     }
 
+    const propTiles: BufferGeometry[] = [];
+    /** Per tile, its knockables' circles, where their vertices start in the tile, and how many they are. */
+    const tileKnocks: { readonly circle: number; readonly from: number; readonly count: number }[][] = [];
     for (const [key, pieces] of tiles.entries()) {
       const circles = tiles.circlesOf(key);
       let from = 0;
-      const counts = pieces.map((piece) => geometryOf(piece).getAttribute('position').count);
-      const mesh = new Mesh(this.track(mergeParts(pieces)), propMaterial);
-      mesh.name = `scenery:${key}`;
-      mesh.castShadow = castShadows;
-      this.root.add(mesh);
-      this.culling.add(mesh);
-      counts.forEach((count, index) => {
+      const knocks: { circle: number; from: number; count: number }[] = [];
+      pieces.forEach((piece, index) => {
+        const count = geometryOf(piece).getAttribute('position').count;
         if (circles[index]! >= 0) {
-          this.knockCircles.push(circles[index]!);
-          this.knockMeshes.push(mesh);
-          this.knockFrom.push(from);
+          knocks.push({ circle: circles[index]!, from, count });
+        }
+        from += count;
+      });
+      tileKnocks.push(knocks);
+      propTiles.push(mergeParts(pieces));
+    }
+    if (propTiles.length > 0) {
+      const props = this.batch(propTiles, propMaterial, 'scenery:tiles');
+      props.mesh.castShadow = castShadows;
+      this.props = props;
+      tileKnocks.forEach((knocks, tile) => {
+        for (const { circle, from, count } of knocks) {
+          this.knockCircles.push(circle);
+          this.knockFrom.push(props.vertexStartOf(tile) + from);
           this.knockCount.push(count);
           this.knockSaved.push(null);
         }
-        from += count;
       });
     }
     // The tiles hold their parts' vertices now.
@@ -374,12 +388,11 @@ export class SceneryView {
       const pavingMaterial = this.track(
         new MeshLambertMaterial({ map: this.track(toTexture(pavingImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 })) }),
       );
-      for (const [key, parts] of paving.entries()) {
-        const mesh = new Mesh(this.track(mergeParts(parts)), pavingMaterial);
-        mesh.name = `scenery:pavement:${key}`;
-        this.root.add(mesh);
-        this.culling.add(mesh);
-      }
+      this.batch(
+        [...paving.entries()].map(([, parts]) => mergeParts(parts)),
+        pavingMaterial,
+        'scenery:pavements',
+      );
     }
     // The wires in large tiles, hidden while far off: the map's kilometres of power line cost nothing out of reach.
     const wires = [...wireSegments(world.powerLines, ground), ...fenceWireSegments(world.roadFences, ground)];
@@ -442,6 +455,9 @@ export class SceneryView {
    */
   showAround(x: number, z: number, view: Frustum | null = null): void {
     this.culling.update(x, z, view);
+    for (let i = 0; i < this.batches.length; i++) {
+      this.batches[i]!.update(x, z, view);
+    }
   }
 
   /**
@@ -477,7 +493,7 @@ export class SceneryView {
         continue;
       }
       this.knockDown[i] = down;
-      const position = this.knockMeshes[i]!.geometry.getAttribute('position') as BufferAttribute;
+      const position = this.props!.positions;
       const array = position.array as Float32Array;
       const from = this.knockFrom[i]! * 3;
       const to = from + this.knockCount[i]! * 3;
@@ -636,6 +652,17 @@ export class SceneryView {
   private track<T extends { dispose(): void }>(resource: T): T {
     this.resources.push(resource);
     return resource;
+  }
+
+  /** `tiles` (released once copied) drawn as one (TileBatch), culled in showAround. */
+  private batch(tiles: readonly BufferGeometry[], material: Material, name: string): TileBatch {
+    const batch = this.track(new TileBatch(tiles, material, name));
+    for (const tile of tiles) {
+      tile.dispose();
+    }
+    this.root.add(batch.mesh);
+    this.batches.push(batch);
+    return batch;
   }
 }
 

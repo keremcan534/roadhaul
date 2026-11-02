@@ -47,6 +47,8 @@ describe('StreetLampView', () => {
     expect(meshes(scene).every((mesh) => mesh.count === LAMPS.length)).toBe(true);
     view.showAround(5000, 0);
     expect(meshes(scene).every((mesh) => mesh.count === 0)).toBe(true);
+    // Not even an empty draw.
+    expect(shownDrawCalls(scene)).toBe(0);
   });
 
   it('stands each post at its lamp, the head hanging over the road', () => {
@@ -72,6 +74,7 @@ describe('StreetLampView', () => {
   it('lights the lenses at night, with glows', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, LAMPS);
+    view.showAround(0, 0);
     const lens = meshes(scene)[1]!.material as MeshBasicMaterial;
     const dayLens = lens.color.clone();
 
@@ -113,6 +116,7 @@ describe('StreetLampView', () => {
   it('leaves the glows out when the quality preset does', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, LAMPS, { lampGlows: false });
+    view.showAround(0, 0);
 
     view.setLamps(1);
 

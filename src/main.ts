@@ -3008,6 +3008,7 @@ async function start(strings: Strings): Promise<void> {
         const view = renderHost.shadowsOn ? null : eyeView;
         track.showAround(eye.x, eye.z, view, eyeView);
         scenery.showAround(eye.x, eye.z, view);
+        roadFurniture.showAround(eye.x, eye.z, view);
         streetLamps.showAround(eye.x, eye.z);
         trafficSignals?.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);

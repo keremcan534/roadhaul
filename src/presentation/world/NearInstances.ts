@@ -47,6 +47,7 @@ export class NearInstances {
     mesh.castShadow = source.castShadow;
     mesh.receiveShadow = source.receiveShadow;
     mesh.count = 0;
+    mesh.visible = false;
     // The instances gathered move with the camera; the mesh's own bounds know nothing of them.
     mesh.frustumCulled = false;
     this.mesh = mesh;
@@ -107,6 +108,8 @@ export class NearInstances {
       filled++;
     }
     this.mesh.count = filled;
+    // An empty instanced mesh still costs three.js a draw's set-up.
+    this.mesh.visible = filled > 0;
     const matrices = this.mesh.instanceMatrix;
     matrices.clearUpdateRanges();
     if (filled > 0) {
