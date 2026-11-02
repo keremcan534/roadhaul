@@ -8,7 +8,7 @@ import { KERB_HEIGHT_METERS, OUTLINE_ROW } from '../../../../src/domain/world/to
 import { keptSidewalkRows, SceneryView } from '../../../../src/presentation/world/SceneryView';
 import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
 import { mapFixture } from '../../../support/contentFixtures';
-import { batchTiles, drawCallCount, gpuResources, watchDisposal, type BatchTile } from '../../../support/threeResources';
+import { batchTiles, drawCallCount, gpuResources, materialsOfMixedKinds, watchDisposal, type BatchTile } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
 
@@ -411,5 +411,11 @@ describe('keptSidewalkRows', () => {
     expect(kept[1]).toBeGreaterThanOrEqual(9);
     expect(kept.filter((row) => row > 10 && row < 20).length).toBeGreaterThan(5);
     expect(kept.length).toBeLessThan(30);
+  });
+
+  it('draws each material by one kind of object only (a batch or the instanced fallen props), so its program never switches', () => {
+    const scene = new Scene();
+    new SceneryView(scene, world, { debrisCapacity: 4 });
+    expect(materialsOfMixedKinds(scene)).toEqual([]);
   });
 });

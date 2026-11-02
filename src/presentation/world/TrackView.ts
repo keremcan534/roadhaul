@@ -848,12 +848,15 @@ export class TrackView {
         meshes.push(mesh);
       }
     }
-    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions, paintMaterial);
+    // A material drawn as a mesh, an instanced mesh and a batch is a program for each: three.js keeps one current per
+    // material and looked the others up again twice every frame. The dashes (instanced) and the country's tiles (a
+    // TileBatch each) have materials of their own, made alike (the same programs, uniforms and look).
+    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions, this.overlayMaterial({ color: MARKING_COLOR }, 3));
     if (dashMesh !== null) {
       meshes.push(dashMesh);
     }
-    this.addToCountry(country.shoulders, gravelMaterial, 'roads:shoulders');
-    this.addToCountry(country.surfaces, asphaltMaterial, 'roads:asphalt');
+    this.addToCountry(country.shoulders, this.overlayMaterial({ map: gravel }, 1), 'roads:shoulders');
+    this.addToCountry(country.surfaces, this.wettable(this.overlayMaterial({ map: asphalt }, 2)), 'roads:asphalt');
     return meshes;
   }
 

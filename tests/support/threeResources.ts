@@ -80,3 +80,23 @@ export function batchTiles(mesh: BatchedMesh): BatchTile[] {
   }
   return tiles;
 }
+
+/**
+ * The materials under `root` drawn by more than one kind of object (a mesh, an instanced mesh, a batch): three.js
+ * keeps one program current per material, and one drawn by two kinds has its program looked up again twice a frame.
+ */
+export function materialsOfMixedKinds(root: Object3D): string[] {
+  const kinds = new Map<Material, Map<string, string>>();
+  root.traverse((object) => {
+    if (!(object instanceof Mesh)) {
+      return;
+    }
+    const kind = object instanceof BatchedMesh ? 'batch' : object instanceof InstancedMesh ? 'instanced' : 'mesh';
+    for (const material of [object.material].flat() as Material[]) {
+      const users = kinds.get(material) ?? new Map<string, string>();
+      users.set(kind, object.name);
+      kinds.set(material, users);
+    }
+  });
+  return [...kinds.values()].filter((users) => users.size > 1).map((users) => [...users].map(([kind, name]) => `${kind} ${name}`).join(' + '));
+}

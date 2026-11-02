@@ -23,7 +23,7 @@ import { SeasonShading } from '../../../../src/presentation/world/SeasonShading'
 import { TREE_FAR } from '../../../../src/presentation/world/ForestBatch';
 import { TrackView } from '../../../../src/presentation/world/TrackView';
 import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
-import { batchTiles, drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
+import { batchTiles, drawCallCount, gpuResources, materialsOfMixedKinds, watchDisposal } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
 
@@ -598,24 +598,28 @@ describe('TrackView', () => {
     const view = new TrackView(scene, world, {
       sky: { zenith, horizon, sunColor: { value: new Color() }, sunDirection: { value: new Vector3() } },
     });
-    const wettable = new Set<MeshBasicMaterial>();
+    const wettable = new Map<MeshBasicMaterial, string>();
+    const wetnessOf = new Map<MeshBasicMaterial, unknown>();
     scene.traverse((object) => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
         const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '' };
         object.material.onBeforeCompile(probe as never, undefined as never);
         if ('wetness' in probe.uniforms) {
-          wettable.add(object.material);
+          wettable.set(object.material, object.name);
+          wetnessOf.set(object.material, probe.uniforms['wetness']);
         }
       }
     });
-    // Only the asphalt, every tile of it: the shoulders, markings and ground stay as they are.
-    expect(wettable.size).toBe(1);
+    // Only the asphalt, every tile of it: the shoulders, markings and ground stay as they are. The map's roads and the
+    // country's tiles (a batch) have a material each, made alike: the same wetness.
+    expect([...wettable.values()].sort()).toEqual(['country:roads:asphalt', 'roads:asphalt']);
+    expect(new Set(wetnessOf.values()).size).toBe(1);
     const shader = {
       uniforms: UniformsUtils.clone(ShaderLib.basic.uniforms),
       vertexShader: ShaderLib.basic.vertexShader,
       fragmentShader: ShaderLib.basic.fragmentShader,
     };
-    [...wettable][0]!.onBeforeCompile(shader as never, undefined as never);
+    [...wettable.keys()][0]!.onBeforeCompile(shader as never, undefined as never);
 
     expect(shader.uniforms['wetSky']).toBe(horizon);
     expect(shader.uniforms['wetZenith']).toBe(zenith);
@@ -644,5 +648,11 @@ describe('TrackView', () => {
 
     expect([...resources].filter((resource) => !disposed.has(resource))).toEqual([]);
     expect(scene.children).toEqual([]);
+  });
+
+  it('draws each material by one kind of object only (a mesh, an instanced mesh or a batch), so its program never switches', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    expect(materialsOfMixedKinds(scene)).toEqual([]);
   });
 });

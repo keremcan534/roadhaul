@@ -346,9 +346,12 @@ export class SceneryView {
     this.knockDown = new Uint8Array(this.knockCircles.length);
     const debrisCapacity = options.debrisCapacity ?? 0;
     if (debrisCapacity > 0) {
+      // The same look as the tiles', its own material: one drawn both batched and instanced is two programs, switched
+      // between twice a frame while anything tumbles.
+      const fallenMaterial = this.track(new MeshLambertMaterial({ map: atlas, vertexColors: true }));
       const fallenOf = (kind: KnockableKind, geometry: BufferGeometry, name: string): DebrisInstances => {
         const { shape, centreZ } = KNOCKABLES[kind];
-        const fallen = new DebrisInstances(this.root, this.track(geometry), propMaterial, debrisCapacity, shape.halfY, centreZ, name);
+        const fallen = new DebrisInstances(this.root, this.track(geometry), fallenMaterial, debrisCapacity, shape.halfY, centreZ, name);
         fallen.mesh.castShadow = castShadows;
         this.fallen.push(fallen);
         return fallen;

@@ -84,6 +84,8 @@ const STRANDED_CAR: TrafficVehicleDefinition = {
 export class RoadEventsView {
   private readonly root = new Group();
   private readonly lambert = new MeshLambertMaterial({ vertexColors: true });
+  /** The same for the fixtures' batch: a material drawn both batched and not is two programs, switched between twice a frame. */
+  private readonly fixtureMaterial = new MeshLambertMaterial({ vertexColors: true });
   /** What shines with its own light: the arrow boards' lamps, the hazard lights. */
   private readonly lit = new MeshBasicMaterial({ vertexColors: true, toneMapped: false });
   /**
@@ -108,6 +110,7 @@ export class RoadEventsView {
   constructor(scene: Scene) {
     this.root.name = 'roadEvents';
     scene.add(this.root);
+    this.build([]);
     this.root.add(this.glows.points, this.flashGlow.points);
     this.flashGlow.setColor(0, 0xffffff);
     const body = paintedCar(0x8b97a5);
@@ -231,6 +234,7 @@ export class RoadEventsView {
       geometry.dispose();
     }
     this.lambert.dispose();
+    this.fixtureMaterial.dispose();
     this.lit.dispose();
     this.glows.dispose();
     this.flashGlow.dispose();
@@ -270,10 +274,14 @@ export class RoadEventsView {
         ],
       );
     }
-    if (tiles.length === 0) {
-      return;
+    // Without any, a speck stands in, hidden: the batch is in the scene from the start, shaded (the lamps, the clouds,
+    // the seasons) and its shaders compiled with the rest, not on the road when the first works appear.
+    const placeholder = tiles.length === 0;
+    if (placeholder) {
+      tiles.push(merge([box(0, 0, 0, 0, 0, 0, 0x000000)]));
     }
-    const fixtures = new TileBatch(tiles, this.lambert, 'road-events:fixtures', undefined, true);
+    const fixtures = new TileBatch(tiles, this.fixtureMaterial, 'road-events:fixtures', undefined, true);
+    fixtures.mesh.visible = !placeholder;
     for (const tile of tiles) {
       tile.dispose();
     }

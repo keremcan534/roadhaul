@@ -583,6 +583,8 @@ async function start(strings: Strings): Promise<void> {
   const cityLife = new CityLifeView(renderHost.scene, coast, driving.world.halfSizeMeters, prelit);
   // The road's events: the speed cameras, the day's road works, a stranded car.
   const roadEventsView = new RoadEventsView(renderHost.scene);
+  // Its cameras now, not on the first frame: in the scene before it is shaded and its shaders compiled.
+  roadEventsView.setWorld(driving.world);
   // Tractors at work in the fields, by day, out of the rain and the winter.
   const tractors = new FieldWorkView(renderHost.scene, driving.world.fields, driving.world.fieldWork, castShadows);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
