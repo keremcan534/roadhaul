@@ -6,6 +6,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DoubleSide,
+  Euler,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -18,6 +19,8 @@ import {
   Quaternion,
   Vector2,
   Vector3,
+  Vector4,
+  type Object3D,
   type Frustum,
   type Material,
   type Scene,
@@ -66,6 +69,8 @@ import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
 import { ForestBatch } from './ForestBatch';
+import { TerrainGround, type GroundWindow } from './TerrainGround';
+import type { Terrain } from '../../domain/world/terrain';
 import { FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
@@ -176,6 +181,10 @@ const TREE_TILE_METERS = 500;
 const TREE_DETAIL_METERS = 450;
 
 const UP = new Vector3(0, 1, 0);
+/** On a map's hills, what stands on the ground has its foot this far into it (a slope's low side would show daylight). */
+const SLOPE_FOOT_METERS = 0.3;
+/** …and a flat decal lies this far over the ground's height at its middle. */
+const SLOPE_DECAL_LIFT_METERS = 0.08;
 
 /**
  * The grass, sampled twice: as tiled, and larger and turned (a period of
@@ -234,10 +243,17 @@ varying vec2 vGroundXZ;
   uniform sampler2D forestMask;
   uniform vec4 forestFrame;
 #endif
+#ifdef NEAR_WINDOW
+  uniform vec4 nearWindow;
+#endif
 `;
 const CHANNEL_CUT_FRAGMENT = /* glsl */ `
 #ifdef CHANNELS
   if ( texture2D( channelMask, ( vGroundXZ - channelFrame.xy ) * channelFrame.zw ).r < 0.5 ) discard;
+#endif
+#ifdef NEAR_WINDOW
+  // The hills' far ground under the near ground's square (TerrainGround) is left out.
+  if ( all( lessThan( abs( vGroundXZ - nearWindow.xy ), vec2( nearWindow.z ) ) ) ) discard;
 #endif
 `;
 /** Under a forest's trees the grass gives way to needles and fallen leaves in the crowns' shade: the floor's colour, as a factor. */
@@ -443,6 +459,10 @@ export class TrackView {
   private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
   /** The forest's tiles in view, drawn a kind of mesh at a time (ForestBatch); null without trees. */
   private forestBatch: ForestBatch | null = null;
+  /** The ground's height (flat on most maps): what stands on it stands at its height. */
+  private readonly terrain: Terrain;
+  /** A map with hills' ground (TerrainGround): its fine square moves with the camera (showAround). */
+  private terrainGround: TerrainGround | null = null;
   /** The towns' districts' building details, in smaller tiles (TOWN_TILE_METERS), by key. */
   private readonly townTiles = new Map<string, Group>();
   /** …hidden past TOWN_DETAIL_METERS: in a town, nearer buildings stand before the far ones. */
@@ -464,6 +484,7 @@ export class TrackView {
       roadWear: { value: this.texture(toTexture(roadWearImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 })) },
     };
     const anisotropy = options.anisotropy ?? 1;
+    this.terrain = world.terrain;
     this.root.add(this.createGround(world, anisotropy, options.groundDetail ?? true));
     if (world.roads.length > 0) {
       this.root.add(...this.createRoads(world, anisotropy));
@@ -522,6 +543,7 @@ export class TrackView {
    * Allocation-free: call it every frame once the camera has moved.
    */
   showAround(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
+    this.terrainGround?.update(x, z);
     this.culling.update(x, z, view);
     this.treeDetail.update(x, z);
     this.forestBatch?.update(eyeView);
@@ -579,8 +601,12 @@ export class TrackView {
     return this.groundMaterial(null, null);
   }
 
-  /** The ground plane, cut open over the rivers' channels (createChannelMask), darker under the forests (createForestFloorMask). */
-  private createGround(world: DrivingWorld, anisotropy: number, detail: boolean): Mesh {
+  /**
+   * The ground plane, cut open over the rivers' channels (createChannelMask),
+   * darker under the forests (createForestFloorMask); on a map with hills,
+   * the hills' ground (TerrainGround), the same material on it.
+   */
+  private createGround(world: DrivingWorld, anisotropy: number, detail: boolean): Object3D {
     const size = (world.halfSizeMeters + GROUND_MARGIN) * 2;
     this.groundSizeMeters = size;
     const geometry = this.track(new PlaneGeometry(size, size, 96, 96));
@@ -608,6 +634,24 @@ export class TrackView {
         this.texture(mask.texture);
       }
     }
+    if (!world.terrain.flat) {
+      geometry.dispose();
+      let terrainGround: TerrainGround | null = null;
+      const window: GroundWindow = { value: new Vector4(0, 0, -1, 0) };
+      const far = this.groundMaterial(channels, forests, window);
+      // Behind the near ground where both are drawn.
+      far.polygonOffset = true;
+      far.polygonOffsetFactor = 1;
+      far.polygonOffsetUnits = 4;
+      terrainGround = new TerrainGround(world.terrain, size, groundTint, far, this.groundMaterial(channels, forests));
+      window.value = terrainGround.window.value;
+      this.terrainGround = terrainGround;
+      this.track(terrainGround);
+      const hills = new Group();
+      hills.name = 'ground';
+      hills.add(terrainGround.far, terrainGround.near);
+      return hills;
+    }
     return new Mesh(geometry, this.groundMaterial(channels, forests));
   }
 
@@ -616,7 +660,7 @@ export class TrackView {
    * With `channels`, left out where they cut the ground open, the banks and
    * water below showing through; with `forests`, darker under the trees.
    */
-  private groundMaterial(channels: GroundMask | null, forests: GroundMask | null): MeshBasicMaterial {
+  private groundMaterial(channels: GroundMask | null, forests: GroundMask | null, window: GroundWindow | null = null): MeshBasicMaterial {
     const ground = this.ground;
     if (ground === null) {
       throw new Error('The ground has not been made yet.');
@@ -628,6 +672,7 @@ export class TrackView {
       ...(seasons === null ? {} : { SEASONS: '' }),
       ...(channels === null ? {} : { CHANNELS: '' }),
       ...(forests === null ? {} : { FORESTS: '' }),
+      ...(window === null ? {} : { NEAR_WINDOW: '' }),
     };
     material.onBeforeCompile = (shader) => {
       shader.uniforms['meadow'] = ground.meadow;
@@ -636,7 +681,10 @@ export class TrackView {
         .replace('#include <common>', `#include <common>\nuniform sampler2D meadow;\n${seasons === null ? '' : SEASON_GLSL}`)
         .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT)
         .replace('#include <color_fragment>', GROUND_SNOW_FRAGMENT);
-      if (channels !== null || forests !== null) {
+      if (channels !== null || forests !== null || window !== null) {
+        if (window !== null) {
+          shader.uniforms['nearWindow'] = window;
+        }
         if (channels !== null) {
           shader.uniforms['channelMask'] = { value: channels.texture };
           shader.uniforms['channelFrame'] = { value: channels.frame };
@@ -745,8 +793,9 @@ export class TrackView {
     });
     // Turning circles lie over the end of their road, with a gravel rim like its shoulders.
     for (const circle of turningCircles) {
-      const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS);
-      const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY, ASPHALT_TILE_METERS);
+      const end = roads[circle.roadIndex]!.heights[circle.sampleIndex]!;
+      const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y + end, GRAVEL_TILE_METERS);
+      const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY + end, ASPHALT_TILE_METERS);
       if (circle.roadIndex >= mapRoadCount || roads[circle.roadIndex]!.kind === 'rural') {
         country.shoulders.add(circle.x, circle.z, rim);
         country.surfaces.add(circle.x, circle.z, paving);
@@ -793,11 +842,13 @@ export class TrackView {
     const position = new Vector3();
     const rotation = new Quaternion();
     const scale = new Vector3(1, 1, 1);
+    const turn = new Euler(0, 0, 0, 'YXZ');
     const matrices: Matrix4[] = [];
     for (const { road, offset } of lines) {
       for (const dash of dashesAlong(road, offset, clearOfJunctions)) {
-        position.set(dash.x, y, dash.z);
-        rotation.setFromAxisAngle(UP, dash.heading);
+        // On the road's height, tilted with its grade (level on a flat map).
+        position.set(dash.x, y + dash.y, dash.z);
+        rotation.setFromEuler(turn.set(-Math.atan(dash.grade), dash.heading, 0));
         matrices.push(new Matrix4().compose(position, rotation, scale));
       }
     }
@@ -949,13 +1000,15 @@ export class TrackView {
       const shape = TREE_SHAPES[kind];
       const s = tree.scale;
       const trunkHeight = shape.trunkHeight * s;
+      // On the ground's height (a map's hills), its foot sunk a little so a slope does not show under it.
+      const base = this.terrain.flat ? 0 : this.terrain.heightAt(tree.x, tree.z) - SLOPE_FOOT_METERS;
       rotation.setFromAxisAngle(UP, index * 2.399); // Golden-angle spin so neighbours differ.
       const trunk = simple ? innerTrunks : trunks;
       trunk.setMatrixAt(
         trunk.count++,
-        matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s * shape.trunkGirth, trunkHeight, s * shape.trunkGirth)),
+        matrix.compose(position.set(tree.x, base, tree.z), rotation, scale.set(s * shape.trunkGirth, trunkHeight, s * shape.trunkGirth)),
       );
-      position.set(tree.x, trunkHeight, tree.z);
+      position.set(tree.x, base + trunkHeight, tree.z);
       scale.setScalar(s);
       const shade = 0.88 + 0.24 * hash(tree.z, tree.x);
       const crown = crowns.get(crownOf(tree, kind))!;
@@ -968,7 +1021,7 @@ export class TrackView {
       // The shadow falls away from the sun, centred under the crown's projection: the decal's shader moves it
       // there from the tree's foot (followTheSun), by the crown's height, kept in the flat decal's y scale.
       const crownHeight = trunkHeight + shape.crownMiddle * s;
-      position.set(tree.x, SHOULDER_Y / 2, tree.z);
+      position.set(tree.x, this.terrain.flat ? SHOULDER_Y / 2 : base + SLOPE_FOOT_METERS + SLOPE_DECAL_LIFT_METERS, tree.z);
       const width = shape.shadowWidth * s;
       shadows.setMatrixAt(shadows.count++, matrix.compose(position, rotation.identity(), scale.set(width, crownHeight, width)));
     }
@@ -1660,8 +1713,10 @@ function stripGeometry(
       const inner = band.offset - band.width / 2;
       const outer = band.offset + band.width / 2;
       const vertex = (base + row * 2) * 3;
-      positions.set([road.x(i) + rightX * inner, y, road.z(i) + rightZ * inner], vertex);
-      positions.set([road.x(i) + rightX * outer, y, road.z(i) + rightZ * outer], vertex + 3);
+      // On the road's height there (0 on a flat map: terrainGrading.ts).
+      const height = y + road.heights[i]!;
+      positions.set([road.x(i) + rightX * inner, height, road.z(i) + rightZ * inner], vertex);
+      positions.set([road.x(i) + rightX * outer, height, road.z(i) + rightZ * outer], vertex + 3);
       normals.set([0, 1, 0, 0, 1, 0], vertex);
       const along = (kept[row] === count ? road.lengthMeters : (road.distances[i] ?? 0)) / tileMeters;
       uvs.set([0, along, 1, along], (base + row * 2) * 2);
@@ -1718,17 +1773,20 @@ function dashesAlong(
   road: RoadPath,
   offset: number,
   clearOfJunctions: (x: number, z: number) => boolean,
-): { readonly x: number; readonly z: number; readonly heading: number }[] {
+): { readonly x: number; readonly z: number; readonly y: number; readonly grade: number; readonly heading: number }[] {
   const position = new Vector3();
-  const dashes: { x: number; z: number; heading: number }[] = [];
+  const dashes: { x: number; z: number; y: number; grade: number; heading: number }[] = [];
   const count = Math.floor(road.lengthMeters / DASH_SPACING);
   for (let i = 0; i < count; i++) {
-    const heading = pointAlong(road, (i + 0.5) * DASH_SPACING, position);
+    const along = (i + 0.5) * DASH_SPACING;
+    const heading = pointAlong(road, along, position);
     // Right of the direction of travel: the tangent turned 90° clockwise seen from above.
     const x = position.x - Math.cos(heading) * offset;
     const z = position.z + Math.sin(heading) * offset;
     if (clearOfJunctions(x, z)) {
-      dashes.push({ x, z, heading });
+      const y = road.heightAtDistance(along);
+      const grade = (road.heightAtDistance(along + 1) - road.heightAtDistance(along - 1)) / 2;
+      dashes.push({ x, z, y, grade, heading });
     }
   }
   return dashes;

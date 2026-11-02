@@ -41,6 +41,7 @@ import {
   requestedRoadEvent,
   requestedSimulations,
   requestedSpawn,
+  requestedHills,
   requestedTimeOfDay,
   requestedWetness,
 } from './platform/browser/configOverrides';
@@ -275,9 +276,21 @@ async function start(strings: Strings): Promise<void> {
   const clock = startDateMs === null ? systemClock : shiftedClock(systemClock, startDateMs - systemClock.now());
   // `?spawn=x,z,heading` starts a new game there (a debug switch: to look round a place without driving to it).
   const spawn = requestedSpawn(query);
+  // `?hills=x,z,radius,height;…` raises hills on the maps (a debug switch: the ground and roads on slopes).
+  const hills = requestedHills(query);
   const services = await new GameBootstrapper({
     config,
-    content: spawn === null ? GAME_CONTENT : { ...GAME_CONTENT, maps: GAME_CONTENT.maps.map((map) => ({ ...map, spawn })) },
+    content:
+      spawn === null && hills === null
+        ? GAME_CONTENT
+        : {
+            ...GAME_CONTENT,
+            maps: GAME_CONTENT.maps.map((map) => ({
+              ...map,
+              ...(spawn === null ? {} : { spawn }),
+              ...(hills === null ? {} : { terrain: { hills: [...(map.terrain?.hills ?? []), ...hills] } }),
+            })),
+          },
     logger,
     clock,
     storage,
@@ -467,7 +480,9 @@ async function start(strings: Strings): Promise<void> {
     baleCircles: circlesOf(driving.world.hayBales),
     debrisCapacity,
   });
-  const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  // What stands on the ground stands at its height (a map's hills; 0 everywhere on a flat map).
+  const groundHeight = (x: number, z: number): number => driving.world.terrain.heightAt(x, z);
+  const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows, ground: groundHeight });
   const pedestrians = new PedestrianView(
     renderHost.scene,
     driving.world.roads,
@@ -539,12 +554,13 @@ async function start(strings: Strings): Promise<void> {
   const tractors = new FieldWorkView(renderHost.scene, driving.world.fields, driving.world.fieldWork, castShadows);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
     anisotropy: renderHost.anisotropy,
+    ground: groundHeight,
   });
   const signBoards = new SignBoardView(
     renderHost.scene,
     driving.world.directionBoards,
     (row) => (row.placeKind === 'city' ? strings.cityName(row.placeId) : strings.villageName(row.placeId)),
-    { anisotropy: renderHost.anisotropy },
+    { anisotropy: renderHost.anisotropy, ground: groundHeight },
   );
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
@@ -553,9 +569,11 @@ async function start(strings: Strings): Promise<void> {
     sky: environment.sky,
     wrecks: debrisCapacity,
   });
+  trafficView.terrain = driving.world.terrain;
   /** What carries lamps for a wet road to mirror: the truck (set every frame: it changes in the garage) and the traffic. */
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
+  gpsRoute.terrain = driving.world.terrain;
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   const snowfall = new SnowView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   // Lightning in a storm: the flash lights the sky and the world, a bolt shows toward near strikes, thunder follows.

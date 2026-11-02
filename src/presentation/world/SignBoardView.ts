@@ -62,6 +62,8 @@ const NIGHT_GLOW = 0.55;
 export interface SignBoardViewOptions {
   /** Texture anisotropy for the faces (renderer capability). */
   readonly anisotropy?: number;
+  /** The ground's height where something stands (a map's hills): 0 everywhere without it. */
+  readonly ground?: (x: number, z: number) => number;
 }
 
 /**
@@ -109,7 +111,7 @@ export class SignBoardView {
     const rotation = new Quaternion();
     const up = new Vector3(0, 1, 0);
     for (const board of boards) {
-      placement.compose(new Vector3(board.x, 0, board.z), rotation.setFromAxisAngle(up, board.heading), new Vector3(1, 1, 1));
+      placement.compose(new Vector3(board.x, options.ground?.(board.x, board.z) ?? 0, board.z), rotation.setFromAxisAngle(up, board.heading), new Vector3(1, 1, 1));
       frames.push(frameGeometry(board.rows.length).applyMatrix4(placement));
       faces.addBoard(board, board.rows.map(written), placement);
     }

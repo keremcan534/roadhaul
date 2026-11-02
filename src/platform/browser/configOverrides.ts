@@ -116,6 +116,25 @@ export function requestedSpawn(query: QueryParameters): { readonly x: number; re
  * simulatedStore), to try the rewarded boosts, the ads between contracts and the shop without a phone: development
  * and the end-to-end tests.
  */
+/**
+ * `?hills=x,z,radius,height;x,z,radius,height` raises those hills on every
+ * map (a debug switch: to look at the ground and the roads on slopes);
+ * null without it or when unreadable.
+ */
+export function requestedHills(
+  query: QueryParameters,
+): readonly { readonly x: number; readonly z: number; readonly radiusMeters: number; readonly heightMeters: number }[] | null {
+  const text = query.get('hills');
+  if (text === null || text === '') {
+    return null;
+  }
+  const hills = text.split(';').map((part) => part.split(',').map((value) => Number(value.trim())));
+  if (hills.some((hill) => hill.length !== 4 || hill.some((value) => !Number.isFinite(value)) || !(hill[2]! > 0))) {
+    return null;
+  }
+  return hills.map(([x, z, radiusMeters, heightMeters]) => ({ x: x!, z: z!, radiusMeters: radiusMeters!, heightMeters: heightMeters! }));
+}
+
 export function requestedSimulations(query: QueryParameters): { readonly ads: boolean; readonly store: boolean } {
   return { ads: query.get('ads') === 'simulated', store: query.get('store') === 'simulated' };
 }

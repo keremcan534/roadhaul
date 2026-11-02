@@ -35,6 +35,8 @@ const BLINK_SECONDS = 1.5;
 export interface WindTurbineViewOptions {
   /** Whether the warning lights glow at night (off on the low preset). Default: true. */
   readonly lampGlows?: boolean;
+  /** The ground's height where something stands (a map's hills): 0 everywhere without it. */
+  readonly ground?: (x: number, z: number) => number;
 }
 
 /**
@@ -48,7 +50,7 @@ export class WindTurbineView {
   private readonly resources: { dispose(): void }[] = [];
   private readonly rotors: InstancedMesh | null = null;
   private readonly glows: LampGlows | null = null;
-  private readonly hubs: readonly { readonly x: number; readonly z: number }[];
+  private readonly hubs: readonly { readonly x: number; readonly y: number; readonly z: number }[];
   private spin = 0;
   private clock = 0;
   private lamps = 0;
@@ -70,6 +72,7 @@ export class WindTurbineView {
     // The rotor's hub, in front of the tower's top along the way the rotors face.
     this.hubs = turbines.map((turbine) => ({
       x: turbine.x + Math.sin(ROTOR_FACING) * ROTOR_OFFSET,
+      y: options.ground?.(turbine.x, turbine.z) ?? 0,
       z: turbine.z + Math.cos(ROTOR_FACING) * ROTOR_OFFSET,
     }));
     scene.add(this.root);
@@ -79,7 +82,7 @@ export class WindTurbineView {
     const material = this.track(new MeshLambertMaterial({ color: TURBINE_COLOR }));
     const towers = this.track(new InstancedMesh(this.track(towerGeometry()), material, turbines.length));
     turbines.forEach((turbine, index) => {
-      towers.setMatrixAt(index, this.matrix.compose(this.position.set(turbine.x, 0, turbine.z), this.facing, this.scale));
+      towers.setMatrixAt(index, this.matrix.compose(this.position.set(turbine.x, options.ground?.(turbine.x, turbine.z) ?? 0, turbine.z), this.facing, this.scale));
     });
     towers.instanceMatrix.needsUpdate = true;
     towers.computeBoundingSphere();
@@ -93,7 +96,7 @@ export class WindTurbineView {
     if (options.lampGlows !== false) {
       this.glows = new LampGlows(turbines.length, WARNING_LIGHT_SIZE);
       turbines.forEach((turbine, index) => {
-        this.glows!.setPosition(index, turbine.x, TURBINE_HUB_HEIGHT + 2.2, turbine.z);
+        this.glows!.setPosition(index, turbine.x, (options.ground?.(turbine.x, turbine.z) ?? 0) + TURBINE_HUB_HEIGHT + 2.2, turbine.z);
         this.glows!.setColor(index, WARNING_LIGHT_COLOR);
       });
       this.glows.setCount(turbines.length);
@@ -132,7 +135,7 @@ export class WindTurbineView {
     for (let i = 0; i < this.hubs.length; i++) {
       const hub = this.hubs[i]!;
       this.turn.setFromAxisAngle(this.axis, this.spin + i * 0.7).premultiply(this.facing);
-      rotors.setMatrixAt(i, this.matrix.compose(this.position.set(hub.x, TURBINE_HUB_HEIGHT, hub.z), this.turn, this.scale));
+      rotors.setMatrixAt(i, this.matrix.compose(this.position.set(hub.x, hub.y + TURBINE_HUB_HEIGHT, hub.z), this.turn, this.scale));
     }
     rotors.instanceMatrix.needsUpdate = true;
   }

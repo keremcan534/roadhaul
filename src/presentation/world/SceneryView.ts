@@ -180,6 +180,8 @@ export class SceneryView {
   private readonly root = new Group();
   private readonly resources: { dispose(): void }[] = [];
   private readonly grazers: readonly Grazer[];
+  /** The ground's height under each grazer (a map's hills), found once. */
+  private readonly grazerGround: Float32Array;
   /** The drawing buffer's size, for the wires' width in pixels (setViewport). */
   private readonly resolution = { value: new Vector2(1, 1) };
   /** Per kind, the animals' bodies and heads, and which grazers (indices) each instance is. */
@@ -237,7 +239,9 @@ export class SceneryView {
     const atlas = this.track(toTexture(propAtlasImage()));
     const propMaterial = this.track(new MeshLambertMaterial({ map: atlas, vertexColors: true }));
     const tiles = new Tiles();
-    const parts = new Parts();
+    const terrain = world.terrain;
+    const ground = (x: number, z: number): number => terrain.heightAt(x, z);
+    const parts = new Parts(ground);
 
     for (const line of world.powerLines) {
       for (const pole of line.poles) {
@@ -378,7 +382,7 @@ export class SceneryView {
       }
     }
     // The wires in large tiles, hidden while far off: the map's kilometres of power line cost nothing out of reach.
-    const wires = [...wireSegments(world.powerLines), ...fenceWireSegments(world.roadFences)];
+    const wires = [...wireSegments(world.powerLines, ground), ...fenceWireSegments(world.roadFences, ground)];
     if (wires.length > 0) {
       const tiles = new TileParts<number>(WIRE_TILE_METERS);
       for (let piece = 0; piece < wires.length; piece += 6) {
@@ -398,6 +402,7 @@ export class SceneryView {
     }
 
     this.grazers = world.grazers;
+    this.grazerGround = Float32Array.from(world.grazers, (grazer) => ground(grazer.x, grazer.z));
     this.herds = (['sheep', 'cow'] as const)
       .filter((kind) => world.grazers.some((grazer) => grazer.kind === kind))
       .map((kind) => this.createHerd(kind, castShadows));
@@ -542,7 +547,7 @@ export class SceneryView {
     members.forEach((index, slot) => {
       const grazer = this.grazers[index]!;
       this.turn.setFromAxisAngle(UP, grazer.heading);
-      bodies.setMatrixAt(slot, this.matrix.compose(this.position.set(grazer.x, 0, grazer.z), this.turn, this.unit));
+      bodies.setMatrixAt(slot, this.matrix.compose(this.position.set(grazer.x, this.grazerGround[index]!, grazer.z), this.turn, this.unit));
       bodies.setColorAt(slot, color.setHex(tints[index % tints.length]!));
       heads.setColorAt(slot, color.setHex(kind === 'sheep' ? 0x2b2622 : tints[index % tints.length]!).multiplyScalar(0.8));
     });
@@ -579,7 +584,7 @@ export class SceneryView {
         const heading = grazer.heading + GRAZE_TURN_RADIANS * Math.sin(own * GRAZE_TURN_RATE);
         const step = GRAZE_STEP_METERS * Math.sin(own * GRAZE_STEP_RATE + index);
         this.turn.setFromAxisAngle(UP, heading);
-        this.position.set(grazer.x + Math.sin(heading) * step, 0, grazer.z + Math.cos(heading) * step);
+        this.position.set(grazer.x + Math.sin(heading) * step, this.grazerGround[index]!, grazer.z + Math.cos(heading) * step);
         this.matrix.compose(this.position, this.turn, this.unit);
         herd.bodies.setMatrixAt(slot, this.matrix);
         this.neck.makeRotationFromEuler(this.euler.set(pitch, yaw, 0));
@@ -829,6 +834,9 @@ function dress(geometry: BufferGeometry, hex: number, rect: PixelRect = PROP_ATL
  */
 class Parts {
   private readonly built = new Map<string, BufferGeometry>();
+
+  /** `ground` gives the ground's height where a part stands (a map's hills; 0 on a flat map). */
+  constructor(readonly ground: (x: number, z: number) => number = () => 0) {}
   /** A part's own shape before it is placed (shape()). */
   private readonly local = new Matrix4();
 
@@ -840,7 +848,8 @@ class Parts {
   /**
    * The part `key` (built the first time by `build`), shaped by `shape`
    * when given, turned by `heading` about the vertical and moved to
-   * (x, 0, z): a stamp, its vertices moved there as its tile is merged.
+   * (x, z) on the ground: a stamp, its vertices moved there as its tile is
+   * merged.
    */
   place(key: string, build: () => BufferGeometry, x: number, z: number, heading: number, shape?: Matrix4): Stamp {
     let part = this.built.get(key);
@@ -848,7 +857,7 @@ class Parts {
       part = build();
       this.built.set(key, part);
     }
-    const matrix = new Matrix4().makeRotationY(heading).setPosition(x, 0, z);
+    const matrix = new Matrix4().makeRotationY(heading).setPosition(x, this.ground(x, z), z);
     if (shape !== undefined) {
       matrix.multiply(shape);
     }
@@ -882,7 +891,7 @@ function poleGeometry(): BufferGeometry {
 }
 
 /** The wires between each pair of neighbouring poles, sagging, as line segments: x, y, z of both ends of each. */
-function wireSegments(lines: readonly PowerLine[]): number[] {
+function wireSegments(lines: readonly PowerLine[], ground: (x: number, z: number) => number): number[] {
   const positions: number[] = [];
   const top = ARM_Y + 0.06 + INSULATOR_TOP;
   for (const line of lines) {
@@ -897,9 +906,12 @@ function wireSegments(lines: readonly PowerLine[]): number[] {
         const az = a.z - Math.sin(a.heading) * offset;
         const bx = b.x + Math.cos(b.heading) * offset;
         const bz = b.z - Math.sin(b.heading) * offset;
+        // From pole top to pole top: each pole on the ground where it stands.
+        const groundA = ground(a.x, a.z);
+        const groundB = ground(b.x, b.z);
         for (let s = 0; s < WIRE_SEGMENTS; s++) {
           for (const t of [s / WIRE_SEGMENTS, (s + 1) / WIRE_SEGMENTS]) {
-            positions.push(ax + (bx - ax) * t, top - sag * 4 * t * (1 - t), az + (bz - az) * t);
+            positions.push(ax + (bx - ax) * t, groundA + (groundB - groundA) * t + top - sag * 4 * t * (1 - t), az + (bz - az) * t);
           }
         }
       }
@@ -1157,14 +1169,16 @@ function wireFencePostGeometry(): BufferGeometry {
 }
 
 /** The fences' wires, straight from post to post at each of FENCE_WIRE_HEIGHTS, as line segments (like the power lines'). */
-function fenceWireSegments(fences: readonly RoadFence[]): number[] {
+function fenceWireSegments(fences: readonly RoadFence[], ground: (x: number, z: number) => number): number[] {
   const positions: number[] = [];
   for (const fence of fences) {
     for (let i = 0; i + 1 < fence.points.length; i++) {
       const [ax, az] = fence.points[i]!;
       const [bx, bz] = fence.points[i + 1]!;
+      const groundA = ground(ax, az);
+      const groundB = ground(bx, bz);
       for (const y of FENCE_WIRE_HEIGHTS) {
-        positions.push(ax, y, az, bx, y, bz);
+        positions.push(ax, groundA + y, az, bx, groundB + y, bz);
       }
     }
   }

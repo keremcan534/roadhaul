@@ -151,7 +151,7 @@ export class RoadEventsView {
         at = camera;
       }
     }
-    this.flashGlow.setPosition(0, at.x, CAMERA_HEIGHT, at.z);
+    this.flashGlow.setPosition(0, at.x, this.ground(at.x, at.z) + CAMERA_HEIGHT, at.z);
     this.flashGlow.setCount(1);
     this.flashLeft = FLASH_SECONDS;
   }
@@ -169,16 +169,18 @@ export class RoadEventsView {
     this.car.visible = stranded !== null;
     this.triangle.visible = stranded !== null;
     if (stranded !== null) {
-      this.car.position.set(stranded.x, 0, stranded.z);
+      this.car.position.set(stranded.x, this.ground(stranded.x, stranded.z), stranded.z);
       this.car.rotation.y = stranded.heading;
       this.hazards.visible = blinkOn;
       const sin = Math.sin(stranded.heading);
       const cos = Math.cos(stranded.heading);
-      this.triangle.position.set(stranded.x - sin * TRIANGLE_BEHIND_METERS, 0, stranded.z - cos * TRIANGLE_BEHIND_METERS);
+      const triangleX = stranded.x - sin * TRIANGLE_BEHIND_METERS;
+      const triangleZ = stranded.z - cos * TRIANGLE_BEHIND_METERS;
+      this.triangle.position.set(triangleX, this.ground(triangleX, triangleZ), triangleZ);
       this.triangle.rotation.y = stranded.heading + Math.PI;
       if (blinkOn) {
         for (const [across, along] of HAZARD_CORNERS) {
-          this.glows.setPosition(glows, stranded.x + cos * across + sin * along, 0.78, stranded.z - sin * across + cos * along);
+          this.glows.setPosition(glows, stranded.x + cos * across + sin * along, this.car.position.y + 0.78, stranded.z - sin * across + cos * along);
           this.glows.setColor(glows, AMBER);
           glows++;
         }
@@ -188,13 +190,13 @@ export class RoadEventsView {
       const truck = this.convoyTrucks[i]!;
       truck.visible = convoy.active;
       if (convoy.active) {
-        truck.position.set(convoy.vehicleX[i]!, 0, convoy.vehicleZ[i]!);
+        truck.position.set(convoy.vehicleX[i]!, this.ground(convoy.vehicleX[i]!, convoy.vehicleZ[i]!), convoy.vehicleZ[i]!);
         truck.rotation.y = convoy.vehicleHeading[i]!;
       }
     }
     // The lead truck's amber beacon, blinking.
     if (convoy.active && blinkOn && glows < 16) {
-      this.glows.setPosition(glows, convoy.vehicleX[0]!, CONVOY_TRUCK.heightMeters + 0.4, convoy.vehicleZ[0]!);
+      this.glows.setPosition(glows, convoy.vehicleX[0]!, this.convoyTrucks[0]!.position.y + CONVOY_TRUCK.heightMeters + 0.4, convoy.vehicleZ[0]!);
       this.glows.setColor(glows, AMBER);
       glows++;
     }
@@ -204,7 +206,7 @@ export class RoadEventsView {
           break;
         }
         const board = zone.arrowBoard;
-        this.glows.setPosition(glows, board.x, 1.6, board.z);
+        this.glows.setPosition(glows, board.x, this.ground(board.x, board.z) + 1.6, board.z);
         this.glows.setColor(glows, AMBER);
         glows++;
       }
@@ -213,6 +215,11 @@ export class RoadEventsView {
     this.glows.setLevel(glows > 0 ? Math.max(0.35, night) : 0);
     this.flashLeft = Math.max(0, this.flashLeft - dt);
     this.flashGlow.setLevel(this.flashLeft / FLASH_SECONDS);
+  }
+
+  /** The ground's height at (x, z) in the world drawn (0 on a flat map, or before a world is given). */
+  private ground(x: number, z: number): number {
+    return this.world?.terrain.heightAt(x, z) ?? 0;
   }
 
   dispose(): void {
@@ -252,13 +259,14 @@ export class RoadEventsView {
     for (const camera of this.world?.speedCameras ?? []) {
       add(
         [
-          placed(cameraGeometry(), camera.x, camera.z, camera.heading),
-          ...camera.signs.map((sign) => placed(cameraSignGeometry(), sign.x, sign.z, sign.heading)),
+          placed(cameraGeometry(), camera.x, camera.z, camera.heading, this.ground(camera.x, camera.z)),
+          ...camera.signs.map((sign) => placed(cameraSignGeometry(), sign.x, sign.z, sign.heading, this.ground(sign.x, sign.z))),
         ],
         'speedCamera',
       );
     }
-    const at = (geometry: BufferGeometry, piece: ZonePiece): BufferGeometry => placed(geometry, piece.x, piece.z, piece.heading);
+    const at = (geometry: BufferGeometry, piece: ZonePiece): BufferGeometry =>
+      placed(geometry, piece.x, piece.z, piece.heading, this.ground(piece.x, piece.z));
     for (const zone of zones) {
       add(
         [
@@ -441,7 +449,7 @@ function merge(parts: readonly BufferGeometry[]): BufferGeometry {
   return merged;
 }
 
-/** `geometry` (made round the origin, its front +z) turned to `heading` and stood at (x, 0, z). */
-function placed(geometry: BufferGeometry, x: number, z: number, heading: number): BufferGeometry {
-  return geometry.rotateY(heading).translate(x, 0, z);
+/** `geometry` (made round the origin, its front +z) turned to `heading` and stood at (x, y, z) (y: the ground's height). */
+function placed(geometry: BufferGeometry, x: number, z: number, heading: number, y = 0): BufferGeometry {
+  return geometry.rotateY(heading).translate(x, y, z);
 }

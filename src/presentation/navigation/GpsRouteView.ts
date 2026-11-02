@@ -6,6 +6,7 @@ import {
   MeshBasicMaterial,
   type Scene,
 } from 'three';
+import { FLAT_TERRAIN, type Terrain } from '../../domain/world/terrain';
 import { laneOffsetMeters } from '../../domain/world/lanes';
 import type { RoadPath } from '../../domain/world/RoadPath';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
@@ -37,6 +38,9 @@ export class GpsRouteView {
   private readonly pointZ = new Float64Array(MAX_POINTS);
   private readonly pointOffset = new Float64Array(MAX_POINTS);
   private shownRevision = -1;
+
+  /** The ground the route runs over (the map's: its hills, if it has any). */
+  terrain: Terrain = FLAT_TERRAIN;
 
   constructor(
     private readonly scene: Scene,
@@ -147,11 +151,13 @@ export class GpsRouteView {
       const x = this.pointX[i]!;
       const z = this.pointZ[i]!;
       const vertex = i * 6;
+      // Over the road on a map's hills.
+      const y = LINE_Y + (this.terrain.flat ? 0 : this.terrain.heightAt(x, z));
       positions[vertex] = x + rightX * (offset - half);
-      positions[vertex + 1] = LINE_Y;
+      positions[vertex + 1] = y;
       positions[vertex + 2] = z + rightZ * (offset - half);
       positions[vertex + 3] = x + rightX * (offset + half);
-      positions[vertex + 4] = LINE_Y;
+      positions[vertex + 4] = y;
       positions[vertex + 5] = z + rightZ * (offset + half);
     }
     this.geometry.getAttribute('position').needsUpdate = true;

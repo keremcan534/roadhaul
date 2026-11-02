@@ -164,9 +164,11 @@ export class RoadFurnitureView {
     const position = new Vector3();
     const one = new Vector3(1, 1, 1);
     const up = new Vector3(0, 1, 0);
+    // On the ground where each stands (a map's hills; 0 on a flat map).
+    const ground = (x: number, z: number): number => world.terrain.heightAt(x, z);
     spots.forEach(({ x, z, heading }, index) => {
       rotation.setFromAxisAngle(up, heading);
-      matrix.compose(position.set(x, 0, z), rotation, one);
+      matrix.compose(position.set(x, ground(x, z), z), rotation, one);
       matrix.toArray(this.postMatrices, index * 16);
       // One on each face, toward the traffic either way, near the post's top.
       for (const face of [0, 1] as const) {
@@ -195,7 +197,7 @@ export class RoadFurnitureView {
     const tint = new Color();
     studs.forEach(({ x, z, heading, amber }, index) => {
       rotation.setFromAxisAngle(up, heading);
-      this.studs.setMatrixAt(index, matrix.compose(position.set(x, STUD_Y, z), rotation, one));
+      this.studs.setMatrixAt(index, matrix.compose(position.set(x, STUD_Y + ground(x, z), z), rotation, one));
       this.studs.setColorAt(index, tint.setHex(amber ? REFLECTOR_COLOR : STUD_WHITE));
     });
     this.studs.count = studs.length;
@@ -206,7 +208,7 @@ export class RoadFurnitureView {
     if (options.sky !== undefined) {
       reflectSky(railMaterial, options.sky, { facing: 0.3, strength: 0.7, metal: true });
     }
-    for (const [tile, parts] of railTiles(world.guardRails)) {
+    for (const [tile, parts] of railTiles(world.guardRails, ground)) {
       const mesh = new Mesh(this.track(mergeGeometries(parts)), railMaterial);
       for (const part of parts) {
         part.dispose();
@@ -447,7 +449,7 @@ function studSpots(world: DrivingWorld): { x: number; z: number; heading: number
  * from the road, merged by the square tile (key "column,row") each piece
  * starts in.
  */
-function railTiles(rails: readonly GuardRail[]): Map<string, BufferGeometry[]> {
+function railTiles(rails: readonly GuardRail[], ground: (x: number, z: number) => number): Map<string, BufferGeometry[]> {
   const tiles = new Map<string, BufferGeometry[]>();
   const steel = new Color(0xb9c0c6);
   const post = new Color(0x8f969c);
@@ -477,20 +479,21 @@ function railTiles(rails: readonly GuardRail[]): Map<string, BufferGeometry[]> {
       const parts = partsAt(x, z);
       const heading = Math.atan2(dx, dz);
       const behind = RAIL_POST_BEHIND_METERS;
+      const base = ground(x, z);
       parts.push(
-        coloured(new BoxGeometry(0.1, 0.84, 0.1).rotateY(heading).translate(x - roadX * behind, 0.42, z - roadZ * behind), post),
-        coloured(new BoxGeometry(0.08, 0.2, behind).rotateY(heading).translate(x - (roadX * behind) / 2, 0.685, z - (roadZ * behind) / 2), post),
+        coloured(new BoxGeometry(0.1, 0.84, 0.1).rotateY(heading).translate(x - roadX * behind, base + 0.42, z - roadZ * behind), post),
+        coloured(new BoxGeometry(0.08, 0.2, behind).rotateY(heading).translate(x - (roadX * behind) / 2, base + 0.685, z - (roadZ * behind) / 2), post),
       );
       if (index + 1 < points.length) {
         const [nextX, nextZ] = points[index + 1]!;
-        parts.push(beamPiece(x, z, nextX, nextZ, roadX, roadZ, steel));
+        parts.push(beamPiece(x, z, nextX, nextZ, roadX, roadZ, steel, base, ground(nextX, nextZ)));
       }
       // Each end bends back, away from the road, so no bare edge faces the traffic.
       if (index === 0 || index === points.length - 1) {
         const outward = index === 0 ? -1 : 1;
         const endX = x + dx * RAIL_END.along * outward - roadX * RAIL_END.away;
         const endZ = z + dz * RAIL_END.along * outward - roadZ * RAIL_END.away;
-        parts.push(beamPiece(x, z, endX, endZ, roadX, roadZ, steel));
+        parts.push(beamPiece(x, z, endX, endZ, roadX, roadZ, steel, base, base));
       }
     }
   }
@@ -502,10 +505,20 @@ function railTiles(rails: readonly GuardRail[]): Map<string, BufferGeometry[]> {
  * folded toward (roadX, roadZ), both faces, flat-shaded so the folds catch
  * the light differently.
  */
-function beamPiece(ax: number, az: number, bx: number, bz: number, roadX: number, roadZ: number, color: Color): BufferGeometry {
+function beamPiece(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  roadX: number,
+  roadZ: number,
+  color: Color,
+  groundA = 0,
+  groundB = 0,
+): BufferGeometry {
   const positions: number[] = [];
   for (const { y, out } of BEAM_PROFILE) {
-    positions.push(ax + roadX * out, y, az + roadZ * out, bx + roadX * out, y, bz + roadZ * out);
+    positions.push(ax + roadX * out, groundA + y, az + roadZ * out, bx + roadX * out, groundB + y, bz + roadZ * out);
   }
   const indices: number[] = [];
   for (let row = 0; row < BEAM_PROFILE.length - 1; row++) {
