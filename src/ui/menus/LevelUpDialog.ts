@@ -1,3 +1,4 @@
+import type { LevelUnlockKind, LevelUnlockShown } from './levelUnlocks';
 import type { CrateTier } from '../../data/config/GameConfig';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
@@ -12,16 +13,9 @@ export interface LevelUpActions {
   readonly onClose: () => void;
 }
 
-/** What a new level unlocks, as a chip: what it is, and how many. */
-export interface LevelUnlockShown {
-  readonly kind: LevelUnlockKind;
-  readonly count: number;
-}
-
-export const LEVEL_UNLOCK_KINDS = ['vehicles', 'upgrades', 'missions', 'paints', 'facilities', 'drivers', 'events'] as const;
-export type LevelUnlockKind = (typeof LEVEL_UNLOCK_KINDS)[number];
 
 const UNLOCK_ICONS: Readonly<Record<LevelUnlockKind, IconName>> = {
+  regions: 'map',
   vehicles: 'truck',
   upgrades: 'wrench',
   missions: 'jobs',

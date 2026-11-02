@@ -1,5 +1,6 @@
 import { STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
 import type { GateDefinition } from '../../data/definitions/MapDefinition';
+import type { CompanyService } from '../../systems/company/CompanyService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import { button, element, setText } from '../dom';
@@ -13,9 +14,10 @@ export interface FerryPanelActions {
 /**
  * The ferry terminal's counter (MapDefinition.gates): it opens while the
  * truck stands still at a terminal and offers the crossing to the other
- * region, with the company, its trucks and drivers. With a contract under
- * way it says to finish it first (its depots are on this side). "Not now"
- * closes it until the truck has left the terminal.
+ * region, with the company, its trucks and drivers. Before the company
+ * reaches the crossing's level it says which level opens it; with a
+ * contract under way, to finish it first (its depots are on this side).
+ * "Not now" closes it until the truck has left the terminal.
  */
 export class FerryPanel {
   private readonly root: HTMLDivElement;
@@ -29,7 +31,7 @@ export class FerryPanel {
   constructor(
     parent: HTMLElement,
     private readonly strings: Strings,
-    private readonly services: { readonly driving: DrivingService; readonly missions: MissionService },
+    private readonly services: { readonly driving: DrivingService; readonly missions: MissionService; readonly company: CompanyService },
     actions: FerryPanelActions,
   ) {
     const document = parent.ownerDocument;
@@ -85,10 +87,15 @@ export class FerryPanel {
     if (open && (this.root.hidden || gate !== this.shownGate)) {
       this.shownGate = gate;
       const region = this.strings.t(`region.${gate.toMapId}.name`);
+      const level = gate.requiredCompanyLevel ?? 1;
+      const locked = this.services.company.level < level;
       const busy = this.services.missions.active !== null;
       setText(this.title, this.strings.t('ferry.title', { region }));
-      setText(this.note, this.strings.t(busy ? 'ferry.busy' : 'ferry.note', { region }));
-      this.travelButton.disabled = busy;
+      setText(
+        this.note,
+        locked ? this.strings.t('ferry.locked', { region, level }) : this.strings.t(busy ? 'ferry.busy' : 'ferry.note', { region }),
+      );
+      this.travelButton.disabled = locked || busy;
       this.root.hidden = false;
     } else if (!open && !this.root.hidden) {
       this.root.hidden = true;

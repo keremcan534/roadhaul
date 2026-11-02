@@ -261,6 +261,9 @@ const roads: RoadDefinition[] = [
 const LAID_OUT: MapDefinition = {
   id: 'metropol',
   halfSizeMeters: 4200,
+  // Across the sea north-west of North Valley (its middle there on the game's maps, north toward -z): the ferry
+  // from Gull Point sails out to sea and up the strait.
+  world: { x: -7300, z: 8100 },
   roads,
   buildings: [
     // The ferry terminal's hall by its quay.
@@ -434,6 +437,14 @@ const LAID_OUT: MapDefinition = {
       toMapId: 'north_valley',
       toGateId: 'gull_point_ferry',
       arrival: { x: 250, z: -2400, headingDegrees: 270 },
+      // Into the strait, and down it to the open sea.
+      route: [
+        [330, -2400],
+        [560, -2430],
+        [690, -2900],
+        [650, -3900],
+        [620, -4600],
+      ],
     },
   ],
   spawn: { x: WEST_BOULEVARD_X + 3.5, z: 120, headingDegrees: 0 },
@@ -477,7 +488,9 @@ function flipNorth(map: MapDefinition): MapDefinition {
       ...gate,
       area: flipRectangle(gate.area),
       arrival: { x: gate.arrival.x, z: -gate.arrival.z, headingDegrees: flipHeading(gate.arrival.headingDegrees) },
+      ...(gate.route === undefined ? {} : { route: gate.route.map(flip) }),
     })),
+    ...(map.world === undefined ? {} : { world: { x: map.world.x, z: -map.world.z } }),
     spawn: { x: map.spawn.x, z: -map.spawn.z, headingDegrees: flipHeading(map.spawn.headingDegrees) },
   };
 }

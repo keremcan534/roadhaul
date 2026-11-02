@@ -64,6 +64,14 @@ export interface GateDefinition {
   readonly toGateId: string;
   /** Where the truck stands on arriving here: its rear axle and heading (0° faces +Z). */
   readonly arrival: { readonly x: number; readonly z: number; readonly headingDegrees: number };
+  /** The crossing opens at this company level; absent: from the start. */
+  readonly requiredCompanyLevel?: number;
+  /**
+   * The ferry's way out from the terminal to open water, in this map's
+   * meters (it may leave the map): the 2D maps draw the crossing along it
+   * and the other side's, joined across the water. Absent: none drawn.
+   */
+  readonly route?: readonly Point2[];
 }
 
 /** A road's height held at a distance along it (RoadDefinition.profile). */
@@ -379,6 +387,12 @@ export interface MapDefinition {
   readonly districts?: readonly DistrictDefinition[];
   /** Where the truck can travel to another region (a ferry terminal, a border); absent: none. */
   readonly gates?: readonly GateDefinition[];
+  /**
+   * Where this map's middle lies in the one world the regions share, meters
+   * (the 2D maps draw the other regions there, across the water); absent:
+   * at the world's middle.
+   */
+  readonly world?: { readonly x: number; readonly z: number };
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
@@ -543,6 +557,9 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       validator.check(Number.isFinite(hill.heightMeters), `${hillPath}.heightMeters`, 'must be a number (below 0: a hollow)');
     });
   }
+  if (map.world !== undefined) {
+    validator.check(Number.isFinite(map.world.x) && Number.isFinite(map.world.z), `${path}.world`, 'must be a place in the world');
+  }
   if (map.gates !== undefined && validator.check(Array.isArray(map.gates), `${path}.gates`, 'must be a list')) {
     map.gates.forEach((gate, index) => {
       const gatePath = `${path}.gates[${index}]`;
@@ -551,6 +568,20 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       validator.id(gate.toGateId, `${gatePath}.toGateId`);
       validator.check(inside(gate.area.x, gate.area.z), `${gatePath}.area`, 'must be inside the map');
       validator.check(inside(gate.arrival.x, gate.arrival.z), `${gatePath}.arrival`, 'must be inside the map');
+      if (gate.requiredCompanyLevel !== undefined) {
+        validator.check(
+          Number.isInteger(gate.requiredCompanyLevel) && gate.requiredCompanyLevel >= 1,
+          `${gatePath}.requiredCompanyLevel`,
+          'must be a level from 1',
+        );
+      }
+      if (gate.route !== undefined) {
+        validator.check(
+          Array.isArray(gate.route) && gate.route.length >= 2 && gate.route.every((point) => Number.isFinite(point[0]) && Number.isFinite(point[1])),
+          `${gatePath}.route`,
+          'must be two or more points',
+        );
+      }
     });
   }
   if (map.forests !== undefined && validator.check(Array.isArray(map.forests), `${path}.forests`, 'must be a list')) {

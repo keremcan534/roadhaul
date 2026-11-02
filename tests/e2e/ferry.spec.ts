@@ -1,14 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { continueSavedCompany, leaveDailyReward, openPanel, watchForProblems } from './support';
 
-/** A company of level 3 with its truck standing at Gull Point's ferry terminal. */
+/** A company of level 4 (the ferry's) with its truck standing at Gull Point's ferry terminal. */
 function companyAtTheFerry(): string {
   return JSON.stringify({
     version: 4,
     createdAtMs: 1_700_000_000_000,
     updatedAtMs: 1_700_000_000_000,
     profile: { companyName: 'Kuzey Lojistik' },
-    company: { level: 3, xp: 3_500, reputation: 20 },
+    company: { level: 4, xp: 7_000, reputation: 20 },
     economy: { credits: 30_000 },
     garage: {
       activeVehicleInstanceId: 'truck_001',

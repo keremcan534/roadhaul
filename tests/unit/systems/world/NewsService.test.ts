@@ -78,14 +78,22 @@ describe('NewsService', () => {
 
   it('reports the company\'s levels, the rain and snow coming, and the northern lights', () => {
     const { news, events, published } = setup();
-    events.emit('CompanyLevelUp', { level: 4 });
+    events.emit('CompanyLevelUp', { level: 5 });
     events.emit('WeatherChanged', { weatherId: 'snow', previousId: 'clear' });
     events.emit('WeatherChanged', { weatherId: 'cloudy', previousId: 'clear' });
     events.emit('SkyWonderSighted', { kind: 'aurora' });
     events.emit('SkyWonderSighted', { kind: 'meteor' });
 
     expect(published).toEqual(['news.levelUp', 'news.weather.snow', 'news.aurora']);
-    expect(news.items[2]).toMatchObject({ key: 'news.levelUp', count: 4 });
+    expect(news.items[2]).toMatchObject({ key: 'news.levelUp', count: 5 });
+  });
+
+  it('breaks the news of the ferry to Metropol at the level it opens, on top', () => {
+    const { news, events, published } = setup();
+    events.emit('CompanyLevelUp', { level: 4 });
+
+    expect(published).toEqual(['news.levelUp', 'news.ferryOpens.metropol']);
+    expect(news.items[0]).toMatchObject({ key: 'news.ferryOpens.metropol', breaking: true });
   });
 
   it('clears the last company\'s news when one is started or continued, and brings out a morning paper', () => {

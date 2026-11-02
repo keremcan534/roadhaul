@@ -3,7 +3,7 @@ import { bootGame, newCompany, play } from '../../../support/game';
 
 describe('travelling between regions', () => {
   it('takes the ferry from Gull Point to Metropol: saved on the other map at its terminal, continued there', async () => {
-    const game = await newCompany(3, 40_000);
+    const game = await newCompany(4, 40_000);
     const gate = game.driving.world.gates.find((candidate) => candidate.id === 'gull_point_ferry')!;
     expect(game.driving.world.gateAt(gate.area.x, gate.area.z)).toBe(gate);
 
@@ -22,8 +22,12 @@ describe('travelling between regions', () => {
     expect(next.session.travel('metropol_ferry')).toEqual({ ok: true, value: { mapId: 'north_valley' } });
   });
 
-  it('does not set off with a contract under way, nor through a gate the map does not have', async () => {
-    const game = await newCompany(3, 40_000);
+  it('does not set off before the company reaches the ferry\'s level, with a contract under way, nor through a gate the map does not have', async () => {
+    const early = await newCompany(3, 40_000);
+    expect(early.session.travel('gull_point_ferry')).toEqual({ ok: false, error: 'locked' });
+    expect(early.session.isActive).toBe(true);
+
+    const game = await newCompany(4, 40_000);
     expect(game.session.travel('nowhere')).toEqual({ ok: false, error: 'unknownGate' });
     expect(game.missions.accept('first_package').ok).toBe(true);
 

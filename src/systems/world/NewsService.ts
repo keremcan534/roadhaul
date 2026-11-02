@@ -89,7 +89,17 @@ export class NewsService {
           this.add(`news.campaign.${this.personality(companyId)}`, { cityId, rivalId: companyId });
         }
       }),
-      events.on('CompanyLevelUp', ({ level }) => this.add('news.levelUp', { count: level })),
+      events.on('CompanyLevelUp', ({ level }) => {
+        this.add('news.levelUp', { count: level });
+        // A crossing to another region opens at this level: breaking news (with its toast), on top.
+        for (const map of content.maps.all) {
+          for (const gate of map.gates ?? []) {
+            if (gate.requiredCompanyLevel === level) {
+              this.add(`news.ferryOpens.${gate.toMapId}`, { breaking: true });
+            }
+          }
+        }
+      }),
       events.on('WeatherChanged', ({ weatherId }) => {
         if (weatherId === 'rain' || weatherId === 'snow') {
           this.add(`news.weather.${weatherId}`, {});

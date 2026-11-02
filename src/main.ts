@@ -1152,11 +1152,13 @@ async function start(strings: Strings): Promise<void> {
     refreshHq();
   };
   // The ferry terminals: the crossing to the other region (the game starts again there, the company carried on).
-  const ferry = new FerryPanel(ui, strings, { driving, missions }, {
+  const ferry = new FerryPanel(ui, strings, { driving, missions, company }, {
     onTravel: (gate) => {
       const travelled = session.travel(gate.id);
       if (!travelled.ok) {
-        toasts.show(strings.t(travelled.error === 'contractUnderWay' ? 'ferry.busy' : 'ferry.failed', { region: strings.t(`region.${gate.toMapId}.name`) }), 'warning');
+        const region = strings.t(`region.${gate.toMapId}.name`);
+        const key = travelled.error === 'contractUnderWay' ? 'ferry.busy' : travelled.error === 'locked' ? 'ferry.locked' : 'ferry.failed';
+        toasts.show(strings.t(key, { region, level: gate.requiredCompanyLevel ?? 1 }), 'warning');
         return;
       }
       toasts.show(strings.t('ferry.boarding', { region: strings.t(`region.${gate.toMapId}.name`) }), 'success');

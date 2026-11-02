@@ -941,6 +941,14 @@ export const MAPS: readonly MapDefinition[] = [
         toMapId: 'metropol',
         toGateId: 'metropol_ferry',
         arrival: { x: -2520, z: -2060, headingDegrees: 53 },
+        // Metropol opens with the company's fourth level: a new region to cross to, celebrated.
+        requiredCompanyLevel: 4,
+        // Out past the point into the open sea, north-west toward Metropol.
+        route: [
+          [-2600, -2120],
+          [-2860, -2330],
+          [-3400, -2780],
+        ],
       },
     ],
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
