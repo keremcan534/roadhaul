@@ -19,6 +19,7 @@ import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { SeasonShading } from '../../../../src/presentation/world/SeasonShading';
+import { TREE_FAR } from '../../../../src/presentation/world/ForestBatch';
 import { TrackView } from '../../../../src/presentation/world/TrackView';
 import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
@@ -49,8 +50,9 @@ describe('TrackView', () => {
     expect(
       drawCallCount(scene) - drawCallCount(forest) - drawCallCount(batches) - drawCallCount(country) - drawCallCount(town),
     ).toBeLessThanOrEqual(12);
-    // The forest's tiles in view are drawn a kind at a time (ForestBatch): trunks, inner trunks, shadows and each crown.
-    expect(drawCallCount(batches)).toBeLessThanOrEqual(10);
+    // The forest's tiles in view are drawn a kind at a time (ForestBatch): trunks, inner trunks, shadows and each crown,
+    // and the pines' and broadleaves' far crowns.
+    expect(drawCallCount(batches)).toBeLessThanOrEqual(12);
     forest.traverse((object) => {
       if (object instanceof Mesh) {
         expect(object.layers.mask, object.name).toBe(0); // The tiles' own meshes: culled, not drawn.
@@ -68,8 +70,8 @@ describe('TrackView', () => {
     }
     // The tiles hold trunks and shadows each, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
     // the planted poplars, olives and cypresses where people planted them, and in the forests their inner trees'
-    // simpler crowns and trunks.
-    expect(drawCallCount(forest)).toBeLessThanOrEqual(6 * treeTiles.size);
+    // simpler crowns and trunks, and the pines' and broadleaves' far crowns.
+    expect(drawCallCount(forest)).toBeLessThanOrEqual(8 * treeTiles.size);
   });
 
   it('draws the forest and the country only near the camera', () => {
@@ -296,7 +298,8 @@ describe('TrackView', () => {
     let trunks = 0;
     let shadows = 0;
     scene.getObjectByName('forest')!.traverse((object) => {
-      if (!(object instanceof InstancedMesh)) {
+      // The far crowns are the same trees' again (TREE_FAR), drawn in place of the near ones past their detail distance.
+      if (!(object instanceof InstancedMesh) || object.userData[TREE_FAR] === true) {
         return;
       }
       const material = object.material as { flatShading?: boolean; transparent?: boolean };
@@ -318,13 +321,40 @@ describe('TrackView', () => {
     expect(shadows).toBe(world.trees.length - inner);
   });
 
+  it('draws the forests\' pines and broadleaves with simpler crowns far off, on the same trees', () => {
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const tree = world.trees.find((candidate) => candidate.inner === true)!;
+    view.showAround(tree.x, tree.z);
+    const triangles = (mesh: InstancedMesh): number => (mesh.geometry.index?.count ?? mesh.geometry.getAttribute('position').count) / 3;
+    let near = 0;
+    let far = 0;
+    for (const tile of scene.getObjectByName('forest')!.children) {
+      const crowns = tile.children.filter((mesh): mesh is InstancedMesh => mesh instanceof InstancedMesh && mesh.name.startsWith('forest:crowns:'));
+      for (const lod of crowns.filter((mesh) => mesh.userData[TREE_FAR] === true)) {
+        const kind = lod.name.split(':')[2]!;
+        const fulls = crowns.filter((mesh) => mesh.userData[TREE_FAR] !== true && mesh.name.split(':')[2] === kind && mesh.instanceMatrix === lod.instanceMatrix);
+        expect(fulls, lod.name).toHaveLength(1);
+        const full = fulls[0]!;
+        expect(triangles(lod)).toBeLessThan(triangles(full));
+        expect(lod.count).toBe(full.count);
+        // One or the other, by the tile's distance from the camera.
+        expect(lod.visible).toBe(!full.visible);
+        near += full.visible ? 1 : 0;
+        far += lod.visible ? 1 : 0;
+      }
+    }
+    expect(near).toBeGreaterThan(0);
+    expect(far).toBeGreaterThan(0);
+  });
+
   it('grows each planted tree as its species, and the wild ones as pines and broadleaves', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     const counts = new Map<string, number>();
     const heights = new Map<string, number>();
     scene.traverse((object) => {
-      if (object instanceof InstancedMesh && object.name.startsWith('forest:crowns:')) {
+      if (object instanceof InstancedMesh && object.name.startsWith('forest:crowns:') && object.userData[TREE_FAR] !== true) {
         const kind = object.name.split(':')[2]!;
         counts.set(kind, (counts.get(kind) ?? 0) + object.count);
         object.geometry.computeBoundingBox();

@@ -19,6 +19,15 @@ interface Slot {
 }
 
 /**
+ * A tree tile's mesh's flags (in its userData): shown only within the trees'
+ * detail distance (the shadows, the inner trunks, the forest kinds' full
+ * crowns) or only past it (their far crowns), by TrackView's culling; the
+ * batches read whether it is shown off the mesh itself, not its tile.
+ */
+export const TREE_DETAIL = 'treeDetail';
+export const TREE_FAR = 'treeFar';
+
+/**
  * The forest's tiles (TrackView.createTrees), drawn a kind at a time: the
  * instances of each kind of crown, the trunks, the inner trunks and the
  * shadows of every tile in view go into one instanced mesh, one draw call a
@@ -41,7 +50,8 @@ export class ForestBatch {
         if (!(child instanceof InstancedMesh) || child.count === 0) {
           continue;
         }
-        const detail = child.name === 'forest:shadows' || child.name === 'forest:trunks:inner';
+        // Shown by itself (near or far from the camera), or with its tile.
+        const detail = child.userData[TREE_DETAIL] === true || child.userData[TREE_FAR] === true;
         const parts = byName.get(child.name) ?? [];
         parts.push({ mesh: child, shown: detail ? child : tile, box: new Box3().setFromObject(child).expandByScalar(VIEW_MARGIN_METERS) });
         byName.set(child.name, parts);

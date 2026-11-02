@@ -57,13 +57,15 @@ export interface StreetLampViewOptions {
 /** A lamp knocked over (showKnocked) stands nowhere: its copies shrunk to nothing. */
 const NOWHERE = new Matrix4().makeScale(0, 0, 0);
 const LAMP_CODE = knockableCode('lamp');
+/** The lamps are drawn this far from the camera, meters. */
+const POST_REACH_METERS = 700;
 /** At most this many posts cast into the shadow map at once: the streets' lamps 26 m apart, both sides. */
 const SHADOW_POSTS = 48;
 
 /**
  * The street lamps along the city roads: a post with an arm and a head over
  * the road, all instanced (two draw calls for every lamp on the map), only
- * those within a kilometre of the camera drawn (NearInstances, showAround). At
+ * those within POST_REACH_METERS of the camera drawn (NearInstances, showAround). At
  * night (setLamps) the lenses light up and, unless the quality preset
  * leaves it out, glow: one more draw call, only while the lamps are on.
  * Their light on the world is LampLighting's, from lampLights().
@@ -139,7 +141,8 @@ export class StreetLampView {
     this.posts = posts;
     this.lenses = lenses;
     // Every lamp's posts and lenses are kept out of the scene: those near the camera are drawn.
-    this.near = [this.track(new NearInstances(posts)), this.track(new NearInstances(lenses))];
+    // Within POST_REACH_METERS: a lamp further off is a few pixels tall (its glow at night still shows far).
+    this.near = [this.track(new NearInstances(posts, POST_REACH_METERS)), this.track(new NearInstances(lenses, POST_REACH_METERS))];
     this.root.add(...this.near.map((near) => near.mesh));
     if (this.circles.length === lamps.length && (options.debrisCapacity ?? 0) > 0) {
       const { shape, centreZ } = KNOCKABLES.lamp;
@@ -300,8 +303,9 @@ export class StreetLampView {
  */
 function postGeometry(): BufferGeometry {
   const parts: [BufferGeometry, number][] = [
-    [new CylinderGeometry(0.2, 0.24, 0.5, 8).translate(0, 0.25, 0), POST_COLOR],
-    [new CylinderGeometry(0.075, 0.13, POST_HEIGHT, 8).translate(0, POST_HEIGHT / 2, 0), POST_COLOR],
+    // Six sides are round enough at a lamp's size; the post's ends are hidden (in the plinth, under the arm).
+    [new CylinderGeometry(0.2, 0.24, 0.5, 6).translate(0, 0.25, 0), POST_COLOR],
+    [new CylinderGeometry(0.075, 0.13, POST_HEIGHT, 6, 1, true).translate(0, POST_HEIGHT / 2, 0), POST_COLOR],
     [
       new BoxGeometry(0.08, 0.08, STREET_LAMP_REACH_METERS)
         .rotateX(-0.08)

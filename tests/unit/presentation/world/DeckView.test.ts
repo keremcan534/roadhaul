@@ -1,7 +1,7 @@
 import { Box3, Scene } from 'three';
 import { describe, expect, it } from 'vitest';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
-import { DeckView, deckGeometry } from '../../../../src/presentation/world/DeckView';
+import { DeckView, deckGeometry, keptDeckSamples } from '../../../../src/presentation/world/DeckView';
 import { mapFixture } from '../../../support/contentFixtures';
 
 const overpass = {
@@ -56,5 +56,26 @@ describe('DeckView', () => {
     expect(scene.children).toEqual([view.mesh]);
     view.dispose();
     expect(scene.children).toEqual([]);
+  });
+});
+
+describe('keptDeckSamples', () => {
+  it('draws a straight deck in long pieces where it is level or climbs evenly, every sample where its climb changes', () => {
+    const world = new DrivingWorld(mapFixture({ roads: [...mapFixture().roads, overpass], buildings: [] }));
+    const road = world.roads.find((candidate) => candidate.id === 'overpass')!;
+    const last = road.pointCount - 1;
+    const kept = keptDeckSamples(road, 0, last);
+
+    expect(kept[0]).toBe(0);
+    expect(kept[kept.length - 1]).toBe(last);
+    expect(kept.length).toBeLessThan(road.pointCount / 2);
+    // Every sample left out lies on its kept neighbours' line, in height too.
+    for (let k = 0; k + 1 < kept.length; k++) {
+      const [a, b] = [kept[k]!, kept[k + 1]!];
+      for (let i = a + 1; i < b; i++) {
+        const t = (road.distances[i]! - road.distances[a]!) / (road.distances[b]! - road.distances[a]!);
+        expect(Math.abs(road.heights[i]! - (road.heights[a]! + (road.heights[b]! - road.heights[a]!) * t))).toBeLessThan(0.021);
+      }
+    }
   });
 });

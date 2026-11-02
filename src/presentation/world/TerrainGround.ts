@@ -12,6 +12,15 @@ const RECENTRE_METERS = 128;
 const OVERLAP_METERS = 16;
 /** The ground's colour is kept on a grid this coarse, meters (it changes over hundreds of meters). */
 const TINT_CELL_METERS = 32;
+/**
+ * The grids are drawn in square blocks of this many cells a side, near and
+ * far; a block whose vertices all stand at one height (a town's flat ground)
+ * as one quad: a few triangles where the ground is flat, not hundreds.
+ */
+const NEAR_BLOCK_CELLS = 4;
+const FAR_BLOCK_CELLS = 2;
+/** A block is flat when its heights differ by no more than this, meters. */
+const FLAT_BLOCK_METERS = 0.001;
 /** Light on a slope: its share from a fixed sun high in the south-west, the rest from the sky above. */
 const SUN = { x: -0.35, y: 0.8, z: -0.48 };
 const SUN_SHARE = 0.32;
@@ -29,7 +38,8 @@ export type GroundWindow = { value: Vector4 };
  * pushed back, so no crack shows between them. Slopes facing the sun are
  * lit more than those facing away, baked into the vertex colours with the
  * ground's tint (`tint`): the ground's material is pre-lit. Its uvs are the
- * flat ground's (0.5 + x / size, 0.5 − z / size).
+ * flat ground's (0.5 + x / size, 0.5 − z / size). Where the ground is flat
+ * the grids are drawn coarser (indexBlocks).
  */
 export class TerrainGround {
   readonly far: Mesh;
@@ -64,6 +74,7 @@ export class TerrainGround {
     const farSide = Math.ceil(sizeMeters / FAR_GROUND_CELL_METERS) + 1;
     const far = gridGeometry(farSide);
     this.fill(far, -half, -half, (sizeMeters / (farSide - 1)));
+    indexBlocks(far, farSide, FAR_BLOCK_CELLS);
     this.far = new Mesh(far, farMaterial);
     this.far.name = 'ground:far';
     const near = gridGeometry(this.side);
@@ -83,6 +94,7 @@ export class TerrainGround {
     this.centreZ = Math.round(z / NEAR_GROUND_CELL_METERS) * NEAR_GROUND_CELL_METERS;
     const half = NEAR_GROUND_METERS / 2;
     this.fill(this.near.geometry, this.centreX - half, this.centreZ - half, NEAR_GROUND_CELL_METERS);
+    indexBlocks(this.near.geometry, this.side, NEAR_BLOCK_CELLS);
     this.window.value.set(this.centreX, this.centreZ, half - OVERLAP_METERS, 0);
   }
 
@@ -176,4 +188,64 @@ function gridGeometry(side: number): BufferGeometry {
   }
   geometry.setIndex(new BufferAttribute(indices, 1));
   return geometry;
+}
+
+/**
+ * Re-indexes a filled grid of `side` × `side` vertices in blocks of `block`
+ * cells a side: a flat block's two triangles corner to corner, any other's
+ * every cell; the draw range ends after them. Its neighbours' vertices on a
+ * flat block's edge lie on that edge (at its height), so no crack opens.
+ * Writes into the grid's own index buffer: allocation-free.
+ */
+function indexBlocks(geometry: BufferGeometry, side: number, block: number): void {
+  const index = geometry.getIndex()!;
+  const indices = index.array as Uint16Array | Uint32Array;
+  const p = geometry.getAttribute('position').array as Float32Array;
+  let k = 0;
+  for (let bj = 0; bj + 1 < side; bj += block) {
+    const toJ = Math.min(side - 1, bj + block);
+    for (let bi = 0; bi + 1 < side; bi += block) {
+      const toI = Math.min(side - 1, bi + block);
+      const height = p[(bj * side + bi) * 3 + 1]!;
+      let flat = true;
+      for (let j = bj; j <= toJ && flat; j++) {
+        for (let i = bi; i <= toI; i++) {
+          if (Math.abs(p[(j * side + i) * 3 + 1]! - height) > FLAT_BLOCK_METERS) {
+            flat = false;
+            break;
+          }
+        }
+      }
+      if (flat) {
+        const a = bj * side + bi;
+        const b = bj * side + toI;
+        const c = toJ * side + bi;
+        const d = toJ * side + toI;
+        indices[k] = a;
+        indices[k + 1] = c;
+        indices[k + 2] = b;
+        indices[k + 3] = b;
+        indices[k + 4] = c;
+        indices[k + 5] = d;
+        k += 6;
+        continue;
+      }
+      for (let j = bj; j < toJ; j++) {
+        for (let i = bi; i < toI; i++) {
+          const a = j * side + i;
+          const c = a + side;
+          // As gridGeometry winds them: the faces look up.
+          indices[k] = a;
+          indices[k + 1] = c;
+          indices[k + 2] = a + 1;
+          indices[k + 3] = a + 1;
+          indices[k + 4] = c;
+          indices[k + 5] = c + 1;
+          k += 6;
+        }
+      }
+    }
+  }
+  geometry.setDrawRange(0, k);
+  index.needsUpdate = true;
 }

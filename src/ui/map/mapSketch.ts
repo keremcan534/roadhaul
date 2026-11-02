@@ -60,6 +60,13 @@ export interface MapCircle {
   readonly radiusMeters: number;
 }
 
+/** A ferry terminal (MapDefinition.gates): where it is, and the region (map id) it crosses to. */
+export interface MapFerry {
+  readonly x: number;
+  readonly z: number;
+  readonly toMapId: string;
+}
+
 /** Where a village's name goes: the middle of its street. */
 export interface MapVillageLabel {
   readonly villageId: string;
@@ -101,6 +108,7 @@ export interface MapSketch {
   readonly buildings: readonly MapBox[];
   readonly depots: readonly MapDepot[];
   readonly restAreas: readonly MapRestArea[];
+  readonly ferries: readonly MapFerry[];
   readonly cities: readonly MapCityLabel[];
   readonly villages: readonly MapVillageLabel[];
 }
@@ -120,6 +128,7 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
   }
   const depots = world.depots.map((depot) => ({ id: depot.id, cityId: depot.cityId, x: depot.yard.x, z: depot.yard.z }));
   const restAreas = world.restAreas.map((restArea) => ({ id: restArea.id, x: restArea.lot.x, z: restArea.lot.z }));
+  const ferries = world.gates.map((gate) => ({ x: gate.area.x, z: gate.area.z, toMapId: gate.toMapId }));
   const buildings = world.buildings.map(({ minX, maxX, minZ, maxZ }) => ({ minX, maxX, minZ, maxZ }));
   const pavedAreas = [
     ...[...world.depots.map((depot) => depot.yard), ...world.restAreas.map((restArea) => restArea.lot)].map(
@@ -144,7 +153,7 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
   runs.forEach(include);
   pavedAreas.forEach(include);
   buildings.forEach(include);
-  for (const place of [...depots, ...restAreas]) {
+  for (const place of [...depots, ...restAreas, ...ferries]) {
     include({ minX: place.x, maxX: place.x, minZ: place.z, maxZ: place.z });
   }
   if (minX > maxX) {
@@ -166,6 +175,7 @@ export function sketchWorld(world: DrivingWorld): MapSketch {
     buildings,
     depots,
     restAreas,
+    ferries,
     // The towns' own buildings place their names: not the farms and villages round them.
     cities: cityLabels(
       depots,

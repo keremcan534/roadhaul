@@ -40,6 +40,8 @@ export class RoadPath {
   readonly elevated: Uint8Array;
   /** The heights the road is held at (RoadDefinition.profile), by distance along it. */
   readonly profile: RoadDefinition['profile'];
+  /** Its suspension bridge, if it is carried on one (RoadDefinition.suspension). */
+  readonly suspension: RoadDefinition['suspension'];
 
   constructor(road: RoadDefinition, spacingMeters = DEFAULT_SPACING_METERS) {
     this.id = road.id;
@@ -69,6 +71,7 @@ export class RoadPath {
       }
     }
     this.profile = road.profile;
+    this.suspension = road.suspension;
   }
 
   /** The road's height at sample `index`, meters. */

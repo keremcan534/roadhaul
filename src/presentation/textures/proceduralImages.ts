@@ -309,6 +309,67 @@ export function officeWindowLightsImage(tiles = 4, tileSize = 64, seed = 53): Pi
   return image;
 }
 
+/**
+ * A tower's glass curtain wall, 8 m × 7 m (2 bays × 2 floors): blue-green
+ * glass from floor to ceiling, darker at its foot and catching the sky
+ * higher up, between slim metal mullions and spandrel bands at each floor.
+ */
+export function glassFacadeImage(size = 256, seed = 61): PixelImage {
+  const image = createImage(size, size, [70, 92, 108]);
+  const cell = size / 2;
+  for (let floor = 0; floor < 2; floor++) {
+    const y0 = floor * cell;
+    for (let bay = 0; bay < 4; bay++) {
+      const x0 = bay * (size / 4);
+      const reflect = 0.82 + 0.3 * grain(bay, floor, seed);
+      for (let y = Math.floor(y0 + cell * 0.12); y < y0 + cell; y++) {
+        const sky = (y - y0) / cell;
+        const glass = mixRgb([38, 62, 78], [128, 158, 178], sky * 0.85);
+        for (let x = Math.floor(x0); x < x0 + size / 4; x++) {
+          const streak = 0.94 + 0.08 * fractalNoise(x / size, y / size, 6, 2, seed + floor);
+          blendPixel(image, x, y, [glass[0] * reflect * streak, glass[1] * reflect * streak, glass[2] * reflect * streak], 1);
+        }
+      }
+      // Mullions between the panes.
+      fillRect(image, x0, y0, x0 + 2.5, y0 + cell, [150, 160, 166]);
+    }
+    // The spandrel band hiding the floor slab.
+    fillRect(image, 0, y0, size, y0 + cell * 0.12, [44, 54, 62]);
+    fillRect(image, 0, y0 + cell * 0.12, size, y0 + cell * 0.12 + 2, [160, 168, 172]);
+  }
+  return image;
+}
+
+/**
+ * The same tower's floors lit at night, as an emissive map: `tiles` ×
+ * `tiles` tiles in glassFacadeImage()'s layout (4 panes × 2 floors each),
+ * whole stretches of a floor lit together (offices left on), cooler white
+ * than a home's windows. Black elsewhere.
+ */
+export function glassWindowLightsImage(tiles = 4, tileSize = 64, seed = 67): PixelImage {
+  const size = tiles * tileSize;
+  const image = createImage(size, size, [0, 0, 0]);
+  const cell = tileSize / 2;
+  const pane = tileSize / 4;
+  for (let row = 0; row < tiles * 2; row++) {
+    let lit = grain(0, row, seed) < 0.5;
+    for (let column = 0; column < tiles * 4; column++) {
+      // A floor's lights run in stretches: switch now and then.
+      if (grain(column, row, seed + 2) < 0.22) {
+        lit = !lit;
+      }
+      if (!lit) {
+        continue;
+      }
+      const tone = grain(column, row, seed + 1);
+      const light: readonly [number, number, number] = tone < 0.7 ? [226, 234, 240] : windowLight(tone);
+      const y0 = row * cell;
+      fillRect(image, column * pane + 1.5, y0 + cell * 0.16, (column + 1) * pane - 0.5, y0 + cell * 0.96, light);
+    }
+  }
+  return image;
+}
+
 /** The same for warehouses: warehouseFacadeImage()'s row of four high windows per tile. */
 export function warehouseWindowLightsImage(tiles = 4, tileSize = 64, seed = 59): PixelImage {
   const size = tiles * tileSize;

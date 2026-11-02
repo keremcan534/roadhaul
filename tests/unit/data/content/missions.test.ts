@@ -13,12 +13,24 @@ const startingTruck = vehicles.find((vehicle) => vehicle.id === DEFAULT_GAME_CON
 
 /** Checks the shipped contracts as a set: the balance a field-by-field validator cannot see. */
 describe('the shipped missions', () => {
-  it('number forty-two: the MVP\'s twenty (spec §43), four to and from Copperdale, twelve for the later trucks and six for the semi-trailers', () => {
-    expect(missions).toHaveLength(42);
-    expect(missions.slice(24).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 4)).toBe(true);
-    expect(missions.slice(30).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 6)).toBe(true);
+  it('number fifty-one: the MVP\'s twenty (spec §43), four to and from Copperdale, twelve for the later trucks, six for the semi-trailers and nine in Metropol', () => {
+    expect(missions).toHaveLength(51);
+    expect(missions.slice(24, 42).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 4)).toBe(true);
+    expect(missions.slice(30, 42).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 6)).toBe(true);
     expect(missions.slice(20, 24).every((mission) => [mission.originCityId, mission.destinationCityId].includes('city_d'))).toBe(true);
-    expect(missions.slice(36).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 7)).toBe(true);
+    expect(missions.slice(36, 42).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 7)).toBe(true);
+    // Metropol's run between its own cities, a few open from the start (a company may cross early).
+    const metropol = maps.find((map) => map.id === 'metropol')!;
+    const inMetropol = (cityId: string) => metropol.depots.some((depot) => depot.cityId === cityId);
+    expect(missions.slice(42).every((mission) => inMetropol(mission.originCityId) && inMetropol(mission.destinationCityId))).toBe(true);
+    expect(missions.slice(42).filter((mission) => (mission.requiredCompanyLevel ?? 1) === 1).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('run each between two depots of the same region', () => {
+    for (const mission of missions) {
+      const region = maps.filter((map) => [mission.originCityId, mission.destinationCityId].every((cityId) => map.depots.some((depot) => depot.cityId === cityId)));
+      expect(region, mission.id).toHaveLength(1);
+    }
   });
 
   it('cover every difficulty', () => {
@@ -51,12 +63,13 @@ describe('the shipped missions', () => {
   });
 
   it('leave time to drive from bay to bay: under 50 km/h on average by road, less for easier ones', () => {
-    const world = new DrivingWorld(maps[0]!);
-    const bayOf = (cityId: string) => maps[0]!.depots.find((depot) => depot.cityId === cityId)!.bay;
+    const worlds = maps.map((map) => new DrivingWorld(map));
     const route = createRouteGuidance();
     const fastestAverageKmh = { easy: 34, normal: 40, hard: 48, expert: 48 } as const;
 
     for (const mission of missions) {
+      const world = worlds.find((candidate) => candidate.depotOf(mission.originCityId) !== undefined)!;
+      const bayOf = (cityId: string) => world.depotOf(cityId)!.bay;
       const from = bayOf(mission.originCityId);
       const to = bayOf(mission.destinationCityId);
       world.network.guide(from.x, from.z, to.x, to.z, route);

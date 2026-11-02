@@ -14,4 +14,10 @@ export const CITIES: readonly CityDefinition[] = [
   { id: 'city_e', specialization: 'coastal' },
   { id: 'city_f', specialization: 'quarry' },
   { id: 'city_g', specialization: 'market' },
+  // Metropol (the second region): the downtown, its northern flats, the port, the east bank and the mountain town.
+  { id: 'city_h', specialization: 'market' },
+  { id: 'city_i', specialization: 'starter' },
+  { id: 'city_j', specialization: 'industrial' },
+  { id: 'city_k', specialization: 'market' },
+  { id: 'city_l', specialization: 'quarry' },
 ];

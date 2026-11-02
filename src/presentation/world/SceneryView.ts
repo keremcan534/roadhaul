@@ -1386,7 +1386,10 @@ function mirrorU(geometry: BufferGeometry): BufferGeometry {
  * A pavement beside its street, along its outline (townscape.ts): the
  * flagstones' top (into `paving`) and the kerb, its face along the road and
  * its back down to the ground (into `tiles`), in pieces of up to
- * SIDEWALK_PIECE_ROWS rows, each filed where its middle is.
+ * SIDEWALK_PIECE_ROWS rows, each filed where its middle is. Along the
+ * straight the outline's rows (every 2 m) are left out where the kerb and
+ * the back run on straight through them (keptSidewalkRows): a city's
+ * kilometres of pavement cost a few triangles a block, not three a meter.
  */
 function addSidewalk(tiles: Tiles, paving: Tiles, road: RoadPath, sidewalk: Sidewalk): void {
   const rows = sidewalkOutline(road, sidewalk);
@@ -1395,10 +1398,11 @@ function addSidewalk(tiles: Tiles, paving: Tiles, road: RoadPath, sidewalk: Side
   for (let first = 0; first < count - 1; first += SIDEWALK_PIECE_ROWS) {
     // Each piece shares its first row with the last one's end.
     const last = Math.min(count - 1, first + SIDEWALK_PIECE_ROWS);
+    const kept = keptSidewalkRows(rows, first, last);
     const tops: number[] = [];
     const topUvs: number[] = [];
     const kerb: number[] = [];
-    for (let row = first; row <= last; row++) {
+    for (const row of kept) {
       const at = row * OUTLINE_ROW;
       const along = rows[at]!;
       const [kerbX, kerbZ, backX, backZ] = [rows[at + 1]!, rows[at + 2]!, rows[at + 3]!, rows[at + 4]!];
@@ -1407,11 +1411,57 @@ function addSidewalk(tiles: Tiles, paving: Tiles, road: RoadPath, sidewalk: Side
       kerb.push(kerbX, ROAD_TOP_Y, kerbZ, kerbX, top, kerbZ, backX, top, backZ, backX, 0, backZ);
     }
     const middle = Math.round((first + last) / 2) * OUTLINE_ROW;
-    const topGeometry = ribbon(tops, 2, last - first, sidewalk.side);
+    const topGeometry = ribbon(tops, 2, kept.length - 1, sidewalk.side);
     topGeometry.setAttribute('uv', new BufferAttribute(new Float32Array(topUvs), 2));
     paving.add(rows[middle + 1]!, rows[middle + 2]!, topGeometry);
-    tiles.add(rows[middle + 1]!, rows[middle + 2]!, dress(kerbGeometry(kerb, last - first, sidewalk.side), KERB));
+    tiles.add(rows[middle + 1]!, rows[middle + 2]!, dress(kerbGeometry(kerb, kept.length - 1, sidewalk.side), KERB));
   }
+}
+
+/** A pavement's outline keeps a row where its kerb or back strays this far, meters, from a straight line past it. */
+const SIDEWALK_STRAIGHT_METERS = 0.02;
+
+/**
+ * The rows of a pavement's outline from `first` to `last` its pieces are
+ * drawn through: both ends, and between them as few as keep every row left
+ * out within SIDEWALK_STRAIGHT_METERS of the straight kerb and back between
+ * its kept neighbours (all of them round a corner, two on the straight).
+ */
+export function keptSidewalkRows(rows: Float64Array, first: number, last: number): number[] {
+  const kept = [first];
+  let anchor = first;
+  for (let end = first + 2; end <= last; end++) {
+    if (!straightBetween(rows, anchor, end)) {
+      anchor = end - 1;
+      kept.push(anchor);
+    }
+  }
+  kept.push(last);
+  return kept;
+}
+
+/** Whether every row between `from` and `to` lies on the straight kerb and back from one to the other. */
+function straightBetween(rows: Float64Array, from: number, to: number): boolean {
+  for (const offset of [1, 3]) {
+    const ax = rows[from * OUTLINE_ROW + offset]!;
+    const az = rows[from * OUTLINE_ROW + offset + 1]!;
+    const dx = rows[to * OUTLINE_ROW + offset]! - ax;
+    const dz = rows[to * OUTLINE_ROW + offset + 1]! - az;
+    const length = Math.hypot(dx, dz);
+    if (length < 1e-9) {
+      continue;
+    }
+    for (let row = from + 1; row < to; row++) {
+      const px = rows[row * OUTLINE_ROW + offset]! - ax;
+      const pz = rows[row * OUTLINE_ROW + offset + 1]! - az;
+      // Off the line, and short of its ends.
+      const along = (px * dx + pz * dz) / length;
+      if (Math.abs(px * dz - pz * dx) / length > SIDEWALK_STRAIGHT_METERS || along < 0 || along > length) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   type DepotDefinition,
   type FieldCrop,
   type FieldDefinition,
+  type GateDefinition,
   type MapDefinition,
   type Point2,
   type QuayDefinition,
@@ -80,6 +81,7 @@ import { workedFields, type FieldWork } from './fieldWork';
 import { growVillages, type Village } from './villages';
 import type { Terrain } from './terrain';
 import { gradeTerrain } from './terrainGrading';
+import { isMotorway } from './lanes';
 import { ASPHALT, GRASS, type Surface } from './Surface';
 import {
   billboardLegs,
@@ -458,6 +460,12 @@ export class DrivingWorld implements DebrisSolids {
   readonly streetLamps: readonly StreetLamp[];
   /** Guard rails on the outside of the sharper bends out of town (placeGuardRails). They are walls. */
   readonly guardRails: readonly GuardRail[];
+  /**
+   * The concrete barriers down the motorways' medians (lanes.ts), each a
+   * run of [x, z, y] points along the centreline, open where junctions
+   * are. Walls on both faces.
+   */
+  readonly medianBarriers: readonly (readonly (readonly [number, number, number])[])[];
   /** The cities' name boards beside the roads into them. */
   readonly citySigns: readonly CitySign[];
   /** Farm fields (they drive like grass), and the hay bales on the harvested ones. */
@@ -472,6 +480,8 @@ export class DrivingWorld implements DebrisSolids {
   readonly restAreas: readonly RestAreaDefinition[];
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
+  /** The ways to the other regions (MapDefinition.gates): ferry terminals, borders. */
+  readonly gates: readonly GateDefinition[];
   /** Every depot yard and rest area lot, where trucks are serviced. */
   readonly servicePoints: readonly ServicePoint[];
   /** One at each dead end. */
@@ -613,6 +623,7 @@ export class DrivingWorld implements DebrisSolids {
       ...map.restAreas.map((restArea): ServicePoint => ({ kind: 'restArea', restArea })),
     ];
     this.spawn = { x: map.spawn.x, z: map.spawn.z, heading: degreesToRadians(map.spawn.headingDegrees) };
+    this.gates = map.gates ?? [];
     this.citySigns = map.citySigns.map((sign) => this.placeCitySign(sign));
     const mapFields = map.fields.map((field) => this.placeField(field));
     this.windTurbines = map.windTurbines.map(({ x, z }) => ({ x, z, radius: TURBINE_TOWER_RADIUS }));
@@ -721,13 +732,19 @@ export class DrivingWorld implements DebrisSolids {
       ...parapetWalls(this.roads, this.bridges),
       ...this.parks.flatMap(hedgeWalls),
     );
+    // The motorways' median barriers: a wall facing each carriageway, at the road's height.
+    this.medianBarriers = medianBarrierRuns(this.roads, [...this.network.junctions, ...this.turningCircles]);
     const groundPieces = pieces.length;
+    const barriers = barrierWalls(this.medianBarriers);
     const decks = deckWalls(this.roads);
-    pieces.push(...decks.pieces);
+    pieces.push(...barriers.pieces, ...decks.pieces);
+    const barrierPieces = barriers.pieces.length;
     this.railY = Float64Array.from(pieces, (piece, index) =>
       index < groundPieces
         ? this.terrain.heightAt((piece.a[0] + piece.b[0]) / 2, (piece.a[1] + piece.b[1]) / 2)
-        : decks.heights[index - groundPieces]!,
+        : index < groundPieces + barrierPieces
+          ? barriers.heights[index - groundPieces]!
+          : decks.heights[index - groundPieces - barrierPieces]!,
     );
     // The decks' segments, for the height of the road the truck is on (groundAt).
     const deckSegments: [number, number][] = [];
@@ -1061,12 +1078,16 @@ export class DrivingWorld implements DebrisSolids {
     return this.depots.find((depot) => depot.cityId === cityId);
   }
 
-  /**
-   * The height of what the truck drives on at (x, z), meters: the ground's,
-   * or a deck's (RoadDefinition.elevated) where one carries the road there
-   * and the truck, at `nearY`, is on it or a little below it (a ramp's top);
-   * one far above it is a bridge it passes under. Allocation-free.
-   */
+  /** The gate (MapDefinition.gates) whose area holds (x, z), or null. Allocation-free. */
+  gateAt(x: number, z: number): GateDefinition | null {
+    for (let i = 0; i < this.gates.length; i++) {
+      if (rectangleContains(this.gates[i]!.area, x, z)) {
+        return this.gates[i]!;
+      }
+    }
+    return null;
+  }
+
   /** Whether a road other than road `roadIndex` runs within `clearanceMeters` of (x, z): where a deck's pier may not stand. */
   nearOtherRoad(x: number, z: number, roadIndex: number, clearanceMeters: number): boolean {
     return this.roadGrid.nearOtherRoad(x, z, clearanceMeters, roadIndex);
@@ -1077,6 +1098,12 @@ export class DrivingWorld implements DebrisSolids {
     return this.terrain.flat && this.deckRoad.length === 0;
   }
 
+  /**
+   * The height of what the truck drives on at (x, z), meters: the ground's,
+   * or a deck's (RoadDefinition.elevated) where one carries the road there
+   * and the truck, at `nearY`, is on it or a little below it (a ramp's top);
+   * one far above it is a bridge it passes under. Allocation-free.
+   */
   groundAt(x: number, z: number, nearY: number): number {
     let ground = this.terrain.heightAt(x, z);
     if (this.deckRoad.length === 0) {
@@ -2152,6 +2179,68 @@ function deckWalls(roads: readonly RoadPath[]): { pieces: WallPiece[]; heights: 
           nz: -rightZ * side,
         });
         heights.push((road.heights[i]! + road.heights[next]!) / 2);
+      }
+    }
+  }
+  return { pieces, heights };
+}
+
+/** The barrier's run stops this far short of a junction or a road's end, meters: the median is open there. */
+const BARRIER_OPEN_METERS = 45;
+/** The barrier's faces stand this far either side of the centreline, meters. */
+const BARRIER_HALF_WIDTH_METERS = 0.3;
+
+/** The runs of every motorway's median barrier: its centreline's samples, but within BARRIER_OPEN_METERS of a junction. */
+function medianBarrierRuns(
+  roads: readonly RoadPath[],
+  openings: readonly { readonly x: number; readonly z: number }[],
+): (readonly [number, number, number])[][] {
+  const runs: (readonly [number, number, number])[][] = [];
+  for (const road of roads) {
+    if (!isMotorway(road.kind, road.widthMeters)) {
+      continue;
+    }
+    let run: (readonly [number, number, number])[] = [];
+    const last = road.closed ? road.pointCount : road.pointCount - 1;
+    for (let row = 0; row <= last; row++) {
+      const i = row % road.pointCount;
+      const x = road.x(i);
+      const z = road.z(i);
+      const open =
+        (!road.closed && (road.distances[i]! < BARRIER_OPEN_METERS || road.lengthMeters - road.distances[i]! < BARRIER_OPEN_METERS)) ||
+        openings.some((opening) => Math.hypot(opening.x - x, opening.z - z) < BARRIER_OPEN_METERS);
+      if (open) {
+        if (run.length > 1) {
+          runs.push(run);
+        }
+        run = [];
+      } else {
+        run.push([x, z, road.heights[i]!]);
+      }
+    }
+    if (run.length > 1) {
+      runs.push(run);
+    }
+  }
+  return runs;
+}
+
+/** Each barrier run as walls: one facing each carriageway, BARRIER_HALF_WIDTH_METERS off the centreline. */
+function barrierWalls(runs: readonly (readonly (readonly [number, number, number])[])[]): { pieces: WallPiece[]; heights: number[] } {
+  const pieces: WallPiece[] = [];
+  const heights: number[] = [];
+  for (const run of runs) {
+    for (let k = 0; k + 1 < run.length; k++) {
+      const [ax, az, ay] = run[k]!;
+      const [bx, bz, by] = run[k + 1]!;
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      const rightX = -(bz - az) / length;
+      const rightZ = (bx - ax) / length;
+      for (const side of [1, -1] as const) {
+        const ox = rightX * BARRIER_HALF_WIDTH_METERS * side;
+        const oz = rightZ * BARRIER_HALF_WIDTH_METERS * side;
+        pieces.push({ a: [ax + ox, az + oz], b: [bx + ox, bz + oz], nx: rightX * side, nz: rightZ * side });
+        heights.push((ay + by) / 2);
       }
     }
   }

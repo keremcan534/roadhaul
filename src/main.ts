@@ -12,6 +12,7 @@ import { applyQualityPreset, DEFAULT_GAME_CONFIG, type CrateTier, type QualityLe
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { Credits } from './data/units';
+import { validateCompanyName } from './domain/company/companyName';
 import type { KnockableKind } from './domain/crash/knockables';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrailer';
@@ -52,6 +53,7 @@ import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
 import { shareFileInBrowser } from './platform/browser/fileShare';
+import { leavePendingBoot, sessionStorageOf, takePendingBoot } from './platform/browser/pendingBoot';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
@@ -98,6 +100,7 @@ import { ParkView } from './presentation/world/ParkView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
 import { DeckView } from './presentation/world/DeckView';
+import { SuspensionBridgeView } from './presentation/world/SuspensionBridgeView';
 import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
 import { RoadsideView } from './presentation/world/RoadsideView';
 import { SceneryView } from './presentation/world/SceneryView';
@@ -121,6 +124,7 @@ import { objectiveText } from './ui/hq/eventText';
 import { HudDock } from './ui/hud/HudDock';
 import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
+import { FerryPanel } from './ui/hud/FerryPanel';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { RolloverPanel } from './ui/hud/RolloverPanel';
 import { GraphicsNotice } from './ui/hud/GraphicsNotice';
@@ -238,6 +242,8 @@ const HQ_TICK_SECONDS = 0.5;
 const FLEET_FAST_FORWARD_SECONDS = 600;
 /** The main menu checks the earnings boost's time left this often, ms. */
 const EARNINGS_BOOST_REFRESH_MS = 15_000;
+/** How long the toast that the ferry is boarding shows before the game starts again across the water. */
+const FERRY_BOARDING_MS = 1_400;
 /** How long the toast that a backup was restored shows before the game starts again with it. */
 const RESTART_AFTER_RESTORE_MS = 1_200;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
@@ -267,7 +273,16 @@ async function start(strings: Strings): Promise<void> {
   const qualityChoice = qualitySetting(query.get('quality'), settings.quality, persistent);
   const device = deviceHints(navigator, gpuName(document));
   const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(device));
-  const config = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
+  const overridden = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
+  // `?map=metropol` founds new companies in that region (a debug switch: to look round it without the ferry).
+  const requestedMap = query.get('map');
+  const config =
+    requestedMap !== null && GAME_CONTENT.maps.some((map) => map.id === requestedMap)
+      ? { ...overridden, newGame: { ...overridden.newGame, startingMapId: requestedMap } }
+      : overridden;
+  // What the last page asked this start to do: go on in the region the company crossed to, or found a new company.
+  const tabStorage = sessionStorageOf(window);
+  const pendingBoot = takePendingBoot(tabStorage);
   const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
   if (!persistent) {
     logger.warn('Storage is unavailable: this game will not be saved after the page closes.');
@@ -385,7 +400,13 @@ async function start(strings: Strings): Promise<void> {
 
   // Behind the main menu the starting truck waits at the start of the map, seen from a circling camera.
   // Starting or continuing a company puts its own truck where it was left.
-  driving.start(config.newGame.startingVehicleId, config.newGame.startingMapId);
+  // The region built: the one asked for, else the saved company's, else the starting region (a new company's).
+  const savedRegion = (() => {
+    const read = session.readSave();
+    return read.ok && content.maps.has(read.value.mapId) ? read.value.mapId : null;
+  })();
+  const bootRegion = pendingBoot?.mapId !== undefined && content.maps.has(pendingBoot.mapId) ? pendingBoot.mapId : (savedRegion ?? config.newGame.startingMapId);
+  driving.start(config.newGame.startingVehicleId, bootRegion);
 
   const renderHost = new RenderHost(canvas, config.rendering);
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
@@ -503,8 +524,9 @@ async function start(strings: Strings): Promise<void> {
     renderHost.precompile();
   }
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
-  // The decks the roads are carried on (overpasses, viaducts): none on a map without them.
+  // The decks the roads are carried on (overpasses, viaducts) and the suspension bridges: none on a map without them.
   new DeckView(renderHost.scene, driving.world);
+  const suspensionBridges = new SuspensionBridgeView(renderHost.scene, driving.world, lampGlows);
   // At night the towns glow on the horizon, over their depots.
   environment.setTowns(driving.world.depots.map((depot) => depot.yard));
   // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
@@ -1125,6 +1147,19 @@ async function start(strings: Strings): Promise<void> {
     }
     refreshHq();
   };
+  // The ferry terminals: the crossing to the other region (the game starts again there, the company carried on).
+  const ferry = new FerryPanel(ui, strings, { driving, missions }, {
+    onTravel: (gate) => {
+      const travelled = session.travel(gate.id);
+      if (!travelled.ok) {
+        toasts.show(strings.t(travelled.error === 'contractUnderWay' ? 'ferry.busy' : 'ferry.failed', { region: strings.t(`region.${gate.toMapId}.name`) }), 'warning');
+        return;
+      }
+      toasts.show(strings.t('ferry.boarding', { region: strings.t(`region.${gate.toMapId}.name`) }), 'success');
+      leavePendingBoot(tabStorage, { continueCompany: true });
+      window.setTimeout(() => window.location.reload(), FERRY_BOARDING_MS);
+    },
+  });
   const restArea = new RestAreaPanel(
     ui,
     strings,
@@ -1410,6 +1445,13 @@ async function start(strings: Strings): Promise<void> {
   let newCompanyStart = HOME_START_ID;
   const newCompany = new NewCompanyDialog(ui, strings, {
     onStart: (companyName) => {
+      if (driving.world.id !== config.newGame.startingMapId) {
+        // A new company starts in the starting region: the game starts again there to found it.
+        if (validateCompanyName(companyName).ok && leavePendingBoot(tabStorage, { mapId: config.newGame.startingMapId, newCompany: { name: companyName, startId: newCompanyStart } })) {
+          window.location.reload();
+          return null;
+        }
+      }
       const founded = session.startNewGame(companyName, newCompanyStart);
       if (!founded.ok) {
         return founded.error;
@@ -2809,6 +2851,7 @@ async function start(strings: Strings): Promise<void> {
         citySigns.setLamps(lamps);
         signBoards.setLamps(lamps);
         windTurbines.setLamps(lamps);
+        suspensionBridges.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
         // The towns' people: fewer out at night and in the rain, their umbrellas up when it rains.
         const night = timeOfDay.weights.night + 0.4 * timeOfDay.weights.twilight;
@@ -2999,6 +3042,8 @@ async function start(strings: Strings): Promise<void> {
         worldMap.frame();
         restArea.visible = simulating;
         restArea.update();
+        ferry.visible = simulating;
+        ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);
         rollover.visible = simulating;
@@ -3082,6 +3127,19 @@ async function start(strings: Strings): Promise<void> {
   }
   loop.start();
   root.dataset.bootState = 'ready';
+  // Asked by the last page: go on with the company that crossed to this region, or found the one named.
+  if (pendingBoot?.continueCompany === true) {
+    const continued = session.continueGame();
+    if (continued.ok) {
+      enterCompany();
+      toasts.show(strings.t('ferry.arrived', { region: strings.t(`region.${driving.world.id}.name`) }), 'success');
+    }
+  } else if (pendingBoot?.newCompany !== undefined) {
+    const founded = session.startNewGame(pendingBoot.newCompany.name, pendingBoot.newCompany.startId);
+    if (founded.ok) {
+      enterCompany();
+    }
+  }
 }
 
 /** Resolves once the next frame is drawn, or after a moment where none is (a hidden page draws no frames). */

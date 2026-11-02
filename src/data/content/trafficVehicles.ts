@@ -2,7 +2,7 @@ import type { TrafficVehicleDefinition } from '../definitions/TrafficVehicleDefi
 
 /**
  * The region's traffic (spec §19): generic, original shapes in everyday
- * colours. Cars are most common; buses are rare.
+ * colours. Cars are most common, yellow taxis among them; buses are rare.
  */
 export const TRAFFIC_VEHICLES: readonly TrafficVehicleDefinition[] = [
   {
@@ -27,6 +27,19 @@ export const TRAFFIC_VEHICLES: readonly TrafficVehicleDefinition[] = [
     accelerationMetersPerSecondSquared: 2.4,
     spawnWeight: 4,
     colors: [0x1f2a44, 0x151719, 0xa9aeb4, 0xf2f2ee, 0x6b1f2a, 0x4a5a6a],
+  },
+  {
+    id: 'city_taxi',
+    kind: 'car',
+    carBody: 'taxi',
+    lengthMeters: 4.8,
+    widthMeters: 1.82,
+    // With the sign on its roof.
+    heightMeters: 1.65,
+    cruiseSpeedFactor: 1.08,
+    accelerationMetersPerSecondSquared: 2.5,
+    spawnWeight: 2,
+    colors: [0xf2c12e, 0xeeb522],
   },
   {
     id: 'minibus',

@@ -1225,6 +1225,24 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   display: none;
 }
 
+/* The ferry terminal's counter (src/ui/hud/FerryPanel.ts): the rest area's, teal like the ferry on the maps, with a line on the crossing. */
+.ferry-panel {
+  border-top-color: #16a99c;
+}
+
+.ferry-panel .rest-area-panel__title {
+  color: #3fd0c2;
+}
+
+.ferry-panel__note {
+  max-width: 44ch;
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 /* Upright phones: below the mission HUD, above the truck. */
 @media (orientation: portrait) {
   .rest-area-panel {

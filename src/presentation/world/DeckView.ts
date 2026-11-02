@@ -124,11 +124,14 @@ function deckRun(
       colors.push(color.r, color.g, color.b);
     }
   };
-  for (let i = from; i < to; i++) {
+  const kept = keptDeckSamples(road, from, to);
+  for (let k = 0; k + 1 < kept.length; k++) {
+    const i = kept[k]!;
+    const j = kept[k + 1]!;
     const [ax, az, arx, arz] = frame(road, i);
-    const [bx, bz, brx, brz] = frame(road, i + 1);
+    const [bx, bz, brx, brz] = frame(road, j);
     const ah = road.heights[i]!;
-    const bh = road.heights[i + 1]!;
+    const bh = road.heights[j]!;
     for (const side of [1, -1] as const) {
       const at = (x: number, z: number, rx: number, rz: number, out: number, y: number): number[] => [x + rx * out * side, y, z + rz * out * side];
       // The fascia, from just under the road's surface to the deck's foot, facing out.
@@ -180,6 +183,11 @@ function deckRun(
     while (i + 1 < to && road.distances[i + 1]! < along) {
       i++;
     }
+    // A suspension bridge's main span hangs from its cables: no pier between its towers.
+    const towers = road.suspension?.towersAtMeters;
+    if (towers !== undefined && along > towers[0] - PIER_SPACING_METERS / 2 && along < towers[1] + PIER_SPACING_METERS / 2) {
+      continue;
+    }
     const [x, z, rx, rz] = frame(road, i);
     const h = road.heightAtDistance(along) - DECK_DEPTH_METERS;
     const offsets = road.widthMeters >= TWIN_PIERS_FROM_METERS ? [-half * 0.55, half * 0.55] : [0];
@@ -205,6 +213,54 @@ function deckRun(
     }
   }
   return parts;
+}
+
+/** A deck's sample is left out where the road runs on within this many meters of straight and level through it. */
+const DECK_STRAIGHT_METERS = 0.02;
+
+/**
+ * The samples from `from` to `to` a deck is drawn through: both ends, and
+ * between them those it bends or changes its climb at (beyond
+ * DECK_STRAIGHT_METERS): a straight viaduct on the level is a few long
+ * pieces, a curve or a crest every sample.
+ */
+export function keptDeckSamples(road: RoadPath, from: number, to: number): number[] {
+  const kept = [from];
+  let anchor = from;
+  for (let end = from + 2; end <= to; end++) {
+    if (!straightRun(road, anchor, end)) {
+      anchor = end - 1;
+      kept.push(anchor);
+    }
+  }
+  if (to > from) {
+    kept.push(to);
+  }
+  return kept;
+}
+
+/** Whether the road's samples between `a` and `b` lie on the straight line between them, in plan and in height. */
+function straightRun(road: RoadPath, a: number, b: number): boolean {
+  const ax = road.x(a);
+  const az = road.z(a);
+  const dx = road.x(b) - ax;
+  const dz = road.z(b) - az;
+  const length = Math.hypot(dx, dz);
+  const span = road.distances[b]! - road.distances[a]!;
+  if (length < 1e-9 || span < 1e-9) {
+    return false;
+  }
+  const ah = road.heights[a]!;
+  const bh = road.heights[b]!;
+  for (let i = a + 1; i < b; i++) {
+    const px = road.x(i) - ax;
+    const pz = road.z(i) - az;
+    const t = (road.distances[i]! - road.distances[a]!) / span;
+    if (Math.abs(px * dz - pz * dx) / length > DECK_STRAIGHT_METERS || Math.abs(road.heights[i]! - (ah + (bh - ah) * t)) > DECK_STRAIGHT_METERS) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Sample `i`'s position and the unit vector to the right of the road's run there. */

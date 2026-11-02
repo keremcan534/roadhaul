@@ -55,6 +55,7 @@ export function roofStyleOf(box: BuildingObstacle, random: SeededRandom): RoofSt
     case 'apartments':
       return roll < 0.2 ? 'hip' : 'flat';
     case 'offices':
+    case 'towers':
       return 'flat';
     case 'harbour':
       return roll < 0.6 ? 'gable' : 'flat';

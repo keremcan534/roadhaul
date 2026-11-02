@@ -329,6 +329,19 @@ Status: ✅ implemented · 🧩 placeholder (structure only, content or tuning p
 | Back button rules | ui | `src/ui/menus/backAction.ts` | What back does on each screen: close a dialog or the company panel, pause or resume, put the app away | GameState | none |
 | APK build | CI | `.github/workflows/ci.yml` (job `android`) | A debug APK for every pull request, kept 14 days, with Google's test ads | JDK 21, Android SDK | none |
 
+### Heights, big roads and a second region (the owner's request between steps 28 and 29)
+
+| System | Layer | Location | Responsibility | Depends on | Events |
+|---|---|---|---|---|---|
+| Terrain | domain | `src/domain/world/terrain.ts`, `terrainGrading.ts` | The ground's height on a map with hills (`MapDefinition.terrain`): an 8 m grid read bilinearly (`TerrainGrid`, `heightAt`, `gradeAt`); the roads graded through it biggest first (8% at most, smoothed over 50 m, a road's own `profile` anchors kept), the ground cut and filled under them and blended back over 28 m; `FLAT_TERRAIN` everywhere else | MapDefinition, RoadPath | none |
+| Levels: decks, motorways, junctions | domain | `RoadPath.heights`/`elevated`, `DrivingWorld.groundAt`, `lanes.ts`, `RoadNetwork` | A road's height along it; stretches carried on a deck (`elevated`: the ground stays below, other roads pass under); the ground or deck a truck stands on (`groundAt`, the nearest level within 2 m up); obstacles and walls only on the truck's level (4 m); junctions only where the roads meet within 1.5 m; a highway 22 m and wider is a motorway: three lanes each way, a median with concrete barriers (open by junctions) | Terrain | none |
+| Hills under the truck and the traffic | domain, systems | `VehicleDynamics`, `DrivingService` (`BodyPose.y`, `grade`), `semiTrailer.ts`, `TrafficSimulation` | Gravity down a slope, a hill-start hold at a standstill; the truck, its trailer and the traffic at their ground's height, pitched to its grade; traffic on another level ignored | DrivingWorld | none |
+| TerrainGround | presentation | `src/presentation/world/TerrainGround.ts` | The ground of a map with hills: the whole map at 80 m and a square of 1 km round the camera at 8 m (two draw calls), slopes lit by a fixed sun, baked; flat blocks (32 m near, 160 m far) drawn as one quad | Terrain, three | none |
+| DeckView | presentation | `src/presentation/world/DeckView.ts` | The decks: fascia, underside, parapets, and piers every 32 m off the roads under them (none in a suspension bridge's main span); one mesh, the straight level stretches in long pieces (`keptDeckSamples`) | DrivingWorld, three | none |
+| SuspensionBridgeView | presentation | `src/presentation/world/SuspensionBridgeView.ts` | A road's suspension bridge (`RoadDefinition.suspension`): two towers, main cables to anchorages, hangers; the towers' red warning lamps at night; one mesh for all of them | DrivingWorld, LampGlows, three | none |
+| metropol | data | `src/data/content/metropolMap.ts` | The second region, 8.4 km across, on a strait 520 m wide: Halverton's grid of glass towers round a big park, Northgate's flats, Ironquay's port, Eastmere's offices, Ridgemont up the mountain pass through the pines; the M1 motorway on a viaduct over the city and across the strait on a suspension bridge 45 m up, the lower south bridge, the ferry to North Valley; nine contracts of its own (`missions.ts`) | MapDefinition | none |
+| Region travel | systems, platform, ui | `GameSessionService.travel`, `src/platform/browser/pendingBoot.ts`, `src/ui/hud/FerryPanel.ts`, `main.ts` | A ferry terminal (`MapDefinition.gates`): standing at it, the panel offers the crossing (not with a contract under way); the company is saved on the other map at its terminal and the game starts again there (the tab's session storage says to continue at once); a new company founded on another map starts again in the starting region. The fleet and the rivals plan their contracts on the region being driven (`DepotRoads`) | GameSessionService, DrivingService, MissionService | none (saves) |
+
 ### Ads and purchases (roadmap NEXT-8)
 
 | System | Layer | Location | Responsibility | Depends on | Events |
@@ -346,7 +359,7 @@ The system names follow the spec. Placement follows `ARCHITECTURE.md`.
 
 | System | Layer(s) | Step | Responsibility |
 |---|---|---|---|
-| Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21) once the world has more than one |
+| Region streaming | data, presentation | ⬜ later | Load regions on demand (spec §21): the two regions are built only when driven (one `DrivingWorld` at a time, the page started again to change), but both maps' data ship in the bundle |
 | Road events | data, domain, systems | ⬜ later | Random road events: road works, jams, detours (spec §24) |
 | More settings, more languages | ui | ✅ | Language in Settings (a list, kept on the device) and ten languages |
 

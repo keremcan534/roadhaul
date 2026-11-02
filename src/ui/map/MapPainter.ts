@@ -57,6 +57,7 @@ const COLORS = {
   delivery: '#3ddc84',
   depot: '#c9d3dc',
   restArea: '#4aa3ff',
+  ferry: '#16a99c',
   truck: '#ffffff',
   truckEdge: '#0d1116',
   fleet: '#ffb020',
@@ -109,6 +110,7 @@ export class MapPainter {
   private readonly pointBox = { minX: 0, maxX: 0, minZ: 0, maxZ: 0 };
   private readonly cityNames: readonly string[];
   private readonly villageNames: readonly string[];
+  private readonly ferryNames: readonly string[];
   private readonly pickupText: string;
   private readonly deliveryText: string;
   /** Each driver's initials, for their truck's mark on the full map. */
@@ -176,6 +178,7 @@ export class MapPainter {
     });
     this.cityNames = sketch.cities.map((city) => strings.cityName(city.cityId));
     this.villageNames = sketch.villages.map((village) => strings.villageName(village.villageId));
+    this.ferryNames = sketch.ferries.map((ferry) => strings.t('ferry.title', { region: strings.t(`region.${ferry.toMapId}.name`) }));
     this.pickupText = strings.t('map.pickup');
     this.deliveryText = strings.t('map.delivery');
     this.driverInitials = new Map(
@@ -327,6 +330,34 @@ export class MapPainter {
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.fillText('P', x, y + 0.5);
+      }
+    }
+    // The ferry terminals: a boat on a teal disc, and where it goes on the full map.
+    for (let i = 0; i < sketch.ferries.length; i++) {
+      const ferry = sketch.ferries[i]!;
+      if (view.sees(this.around(ferry.x, ferry.z), 12)) {
+        const x = view.screenX(ferry.x, ferry.z);
+        const y = view.screenY(ferry.x, ferry.z);
+        disc(context, x, y, 9, COLORS.ferry);
+        context.fillStyle = '#ffffff';
+        context.beginPath();
+        context.moveTo(x - 5.5, y);
+        context.lineTo(x + 5.5, y);
+        context.lineTo(x + 3.5, y + 3.5);
+        context.lineTo(x - 3.5, y + 3.5);
+        context.closePath();
+        context.rect(x - 2.5, y - 4, 4, 3);
+        context.fill();
+        if (options.labels) {
+          context.font = SMALL_FONT;
+          context.textAlign = 'center';
+          context.textBaseline = 'middle';
+          context.lineWidth = 3;
+          context.strokeStyle = COLORS.labelEdge;
+          context.strokeText(this.ferryNames[i]!, x, y + 18);
+          context.fillStyle = COLORS.ferry;
+          context.fillText(this.ferryNames[i]!, x, y + 18);
+        }
       }
     }
     if (options.labels) {

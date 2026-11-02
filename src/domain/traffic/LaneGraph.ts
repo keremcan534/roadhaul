@@ -1,6 +1,6 @@
 import type { RoadKind } from '../../data/definitions/MapDefinition';
 import type { DrivingWorld } from '../world/DrivingWorld';
-import { laneOffsetMeters, lanesPerDirection } from '../world/lanes';
+import { laneOffsetMeters, lanesPerDirection, laneWidthMeters } from '../world/lanes';
 import type { RoadPath } from '../world/RoadPath';
 
 /**
@@ -259,8 +259,11 @@ export class LaneGraph {
           return;
         }
         if (b.direction === a.direction) {
-          this.parallel[i] = j;
-        } else if (lanesPerDirection(world.roads[a.road]!.kind) === 1) {
+          // The lane to change into: the one left of the rightmost lane, else the one right of it.
+          if (b.laneIndex === (a.laneIndex === 0 ? 1 : a.laneIndex - 1)) {
+            this.parallel[i] = j;
+          }
+        } else if (lanesPerDirection(world.roads[a.road]!.kind, world.roads[a.road]!.widthMeters) === 1) {
           this.opposite[i] = j;
         }
       });
@@ -425,7 +428,7 @@ export class LaneGraph {
 }
 
 function laneWidthOf(road: RoadPath): number {
-  return road.widthMeters / 2 / lanesPerDirection(road.kind);
+  return laneWidthMeters(road.kind, road.widthMeters);
 }
 
 /** Junctions and turning circles, with how far short of each the lanes stop. */
@@ -513,7 +516,7 @@ function buildLanes(
       const endNode = road.closed && cuts.length === 0 ? -1 : nodeAt(to);
       const stretchLength = sampleDistance(road, to) - sampleDistance(road, from);
       for (const direction of [1, -1]) {
-        for (let laneIndex = 0; laneIndex < lanesPerDirection(road.kind); laneIndex++) {
+        for (let laneIndex = 0; laneIndex < lanesPerDirection(road.kind, road.widthMeters); laneIndex++) {
           const offset = laneOffsetMeters(road.kind, road.widthMeters, laneIndex);
           const clearanceAt = (node: number): number =>
             node < 0 ? 0 : nodes[node]!.deadEnd === null ? nodes[node]!.clearance : uTurnClearance(nodes[node]!, offset);

@@ -92,6 +92,9 @@ export interface GameSessionDependencies {
   readonly logger: Logger;
 }
 
+/** Why the company cannot travel: nothing loaded, a contract under way, no such gate, or the save could not be written. */
+export type TravelProblem = 'noCompany' | 'contractUnderWay' | 'unknownGate' | 'storageFailed';
+
 /**
  * The company being played (spec §41 onboarding, §32 saving): starts a new
  * game or continues the saved one, hands each part of the save to the
@@ -268,6 +271,45 @@ export class GameSessionService {
     this.deps.rivals.catchUp(awaySeconds);
     this.deps.fleet.catchUp(awaySeconds);
     return ok(undefined);
+  }
+
+  /**
+   * Takes the company to another region through gate `gateId` of the map it
+   * is on (a ferry): the game is saved with the truck at the gate it
+   * arrives at on the other map, then closed (nothing saves over it), for
+   * the game to start again there. Not while a contract is under way (its
+   * depots are in this region), nor while nothing is loaded.
+   */
+  travel(gateId: string): Result<{ readonly mapId: string }, TravelProblem> {
+    const { driving, content, missions, saves } = this.deps;
+    if (!this.active) {
+      return err('noCompany');
+    }
+    if (missions.active !== null) {
+      return err('contractUnderWay');
+    }
+    const gate = driving.world.gates.find((candidate) => candidate.id === gateId);
+    if (gate === undefined || !content.maps.has(gate.toMapId)) {
+      return err('unknownGate');
+    }
+    const arrival = content.maps.get(gate.toMapId).gates?.find((candidate) => candidate.id === gate.toGateId);
+    if (arrival === undefined) {
+      return err('unknownGate');
+    }
+    const snapshot = this.snapshot();
+    const saved = saves.save({
+      ...snapshot,
+      world: {
+        mapId: gate.toMapId,
+        truck: { x: arrival.arrival.x, z: arrival.arrival.z, headingRadians: (arrival.arrival.headingDegrees * Math.PI) / 180 },
+      },
+    });
+    if (!saved.ok) {
+      return err('storageFailed');
+    }
+    this.active = false;
+    this.deps.logger.info(`Travelling to ${gate.toMapId} through ${gate.id}.`);
+    return ok({ mapId: gate.toMapId });
   }
 
   /** Writes the current game. Does nothing (successfully) before a game is loaded. */

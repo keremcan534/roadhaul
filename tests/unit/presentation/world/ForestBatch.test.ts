@@ -1,6 +1,6 @@
 import { BoxGeometry, Color, Frustum, Group, InstancedMesh, Matrix4, MeshBasicMaterial, PerspectiveCamera, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { ForestBatch } from '../../../../src/presentation/world/ForestBatch';
+import { ForestBatch, TREE_DETAIL } from '../../../../src/presentation/world/ForestBatch';
 
 /** A forest tile at (x, z): `count` crowns and as many shadows, in a row, their colours by index. */
 function tile(x: number, z: number, count: number): Group {
@@ -11,6 +11,7 @@ function tile(x: number, z: number, count: number): Group {
   crowns.name = 'forest:crowns:pine';
   const shadows = new InstancedMesh(geometry, material, count);
   shadows.name = 'forest:shadows';
+  shadows.userData[TREE_DETAIL] = true;
   for (let i = 0; i < count; i++) {
     const matrix = new Matrix4().makeTranslation(x + i, 0, z);
     crowns.setMatrixAt(i, matrix);

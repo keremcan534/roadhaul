@@ -4,8 +4,8 @@ import { KNOCKABLES, knockableCode } from '../../../../src/domain/crash/knockabl
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
-import { KERB_HEIGHT_METERS } from '../../../../src/domain/world/townscape';
-import { SceneryView } from '../../../../src/presentation/world/SceneryView';
+import { KERB_HEIGHT_METERS, OUTLINE_ROW } from '../../../../src/domain/world/townscape';
+import { keptSidewalkRows, SceneryView } from '../../../../src/presentation/world/SceneryView';
 import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
 import { mapFixture } from '../../../support/contentFixtures';
 import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
@@ -348,5 +348,41 @@ describe('SceneryView', () => {
 
     expect(scene.children).toHaveLength(0);
     expect([...resources].filter((resource) => !disposed.has(resource))).toEqual([]);
+  });
+});
+
+describe('keptSidewalkRows', () => {
+  /** An outline (along, kerb x, z, back x, z per row) every 2 m along `centre`, the kerb 1 m off it and the back 3 m. */
+  const outline = (rows: number, centre: (along: number) => readonly [number, number, number, number]): Float64Array => {
+    const values = new Float64Array(rows * OUTLINE_ROW);
+    for (let row = 0; row < rows; row++) {
+      const [x, z, acrossX, acrossZ] = centre(row * 2);
+      values.set([row * 2, x + acrossX, z + acrossZ, x + acrossX * 3, z + acrossZ * 3], row * OUTLINE_ROW);
+    }
+    return values;
+  };
+
+  it('draws a straight pavement through its two ends only', () => {
+    const straight = outline(41, (along) => [10, along, 1, 0]);
+    expect(keptSidewalkRows(straight, 0, 40)).toEqual([0, 40]);
+  });
+
+  it('keeps the rows round a corner, where the kerb bends', () => {
+    // 20 m straight, then a quarter turn of 12 m radius, then straight again.
+    const bend = outline(41, (along) => {
+      if (along <= 20) {
+        return [0, along, 1, 0];
+      }
+      const angle = Math.min(Math.PI / 2, (along - 20) / 12);
+      const extra = Math.max(0, along - 20 - (12 * Math.PI) / 2);
+      return [-12 + 12 * Math.cos(angle) - extra, 20 + 12 * Math.sin(angle), Math.cos(angle), Math.sin(angle)];
+    });
+    const kept = keptSidewalkRows(bend, 0, 40);
+    expect(kept[0]).toBe(0);
+    expect(kept[kept.length - 1]).toBe(40);
+    // None left out on the straight before the turn but its end; most kept round it.
+    expect(kept[1]).toBeGreaterThanOrEqual(9);
+    expect(kept.filter((row) => row > 10 && row < 20).length).toBeGreaterThan(5);
+    expect(kept.length).toBeLessThan(30);
   });
 });

@@ -54,6 +54,9 @@ const BUS_DOOR = 0x2a3a48;
 const SIGN = 0x121212;
 /** Number plates: plain and light, without letters. */
 const PLATE = 0xe4e4dc;
+/** A taxi's roof sign, and how tall it stands on the roof. */
+const TAXI_SIGN = 0xf7ecc0;
+const TAXI_SIGN_METERS = 0.17;
 /** A lorry's white box, its light grey ribs and rails, and the amber markers along its sides, lit at night. */
 const BOX_WHITE = 0xecece6;
 const RIB = 0xc4c8cc;
@@ -639,6 +642,7 @@ const CAR_BACKS: Readonly<
 > = {
   hatchback: { glassFoot: 0.26, glassRise: 0.04, roofEdge: 0.92, roof: 1.2, pillar: 0.2, door: 0.7, axle: 0.82, tailLamps: 0.74 },
   saloon: { glassFoot: 1.02, glassRise: 0.07, roofEdge: 1.5, roof: 1.78, pillar: 0.12, door: 1.25, axle: 0.95, tailLamps: 0.72 },
+  taxi: { glassFoot: 1.02, glassRise: 0.07, roofEdge: 1.5, roof: 1.78, pillar: 0.12, door: 1.25, axle: 0.95, tailLamps: 0.72 },
 };
 
 /**
@@ -650,8 +654,10 @@ const CAR_BACKS: Readonly<
  * them; the doors' lines and handles, the grille and the air intake in
  * bumpers of the body's colour, plates and mirrors.
  */
-function carShape(length: number, width: number, height: number, body: TrafficCarBody): VehicleShape {
+function carShape(length: number, width: number, overallHeight: number, body: TrafficCarBody): VehicleShape {
   const back = CAR_BACKS[body];
+  // A taxi's height counts its roof sign.
+  const height = overallHeight - (body === 'taxi' ? TAXI_SIGN_METERS : 0);
   const front = length / 2;
   const wheel = 0.31;
   const axles = [-front + back.axle, front - 0.8 - (length - 4.3) / 4];
@@ -659,7 +665,7 @@ function carShape(length: number, width: number, height: number, body: TrafficCa
   const waist = 0.9;
   // The tail: a hatch's squared-off end, or a saloon's boot lid over its lamps.
   const tail: [number, number][] =
-    body === 'saloon'
+    body !== 'hatchback'
       ? [
           [-front + back.glassFoot, waist + back.glassRise - 0.02],
           [-front + 0.3, waist + 0.1],
@@ -715,6 +721,10 @@ function carShape(length: number, width: number, height: number, body: TrafficCa
     box(0.5, 0.11, 0.02, 0, 0.56, -front - 0.01, PLATE),
     ...wheels(width, wheel, axles),
   ];
+  if (body === 'taxi') {
+    // The taxi's sign across the middle of its roof.
+    parts.push(box(0.64, TAXI_SIGN_METERS, 0.26, 0, height + TAXI_SIGN_METERS / 2, (back.roof - 2.35) / 2, TAXI_SIGN));
+  }
   for (const side of [1, -1]) {
     const glass = side * (cabinWidth / 2 + 0.006);
     const skin = side * (width / 2 + 0.004);

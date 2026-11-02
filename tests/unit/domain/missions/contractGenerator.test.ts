@@ -8,7 +8,10 @@ import {
 } from '../../../../src/data/definitions/MissionDefinition';
 import { generateContracts, type ContractMarket } from '../../../../src/domain/missions/contractGenerator';
 
-const { cities, cargo, vehicles } = GAME_CONTENT;
+const { cargo, vehicles } = GAME_CONTENT;
+/** The cities with a depot on the starting map (North Valley's): the market the contracts below are dealt on. */
+const startingMap = GAME_CONTENT.maps[0]!;
+const cities = GAME_CONTENT.cities.filter((city) => startingMap.depots.some((depot) => depot.cityId === city.id));
 /** Road distances between the towns' bays, as on the shipped map. */
 const DISTANCES: Readonly<Record<string, number>> = {
   'city_a:city_b': 4390,

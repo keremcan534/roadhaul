@@ -36,6 +36,8 @@ import { fractalNoise } from '../textures/noise';
 import type { PixelImage } from '../textures/pixelImage';
 import {
   asphaltImage,
+  glassFacadeImage,
+  glassWindowLightsImage,
   grassImage,
   gravelImage,
   meadowImage,
@@ -52,6 +54,7 @@ import {
 import { toTexture } from '../textures/toTexture';
 import {
   chimneyStackGeometry,
+  coloured,
   flatRoofGeometry,
   formGeometry,
   frontDoorGeometry,
@@ -63,12 +66,13 @@ import {
   rooftopGeometry,
   shopfrontGeometry,
 } from './buildingParts';
+import { isMotorway, laneWidthMeters, medianWidthMeters } from '../../domain/world/lanes';
 import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
-import { ForestBatch } from './ForestBatch';
+import { ForestBatch, TREE_DETAIL, TREE_FAR } from './ForestBatch';
 import { TerrainGround, type GroundWindow } from './TerrainGround';
 import type { Terrain } from '../../domain/world/terrain';
 import { FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
@@ -180,7 +184,13 @@ const TREE_TILE_METERS = 500;
  */
 const TREE_DETAIL_METERS = 450;
 
+
 const UP = new Vector3(0, 1, 0);
+/** A glass tower's tints, multiplying its curtain wall's picture: blue-green, grey, a warmer bronze. */
+const GLASS_TINTS = [0xc4dce8, 0xb4ccd8, 0xd2dade, 0xa8c4cf, 0xd8d0c4, 0xbcc8d6] as const;
+/** Towers this tall and taller step back into a crown with a mast. */
+const CROWN_FROM_METERS = 110;
+const MAST_COLOR = 0x9aa0a6;
 /** On a map's hills, what stands on the ground has its foot this far into it (a slope's low side would show daylight). */
 const SLOPE_FOOT_METERS = 0.3;
 /** …and a flat decal lies this far over the ground's height at its middle. */
@@ -457,6 +467,8 @@ export class TrackView {
   private readonly culling = new FarCulling();
   /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
   private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
+  /** The forest kinds' crowns near and far, in pairs: each far one shown while its near one is culled. */
+  private readonly treeLods: InstancedMesh[] = [];
   /** The forest's tiles in view, drawn a kind of mesh at a time (ForestBatch); null without trees. */
   private forestBatch: ForestBatch | null = null;
   /** The ground's height (flat on most maps): what stands on it stands at its height. */
@@ -497,7 +509,7 @@ export class TrackView {
         forest.add(tile);
         this.culling.add(tile);
         for (const mesh of tile.children) {
-          if (mesh.name === 'forest:shadows' || mesh.name === 'forest:trunks:inner') {
+          if (mesh.userData[TREE_DETAIL] === true) {
             this.treeDetail.add(mesh);
           }
         }
@@ -546,6 +558,9 @@ export class TrackView {
     this.terrainGround?.update(x, z);
     this.culling.update(x, z, view);
     this.treeDetail.update(x, z);
+    for (let i = 0; i < this.treeLods.length; i += 2) {
+      this.treeLods[i + 1]!.visible = !this.treeLods[i]!.visible;
+    }
     this.forestBatch?.update(eyeView);
     this.townDetail.update(x, z, view);
   }
@@ -913,6 +928,10 @@ export class TrackView {
         pine: this.track(innerPineCrownGeometry()),
         broadleaf: this.track(innerBroadleafCrownGeometry()),
       },
+      farCrowns: {
+        pine: this.track(farPineCrownGeometry()),
+        broadleaf: this.track(farBroadleafCrownGeometry()),
+      },
       crownMaterials: {
         evergreen: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }), false)),
         deciduous: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }), true)),
@@ -1033,6 +1052,26 @@ export class TrackView {
       }
       mesh.computeBoundingSphere();
     }
+    shadows.userData[TREE_DETAIL] = true;
+    innerTrunks.userData[TREE_DETAIL] = true;
+    // The forest kinds' crowns past TREE_DETAIL_METERS: simpler ones on the same trees (their instances shared).
+    for (const [key, crown] of crowns) {
+      const kind = key.split(':')[0] as TreeKind;
+      if (crown.count === 0 || (kind !== 'pine' && kind !== 'broadleaf')) {
+        continue;
+      }
+      const far = this.track(new InstancedMesh(parts.farCrowns[kind], crown.material, 0));
+      far.name = `forest:crowns:${kind}:far`;
+      far.instanceMatrix = crown.instanceMatrix;
+      far.instanceColor = crown.instanceColor;
+      far.count = crown.count;
+      far.computeBoundingSphere();
+      far.userData[TREE_FAR] = true;
+      far.visible = false;
+      crown.userData[TREE_DETAIL] = true;
+      this.treeLods.push(crown, far);
+      meshes.push(far);
+    }
     return meshes;
   }
 
@@ -1059,6 +1098,7 @@ export class TrackView {
     const warehouses = layer();
     const tiledRoofs = layer();
     const details = layer();
+    const glass = layer();
     const shadows = layer();
     const random = new SeededRandom(311);
     // The fronts' shops, doors and the chimneys draw their own numbers: the roofs' are the same as ever.
@@ -1084,7 +1124,16 @@ export class TrackView {
       const small = width * depth < WAREHOUSE_MIN_AREA;
       // A town's district: windows all round, but the harbour's sheds; anywhere else, big blocks are warehouses.
       const windowed = box.district === undefined ? small || box.shops === true : box.district !== 'harbour';
-      if (block) {
+      if (block && box.district === 'towers') {
+        // A tower in glass; the tallest step back into a crown, a mast on top.
+        const glassTint = new Color(GLASS_TINTS[index % GLASS_TINTS.length]!);
+        add(glass, wallsGeometry(box, glassTint, index));
+        if (box.heightMeters >= CROWN_FROM_METERS) {
+          for (const part of crownGeometry(box, glassTint, index, dressing)) {
+            add(part.layer === 'glass' ? glass : details, part.geometry);
+          }
+        }
+      } else if (block) {
         add(windowed ? offices : warehouses, wallsGeometry(box, tint, index));
         for (const part of plinthGeometry(box)) {
           add(details, part);
@@ -1153,6 +1202,7 @@ export class TrackView {
       [shadows, this.shadowMaterial(softBoxShadowImage(), 0.38, 'building'), 'buildings:shadows'],
       [offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:offices'],
       [warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:warehouses'],
+      [glass, this.facadeMaterial(glassFacadeImage(), glassWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:glass'],
       [
         tiledRoofs,
         this.track(
@@ -1410,6 +1460,16 @@ function innerPineCrownGeometry(): BufferGeometry {
   return crown;
 }
 
+/** A pine's crown far off (past TREE_DETAIL_METERS): one open cone over both an inner pine's tiers. */
+function farPineCrownGeometry(): BufferGeometry {
+  return new ConeGeometry(2.1, 5.8, 6, 1, true).translate(0, 2.7, 0);
+}
+
+/** A broadleaf's crown far off: one faceted blob round both an inner broadleaf's. */
+function farBroadleafCrownGeometry(): BufferGeometry {
+  return blobCrown([[0.1, 2.2, -0.05, 2.4]]);
+}
+
 /** An inner broadleaf's crown: two faceted blobs, the full crown's cluster in outline. */
 function innerBroadleafCrownGeometry(): BufferGeometry {
   return blobCrown([
@@ -1440,6 +1500,8 @@ interface TreeParts {
   readonly crowns: Readonly<Record<TreeKind, BufferGeometry>>;
   /** The inner trees' crowns: the same shape, in a few faces (their shape is seen over the edge's crowns). */
   readonly innerCrowns: Readonly<Record<'pine' | 'broadleaf', BufferGeometry>>;
+  /** The forest kinds' crowns past TREE_DETAIL_METERS, edge and inner alike: one cone, one blob. */
+  readonly farCrowns: Readonly<Record<'pine' | 'broadleaf', BufferGeometry>>;
   /** The crowns of trees in leaf all year, and of those that lose their leaves (they follow the season). */
   readonly crownMaterials: { readonly evergreen: Material; readonly deciduous: Material };
   readonly shadow: BufferGeometry;
@@ -1561,7 +1623,52 @@ function broadleafCrownGeometry(): BufferGeometry {
  * tile picked by the building's `index` and side: the facade looks the
  * same, but the pattern of windows lit at night differs from wall to wall.
  */
-function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): BufferGeometry {
+/**
+ * A tall tower's top (CROWN_FROM_METERS and up): a narrower crown of glass
+ * stepped back from its walls, its parapet, and a mast on it; some carry a
+ * second, smaller step. The glass parts for the glass layer, the rest for
+ * the details'.
+ */
+function crownGeometry(
+  box: BuildingObstacle,
+  tint: Color,
+  index: number,
+  random: SeededRandom,
+): { readonly layer: 'glass' | 'details'; readonly geometry: BufferGeometry }[] {
+  const parts: { layer: 'glass' | 'details'; geometry: BufferGeometry }[] = [];
+  let base = box;
+  const steps = random.next() < 0.45 ? 2 : 1;
+  for (let step = 0; step < steps; step++) {
+    const width = base.maxX - base.minX;
+    const depth = base.maxZ - base.minZ;
+    const inset = Math.min(width, depth) * random.range(0.12, 0.2);
+    const rise = box.heightMeters * random.range(0.06, 0.11);
+    const crown: BuildingObstacle = {
+      ...base,
+      minX: base.minX + inset,
+      maxX: base.maxX - inset,
+      minZ: base.minZ + inset,
+      maxZ: base.maxZ - inset,
+      heightMeters: base.heightMeters + rise,
+    };
+    parts.push({ layer: 'glass', geometry: wallsGeometry(crown, tint, index + step + 1, base.heightMeters) });
+    for (const geometry of flatRoofGeometry(crown)) {
+      parts.push({ layer: 'details', geometry });
+    }
+    base = crown;
+  }
+  // The mast.
+  const x = (base.minX + base.maxX) / 2;
+  const z = (base.minZ + base.maxZ) / 2;
+  const mast = box.heightMeters * random.range(0.08, 0.18);
+  parts.push({
+    layer: 'details',
+    geometry: coloured(new CylinderGeometry(0.25, 0.6, mast, 6).translate(x, base.heightMeters + mast / 2, z), MAST_COLOR),
+  });
+  return parts;
+}
+
+function wallsGeometry(box: BuildingObstacle, tint: Color, index: number, from = 0): BufferGeometry {
   const corners = [
     [box.minX, box.maxZ],
     [box.maxX, box.maxZ],
@@ -1581,7 +1688,7 @@ function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): Buffe
     const nx = -(bz - az) / length;
     const nz = (bx - ax) / length;
     const base = positions.length / 3;
-    positions.push(ax, 0, az, bx, 0, bz, bx, height, bz, ax, height, az);
+    positions.push(ax, from, az, bx, from, bz, bx, height, bz, ax, height, az);
     for (let i = 0; i < 4; i++) {
       normals.push(nx, 0, nz);
       colors.push(tint.r, tint.g, tint.b);
@@ -1589,7 +1696,7 @@ function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): Buffe
     const u0 = (index * 3 + side) % WINDOW_LIGHT_TILES;
     const v0 = (index + side * 2) % WINDOW_LIGHT_TILES;
     const u1 = u0 + length / FACADE_TILE_WIDTH;
-    const v1 = v0 + height / FACADE_TILE_HEIGHT;
+    const v1 = v0 + (height - from) / FACADE_TILE_HEIGHT;
     uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   });
@@ -1745,8 +1852,8 @@ function stripGeometry(
  * Where a road's lines are painted, meters from its centreline (positive to
  * the right). Streets and the ring road have edge lines and a dashed centre
  * line; the highway has two lanes each way, a double centre line and dashed
- * lane lines; country roads only a dashed centre line; the lanes off them
- * none.
+ * lane lines (a motorway three, and edge lines along its median); country
+ * roads only a dashed centre line; the lanes off them none.
  */
 function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; readonly dashed: readonly number[] } {
   const edge = road.widthMeters / 2 - EDGE_LINE_INSET;
@@ -1755,6 +1862,16 @@ function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; read
     case 'ringRoad':
       return { solid: [-edge, edge], dashed: [0] };
     case 'highway': {
+      if (isMotorway(road.kind, road.widthMeters)) {
+        // A motorway: edge lines along its median either side of the barrier, three lanes each way.
+        const median = medianWidthMeters(road.kind, road.widthMeters) / 2 + EDGE_LINE_INSET;
+        const lane = laneWidthMeters(road.kind, road.widthMeters);
+        const inner = medianWidthMeters(road.kind, road.widthMeters) / 2;
+        return {
+          solid: [-edge, -median, median, edge],
+          dashed: [-(inner + lane), -(inner + 2 * lane), inner + lane, inner + 2 * lane],
+        };
+      }
       const lane = road.widthMeters / 4;
       return { solid: [-edge, -0.15, 0.15, edge], dashed: [-lane, lane] };
     }

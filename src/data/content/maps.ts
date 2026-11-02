@@ -1,4 +1,5 @@
 import type { MapDefinition } from '../definitions/MapDefinition';
+import { METROPOL_MAP } from './metropolMap';
 
 /**
  * The region (spec §20, roadmap step 21): four original towns joined by the
@@ -932,6 +933,16 @@ export const MAPS: readonly MapDefinition[] = [
       { id: 'southmoor', x: 250, z: -3250, headingDegrees: 90, houses: 8, green: true },
     ],
     // On A's high street, in the lane heading south past the home depot (traffic keeps right).
+    // The ferry to Metropol leaves from the end of the Gull Point road.
+    gates: [
+      {
+        id: 'gull_point_ferry',
+        area: { x: -2560, z: -2090, headingDegrees: 53, lengthMeters: 40, widthMeters: 30 },
+        toMapId: 'metropol',
+        toGateId: 'metropol_ferry',
+        arrival: { x: -2520, z: -2060, headingDegrees: 53 },
+      },
+    ],
     spawn: { x: -1702.5, z: -600, headingDegrees: 0 },
     // Street lamps light the four towns' streets and B's ring road, on alternate sides; the towns have their
     // pavements and street furniture, the country its power lines, walls, rocks, herds and planted trees, and
@@ -946,4 +957,5 @@ export const MAPS: readonly MapDefinition[] = [
       sideRoadsPerKilometer: 2,
     },
   },
+  METROPOL_MAP,
 ];

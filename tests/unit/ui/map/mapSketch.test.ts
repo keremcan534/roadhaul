@@ -101,9 +101,10 @@ describe('sketchWorld', () => {
     expect(drawn).toBeLessThan(sampled / 3);
   });
 
-  it('has the depots, the rest area and a name for each city near its depot', () => {
+  it('has the depots, the rest area, the ferry and a name for each city near its depot', () => {
     expect(sketch.depots.map((depot) => depot.id)).toEqual(world.depots.map((depot) => depot.id));
     expect(sketch.restAreas.map((restArea) => restArea.id)).toEqual(world.restAreas.map((restArea) => restArea.id));
+    expect(sketch.ferries).toEqual(world.gates.map((gate) => ({ x: gate.area.x, z: gate.area.z, toMapId: 'metropol' })));
     expect(sketch.cities.map((city) => city.cityId)).toEqual(world.depots.map((depot) => depot.cityId));
     sketch.cities.forEach((city, index) => {
       const depot = sketch.depots[index]!;

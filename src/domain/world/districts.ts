@@ -61,6 +61,19 @@ const STYLES: Readonly<Record<DistrictKind, DistrictStyle>> = {
     towerFloors: [14, 19],
     back: { size: [22, 32], floors: [5, 9], step: 52 },
   },
+  // A city's high-rise heart: glass towers shoulder to shoulder, the tallest well over 200 m.
+  towers: {
+    frontage: [30, 46],
+    depth: [26, 38],
+    floors: [14, 28],
+    floorMeters: 3.8,
+    gap: [6, 14],
+    setback: [5, 7],
+    shops: 0.5,
+    towers: 0.45,
+    towerFloors: [38, 70],
+    back: { size: [28, 40], floors: [12, 26], step: 54 },
+  },
   harbour: {
     frontage: [30, 52],
     depth: [20, 32],

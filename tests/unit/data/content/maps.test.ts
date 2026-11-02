@@ -57,7 +57,7 @@ describe.each(MAPS)('map $id', (map) => {
     }
   });
 
-  it('builds Havenport up: its old town, its flats, its offices and towers, and its docks', () => {
+  it.runIf(map.id === 'north_valley')('builds Havenport up: its old town, its flats, its offices and towers, and its docks', () => {
     const grown = (district: string) => world.buildings.filter((building) => building.district === district);
     expect(grown('oldTown').length).toBeGreaterThan(60);
     expect(grown('apartments').length).toBeGreaterThan(25);
@@ -68,17 +68,35 @@ describe.each(MAPS)('map $id', (map) => {
     expect(grown('oldTown').every((building) => building.heightMeters < 18)).toBe(true);
   });
 
+  it.runIf(map.id === 'metropol')('builds Metropol up: a skyline of glass towers downtown, flats to the north, offices over the strait, the port', () => {
+    const grown = (district: string) => world.buildings.filter((building) => building.district === district);
+    expect(grown('towers').length).toBeGreaterThan(400);
+    expect(grown('towers').filter((building) => building.heightMeters > 150).length).toBeGreaterThan(40);
+    expect(Math.max(...grown('towers').map((building) => building.heightMeters))).toBeGreaterThan(220);
+    expect(grown('apartments').length).toBeGreaterThan(40);
+    expect(grown('offices').length).toBeGreaterThan(40);
+    expect(grown('harbour').length).toBeGreaterThan(5);
+    // Two bridges over the strait, high enough for ships, and the motorway on its viaduct.
+    const suspended = world.roads.filter((road) => road.suspension !== undefined);
+    expect(suspended.map((road) => road.id).sort()).toEqual(['m1_motorway', 'south_bridge']);
+    for (const road of suspended) {
+      const [first, second] = road.suspension!.towersAtMeters;
+      expect(road.heightAtDistance((first + second) / 2), road.id).toBeGreaterThan(20);
+    }
+  });
+
   it('joins all its roads into one network', () => {
     expect(world.network.componentCount).toBe(1);
   });
 
-  it('keeps its cities a few minutes\' drive apart: 2.5 km and more, and at most 9.5 km between the far corners', () => {
+  it('keeps its cities a few minutes\' drive apart: 2.5 km and more, and at most 2.65 map half-widths between the far corners', () => {
     const route = createRouteGuidance();
+    const farthest = map.halfSizeMeters * 2.65;
     for (const from of map.depots) {
       for (const to of map.depots.filter((depot) => depot !== from)) {
         world.network.guide(from.bay.x, from.bay.z, to.bay.x, to.bay.z, route);
         expect(route.distanceMeters, `${from.id} to ${to.id}`).toBeGreaterThan(2500);
-        expect(route.distanceMeters, `${from.id} to ${to.id}`).toBeLessThan(9500);
+        expect(route.distanceMeters, `${from.id} to ${to.id}`).toBeLessThan(farthest);
       }
     }
   });
@@ -206,12 +224,19 @@ describe.each(MAPS)('map $id', (map) => {
     expect(world.sea.cranes.every((crane) => world.isOnQuay(crane.x, crane.z))).toBe(true);
   });
 
-  it('crosses its rivers only on bridges, near a right angle and clear of junctions', () => {
+  it('crosses its rivers only on bridges or high on a deck, near a right angle and clear of junctions', () => {
     for (const [roadIndex, road] of world.roads.entries()) {
       const bridges = world.bridges.filter((bridge) => bridge.roadIndex === roadIndex);
       for (let i = 0; i < road.pointCount; i++) {
         const along = road.distances[i]!;
         if (bridges.some((bridge) => along >= bridge.fromMeters && along <= bridge.toMeters)) {
+          continue;
+        }
+        if (road.elevated[i] === 1) {
+          // Over the water on a deck, high enough for boats.
+          if (world.isRiver(road.x(i), road.z(i))) {
+            expect(road.heightAt(i), `${road.id} at ${Math.round(along)} m`).toBeGreaterThan(18);
+          }
           continue;
         }
         // Off the bridges, no paved width reaches over a channel.
@@ -302,8 +327,10 @@ describe.each(MAPS)('map $id', (map) => {
     expect(world.parks.length).toBeGreaterThanOrEqual(map.depots.length);
   });
 
-  it('has every kind of road (spec §20), the lanes grown off its country roads', () => {
-    expect(new Set(world.roads.map((road) => road.kind))).toEqual(new Set(ROAD_KINDS));
+  it('has every kind of road (spec §20) in the starting region, the lanes grown off its country roads', () => {
+    if (map.id === MAPS[0]!.id) {
+      expect(new Set(world.roads.map((road) => road.kind))).toEqual(new Set(ROAD_KINDS));
+    }
     expect(new Set(map.roads.map((road) => road.kind))).not.toContain('lane');
   });
 
@@ -383,16 +410,27 @@ describe.each(MAPS)('map $id', (map) => {
 
     it('keeps buildings and trees out of the yard', () => {
       // Buildings may stand right at its edge, like a depot office; trees keep their distance.
-      for (const building of world.buildings) {
+      const reach = Math.hypot(depot.yard.lengthMeters, depot.yard.widthMeters) / 2 + 1;
+      const nearby = world.buildings.filter(
+        (building) =>
+          building.maxX > depot.yard.x - reach && building.minX < depot.yard.x + reach && building.maxZ > depot.yard.z - reach && building.minZ < depot.yard.z + reach,
+      );
+      const inYard: string[] = [];
+      for (const building of nearby) {
         for (let x = building.minX; x <= building.maxX; x += 0.5) {
           for (let z = building.minZ; z <= building.maxZ; z += 0.5) {
-            expect(rectangleContains(depot.yard, x, z, 0.5)).toBe(false);
+            if (rectangleContains(depot.yard, x, z, 0.5)) {
+              inYard.push(`building at ${Math.round(x)}, ${Math.round(z)}`);
+            }
           }
         }
       }
       for (const tree of world.trees) {
-        expect(rectangleContains(depot.yard, tree.x, tree.z, 5)).toBe(false);
+        if (rectangleContains(depot.yard, tree.x, tree.z, 5)) {
+          inYard.push(`tree at ${Math.round(tree.x)}, ${Math.round(tree.z)}`);
+        }
       }
+      expect(inYard.slice(0, 5)).toEqual([]);
     });
 
     it('has a bay every truck fits in with room to spare', () => {

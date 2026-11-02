@@ -217,6 +217,17 @@ export class RoadFurnitureView {
       mesh.castShadow = options.castShadows === true;
       this.rails.push(mesh);
     }
+    // The motorways' median barriers, in concrete, in the rails' tiles.
+    const concrete = this.track(new MeshLambertMaterial({ vertexColors: true }));
+    for (const [tile, parts] of barrierTiles(world.medianBarriers)) {
+      const mesh = new Mesh(this.track(mergeGeometries(parts)), concrete);
+      for (const part of parts) {
+        part.dispose();
+      }
+      mesh.name = `road-furniture:barriers:${tile}`;
+      mesh.castShadow = options.castShadows === true;
+      this.rails.push(mesh);
+    }
     this.root.add(this.posts, this.reflectors, this.studs, ...this.rails);
     this.root.name = 'road-furniture';
     freezeTransforms(this.root);
@@ -449,6 +460,66 @@ function studSpots(world: DrivingWorld): { x: number; z: number; heading: number
  * from the road, merged by the square tile (key "column,row") each piece
  * starts in.
  */
+/** A median barrier's section, across it from one face to the other: [across, up], a concrete safety shape. */
+const BARRIER_PROFILE = [
+  [-0.3, 0],
+  [-0.24, 0.12],
+  [-0.1, 0.82],
+  [0.1, 0.82],
+  [0.24, 0.12],
+  [0.3, 0],
+] as const;
+const BARRIER_COLOR = 0xc9c5bc;
+
+/**
+ * The motorways' median barriers (DrivingWorld.medianBarriers) as their
+ * section swept along each run, on the road's height, merged by tile
+ * (RAIL_TILE_METERS) as the rails are.
+ */
+function barrierTiles(runs: readonly (readonly (readonly [number, number, number])[])[]): Map<string, BufferGeometry[]> {
+  const tiles = new Map<string, BufferGeometry[]>();
+  const color = new Color(BARRIER_COLOR);
+  for (const run of runs) {
+    for (let k = 0; k + 1 < run.length; k++) {
+      const [ax, az, ay] = run[k]!;
+      const [bx, bz, by] = run[k + 1]!;
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      const rightX = -(bz - az) / length;
+      const rightZ = (bx - ax) / length;
+      const positions: number[] = [];
+      for (let p = 0; p + 1 < BARRIER_PROFILE.length; p++) {
+        const [acrossA, upA] = BARRIER_PROFILE[p]!;
+        const [acrossB, upB] = BARRIER_PROFILE[p + 1]!;
+        const corner = (x: number, z: number, y: number, across: number, up: number): number[] => [x + rightX * across, y + up, z + rightZ * across];
+        const a0 = corner(ax, az, ay, acrossA, upA);
+        const a1 = corner(ax, az, ay, acrossB, upB);
+        const b0 = corner(bx, bz, by, acrossA, upA);
+        const b1 = corner(bx, bz, by, acrossB, upB);
+        // Wound so each face looks out of the barrier (its normal away from the centreline and up).
+        positions.push(...a0, ...b1, ...b0, ...a0, ...a1, ...b1);
+      }
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+      geometry.computeVertexNormals();
+      const colors = new Float32Array(positions.length);
+      for (let v = 0; v < colors.length; v += 3) {
+        colors[v] = color.r;
+        colors[v + 1] = color.g;
+        colors[v + 2] = color.b;
+      }
+      geometry.setAttribute('color', new BufferAttribute(colors, 3));
+      const key = `${Math.floor(ax / RAIL_TILE_METERS)},${Math.floor(az / RAIL_TILE_METERS)}`;
+      let parts = tiles.get(key);
+      if (parts === undefined) {
+        parts = [];
+        tiles.set(key, parts);
+      }
+      parts.push(geometry);
+    }
+  }
+  return tiles;
+}
+
 function railTiles(rails: readonly GuardRail[], ground: (x: number, z: number) => number): Map<string, BufferGeometry[]> {
   const tiles = new Map<string, BufferGeometry[]>();
   const steel = new Color(0xb9c0c6);
