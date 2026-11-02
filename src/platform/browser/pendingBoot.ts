@@ -8,6 +8,8 @@ export interface PendingBoot {
   readonly mapId?: string;
   /** Continue the saved company at once (it has just travelled). */
   readonly continueCompany?: boolean;
+  /** The region (map id) the company is crossing to: the crossing shows while this start builds it. */
+  readonly crossingTo?: string;
   /** Found this company at once, starting at `startId`. */
   readonly newCompany?: { readonly name: string; readonly startId: string };
 }

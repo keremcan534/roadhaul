@@ -31,10 +31,13 @@ test('crosses on the ferry from Gull Point to Metropol, and finds Metropol\'s co
   await expect(panel).toContainText('Ferry to Metropol');
   await testInfo.attach('terminal', { body: await page.screenshot(), contentType: 'image/png' });
   await page.locator('[data-action="ferry-travel"]').click();
-  await expect(page.locator('.toast').filter({ hasText: 'All aboard for Metropol' })).toBeVisible();
+  // On board: the crossing over the screen as the game starts again on the other side.
+  await expect(page.locator('.ferry-crossing[data-stage="departing"]')).toContainText('Ferry to Metropol');
+  await testInfo.attach('crossing', { body: await page.screenshot(), contentType: 'image/png' });
 
-  // The game starts again over the water, the company driving on at once.
+  // The game starts again over the water, coming into port, the company driving on at once.
   await expect(page.locator('.toast').filter({ hasText: 'Welcome to Metropol!' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('.ferry-crossing')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   // The daily reward, left for later, greets the company again as the game starts.
   await leaveDailyReward(page);

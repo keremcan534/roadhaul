@@ -138,6 +138,7 @@ import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
+import { FerryCrossing } from './ui/menus/FerryCrossing';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
@@ -244,7 +245,7 @@ const FLEET_FAST_FORWARD_SECONDS = 600;
 /** The main menu checks the earnings boost's time left this often, ms. */
 const EARNINGS_BOOST_REFRESH_MS = 15_000;
 /** How long the toast that the ferry is boarding shows before the game starts again across the water. */
-const FERRY_BOARDING_MS = 1_400;
+const FERRY_BOARDING_MS = 1_800;
 /** How long the toast that a backup was restored shows before the game starts again with it. */
 const RESTART_AFTER_RESTORE_MS = 1_200;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
@@ -284,6 +285,12 @@ async function start(strings: Strings): Promise<void> {
   // What the last page asked this start to do: go on in the region the company crossed to, or found a new company.
   const tabStorage = sessionStorageOf(window);
   const pendingBoot = takePendingBoot(tabStorage);
+  // Crossing by ferry: the boat rides the swell over the boot screen until the region over the water is ready.
+  const crossingTo = pendingBoot?.crossingTo;
+  const arrivingCrossing =
+    crossingTo !== undefined && GAME_CONTENT.maps.some((map) => map.id === crossingTo)
+      ? new FerryCrossing(document, strings, 'arriving', strings.t(`region.${crossingTo}.name`))
+      : null;
   const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
   if (!persistent) {
     logger.warn('Storage is unavailable: this game will not be saved after the page closes.');
@@ -1162,8 +1169,9 @@ async function start(strings: Strings): Promise<void> {
         toasts.show(strings.t(key, { region, level: gate.requiredCompanyLevel ?? 1 }), 'warning');
         return;
       }
-      toasts.show(strings.t('ferry.boarding', { region: strings.t(`region.${gate.toMapId}.name`) }), 'success');
-      leavePendingBoot(tabStorage, { continueCompany: true });
+      // On board: the crossing over the screen while the game starts again on the other side.
+      new FerryCrossing(document, strings, 'departing', strings.t(`region.${gate.toMapId}.name`));
+      leavePendingBoot(tabStorage, { continueCompany: true, crossingTo: gate.toMapId });
       window.setTimeout(() => window.location.reload(), FERRY_BOARDING_MS);
     },
   });
@@ -3143,6 +3151,7 @@ async function start(strings: Strings): Promise<void> {
       enterCompany();
       toasts.show(strings.t('ferry.arrived', { region: strings.t(`region.${driving.world.id}.name`) }), 'success');
     }
+    arrivingCrossing?.hide();
   } else if (pendingBoot?.newCompany !== undefined) {
     const founded = session.startNewGame(pendingBoot.newCompany.name, pendingBoot.newCompany.startId);
     if (founded.ok) {
