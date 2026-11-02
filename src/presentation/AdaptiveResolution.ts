@@ -1,7 +1,19 @@
-/** Frames slower than this on average lower the resolution: under 27 FPS. */
-const SLOW_FRAME_SECONDS = 1 / 27;
-/** Frames quicker than this on average, for a good while, raise it again: over 50 FPS. */
-const QUICK_FRAME_SECONDS = 1 / 50;
+/**
+ * Frames slower on average than SLOW_SHARE of the target frame rate lower
+ * the resolution (the target: the screen's rate, or the player's cap under
+ * it; never slower than 27 FPS, the old floor); frames at QUICK_SHARE of it
+ * or better, for a good while, raise it again. A 60 Hz screen: under 48 FPS
+ * down, over 57 up; 120 Hz: under 96, over 114.
+ */
+const SLOW_SHARE = 0.8;
+const QUICK_SHARE = 0.95;
+const FLOOR_FRAME_SECONDS = 1 / 27;
+/** Before any frame is measured, the target is taken as this. */
+const DEFAULT_TARGET_FPS = 60;
+/** The screens' usual refresh rates: the one nearest the shortest frame seen is the screen's. */
+const REFRESH_RATES = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165] as const;
+/** Frames quicker than this are not a screen's: two callbacks in one frame. */
+const SHORTEST_FRAME_SECONDS = 1 / 250;
 /** Frame times are averaged over windows this long. */
 const WINDOW_SECONDS = 2;
 /** Quick windows in a row before the resolution goes back up (slow ones act at once). */
@@ -18,8 +30,9 @@ const HITCH_SECONDS = 0.2;
 const CPU_BOUND_SHARE = 0.8;
 
 /**
- * Dynamic resolution (ARCHITECTURE.md §11, a 30 FPS floor): when frames
- * take too long on average, draw fewer pixels; when they are quick again for
+ * Dynamic resolution (ARCHITECTURE.md §11): when frames fall well short of
+ * the target frame rate (the screen's, 60, 90 or 120, under the player's
+ * cap) on average, draw fewer pixels; when they are quick again for
  * a good while, draw more, up to the full pixel ratio. The wide gap between
  * the two thresholds keeps it from see-sawing. Frames slow because the main
  * thread's own work fills them (a low-end phone's CPU) keep their pixels:
@@ -34,8 +47,23 @@ export class AdaptiveResolution {
   private quickWindows = 0;
   /** The first window after a (re)start is not measured: shaders compile, textures upload. */
   private warmingUp = true;
+  /** The shortest frame seen yet, seconds: the screen's refresh interval (or the cap's), at the light menus. */
+  private shortestFrame = Number.POSITIVE_INFINITY;
+  /** The player's cap, frames a second; 0: none. */
+  private cap = 0;
 
   constructor(private readonly minScale: number) {}
+
+  /** The player's frame rate cap (0: as many as the screen shows): the target is never above it. */
+  setFrameCap(framesPerSecond: number): void {
+    this.cap = framesPerSecond > 0 ? framesPerSecond : 0;
+  }
+
+  /** The frame rate aimed at: the screen's (as seen), under the player's cap. */
+  get targetFps(): number {
+    const seen = Number.isFinite(this.shortestFrame) ? nearestRefreshRate(1 / this.shortestFrame) : DEFAULT_TARGET_FPS;
+    return this.cap > 0 ? Math.min(this.cap, seen) : seen;
+  }
 
   /** The share of the full pixel ratio to draw at. */
   get scale(): number {
@@ -50,6 +78,9 @@ export class AdaptiveResolution {
   frame(deltaSeconds: number, workSeconds = 0): boolean {
     if (!(deltaSeconds > 0) || deltaSeconds > HITCH_SECONDS) {
       return false;
+    }
+    if (deltaSeconds > SHORTEST_FRAME_SECONDS && deltaSeconds < this.shortestFrame) {
+      this.shortestFrame = deltaSeconds;
     }
     this.windowSeconds += deltaSeconds;
     this.windowWorkSeconds += Math.min(Math.max(workSeconds, 0), deltaSeconds);
@@ -66,11 +97,12 @@ export class AdaptiveResolution {
       this.warmingUp = false;
       return false;
     }
-    if (average > SLOW_FRAME_SECONDS) {
+    const target = this.targetFps;
+    if (average > Math.min(FLOOR_FRAME_SECONDS, 1 / (SLOW_SHARE * target))) {
       this.quickWindows = 0;
       return work < CPU_BOUND_SHARE && this.setScale(this.current * LOWER_FACTOR);
     }
-    if (average < QUICK_FRAME_SECONDS && this.current < 1) {
+    if (average < 1 / (QUICK_SHARE * target) && this.current < 1) {
       this.quickWindows++;
       if (this.quickWindows < QUICK_WINDOWS_TO_RAISE) {
         return false;
@@ -99,4 +131,15 @@ export class AdaptiveResolution {
     this.current = next;
     return true;
   }
+}
+
+/** The usual refresh rate nearest `fps`. */
+function nearestRefreshRate(fps: number): number {
+  let best: number = REFRESH_RATES[0];
+  for (const rate of REFRESH_RATES) {
+    if (Math.abs(rate - fps) < Math.abs(best - fps)) {
+      best = rate;
+    }
+  }
+  return best;
 }

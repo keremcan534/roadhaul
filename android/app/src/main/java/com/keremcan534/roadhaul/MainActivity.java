@@ -13,12 +13,15 @@ import com.getcapacitor.BridgeActivity;
  * so a thumb that slips off the wheel or the pedals does not leave them over
  * the controls. Hidden again whenever the game comes back into focus. The
  * screen stays on while the game is in front: a drive steered by tilting the
- * phone touches nothing, and the screen would dim and lock mid-drive.
+ * phone touches nothing, and the screen would dim and lock mid-drive. The
+ * game asks for the screen's refresh rate through DisplayRatePlugin.
  */
 public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // The game's own plugin: the screen's refresh rate (90 or 120 Hz where the phone has it).
+        registerPlugin(DisplayRatePlugin.class);
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }

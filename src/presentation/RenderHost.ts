@@ -246,8 +246,23 @@ export class RenderHost {
     return this.renderer.info.programs?.length ?? 0;
   }
 
+  /**
+   * Draws the sun's shadow map every other frame only (at 90, 120 Hz and
+   * more): the shadows then follow what moves 60 times a second, still
+   * smooth, and the frame is spared the casters' second drawing half the time
+   * (about a sixth of a flagship's frame). The shadows keep the matrix they
+   * were drawn with, so they never slip. Off: every frame.
+   */
+  shadowsEveryOtherFrame = false;
+  private shadowFrames = 0;
+
   render(): void {
     this.renderer.info.reset();
+    const shadows = this.renderer.shadowMap;
+    if (shadows.enabled) {
+      shadows.autoUpdate = false;
+      shadows.needsUpdate = !this.shadowsEveryOtherFrame || (this.shadowFrames++ & 1) === 0;
+    }
     if (this.post === null) {
       this.renderer.render(this.scene, this.camera);
     } else {

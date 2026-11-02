@@ -3,6 +3,7 @@ import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import {
   isCameraMode,
   isControlSize,
+  isFrameRateChoice,
   isSteeringMode,
   isTiltSensitivity,
   isSeasonChoice,
@@ -10,6 +11,7 @@ import {
   isWeatherChoice,
   type CameraMode,
   type ControlSize,
+  type FrameRateChoice,
   type SeasonChoice,
   type SteeringMode,
   type TiltSensitivity,
@@ -25,6 +27,8 @@ export interface DeviceSettings {
   /** The language: the device's, or one the player picked. */
   readonly language: LanguageChoice;
   readonly quality: QualityChoice;
+  /** At most 30 or 60 frames a second, or as many as the screen shows (90, 120…). */
+  readonly frameRate: FrameRateChoice;
   readonly sound: boolean;
   /** The phone buzzes when the truck hits something (on touch screens). */
   readonly vibration: boolean;
@@ -53,6 +57,7 @@ export const SETTINGS_KEY = 'roadhaul.settings';
 export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   language: 'auto',
   quality: 'auto',
+  frameRate: 'max',
   sound: true,
   vibration: true,
   stats: false,
@@ -77,6 +82,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     const {
       language,
       quality,
+      frameRate,
       sound,
       vibration,
       stats,
@@ -93,6 +99,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     return {
       language: isLanguageChoice(language) ? language : DEFAULT_SETTINGS.language,
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
+      frameRate: isFrameRateChoice(frameRate) ? frameRate : DEFAULT_SETTINGS.frameRate,
       sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
       vibration: typeof vibration === 'boolean' ? vibration : DEFAULT_SETTINGS.vibration,
       stats: typeof stats === 'boolean' ? stats : DEFAULT_SETTINGS.stats,

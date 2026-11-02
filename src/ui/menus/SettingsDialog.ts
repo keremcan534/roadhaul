@@ -1,8 +1,10 @@
 import { formatClock, MINUTES_PER_DAY } from '../../core/time/dayTime';
 import {
+  FRAME_RATE_CHOICES,
   SEASON_CHOICES,
   TIME_FLOWS,
   WEATHER_CHOICES,
+  type FrameRateChoice,
   type SeasonChoice,
   type TimeFlow,
   type WeatherChoice,
@@ -22,6 +24,8 @@ export interface SettingsShown {
   /** The player's graphics setting, and the preset it gave (the device's when `auto`, or `?quality=`). */
   readonly quality: QualityChoice;
   readonly qualityInUse: QualityLevel;
+  /** The frame rate: at most 30 or 60 frames a second, or as many as the screen shows. */
+  readonly frameRate: FrameRateChoice;
   readonly sound: boolean;
   /** Buzzing on crashes, where the device can (a touch screen); null where it is not offered. */
   readonly vibration: boolean | null;
@@ -52,6 +56,7 @@ export interface SettingsActions {
   /** The player picked another graphics setting; the game restarts with it. */
   readonly onQuality: (choice: QualityChoice) => void;
   /** The rest apply at once. */
+  readonly onFrameRate: (choice: FrameRateChoice) => void;
   readonly onSound: (on: boolean) => void;
   readonly onVibration: (on: boolean) => void;
   readonly onStats: (on: boolean) => void;
@@ -168,6 +173,13 @@ export class SettingsDialog {
         actions.onQuality(choice);
       }
     });
+
+    const frameRate = choiceRow(document, strings.t('settings.frameRate'), 'frame-rate', FRAME_RATE_CHOICES, shown.frameRate, (choice) =>
+      strings.t(`settings.frameRate.${choice}`),
+    );
+    frameRate.row.dataset.setting = 'frame-rate';
+    frameRate.row.append(element(document, 'p', 'settings__note', strings.t('settings.frameRateNote')));
+    frameRate.onPick((choice) => actions.onFrameRate(choice));
 
     // The time of day: a preset, or any time on the slider; the readout shows it.
     this.presetMinutes = shown.clockPresets;
@@ -325,6 +337,7 @@ export class SettingsDialog {
       element(document, 'h2', 'panel__title', strings.t('settings.title')),
       language,
       quality.row,
+      frameRate.row,
       this.clockRow,
       flow.row,
       weather.row,

@@ -14,13 +14,34 @@ function run(resolution: AdaptiveResolution, fps: number, seconds: number, work 
 }
 
 describe('AdaptiveResolution', () => {
-  it('keeps the full resolution while frames come quickly enough', () => {
+  it('keeps the full resolution while frames come as fast as the screen shows them, or the player caps them', () => {
     const resolution = new AdaptiveResolution(0.6);
-
     run(resolution, 60, 30);
-    run(resolution, 30, 30);
-
     expect(resolution.scale).toBe(1);
+    expect(resolution.targetFps).toBe(60);
+
+    // Capped at 30 a second, 30 is all it aims for.
+    const capped = new AdaptiveResolution(0.6);
+    capped.setFrameCap(30);
+    run(capped, 60, 2);
+    run(capped, 30, 30);
+    expect(capped.targetFps).toBe(30);
+    expect(capped.scale).toBe(1);
+  });
+
+  it('aims for the screen\'s rate: on a 120 Hz screen frames at 80 a second are slow, and under a cap of 60 they are not', () => {
+    const resolution = new AdaptiveResolution(0.6);
+    run(resolution, 120, 3);
+    expect(resolution.targetFps).toBe(120);
+    run(resolution, 80, 4);
+    expect(resolution.scale).toBeLessThan(1);
+
+    const capped = new AdaptiveResolution(0.6);
+    capped.setFrameCap(60);
+    run(capped, 120, 3);
+    run(capped, 58, 30);
+    expect(capped.targetFps).toBe(60);
+    expect(capped.scale).toBe(1);
   });
 
   it('draws fewer pixels when frames are slow, down to its floor', () => {

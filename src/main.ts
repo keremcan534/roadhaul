@@ -7,7 +7,7 @@ import { shiftedClock, systemClock } from './core/time/Clock';
 import { formatClock } from './core/time/dayTime';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
-import { weatherChoiceFor, type SteeringMode, type TiltStatus } from './data/config/controls';
+import { frameRateCap, weatherChoiceFor, type FrameRateChoice, type SteeringMode, type TiltStatus } from './data/config/controls';
 import { applyQualityPreset, DEFAULT_GAME_CONFIG, type CrateTier, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
@@ -1673,6 +1673,7 @@ async function start(strings: Strings): Promise<void> {
       deviceLanguage: chooseLanguage(null, navigator.languages ?? [navigator.language]),
       quality: qualityChoice,
       qualityInUse: quality,
+      frameRate: settings.frameRate,
       clockMinutes: timeOfDay.minutes,
       timeFlow: timeOfDay.flow,
       clockPresets: clockPresets(),
@@ -1715,6 +1716,11 @@ async function start(strings: Strings): Promise<void> {
         query.set('quality', choice);
       }
       window.location.search = query.toString();
+    },
+    onFrameRate: (choice) => {
+      settings = { ...settings, frameRate: choice };
+      saveSettings(storage, settings);
+      applyFrameRate(choice);
     },
     onSound: (on) => {
       settings = { ...settings, sound: on };
@@ -3098,6 +3104,8 @@ async function start(strings: Strings): Promise<void> {
         toasts.update(deltaSeconds);
         // Slow frames on the road: fewer pixels (the rain's streaks and the wires keep their width in pixels). The menus,
         // drawn at half rate, are no measure.
+        // At 90, 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second.
+        renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps > 75;
         if (simulating && adaptiveResolution.frame(deltaSeconds, lastFrameWorkSeconds)) {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitPixelSizes();
@@ -3147,6 +3155,19 @@ async function start(strings: Strings): Promise<void> {
         : config.simulation.maxFrameDeltaSeconds,
     },
   );
+  /**
+   * The player's frame rate (Settings): the loop's cap (none for `max`) and the dynamic resolution's target under it;
+   * in the Android app the screen's refresh rate asked for too, the fastest its screen has for `max` (90, 120 Hz…),
+   * 60 Hz otherwise (30 frames a second on a 60 Hz screen: every other one).
+   */
+  const applyFrameRate = (choice: FrameRateChoice): void => {
+    const cap = frameRateCap(choice);
+    loop.maxFramesPerSecond = cap;
+    adaptiveResolution.setFrameCap(cap);
+    if (isNativeApp(window)) {
+      void import('./platform/native/displayRate').then(({ preferRefreshRate }) => preferRefreshRate(cap === 0 ? 240 : 60));
+    }
+  };
   // Every view is in the scene: the rest of it shaded, and its shaders compiled now, behind the menu, not on the road.
   shadeScene();
   if (gradualCompile) {
@@ -3154,6 +3175,7 @@ async function start(strings: Strings): Promise<void> {
   } else {
     renderHost.precompile();
   }
+  applyFrameRate(settings.frameRate);
   loop.start();
   root.dataset.bootState = 'ready';
   // Asked by the last page: go on with the company that crossed to this region, or found the one named.

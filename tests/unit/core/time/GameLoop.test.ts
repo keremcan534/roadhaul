@@ -225,4 +225,49 @@ describe('GameLoop', () => {
     expect(loop.isRunning).toBe(false);
     expect(scheduler.pendingCount).toBe(0);
   });
+
+  it('runs at most maxFramesPerSecond frames, evenly, on a faster screen', () => {
+    const { loop, scheduler, calls } = createLoop();
+    loop.maxFramesPerSecond = 60;
+    loop.start();
+    // A 120 Hz screen: a frame every 8.33 ms for a tenth of a second.
+    for (let i = 0; i <= 12; i++) {
+      scheduler.frame(i * (1000 / 120));
+    }
+    const frames = calls.filter((call) => call.startsWith('frame'));
+    // Every other frame runs, each a sixtieth of a second after the one before; the screen's other frames do nothing.
+    expect(frames).toHaveLength(7);
+    expect(frames.slice(1).every((frame) => frame.startsWith('frame 0.017'))).toBe(true);
+    // The loop keeps asking for frames.
+    expect(scheduler.pendingCount).toBe(1);
+  });
+
+  it('runs every frame without a cap, and a frame a little early under one', () => {
+    const uncapped = createLoop();
+    uncapped.loop.start();
+    for (let i = 0; i <= 6; i++) {
+      uncapped.scheduler.frame(i * (1000 / 120));
+    }
+    expect(uncapped.calls.filter((call) => call.startsWith('frame'))).toHaveLength(7);
+
+    const capped = createLoop();
+    capped.loop.maxFramesPerSecond = 60;
+    capped.loop.start();
+    // A 60 Hz screen's frames, jittering a millisecond either way: none is skipped.
+    for (const at of [0, 16.0, 33.9, 49.6, 67.2, 83.0]) {
+      capped.scheduler.frame(at);
+    }
+    expect(capped.calls.filter((call) => call.startsWith('frame'))).toHaveLength(6);
+  });
+
+  it('starts the cadence afresh after a long pause under a cap', () => {
+    const { loop, scheduler, calls } = createLoop();
+    loop.maxFramesPerSecond = 30;
+    loop.start();
+    scheduler.frame(0);
+    scheduler.frame(5000);
+    scheduler.frame(5010);
+    scheduler.frame(5034);
+    expect(calls.filter((call) => call.startsWith('frame'))).toHaveLength(3);
+  });
 });

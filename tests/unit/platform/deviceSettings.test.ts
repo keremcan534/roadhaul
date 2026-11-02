@@ -5,6 +5,7 @@ import { loadSettings, saveSettings, SETTINGS_KEY, type DeviceSettings } from '.
 const DEFAULTS: DeviceSettings = {
   language: 'auto',
   quality: 'auto',
+  frameRate: 'max',
   sound: true,
   vibration: true,
   stats: false,
@@ -27,6 +28,7 @@ describe('device settings', () => {
     const picked: DeviceSettings = {
       language: 'de',
       quality: 'low',
+      frameRate: '60',
       sound: false,
       vibration: false,
       stats: true,
