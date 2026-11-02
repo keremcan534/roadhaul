@@ -48,6 +48,8 @@ const EAST_BOULEVARD_X = 2000;
 /** Eastmere's streets (z) and avenues (x), east of the east boulevard. */
 const EASTMERE_STREETS = [-700, -450, -200, 50, 300, 550, 800] as const;
 const EASTMERE_AVENUES = [2300, 2600, 2900, 3200] as const;
+/** The works street south of Eastmere, east from the east boulevard through the sheds. */
+const WORKS_STREET_Z = -1450;
 
 const north = (x: number, from: number, to: number, zs: readonly number[]): Point2[] =>
   [...new Set([from, ...zs.filter((z) => z > from && z < to), to])].sort((a, b) => a - b).map((z): Point2 => [x, z]);
@@ -225,7 +227,50 @@ const roads: RoadDefinition[] = [
     kind: 'ringRoad',
     widthMeters: 14,
     closed: false,
-    controlPoints: north(EAST_BOULEVARD_X, -1800, 1600, [SOUTH_BRIDGE_Z, ...EASTMERE_STREETS, MOTORWAY_Z]),
+    controlPoints: north(EAST_BOULEVARD_X, -1800, 1600, [SOUTH_BRIDGE_Z, WORKS_STREET_Z, ...EASTMERE_STREETS, MOTORWAY_Z]),
+  },
+  // Country roads out of the city to the villages round it: west from the west boulevard, north from the
+  // motorway under the hills, east from Eastmere.
+  {
+    id: 'west_county_road',
+    kind: 'rural',
+    widthMeters: 9,
+    closed: false,
+    controlPoints: [
+      [WEST_BOULEVARD_X, 450],
+      [-2900, 450],
+      [-3600, 470],
+      [-4100, 540],
+    ],
+  },
+  {
+    id: 'fernhill_road',
+    kind: 'rural',
+    widthMeters: 9,
+    closed: false,
+    controlPoints: [
+      [-3600, MOTORWAY_Z],
+      [-3600, 1800],
+      [-3520, 2350],
+    ],
+  },
+  {
+    id: 'brackenford_road',
+    kind: 'rural',
+    widthMeters: 9,
+    closed: false,
+    controlPoints: [
+      [EASTMERE_AVENUES[EASTMERE_AVENUES.length - 1]!, 300],
+      [3600, 320],
+      [4050, 300],
+    ],
+  },
+  {
+    id: 'eastmere_works_street',
+    kind: 'street',
+    widthMeters: 12,
+    closed: false,
+    controlPoints: east(WORKS_STREET_Z, EAST_BOULEVARD_X, 3300, [2650]),
   },
   ...eastmereStreets,
   ...eastmereAvenues,
@@ -316,7 +361,7 @@ const LAID_OUT: MapDefinition = {
     { cityId: 'city_i', roadId: 'waterfront_boulevard', distanceMeters: 3850, direction: 'forward' },
     { cityId: 'city_j', roadId: 'waterfront_boulevard', distanceMeters: 900, direction: 'backward' },
     { cityId: 'city_j', roadId: 'west_boulevard', distanceMeters: 150, direction: 'backward' },
-    { cityId: 'city_k', roadId: 'east_boulevard', distanceMeters: 300, direction: 'forward' },
+    { cityId: 'city_k', roadId: 'east_boulevard', distanceMeters: 450, direction: 'forward' },
     { cityId: 'city_k', roadId: 'east_boulevard', distanceMeters: 2900, direction: 'backward' },
     { cityId: 'city_l', roadId: 'ridgemont_pass', distanceMeters: 2620, direction: 'forward' },
   ],
@@ -429,6 +474,15 @@ const LAID_OUT: MapDefinition = {
     { id: 'ironquay_port', kind: 'harbour', area: { x: -1300, z: -2050, headingDegrees: 0, lengthMeters: 600, widthMeters: 2000 } },
     { id: 'eastmere_offices', kind: 'offices', area: { x: 2600, z: 50, headingDegrees: 0, lengthMeters: 1560, widthMeters: 1240 } },
     { id: 'ridgemont_town', kind: 'oldTown', area: { x: 3225, z: 3500, headingDegrees: 0, lengthMeters: 200, widthMeters: 560 } },
+    // Flats between the west boulevard and the downtown's towers, and the works' sheds south of Eastmere.
+    { id: 'halverton_west', kind: 'apartments', area: { x: -1900, z: 425, headingDegrees: 0, lengthMeters: 1500, widthMeters: 560 } },
+    { id: 'eastmere_works', kind: 'harbour', area: { x: 2650, z: WORKS_STREET_Z, headingDegrees: 0, lengthMeters: 500, widthMeters: 1300 } },
+  ],
+  // Villages on the land round the city: west of it by the motorway, north-west under the hills, east of Eastmere.
+  villages: [
+    { id: 'westbrook', x: -3300, z: 250, headingDegrees: 90, houses: 16, green: true },
+    { id: 'fernhill', x: -3250, z: 2050, headingDegrees: 0, houses: 12, green: true },
+    { id: 'brackenford', x: 3750, z: 540, headingDegrees: 90, houses: 12 },
   ],
   gates: [
     {
@@ -477,6 +531,8 @@ function flipNorth(map: MapDefinition): MapDefinition {
     ...map,
     roads: map.roads.map((road) => ({ ...road, controlPoints: road.controlPoints.map(flip) })),
     buildings: map.buildings.map((building) => ({ ...building, z: -building.z })),
+    // A village's street runs both ways: turned over, a half turn is the same street.
+    villages: (map.villages ?? []).map((village) => ({ ...village, z: -village.z, headingDegrees: (180 - village.headingDegrees + 360) % 180 })),
     depots: map.depots.map((depot) => ({ ...depot, yard: flipRectangle(depot.yard), bay: flipRectangle(depot.bay) })),
     restAreas: map.restAreas.map((restArea) => ({ ...restArea, lot: flipRectangle(restArea.lot) })),
     rivers: (map.rivers ?? []).map((river) => ({ ...river, points: river.points.map(flip) })),

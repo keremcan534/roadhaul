@@ -465,6 +465,9 @@ export const ID: StringTable = {
   'city.city_l.name': 'Ridgemont',
 
   'village.brinemoor.name': 'Brinemoor',
+  'village.westbrook.name': 'Westbrook',
+  'village.fernhill.name': 'Fernhill',
+  'village.brackenford.name': 'Brackenford',
   'village.wheatcombe.name': 'Wheatcombe',
   'village.larkvale.name': 'Larkvale',
   'village.dawnmere.name': 'Dawnmere',
@@ -543,6 +546,11 @@ export const ID: StringTable = {
   'mission.tower_glass.title': 'Kaca Menara',
   'mission.skyline_steel.title': 'Baja Gedung Pencakar',
   'mission.city_fuel.title': 'BBM untuk Kota',
+  'mission.hospital_supplies.title': 'Perlengkapan Rumah Sakit',
+  'mission.office_furniture.title': 'Mebel Kantor',
+  'mission.ridge_fuel.title': 'BBM untuk Punggung Bukit',
+  'mission.harbour_reefers.title': 'Kontainer Dingin Pelabuhan',
+  'mission.downtown_foundations.title': 'Fondasi Pusat Kota',
 
   'dock.label': 'Perusahaan',
   'dock.jobs': 'Pekerjaan',

@@ -81,7 +81,9 @@ const TERRITORY_METERS = 260;
 const LABEL_FONT = '800 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const SMALL_FONT = '800 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 /** Zoomed out further than this (px a meter), the villages' names are left out: they would crowd the towns'. */
-const VILLAGE_LABEL_MIN_SCALE = 0.1;
+const VILLAGE_LABEL_MIN_SCALE = 0.035;
+/** A village's name is left out where it would lie within this of a town's (px across, px down from it). */
+const VILLAGE_CLEAR_PIXELS = { x: 80, y: 18 } as const;
 /** Another region's name over its middle. */
 const REGION_FONT = '900 26px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
@@ -467,6 +469,9 @@ export class MapPainter {
         if (view.scale >= VILLAGE_LABEL_MIN_SCALE && view.sees(this.around(village.x, village.z), 60)) {
           const x = view.screenX(village.x, village.z);
           const y = view.screenY(village.x, village.z);
+          if (this.nearTownName(view, x, y)) {
+            continue;
+          }
           context.strokeText(this.regionVillageNames[i]!, x, y);
           context.fillText(this.regionVillageNames[i]!, x, y);
         }
@@ -497,6 +502,9 @@ export class MapPainter {
         if (view.scale >= VILLAGE_LABEL_MIN_SCALE && view.sees(this.around(village.x, village.z), 60)) {
           const x = view.screenX(village.x, village.z);
           const y = view.screenY(village.x, village.z);
+          if (this.nearTownName(view, x, y)) {
+            continue;
+          }
           context.strokeText(this.villageNames[i]!, x, y);
           context.fillText(this.villageNames[i]!, x, y);
         }
@@ -554,6 +562,11 @@ export class MapPainter {
       context.strokeText(text, x + 12, y - 15);
       context.fillText(text, x + 12, y - 15);
     }
+  }
+
+  /** Whether a village's name at (x, y), screen px, would overlap a town's name here or across the water. Allocation-free. */
+  private nearTownName(view: MapViewport, x: number, y: number): boolean {
+    return nearName(this.sketch.cities, view, x, y) || nearName(this.regionCities, view, x, y);
   }
 
   /** Each city's ground tinted in the colour of the company leading it, and ringed in it; none while it is contested. */
@@ -723,6 +736,19 @@ function pin(context: CanvasRenderingContext2D, x: number, y: number, color: str
 }
 
 /** A closed path through a polygon's corners (x and z interleaved). */
+/** Whether any of `cities`' names, drawn 22 px under its middle, lies close to (x, y), screen px. Allocation-free. */
+function nearName(cities: readonly MapCityLabel[], view: MapViewport, x: number, y: number): boolean {
+  for (let i = 0; i < cities.length; i++) {
+    const city = cities[i]!;
+    const dx = view.screenX(city.x, city.z) - x;
+    const dy = view.screenY(city.x, city.z) + 22 - y;
+    if (Math.abs(dx) < VILLAGE_CLEAR_PIXELS.x && Math.abs(dy) < VILLAGE_CLEAR_PIXELS.y) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function polygonPath(corners: Float64Array): Path2D {
   const path = new Path2D();
   path.moveTo(corners[0]!, corners[1]!);

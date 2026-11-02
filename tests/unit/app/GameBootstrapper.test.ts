@@ -43,7 +43,7 @@ describe('GameBootstrapper', () => {
     await new GameBootstrapper(options({ logger })).boot();
 
     expect(logger.messages('info')).toContain(
-      'Ready in 0 ms: vehicles 12, cargo types 12, cities 12, missions 51, maps 2, upgrades 5, traffic vehicles 6, weather 4, times of day 3, events 3, drivers 8, rivals 4, facilities 7, research 12.',
+      'Ready in 0 ms: vehicles 12, cargo types 12, cities 12, missions 56, maps 2, upgrades 5, traffic vehicles 6, weather 4, times of day 3, events 3, drivers 8, rivals 4, facilities 7, research 12.',
     );
   });
 

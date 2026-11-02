@@ -465,6 +465,9 @@ export const EN: StringTable = {
   'city.city_l.name': 'Ridgemont',
 
   'village.brinemoor.name': 'Brinemoor',
+  'village.westbrook.name': 'Westbrook',
+  'village.fernhill.name': 'Fernhill',
+  'village.brackenford.name': 'Brackenford',
   'village.wheatcombe.name': 'Wheatcombe',
   'village.larkvale.name': 'Larkvale',
   'village.dawnmere.name': 'Dawnmere',
@@ -543,6 +546,11 @@ export const EN: StringTable = {
   'mission.tower_glass.title': 'Tower Glass',
   'mission.skyline_steel.title': 'Skyline Steel',
   'mission.city_fuel.title': 'Fuel for the City',
+  'mission.hospital_supplies.title': 'Hospital Supplies',
+  'mission.office_furniture.title': 'Office Furniture',
+  'mission.ridge_fuel.title': 'Fuel for the Ridge',
+  'mission.harbour_reefers.title': 'Harbour Reefers',
+  'mission.downtown_foundations.title': 'Downtown Foundations',
 
   'dock.label': 'Company',
   'dock.jobs': 'Jobs',
