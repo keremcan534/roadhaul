@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { continueSavedCompany, openPanel, watchForProblems } from './support';
+import { continueSavedCompany, leaveDailyReward, openPanel, watchForProblems } from './support';
 
 /** A company of level 3 with its truck standing at Gull Point's ferry terminal. */
 function companyAtTheFerry(): string {
@@ -36,9 +36,9 @@ test('crosses on the ferry from Gull Point to Metropol, and finds Metropol\'s co
   // The game starts again over the water, the company driving on at once.
   await expect(page.locator('.toast').filter({ hasText: 'Welcome to Metropol!' })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
-  await expect(panel).toBeVisible({ timeout: 15_000 });
-  await expect(panel).toContainText('Ferry to North Valley');
-  await page.locator('[data-action="ferry-stay"]').click();
+  // The daily reward, left for later, greets the company again as the game starts.
+  await leaveDailyReward(page);
+  // Off the ferry beside the terminal, not in it: the counter waits until the truck drives back in.
   await expect(panel).toBeHidden();
   await testInfo.attach('metropol', { body: await page.screenshot(), contentType: 'image/png' });
 
