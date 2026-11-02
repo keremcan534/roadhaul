@@ -315,7 +315,7 @@ html[data-camera='cabin'] .dashboard {
   stroke: var(--rh-accent);
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
-  transition: stroke-dashoffset 150ms linear;
+  /* No transition: the arc is not drawn by the compositor, so one would repaint the dial every frame (the speed changes ten times a second). */
 }
 
 .dashboard__speed {

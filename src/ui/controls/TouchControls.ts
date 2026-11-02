@@ -16,6 +16,12 @@ const WHEEL_RIM_SHARE = 0.4;
 const WHEEL_RETURN_RATE = 7;
 /** The speed dial's arc is full at this speed. */
 const DIAL_MAX_KMH = 100;
+/**
+ * The speed shown changes at most this often, seconds: ten times a second reads
+ * as smoothly as a dashboard's, and each change repaints the dial (its arc is
+ * not drawn by the compositor), which every frame cost a low-end phone.
+ */
+const SPEED_REFRESH_SECONDS = 0.1;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
@@ -106,6 +112,7 @@ export class TouchControls {
   private lastPointerAngle = 0;
   private drawnWheelAngle = Number.NaN;
   private shownSpeed = -1;
+  private sinceSpeedShown = Number.POSITIVE_INFINITY;
   private shownGear = Number.NaN;
   private readonly releaseAll: (() => void)[] = [];
 
@@ -285,11 +292,17 @@ export class TouchControls {
     }
   }
 
-  /** Shows speed and gear, touching the DOM only when a displayed value changes. */
-  showTelemetry(speedKmh: number, gear: number): void {
+  /**
+   * Shows speed and gear, touching the DOM only when a displayed value
+   * changes, the speed at most every SPEED_REFRESH_SECONDS (`deltaSeconds`
+   * since the last call), but at once when the truck comes to a stop.
+   */
+  showTelemetry(speedKmh: number, gear: number, deltaSeconds = SPEED_REFRESH_SECONDS): void {
     const speed = Math.round(Math.abs(speedKmh));
-    if (speed !== this.shownSpeed) {
+    this.sinceSpeedShown += deltaSeconds;
+    if (speed !== this.shownSpeed && (this.sinceSpeedShown >= SPEED_REFRESH_SECONDS || speed === 0)) {
       this.shownSpeed = speed;
+      this.sinceSpeedShown = 0;
       this.speedLabel.textContent = String(speed);
       this.dialFill.style.strokeDashoffset = String(100 - Math.min(1, speed / DIAL_MAX_KMH) * 100);
     }

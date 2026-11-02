@@ -3108,7 +3108,7 @@ async function start(strings: Strings): Promise<void> {
           renderHost.setSun(environment.sunTowards, environment.sunGlare, environment.sunShafts);
           renderHost.render();
         }
-        touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
+        touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear, deltaSeconds);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;

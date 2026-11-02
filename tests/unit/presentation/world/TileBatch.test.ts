@@ -55,6 +55,16 @@ describe('TileBatch', () => {
     expect(batch.mesh.visible).toBe(false);
   });
 
+  it('leaves the culling to the batch itself when asked: its tiles against the view each time it is drawn', () => {
+    const culled = new TileBatch([tileAt(0, 0), tileAt(600, 0)], new MeshLambertMaterial(), 'test:fixtures', undefined, true);
+    const plain = new TileBatch([tileAt(0, 0)], new MeshLambertMaterial(), 'test:tiles');
+
+    expect(culled.mesh.perObjectFrustumCulled).toBe(true);
+    expect(plain.mesh.perObjectFrustumCulled).toBe(false);
+    expect(culled.mesh.visible).toBe(true);
+    expect(batchTiles(culled.mesh).every((tile) => tile.visible)).toBe(true);
+  });
+
   it('frees its buffers', () => {
     const scene = new Scene();
     const batch = new TileBatch([tileAt(0, 0)], new MeshLambertMaterial(), 'test:tiles');

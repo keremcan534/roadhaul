@@ -22,8 +22,13 @@ export class TileBatch {
   private readonly vertexStarts: Uint32Array;
   private shownCount = 0;
 
-  /** `geometries` are copied in (and may be disposed after); `reachMeters` as FarCulling's. */
-  constructor(geometries: readonly BufferGeometry[], material: Material, name: string, reachMeters = FAR_CULL_METERS) {
+  /**
+   * `geometries` are copied in (and may be disposed after); `reachMeters` as
+   * FarCulling's. A batch that `cullsItself` leaves FarCulling out: the batch
+   * looks over its tiles against the camera's view each time it is drawn (for
+   * a few tiles that update() is never asked of).
+   */
+  constructor(geometries: readonly BufferGeometry[], material: Material, name: string, reachMeters = FAR_CULL_METERS, cullsItself = false) {
     let vertices = 0;
     let indices = 0;
     for (const geometry of geometries) {
@@ -33,7 +38,7 @@ export class TileBatch {
     this.mesh = new BatchedMesh(Math.max(1, geometries.length), Math.max(1, vertices), Math.max(1, indices), material);
     this.mesh.name = name;
     // FarCulling culls the tiles (shown to the shadow map's camera too), and order does not matter to what is opaque.
-    this.mesh.perObjectFrustumCulled = false;
+    this.mesh.perObjectFrustumCulled = cullsItself;
     this.mesh.sortObjects = false;
     this.mesh.frustumCulled = false;
     this.culling = new FarCulling(reachMeters);

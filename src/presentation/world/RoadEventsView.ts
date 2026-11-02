@@ -17,6 +17,7 @@ import type { WorkZone, ZonePiece } from '../../domain/world/workZones';
 import type { StrandedDriver } from '../../systems/world/RoadEventService';
 import { vehicleGeometry } from '../traffic/TrafficView';
 import { LampGlows } from '../vehicles/LampGlows';
+import { TileBatch } from './TileBatch';
 
 /** What the road's events are, as RoadEventService has them. */
 export interface RoadEventsSource {
@@ -89,7 +90,8 @@ export class RoadEventsView {
    * Each camera with its signs, and each of the day's works, a mesh of its
    * own: drawn only when in view (a few draw calls near them, none elsewhere).
    */
-  private readonly fixtures: Mesh[] = [];
+  /** The speed cameras and the day's works, drawn as one (a TileBatch culling itself), made again when the works change. */
+  private fixtures: TileBatch | null = null;
   private world: DrivingWorld | null = null;
   private shownZones: readonly WorkZone[] | null = null;
   private readonly car: Group;
@@ -224,9 +226,7 @@ export class RoadEventsView {
 
   dispose(): void {
     this.root.removeFromParent();
-    for (const fixture of this.fixtures) {
-      fixture.geometry.dispose();
-    }
+    this.fixtures?.dispose();
     for (const geometry of this.carGeometries) {
       geometry.dispose();
     }
@@ -238,23 +238,16 @@ export class RoadEventsView {
 
   /**
    * The world's speed cameras with their signs, and the day's works
-   * (`zones`), a mesh each, made again when the works change (once a day):
-   * the arrow boards' lamps in them, their glow blinking over them.
+   * (`zones`), a tile each of one batch, made again when the works change
+   * (once a day): the arrow boards' lamps in them, their glow blinking over
+   * them. Those in view are drawn in one draw call.
    */
   private build(zones: readonly WorkZone[]): void {
-    for (const fixture of this.fixtures) {
-      fixture.geometry.dispose();
-      fixture.removeFromParent();
-    }
-    this.fixtures.length = 0;
-    const add = (parts: BufferGeometry[], name: string): void => {
-      const fixture = new Mesh(merge(parts), this.lambert);
-      fixture.name = name;
-      // It never moves: its matrix is worked out once.
-      fixture.matrixAutoUpdate = false;
-      fixture.updateMatrix();
-      this.fixtures.push(fixture);
-      this.root.add(fixture);
+    this.fixtures?.dispose();
+    this.fixtures = null;
+    const tiles: BufferGeometry[] = [];
+    const add = (parts: BufferGeometry[]): void => {
+      tiles.push(merge(parts));
     };
     for (const camera of this.world?.speedCameras ?? []) {
       add(
@@ -262,7 +255,6 @@ export class RoadEventsView {
           placed(cameraGeometry(), camera.x, camera.z, camera.heading, this.ground(camera.x, camera.z)),
           ...camera.signs.map((sign) => placed(cameraSignGeometry(), sign.x, sign.z, sign.heading, this.ground(sign.x, sign.z))),
         ],
-        'speedCamera',
       );
     }
     const at = (geometry: BufferGeometry, piece: ZonePiece): BufferGeometry =>
@@ -276,9 +268,20 @@ export class RoadEventsView {
           at(arrowLampsGeometry(), zone.arrowBoard),
           at(rollerGeometry(), zone.machine),
         ],
-        'roadWorks',
       );
     }
+    if (tiles.length === 0) {
+      return;
+    }
+    const fixtures = new TileBatch(tiles, this.lambert, 'road-events:fixtures', undefined, true);
+    for (const tile of tiles) {
+      tile.dispose();
+    }
+    // It never moves: its matrix is worked out once.
+    fixtures.mesh.matrixAutoUpdate = false;
+    fixtures.mesh.updateMatrix();
+    this.root.add(fixtures.mesh);
+    this.fixtures = fixtures;
   }
 }
 
