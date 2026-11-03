@@ -54,6 +54,12 @@ export class GameLoop {
    * an even cadence (a 120 Hz screen capped at 60 runs every other frame).
    */
   maxFramesPerSecond = 0;
+  /**
+   * The real time since the frame before, seconds, whatever the time scale
+   * (frameUpdate's delta is the game's time): 0 for the first frame after
+   * a start. What the frame rate is measured by.
+   */
+  realFrameSeconds = 0;
   private handle: number | null = null;
   private previousTimestampMs: number | null = null;
   /** When the next frame is due under the cap, ms; NaN until a frame has run. */
@@ -135,8 +141,8 @@ export class GameLoop {
 
   private tick(timestampMs: number, frameHandle: number): void {
     const scale = Number.isFinite(this.timeScale) ? Math.max(0, this.timeScale) : 1;
-    const elapsedSeconds =
-      this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0) * scale;
+    this.realFrameSeconds = this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0);
+    const elapsedSeconds = this.realFrameSeconds * scale;
     this.previousTimestampMs = timestampMs;
     const deltaSeconds = Math.min(elapsedSeconds, this.options.maxFrameDeltaSeconds);
 

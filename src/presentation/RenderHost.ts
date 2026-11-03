@@ -247,8 +247,8 @@ export class RenderHost {
   }
 
   /**
-   * Draws the sun's shadow map every other frame only (at 90, 120 Hz and
-   * more): the shadows then follow what moves 60 times a second, still
+   * Draws the sun's shadow map every other frame only (at 120 Hz and more):
+   * the shadows then follow what moves 60 times a second or more, still
    * smooth, and the frame is spared the casters' second drawing half the time
    * (about a sixth of a flagship's frame). The shadows keep the matrix they
    * were drawn with, so they never slip. Off: every frame.

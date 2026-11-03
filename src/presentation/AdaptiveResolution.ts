@@ -14,6 +14,13 @@ const DEFAULT_TARGET_FPS = 60;
 const REFRESH_RATES = [30, 48, 50, 60, 72, 75, 90, 100, 120, 144, 165] as const;
 /** Frames quicker than this are not a screen's: two callbacks in one frame. */
 const SHORTEST_FRAME_SECONDS = 1 / 250;
+/**
+ * A frame time counts toward the screen's rate only when this many frames
+ * in a row were that quick: one frame can come early (its timestamp
+ * jittering round the screen's beat, the next late), several in a row on
+ * a screen too slow for them cannot.
+ */
+const FRAMES_IN_A_ROW = 3;
 /** Frame times are averaged over windows this long. */
 const WINDOW_SECONDS = 2;
 /** Quick windows in a row before the resolution goes back up (slow ones act at once). */
@@ -28,6 +35,16 @@ const HITCH_SECONDS = 0.2;
  * short of time to fill them is helped), and each step down is a hitch.
  */
 const CPU_BOUND_SHARE = 0.8;
+/**
+ * Slow windows in a row at the lowest scale before the target is taken as
+ * out of the device's reach: from then on it aims at half the rate (a 120 Hz
+ * screen's 60, a 60 Hz screen's 30), and the pixels come back as frames
+ * keep up with that. Without it a phone whose GPU cannot draw 96 frames a
+ * second at any resolution would stay blurred at the lowest for nothing.
+ */
+const OUT_OF_REACH_WINDOWS = 2;
+/** The lowest target an out-of-reach one steps down to, frames a second. */
+const LOWEST_TARGET_FPS = 30;
 
 /**
  * Dynamic resolution (ARCHITECTURE.md §11): when frames fall well short of
@@ -47,10 +64,17 @@ export class AdaptiveResolution {
   private quickWindows = 0;
   /** The first window after a (re)start is not measured: shaders compile, textures upload. */
   private warmingUp = true;
-  /** The shortest frame seen yet, seconds: the screen's refresh interval (or the cap's), at the light menus. */
+  /** The shortest frame seen yet FRAMES_IN_A_ROW times in a row, seconds: the screen's refresh interval (or the cap's). */
   private shortestFrame = Number.POSITIVE_INFINITY;
+  /** The frames just before this one (FRAMES_IN_A_ROW - 1 of them, the latest first), and how many in a row were seen. */
+  private readonly recentFrames = [0, 0];
+  private recentCount = 0;
   /** The player's cap, frames a second; 0: none. */
   private cap = 0;
+  /** The most the device was seen able to aim for (OUT_OF_REACH_WINDOWS), frames a second; infinite until then. */
+  private reach = Number.POSITIVE_INFINITY;
+  /** Slow windows in a row at the lowest scale. */
+  private slowAtLowest = 0;
 
   constructor(private readonly minScale: number) {}
 
@@ -59,10 +83,10 @@ export class AdaptiveResolution {
     this.cap = framesPerSecond > 0 ? framesPerSecond : 0;
   }
 
-  /** The frame rate aimed at: the screen's (as seen), under the player's cap. */
+  /** The frame rate aimed at: the screen's (as seen), under the player's cap and the device's reach. */
   get targetFps(): number {
     const seen = Number.isFinite(this.shortestFrame) ? nearestRefreshRate(1 / this.shortestFrame) : DEFAULT_TARGET_FPS;
-    return this.cap > 0 ? Math.min(this.cap, seen) : seen;
+    return Math.min(this.cap > 0 ? Math.min(this.cap, seen) : seen, this.reach);
   }
 
   /** The share of the full pixel ratio to draw at. */
@@ -77,11 +101,10 @@ export class AdaptiveResolution {
    */
   frame(deltaSeconds: number, workSeconds = 0): boolean {
     if (!(deltaSeconds > 0) || deltaSeconds > HITCH_SECONDS) {
+      this.recentCount = 0;
       return false;
     }
-    if (deltaSeconds > SHORTEST_FRAME_SECONDS && deltaSeconds < this.shortestFrame) {
-      this.shortestFrame = deltaSeconds;
-    }
+    this.seeScreenBeat(deltaSeconds);
     this.windowSeconds += deltaSeconds;
     this.windowWorkSeconds += Math.min(Math.max(workSeconds, 0), deltaSeconds);
     this.windowFrames++;
@@ -100,8 +123,21 @@ export class AdaptiveResolution {
     const target = this.targetFps;
     if (average > Math.min(FLOOR_FRAME_SECONDS, 1 / (SLOW_SHARE * target))) {
       this.quickWindows = 0;
-      return work < CPU_BOUND_SHARE && this.setScale(this.current * LOWER_FACTOR);
+      if (work >= CPU_BOUND_SHARE) {
+        this.slowAtLowest = 0;
+        return false;
+      }
+      if (this.setScale(this.current * LOWER_FACTOR)) {
+        return true;
+      }
+      // As few pixels as it may draw, and still slow.
+      if (++this.slowAtLowest >= OUT_OF_REACH_WINDOWS && target > LOWEST_TARGET_FPS) {
+        this.slowAtLowest = 0;
+        this.reach = Math.max(LOWEST_TARGET_FPS, target / 2);
+      }
+      return false;
     }
+    this.slowAtLowest = 0;
     if (average < 1 / (QUICK_SHARE * target) && this.current < 1) {
       this.quickWindows++;
       if (this.quickWindows < QUICK_WINDOWS_TO_RAISE) {
@@ -114,13 +150,38 @@ export class AdaptiveResolution {
     return false;
   }
 
-  /** Measures afresh (after the page was hidden), keeping the scale. */
+  /**
+   * Measures afresh (after the page was hidden), keeping the scale and the
+   * device's reach: the screen's rate too, which may have changed meanwhile
+   * (a battery saver holding it at 60).
+   */
   restart(): void {
     this.windowSeconds = 0;
     this.windowWorkSeconds = 0;
     this.windowFrames = 0;
     this.quickWindows = 0;
+    this.slowAtLowest = 0;
+    this.recentCount = 0;
+    this.shortestFrame = Number.POSITIVE_INFINITY;
     this.warmingUp = true;
+  }
+
+  /** The screen's beat: the shortest frame time held FRAMES_IN_A_ROW frames in a row. */
+  private seeScreenBeat(deltaSeconds: number): void {
+    const recent = this.recentFrames;
+    // The slowest of this frame and the ones before it: what all of them were at least as quick as.
+    let held = deltaSeconds;
+    for (let i = 0; i < recent.length; i++) {
+      held = Math.max(held, recent[i]!);
+    }
+    for (let i = recent.length - 1; i > 0; i--) {
+      recent[i] = recent[i - 1]!;
+    }
+    recent[0] = deltaSeconds;
+    this.recentCount = Math.min(this.recentCount + 1, FRAMES_IN_A_ROW);
+    if (this.recentCount >= FRAMES_IN_A_ROW && held > SHORTEST_FRAME_SECONDS && held < this.shortestFrame) {
+      this.shortestFrame = held;
+    }
   }
 
   private setScale(scale: number): boolean {

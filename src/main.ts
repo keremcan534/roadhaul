@@ -3112,9 +3112,10 @@ async function start(strings: Strings): Promise<void> {
         toasts.update(deltaSeconds);
         // Slow frames on the road: fewer pixels (the rain's streaks and the wires keep their width in pixels). The menus,
         // drawn at half rate, are no measure.
-        // At 90, 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second.
-        renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps > 75;
-        if (simulating && adaptiveResolution.frame(deltaSeconds, lastFrameWorkSeconds)) {
+        // At 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second or more.
+        renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps >= 120;
+        // Measured in real time: a moment of slow motion's short game frames are not a quicker screen.
+        if (simulating && adaptiveResolution.frame(loop.realFrameSeconds, lastFrameWorkSeconds)) {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitPixelSizes();
         }
@@ -3146,7 +3147,7 @@ async function start(strings: Strings): Promise<void> {
           root.dataset.sound = shownSound;
         }
         if (perfOverlay.visible) {
-          perfOverlay.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+          perfOverlay.frame(loop.realFrameSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
         }
         lastFrameWorkSeconds = (performance.now() - workStarted) / 1000;
       },

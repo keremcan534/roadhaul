@@ -97,12 +97,15 @@ describe('GameLoop', () => {
     loop.timeScale = 0.4;
     scheduler.frame(1050);
     expect(calls).toEqual(['fixed 0.01', 'fixed 0.01', 'frame 0.020 0.00']);
+    // The frame's real time stays what it was, for the frame rate.
+    expect(loop.realFrameSeconds).toBeCloseTo(0.05, 9);
 
     // Frozen, and back to real time; a bad scale counts as real time.
     calls.length = 0;
     loop.timeScale = 0;
     scheduler.frame(1100);
     expect(calls).toEqual(['frame 0.000 0.00']);
+    expect(loop.realFrameSeconds).toBeCloseTo(0.05, 9);
     calls.length = 0;
     loop.timeScale = Number.NaN;
     scheduler.frame(1130);

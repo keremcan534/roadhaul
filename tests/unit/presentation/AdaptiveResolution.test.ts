@@ -44,6 +44,56 @@ describe('AdaptiveResolution', () => {
     expect(capped.scale).toBe(1);
   });
 
+  it('takes no frame that came early for a quicker screen: only frames that quick in a row', () => {
+    const resolution = new AdaptiveResolution(0.6);
+    // A 60 Hz screen whose frames' timestamps jitter: now and then one comes 5 ms early, the next 5 ms late.
+    for (let i = 0; i < 600; i++) {
+      const jitter = i % 7 === 3 ? -0.005 : i % 7 === 4 ? 0.005 : 0;
+      resolution.frame(1 / 60 + jitter);
+    }
+    expect(resolution.targetFps).toBe(60);
+    expect(resolution.scale).toBe(1);
+    // Two quick frames in a row are not enough either; three are.
+    resolution.frame(1 / 120);
+    resolution.frame(1 / 120);
+    resolution.frame(1 / 60);
+    expect(resolution.targetFps).toBe(60);
+    run(resolution, 120, 0.05);
+    expect(resolution.targetFps).toBe(120);
+  });
+
+  it('aims at half the screen\'s rate when even its fewest pixels cannot keep up with it, and draws more again', () => {
+    const resolution = new AdaptiveResolution(0.6);
+    run(resolution, 120, 3);
+    // A GPU that draws 70 frames a second whatever the resolution: down to the floor, then 60 aimed at.
+    run(resolution, 70, 30);
+    expect(resolution.targetFps).toBe(60);
+    run(resolution, 70, 60);
+    expect(resolution.scale).toBe(1);
+    expect(resolution.targetFps).toBe(60);
+
+    // Frames the CPU holds back keep the pixels and the target.
+    const cpuBound = new AdaptiveResolution(0.6);
+    run(cpuBound, 120, 3, 0.9);
+    run(cpuBound, 70, 60, 0.9);
+    expect(cpuBound.targetFps).toBe(120);
+    expect(cpuBound.scale).toBe(1);
+
+    // A 60 Hz screen's out of reach: 30, as the old floor had it.
+    const slow = new AdaptiveResolution(0.6);
+    run(slow, 20, 30);
+    expect(slow.targetFps).toBe(30);
+  });
+
+  it('sees the screen\'s rate afresh after a restart: it may have changed while the game was away', () => {
+    const resolution = new AdaptiveResolution(0.6);
+    run(resolution, 120, 3);
+    expect(resolution.targetFps).toBe(120);
+    resolution.restart();
+    run(resolution, 60, 3);
+    expect(resolution.targetFps).toBe(60);
+  });
+
   it('draws fewer pixels when frames are slow, down to its floor', () => {
     const resolution = new AdaptiveResolution(0.6);
 
