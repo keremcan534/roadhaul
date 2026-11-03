@@ -7,6 +7,7 @@ import type { NavigationService } from '../../systems/navigation/NavigationServi
 import type { RivalService } from '../../systems/rivals/RivalService';
 import type { CompanyTraffic } from '../../systems/traffic/CompanyTraffic';
 import type { Strings } from '../i18n';
+import { keptInside, LabelSpace } from './LabelSpace';
 import { pickOnMap, type MapPick } from './mapPicking';
 import type { MapCityLabel, MapDepot, MapFerry, MapPavedArea, MapRoadRun, MapSketch, MapVillageLabel } from './mapSketch';
 import { MapTerrain } from './MapTerrain';
@@ -98,8 +99,23 @@ const LABEL_FONT = '800 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-
 const SMALL_FONT = '800 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 /** Zoomed out further than this (px a meter), the villages' names are left out: they would crowd the towns'. */
 const VILLAGE_LABEL_MIN_SCALE = 0.035;
-/** A village's name is left out where it would lie within this of a town's (px across, px down from it). */
-const VILLAGE_CLEAR_PIXELS = { x: 80, y: 18 } as const;
+/**
+ * The box a name takes on the screen (LabelSpace): half its height at each
+ * font with its edge, px, and the gap kept on each side of it. A village's
+ * or a ferry's name that would cover a name placed before it is left out
+ * (the towns' are placed first and always drawn).
+ */
+const LABEL_HALF_HEIGHT = 10;
+const SMALL_HALF_HEIGHT = 7;
+const LABEL_GAP_PIXELS = 3;
+/** A town's name lies this far under its middle, px: the next bay's pin and its tag stand above it. */
+const TOWN_LABEL_DROP = 22;
+/** A ferry's name lies this far under its boat (or over it, where a town's name is under it), px. */
+const FERRY_LABEL_DROP = 20;
+/** The boat's disc, its glow included: no name is drawn over it. */
+const FERRY_DISC_PIXELS = 15;
+/** A ferry's name is kept at least this far inside the map's edges, px, its boat near one or not. */
+const EDGE_MARGIN_PIXELS = 6;
 /** Another region's name over its middle. */
 const REGION_FONT = '900 26px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 
@@ -171,6 +187,11 @@ export class MapPainter {
   private readonly ferryClosedNames: readonly string[];
   private readonly pickupText: string;
   private readonly deliveryText: string;
+  /** Where the names drawn this paint lie, so no two cover each other. */
+  private readonly labelSpace: LabelSpace;
+  /** Each name's width on the screen at the large and the small font, px: measured once. */
+  private readonly labelWidths = new Map<string, number>();
+  private readonly smallWidths = new Map<string, number>();
   /** Each driver's initials, for their truck's mark on the full map. */
   private readonly driverInitials: ReadonlyMap<string, string>;
   /** Each company's colour as CSS: its trucks' arrows, and its territory's tint and rim. */
@@ -258,6 +279,10 @@ export class MapPainter {
     this.ferryClosedNames = this.ferries.map((ferry, index) => strings.t('map.ferryClosed', { name: this.ferryNames[index]!, level: ferry.requiredLevel }));
     this.pickupText = strings.t('map.pickup');
     this.deliveryText = strings.t('map.delivery');
+    // A box for each name and each boat: never more than that in one paint.
+    this.labelSpace = new LabelSpace(
+      sketch.cities.length + this.regionCities.length + sketch.villages.length + this.regionVillages.length + 2 * this.ferries.length,
+    );
     this.driverInitials = new Map(
       sources.fleet.roster().map((offer) => {
         const name = strings.t(`driver.${offer.definition.id}.name`);
@@ -493,6 +518,13 @@ export class MapPainter {
     // The ferry terminals: a boat on a teal disc (grey while the company has not reached its level), ringed while
     // open, and where it goes on the full map.
     const level = this.sources.company?.level ?? Infinity;
+    if (options.labels) {
+      // The towns' names are placed first, as they are always drawn: the ferries' and the villages' keep clear of them.
+      this.labelSpace.clear();
+      context.font = LABEL_FONT;
+      this.takeTownNames(context, view, sketch.cities, this.cityNames);
+      this.takeTownNames(context, view, this.regionCities, this.regionCityNames);
+    }
     for (let i = 0; i < this.ferries.length; i++) {
       const ferry = this.ferries[i]!;
       if (!view.sees(this.around(ferry.x, ferry.z), 16)) {
@@ -515,22 +547,14 @@ export class MapPainter {
       context.rect(x - 2.5, y - 4, 4, 3);
       context.fill();
       if (options.labels) {
-        const name = open ? this.ferryNames[i]! : this.ferryClosedNames[i]!;
-        context.font = SMALL_FONT;
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.lineWidth = 3;
-        context.strokeStyle = COLORS.labelEdge;
-        context.strokeText(name, x, y + 20);
-        context.fillStyle = open ? COLORS.crossing : COLORS.villageLabel;
-        context.fillText(name, x, y + 20);
+        this.paintFerryName(context, view, open ? this.ferryNames[i]! : this.ferryClosedNames[i]!, x, y, open);
       }
     }
-    if (options.labels && this.regionNames.length > 0) {
+    if (options.labels) {
       context.textAlign = 'center';
       context.textBaseline = 'middle';
       context.strokeStyle = COLORS.labelEdge;
-      // The other regions' names over their middles, large and faint; their villages' and cities' names as here.
+      // The other regions' names over their middles, large and faint.
       context.font = REGION_FONT;
       context.lineWidth = 5;
       context.fillStyle = COLORS.regionLabel;
@@ -543,65 +567,19 @@ export class MapPainter {
           context.fillText(this.regionNames[i]!, x, y);
         }
       }
-      context.font = SMALL_FONT;
-      context.lineWidth = 3;
-      context.fillStyle = COLORS.villageLabel;
-      for (let i = 0; i < this.regionVillages.length; i++) {
-        const village = this.regionVillages[i]!;
-        if (view.scale >= VILLAGE_LABEL_MIN_SCALE && view.sees(this.around(village.x, village.z), 60)) {
-          const x = view.screenX(village.x, village.z);
-          const y = view.screenY(village.x, village.z);
-          if (this.nearTownName(view, x, y)) {
-            continue;
-          }
-          context.strokeText(this.regionVillageNames[i]!, x, y);
-          context.fillText(this.regionVillageNames[i]!, x, y);
-        }
+      // The villages' names, here and across the water, smaller and dimmer than the towns': each where it is clear.
+      if (view.scale >= VILLAGE_LABEL_MIN_SCALE) {
+        context.font = SMALL_FONT;
+        context.lineWidth = 3;
+        context.fillStyle = COLORS.villageLabel;
+        this.paintVillageNames(context, view, sketch.villages, this.villageNames);
+        this.paintVillageNames(context, view, this.regionVillages, this.regionVillageNames);
       }
       context.font = LABEL_FONT;
       context.lineWidth = 4;
       context.fillStyle = COLORS.label;
-      for (let i = 0; i < this.regionCities.length; i++) {
-        const city = this.regionCities[i]!;
-        if (view.sees(this.around(city.x, city.z), 80)) {
-          const x = view.screenX(city.x, city.z);
-          const y = view.screenY(city.x, city.z) + 22;
-          context.strokeText(this.regionCityNames[i]!, x, y);
-          context.fillText(this.regionCityNames[i]!, x, y);
-        }
-      }
-    }
-    if (options.labels) {
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.strokeStyle = COLORS.labelEdge;
-      // The villages' names, smaller and dimmer than the cities'.
-      context.font = SMALL_FONT;
-      context.lineWidth = 3;
-      context.fillStyle = COLORS.villageLabel;
-      for (let i = 0; i < sketch.villages.length; i++) {
-        const village = sketch.villages[i]!;
-        if (view.scale >= VILLAGE_LABEL_MIN_SCALE && view.sees(this.around(village.x, village.z), 60)) {
-          const x = view.screenX(village.x, village.z);
-          const y = view.screenY(village.x, village.z);
-          if (this.nearTownName(view, x, y)) {
-            continue;
-          }
-          context.strokeText(this.villageNames[i]!, x, y);
-          context.fillText(this.villageNames[i]!, x, y);
-        }
-      }
-      context.font = LABEL_FONT;
-      context.lineWidth = 4;
-      context.fillStyle = COLORS.label;
-      for (let i = 0; i < sketch.cities.length; i++) {
-        const city = sketch.cities[i]!;
-        // Under the city's middle: the next bay's pin and its tag stand above theirs.
-        const x = view.screenX(city.x, city.z);
-        const y = view.screenY(city.x, city.z) + 22;
-        context.strokeText(this.cityNames[i]!, x, y);
-        context.fillText(this.cityNames[i]!, x, y);
-      }
+      this.paintTownNames(context, view, sketch.cities, this.cityNames);
+      this.paintTownNames(context, view, this.regionCities, this.regionCityNames);
     }
     const target = this.sources.missions.target;
     for (let i = 0; i < sketch.depots.length; i++) {
@@ -646,9 +624,73 @@ export class MapPainter {
     }
   }
 
-  /** Whether a village's name at (x, y), screen px, would overlap a town's name here or across the water. Allocation-free. */
-  private nearTownName(view: MapViewport, x: number, y: number): boolean {
-    return nearName(this.sketch.cities, view, x, y) || nearName(this.regionCities, view, x, y);
+  /** Takes the boxes of `cities`' names (at LABEL_FONT, set) before anything else is placed. Allocation-free once measured. */
+  private takeTownNames(context: CanvasRenderingContext2D, view: MapViewport, cities: readonly MapCityLabel[], names: readonly string[]): void {
+    for (let i = 0; i < cities.length; i++) {
+      const city = cities[i]!;
+      if (!view.sees(this.around(city.x, city.z), 80)) {
+        continue;
+      }
+      const x = view.screenX(city.x, city.z);
+      const y = view.screenY(city.x, city.z) + TOWN_LABEL_DROP;
+      const half = textWidth(context, this.labelWidths, names[i]!) / 2 + LABEL_GAP_PIXELS;
+      this.labelSpace.take(x - half, y - LABEL_HALF_HEIGHT, x + half, y + LABEL_HALF_HEIGHT);
+    }
+  }
+
+  /** Draws `cities`' names under their middles (the font, colours and alignment set). */
+  private paintTownNames(context: CanvasRenderingContext2D, view: MapViewport, cities: readonly MapCityLabel[], names: readonly string[]): void {
+    for (let i = 0; i < cities.length; i++) {
+      const city = cities[i]!;
+      if (view.sees(this.around(city.x, city.z), 80)) {
+        const x = view.screenX(city.x, city.z);
+        const y = view.screenY(city.x, city.z) + TOWN_LABEL_DROP;
+        context.strokeText(names[i]!, x, y);
+        context.fillText(names[i]!, x, y);
+      }
+    }
+  }
+
+  /** Draws each of `villages`' names that is clear of the names placed before it (the font, colours and alignment set). */
+  private paintVillageNames(context: CanvasRenderingContext2D, view: MapViewport, villages: readonly MapVillageLabel[], names: readonly string[]): void {
+    for (let i = 0; i < villages.length; i++) {
+      const village = villages[i]!;
+      if (!view.sees(this.around(village.x, village.z), 60)) {
+        continue;
+      }
+      const x = view.screenX(village.x, village.z);
+      const y = view.screenY(village.x, village.z);
+      const half = textWidth(context, this.smallWidths, names[i]!) / 2 + LABEL_GAP_PIXELS;
+      if (this.labelSpace.tryTake(x - half, y - SMALL_HALF_HEIGHT, x + half, y + SMALL_HALF_HEIGHT)) {
+        context.strokeText(names[i]!, x, y);
+        context.fillText(names[i]!, x, y);
+      }
+    }
+  }
+
+  /**
+   * A ferry's name under its boat at (x, y), screen px, or over it where a
+   * town's name is under it, kept inside the map's edges; its box and the
+   * boat's are taken, so no village's name covers either.
+   */
+  private paintFerryName(context: CanvasRenderingContext2D, view: MapViewport, name: string, x: number, y: number, open: boolean): void {
+    context.font = SMALL_FONT;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    const half = textWidth(context, this.smallWidths, name) / 2 + LABEL_GAP_PIXELS;
+    const space = this.labelSpace;
+    const labelX = keptInside(x, half + EDGE_MARGIN_PIXELS, view.width);
+    let labelY = y + FERRY_LABEL_DROP;
+    if (!space.isFree(labelX - half, labelY - SMALL_HALF_HEIGHT, labelX + half, labelY + SMALL_HALF_HEIGHT)) {
+      labelY = y - FERRY_LABEL_DROP;
+    }
+    space.take(labelX - half, labelY - SMALL_HALF_HEIGHT, labelX + half, labelY + SMALL_HALF_HEIGHT);
+    space.take(x - FERRY_DISC_PIXELS, y - FERRY_DISC_PIXELS, x + FERRY_DISC_PIXELS, y + FERRY_DISC_PIXELS);
+    context.lineWidth = 3;
+    context.strokeStyle = COLORS.labelEdge;
+    context.strokeText(name, labelX, labelY);
+    context.fillStyle = open ? COLORS.crossing : COLORS.villageLabel;
+    context.fillText(name, labelX, labelY);
   }
 
   /** Each city's ground tinted in the colour of the company leading it, and ringed in it; none while it is contested. */
@@ -817,18 +859,14 @@ function pin(context: CanvasRenderingContext2D, x: number, y: number, color: str
   disc(context, x, y - 15, 3.5, COLORS.truckEdge);
 }
 
-/** A closed path through a polygon's corners (x and z interleaved). */
-/** Whether any of `cities`' names, drawn 22 px under its middle, lies close to (x, y), screen px. Allocation-free. */
-function nearName(cities: readonly MapCityLabel[], view: MapViewport, x: number, y: number): boolean {
-  for (let i = 0; i < cities.length; i++) {
-    const city = cities[i]!;
-    const dx = view.screenX(city.x, city.z) - x;
-    const dy = view.screenY(city.x, city.z) + 22 - y;
-    if (Math.abs(dx) < VILLAGE_CLEAR_PIXELS.x && Math.abs(dy) < VILLAGE_CLEAR_PIXELS.y) {
-      return true;
-    }
+/** `text`'s width at the context's font, px, measured once into `widths` (one map for each font). */
+function textWidth(context: CanvasRenderingContext2D, widths: Map<string, number>, text: string): number {
+  let width = widths.get(text);
+  if (width === undefined) {
+    width = context.measureText(text).width;
+    widths.set(text, width);
   }
-  return false;
+  return width;
 }
 
 /** The canopy's tile, pixels square: the crowns repeat this far apart on the screen. */
@@ -878,6 +916,7 @@ function canopyPattern(context: CanvasRenderingContext2D): CanvasPattern | null 
   return context.createPattern(tile, 'repeat');
 }
 
+/** A closed path through a polygon's corners (x and z interleaved). */
 function polygonPath(corners: Float64Array): Path2D {
   const path = new Path2D();
   path.moveTo(corners[0]!, corners[1]!);
