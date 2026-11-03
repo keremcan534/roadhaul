@@ -20,15 +20,18 @@ test('takes a photo from the pause menu: the picture alone, turned round the tru
   await expect(page.locator('.minimap')).toBeHidden();
   await expect(page.locator('.photo-mode__hint')).toHaveText('Drag to move round the truck; pinch or scroll to zoom.');
 
-  // A drag turns the camera round the truck.
-  const before = await page.locator('#game-canvas').screenshot();
+  // A drag turns the camera round the truck. Drawn in software, a frame takes most of a second and a look at the
+  // canvas several (the drag's moves come a frame apart): the pictures are taken at the page's own scale, and given
+  // the time a few of them take.
+  const canvasPicture = () => page.locator('#game-canvas').screenshot({ scale: 'css' });
+  const before = await canvasPicture();
   const stage = await page.locator('.photo-mode__stage').boundingBox();
   await page.mouse.move(stage!.x + stage!.width * 0.6, stage!.y + stage!.height * 0.5);
   await page.mouse.down();
   await page.mouse.move(stage!.x + stage!.width * 0.3, stage!.y + stage!.height * 0.4, { steps: 6 });
   await page.mouse.up();
   await expect(page.locator('.photo-mode__hint')).toBeHidden();
-  await expect.poll(async () => (await page.locator('#game-canvas').screenshot()).equals(before)).toBe(false);
+  await expect.poll(async () => (await canvasPicture()).equals(before), { timeout: 60_000 }).toBe(false);
 
   // The look shows on the canvas as picked.
   await page.locator('[data-action="photo-filter"][data-filter="mono"]').click();
