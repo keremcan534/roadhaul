@@ -454,12 +454,13 @@ export class SceneryView {
 
   /**
    * Shows the tiles near (x, z), the camera, and hides the ones lost in the haze (FAR_CULL_METERS); given the
-   * camera's `view`, also those out of it (FarCulling.update). Allocation-free.
+   * camera's `view`, also those out of it (FarCulling.update; `view` null and `eyeView` the camera's where the shadow
+   * map is drawn, as TileBatch.update). Allocation-free.
    */
-  showAround(x: number, z: number, view: Frustum | null = null): void {
+  showAround(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
     this.culling.update(x, z, view);
     for (let i = 0; i < this.batches.length; i++) {
-      this.batches[i]!.update(x, z, view);
+      this.batches[i]!.update(x, z, view, eyeView);
     }
   }
 

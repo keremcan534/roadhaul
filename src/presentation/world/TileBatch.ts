@@ -28,7 +28,13 @@ export class TileBatch {
    * looks over its tiles against the camera's view each time it is drawn (for
    * a few tiles that update() is never asked of).
    */
-  constructor(geometries: readonly BufferGeometry[], material: Material, name: string, reachMeters = FAR_CULL_METERS, cullsItself = false) {
+  constructor(
+    geometries: readonly BufferGeometry[],
+    material: Material,
+    name: string,
+    reachMeters = FAR_CULL_METERS,
+    private readonly cullsItself = false,
+  ) {
     let vertices = 0;
     let indices = 0;
     for (const geometry of geometries) {
@@ -37,7 +43,7 @@ export class TileBatch {
     }
     this.mesh = new BatchedMesh(Math.max(1, geometries.length), Math.max(1, vertices), Math.max(1, indices), material);
     this.mesh.name = name;
-    // FarCulling culls the tiles (shown to the shadow map's camera too), and order does not matter to what is opaque.
+    // FarCulling culls the tiles (and, where it cannot, the batch itself: update()); order does not matter to what is opaque.
     this.mesh.perObjectFrustumCulled = cullsItself;
     this.mesh.sortObjects = false;
     this.mesh.frustumCulled = false;
@@ -98,15 +104,41 @@ export class TileBatch {
     this.mesh.setVisibleAt(tile, shown);
   }
 
-  /** Shows the tiles near (x, z), the camera, and (given its view) in it, as FarCulling.update. Allocation-free. */
-  update(x: number, z: number, view: Frustum | null = null): void {
-    this.culling.update(x, z, view);
+  /**
+   * Shows the tiles near (x, z), the camera, and (given its view) in it, as
+   * FarCulling.update. `view` is null where the sun's shadow map is drawn
+   * (a tile out of the camera's view can cast a shadow into it); `eyeView`
+   * is the camera's view all the same. A batch that casts no shadow is culled
+   * against `eyeView`; one that does, without a `view`, culls its tiles
+   * itself each time it is drawn, against that drawing's camera: the eye's,
+   * then the sun's (no tile behind the camera drawn, none far outside the
+   * shadow map's reach drawn into it). Allocation-free.
+   */
+  update(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
+    const casts = this.mesh.castShadow;
+    this.culling.update(x, z, casts ? view : eyeView);
+    this.setCullsEachDraw(this.cullsItself || (casts && view === null));
     this.mesh.visible = this.shownCount > 0;
   }
 
   dispose(): void {
     this.mesh.removeFromParent();
     this.mesh.dispose();
+  }
+
+  /** Whether the batch looks over its tiles against the camera each time it is drawn. */
+  private setCullsEachDraw(culls: boolean): void {
+    const mesh = this.mesh;
+    if (mesh.perObjectFrustumCulled === culls) {
+      return;
+    }
+    mesh.perObjectFrustumCulled = culls;
+    if (!culls && this.shown.length > 0) {
+      // The batch keeps the tiles its last drawing's camera saw until a tile is shown or hidden: one is, and back.
+      const shown = this.shown[0] === 1;
+      mesh.setVisibleAt(0, !shown);
+      mesh.setVisibleAt(0, shown);
+    }
   }
 }
 

@@ -245,11 +245,11 @@ export class RoadFurnitureView {
 
   /**
    * Shows the rails' and barriers' tiles near (x, z), the camera, and (given
-   * its view) in it, as FarCulling.update. Allocation-free.
+   * its view) in it, as TileBatch.update. Allocation-free.
    */
-  showAround(x: number, z: number, view: Frustum | null = null): void {
+  showAround(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
     for (let i = 0; i < this.rails.length; i++) {
-      this.rails[i]!.update(x, z, view);
+      this.rails[i]!.update(x, z, view, eyeView);
     }
   }
 

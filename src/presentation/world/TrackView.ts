@@ -568,10 +568,10 @@ export class TrackView {
     }
     this.forestBatch?.update(eyeView);
     for (let i = 0; i < this.countryBatches.length; i++) {
-      this.countryBatches[i]!.update(x, z, view);
+      this.countryBatches[i]!.update(x, z, view, eyeView);
     }
     for (let i = 0; i < this.townBatches.length; i++) {
-      this.townBatches[i]!.update(x, z, view);
+      this.townBatches[i]!.update(x, z, view, eyeView);
     }
   }
 
