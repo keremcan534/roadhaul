@@ -58,23 +58,28 @@ export class MapTerrain {
     }
     this.worker = worker;
     worker.onmessage = (event: MessageEvent<TerrainAnswer>) => {
-      const { id, width, height, pixels } = event.data;
-      const layer = this.layers[id];
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext('2d');
-      if (layer !== undefined && context !== null) {
-        context.putImageData(new ImageData(pixels, width, height), 0, 0);
-        layer.image = canvas;
-        this.version++;
-      }
-      this.waiting--;
-      if (this.waiting <= 0) {
-        this.dispose();
+      try {
+        const { id, width, height, pixels } = event.data;
+        const layer = this.layers[id];
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d');
+        if (layer !== undefined && context !== null) {
+          context.putImageData(new ImageData(pixels, width, height), 0, 0);
+          layer.image = canvas;
+          this.version++;
+        }
+      } finally {
+        // A land whose relief could not be drawn (no memory for its canvas) is left plain; the worker goes all the same.
+        this.waiting--;
+        if (this.waiting <= 0) {
+          this.dispose();
+        }
       }
     };
     worker.onerror = () => this.dispose();
+    worker.onmessageerror = () => this.dispose();
     lands.forEach(({ relief }, id) => {
       const layer = this.layers[id]!;
       const { cell, width, height } = grids[id]!;

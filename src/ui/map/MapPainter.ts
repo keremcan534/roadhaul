@@ -311,9 +311,9 @@ export class MapPainter {
     context.lineJoin = 'round';
     // The shallows round the coasts, then the lands over them, each with its relief, then the beaches.
     for (let i = 0; i < SHALLOWS.length; i++) {
-      const [meters, fewest, most, color] = SHALLOWS[i]!;
-      context.strokeStyle = color;
-      context.lineWidth = Math.min(Math.max(meters, fewest / view.scale), most / view.scale);
+      const shallow = SHALLOWS[i]!;
+      context.strokeStyle = shallow[3];
+      context.lineWidth = Math.min(Math.max(shallow[0], shallow[1] / view.scale), shallow[2] / view.scale);
       context.stroke(this.lands);
     }
     context.fillStyle = COLORS.ground;
