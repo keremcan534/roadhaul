@@ -36,15 +36,24 @@ export class Strings {
     this.percentFormat = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 });
   }
 
-  /** The text for `key`, with `{name}` placeholders filled from `parameters`. A missing key shows as itself, so it stands out. */
+  /**
+   * The text for `key`, with `{name}` placeholders filled from `parameters`.
+   * A missing key shows as itself, so it stands out. A sentence's full stop
+   * right after a value that ends in one (an abbreviation: German "6 Std.
+   * 0 Min.", Polish "kr.") is left out, as it is in writing.
+   */
   t(key: string, parameters?: TextParameters): string {
     const template = this.table[key] ?? key;
     if (parameters === undefined) {
       return template;
     }
-    return template.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
-      name in parameters ? String(parameters[name]) : placeholder,
-    );
+    return template.replace(/\{(\w+)\}(\.?)/g, (placeholder, name: string, stop: string) => {
+      if (!(name in parameters)) {
+        return placeholder;
+      }
+      const value = String(parameters[name]);
+      return stop !== '' && value.endsWith('.') ? value : value + stop;
+    });
   }
 
   has(key: string): boolean {

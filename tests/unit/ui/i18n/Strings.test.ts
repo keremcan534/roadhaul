@@ -145,6 +145,16 @@ describe('Strings', () => {
     expect(en.t('no.such.key')).toBe('no.such.key');
   });
 
+  it('writes one full stop where a sentence ends with a value that ends in one', () => {
+    const de = new Strings('de', DE);
+    const time = de.timeSpan(6 * 60 * 60_000);
+    expect(time).toBe('6 Std. 0 Min.');
+    expect(de.t('hq.dailyNote', { hours: 6, time })).toBe('Die Tagesaufträge wechseln alle 6 Std., die nächsten kommen in 6 Std. 0 Min.');
+    // A value without one keeps the sentence's, and a placeholder without a value stays as it is.
+    expect(en.t('hq.dailyNote', { hours: 6, time: '6 h 0 min' })).toBe('Contracts of the day change every 6 hours: the next ones come in 6 h 0 min.');
+    expect(new Strings('en', { 'a.b': 'In {time}.' }).t('a.b', {})).toBe('In {time}.');
+  });
+
   it('groups whole numbers the way each language does', () => {
     expect(tr.number(12000)).toBe('12.000');
     expect(en.number(12000)).toBe('12,000');
