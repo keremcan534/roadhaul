@@ -60,16 +60,17 @@ test('shows the roads on the minimap, and opens the full map from it with the dr
   await page.locator('[data-action="map-truck"]').click();
   await expect.poll(() => mapScale(page)).toBeGreaterThanOrEqual(0.6);
 
-  // Dragging moves the map.
+  // Dragging moves the map. On a busy machine drawing in software a look at the canvas can take seconds: the pictures
+  // are taken at the page's own scale, and given the time a few of them take.
   const canvas = page.locator('.world-map__canvas');
-  const before = await canvas.screenshot();
+  const canvasPicture = () => canvas.screenshot({ scale: 'css' });
+  const before = await canvasPicture();
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 - 150, box.y + box.height / 2 + 60, { steps: 5 });
   await page.mouse.up();
-  await waitForFrames(page, 3);
-  expect((await canvas.screenshot()).equals(before), 'the map did not move').toBe(false);
+  await expect.poll(async () => (await canvasPicture()).equals(before), { message: 'the map did not move', timeout: 30_000 }).toBe(false);
 
   // Closed, the drive goes on.
   await page.locator('[data-action="close-map"]').click();
