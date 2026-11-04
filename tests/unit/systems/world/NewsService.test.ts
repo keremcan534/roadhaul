@@ -90,7 +90,7 @@ describe('NewsService', () => {
 
   it('breaks the news of the ferry to Metropol at the level it opens, on top', () => {
     const { news, events, published } = setup();
-    events.emit('CompanyLevelUp', { level: 4 });
+    events.emit('CompanyLevelUp', { level: 2 });
 
     expect(published).toEqual(['news.levelUp', 'news.ferryOpens.metropol']);
     expect(news.items[0]).toMatchObject({ key: 'news.ferryOpens.metropol', breaking: true });

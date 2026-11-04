@@ -287,6 +287,7 @@ export const ID: StringTable = {
   'menu.start.home': 'Markas: {city}',
   'menu.start.restArea': 'Rest area',
   'menu.start.locked': 'Ada kontrak yang sedang berjalan: perjalanan dilanjutkan dari posisi truk.',
+  'menu.start.regionNew': 'Perusahaan baru bisa langsung mulai di sana.',
   'menu.card.level': 'Level {level}',
   'menu.card.credits': 'Kredit',
   'menu.card.trucks': 'Truk',

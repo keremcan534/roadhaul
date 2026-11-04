@@ -287,6 +287,7 @@ export const DE: StringTable = {
   'menu.start.home': 'Zuhause: {city}',
   'menu.start.restArea': 'Raststätte',
   'menu.start.locked': 'Ein Auftrag läuft: Die Fahrt geht dort weiter, wo der Lkw steht.',
+  'menu.start.regionNew': 'Eine neue Firma kann dort sofort anfangen.',
   'menu.card.level': 'Level {level}',
   'menu.card.credits': 'Credits',
   'menu.card.trucks': 'Lkws',

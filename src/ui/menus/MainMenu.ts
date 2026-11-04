@@ -9,13 +9,16 @@ import type { Strings } from '../i18n';
 import { select } from './choiceRow';
 
 export interface MainMenuActions {
-  /** Continues the saved company, starting at the place picked (its id: startPlaces). */
-  readonly onContinue: (startId: string) => void;
-  /** Founds a new company (the dialog asks its name), starting at the place picked. */
-  readonly onNewCompany: (startId: string) => void;
+  /**
+   * Continues the saved company, starting at the place picked (its id:
+   * startPlaces), or crossing to region `regionId` (a map id) when that was
+   * picked.
+   */
+  readonly onContinue: (startId: string, regionId: string | null) => void;
+  /** Founds a new company (the dialog asks its name), starting at the place picked, or in the region picked. */
+  readonly onNewCompany: (startId: string, regionId: string | null) => void;
   /** A place to start was picked: the truck is shown there behind the menu. */
   readonly onPreviewStart: (place: StartPlace) => void;
-  /** Switches between Turkish and English. */
   /** Opens the settings at the language list. */
   readonly onLanguage: () => void;
   readonly onControls: () => void;
@@ -38,6 +41,18 @@ export interface EarningsBoostView {
   readonly withAd: boolean;
 }
 
+/** Another region a drive can start in, over the water (its ferry). */
+export interface MenuRegion {
+  /** Its map id. */
+  readonly mapId: string;
+  /**
+   * The company level the saved company needs to cross to it, while it has
+   * not reached it; null when it can (and for a new company, which can start
+   * there at once).
+   */
+  readonly lockedUntilLevel: number | null;
+}
+
 /** What the main menu shows. */
 export interface MainMenuView {
   /** The saved company at a glance; null without one, or when it cannot be read (`message` says why). */
@@ -46,6 +61,8 @@ export interface MainMenuView {
   readonly truckWhere: string | null;
   /** The places a drive can start at, the one it starts at unless another is picked first. */
   readonly places: readonly StartPlace[];
+  /** The other regions, after the places: the saved company crosses there, a new company starts there. */
+  readonly regions: readonly MenuRegion[];
   /** A contract is under way: the drive goes on from where the truck was left. */
   readonly startLocked: boolean;
   /** A load problem, or saving being off; null for none. */
@@ -87,7 +104,11 @@ export class MainMenu {
   private readonly boostLabel: HTMLSpanElement;
   private readonly boostNote: HTMLParagraphElement;
   private shownPlaces: readonly StartPlace[] = [];
+  private shownRegions: readonly MenuRegion[] = [];
   private placeButtons: HTMLButtonElement[] = [];
+  private hasSaved = false;
+  /** A contract is under way: only the first place can be picked. */
+  private startLocked = false;
   private picked = 0;
 
   constructor(
@@ -146,13 +167,13 @@ export class MainMenu {
 
     this.continueButton = withIcon(
       button(document, 'button--primary main-menu__play', strings.t('menu.continue'), 'continue-game', () =>
-        this.actions.onContinue(this.pickedId()),
+        this.actions.onContinue(this.pickedId(), this.pickedRegion()?.mapId ?? null),
       ),
       'play',
     );
     this.newCompanyButton = withIcon(
       button(document, 'button--primary main-menu__play', strings.t('menu.newCompany'), 'new-company', () =>
-        this.actions.onNewCompany(this.pickedId()),
+        this.actions.onNewCompany(this.pickedId(), this.pickedRegion()?.mapId ?? null),
       ),
       'plus',
     );
@@ -216,7 +237,8 @@ export class MainMenu {
    * picked (the truck is shown there), and the message when there is one.
    */
   update(view: MainMenuView): void {
-    const { saved, truckWhere, places, startLocked, message } = view;
+    const { saved, truckWhere, places, regions, startLocked, message } = view;
+    this.hasSaved = saved !== null;
     this.card.hidden = saved === null;
     if (saved !== null) {
       const { strings } = this;
@@ -245,43 +267,80 @@ export class MainMenu {
     this.newCompanyButton.classList.toggle('button--secondary', saved !== null);
     setText(this.message, message ?? '');
     this.message.hidden = message === null;
-    this.showPlaces(places, startLocked);
+    this.showPlaces(places, regions, startLocked);
   }
 
   dispose(): void {
     this.root.remove();
   }
 
-  /** A chip for each place, the first picked; with the start locked, only the first can be. */
-  private showPlaces(places: readonly StartPlace[], locked: boolean): void {
+  /**
+   * A chip for each place, then for each region over the water, the first
+   * picked; with the start locked, only the first can be.
+   */
+  private showPlaces(places: readonly StartPlace[], regions: readonly MenuRegion[], locked: boolean): void {
     const document = this.root.ownerDocument;
     this.shownPlaces = places;
+    this.shownRegions = regions;
+    this.startLocked = locked;
+    const chip = (index: number, iconName: IconName, name: string): HTMLButtonElement => {
+      const node = button(document, 'main-menu__place', '', 'start-place', () => this.pick(index));
+      node.setAttribute('role', 'radio');
+      node.disabled = locked && index > 0;
+      node.append(icon(document, iconName, 'main-menu__place-icon'), element(document, 'span', '', name));
+      return node;
+    };
     this.placeButtons = places.map((place, index) => {
-      const chip = button(document, 'main-menu__place', '', 'start-place', () => this.pick(index));
-      chip.setAttribute('role', 'radio');
-      chip.dataset.start = place.id;
-      chip.dataset.kind = place.kind;
-      chip.disabled = locked && index > 0;
-      chip.append(icon(document, PLACE_ICONS[place.kind], 'main-menu__place-icon'), element(document, 'span', '', this.placeName(place)));
-      return chip;
+      const node = chip(index, PLACE_ICONS[place.kind], this.placeName(place));
+      node.dataset.start = place.id;
+      node.dataset.kind = place.kind;
+      return node;
+    });
+    regions.forEach((region, index) => {
+      const node = chip(places.length + index, 'route', this.strings.t(`region.${region.mapId}.name`));
+      node.dataset.start = 'region';
+      node.dataset.kind = 'region';
+      node.dataset.region = region.mapId;
+      this.placeButtons.push(node);
     });
     this.places.replaceChildren(...this.placeButtons);
-    this.startNote.hidden = !locked;
     this.pick(0);
   }
 
+  /**
+   * Picks the chip at `index`: a place (the truck is shown there) or a
+   * region. A region the saved company cannot cross to yet keeps Continue
+   * off, and says when it opens (a new company can start there at once).
+   */
   private pick(index: number): void {
     const place = this.shownPlaces[index];
-    if (place === undefined) {
+    const region = this.shownRegions[index - this.shownPlaces.length];
+    if (place === undefined && region === undefined) {
       return;
     }
     this.picked = index;
     this.placeButtons.forEach((chip, candidate) => select(chip, candidate === index));
-    this.actions.onPreviewStart(place);
+    if (place !== undefined) {
+      this.actions.onPreviewStart(place);
+    }
+    const lockedLevel = this.hasSaved ? (region?.lockedUntilLevel ?? null) : null;
+    this.continueButton.disabled = lockedLevel !== null;
+    if (region !== undefined && lockedLevel !== null) {
+      const name = this.strings.t(`region.${region.mapId}.name`);
+      setText(this.startNote, `${this.strings.t('ferry.locked', { region: name, level: lockedLevel })} ${this.strings.t('menu.start.regionNew')}`);
+    } else {
+      setText(this.startNote, this.strings.t('menu.start.locked'));
+    }
+    this.startNote.hidden = !this.startLocked && lockedLevel === null;
   }
 
   private pickedId(): string {
     return this.shownPlaces[this.picked]?.id ?? 'left';
+  }
+
+  /** The region picked, when a region's chip is. */
+  private pickedRegion(): MenuRegion | null {
+    return this.shownRegions[this.picked - this.shownPlaces.length] ?? null;
   }
 
   /** The language button: the language spoken now, named in itself, with a globe; it opens the language list. */

@@ -941,8 +941,9 @@ export const MAPS: readonly MapDefinition[] = [
         toMapId: 'metropol',
         toGateId: 'metropol_ferry',
         arrival: { x: -2520, z: -2060, headingDegrees: 53 },
-        // Metropol opens with the company's fourth level: a new region to cross to, celebrated.
-        requiredCompanyLevel: 4,
+        // Metropol opens with the company's second level, a few deliveries in: a new region to cross to, celebrated.
+        // (A new company can start there at once: the main menu's start places.)
+        requiredCompanyLevel: 2,
         // Out past the point into the open sea, north-west toward Metropol.
         route: [
           [-2600, -2120],

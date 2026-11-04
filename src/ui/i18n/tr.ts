@@ -287,6 +287,7 @@ export const TR: StringTable = {
   'menu.start.home': 'Merkez: {city}',
   'menu.start.restArea': 'Dinlenme tesisi',
   'menu.start.locked': 'Süren bir sözleşme var: yolculuk kamyonun olduğu yerden devam eder.',
+  'menu.start.regionNew': 'Yeni bir şirket orada hemen başlayabilir.',
   'menu.card.level': 'Seviye {level}',
   'menu.card.credits': 'Kredi',
   'menu.card.trucks': 'Kamyonlar',

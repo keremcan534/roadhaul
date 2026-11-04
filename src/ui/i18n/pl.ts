@@ -287,6 +287,7 @@ export const PL: StringTable = {
   'menu.start.home': 'Siedziba: {city}',
   'menu.start.restArea': 'MOP',
   'menu.start.locked': 'Trwa zlecenie: jedziesz dalej z miejsca, w którym stoi ciężarówka.',
+  'menu.start.regionNew': 'Nowa firma może zacząć tam od razu.',
   'menu.card.level': 'Poziom {level}',
   'menu.card.credits': 'Kredyty',
   'menu.card.trucks': 'Ciężarówki',

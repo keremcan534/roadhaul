@@ -53,6 +53,7 @@ import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
 import { shareFileInBrowser } from './platform/browser/fileShare';
+import type { GateDefinition } from './data/definitions/MapDefinition';
 import { leavePendingBoot, sessionStorageOf, takePendingBoot } from './platform/browser/pendingBoot';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
@@ -1116,20 +1117,28 @@ async function start(strings: Strings): Promise<void> {
     }
     refreshHq();
   };
+  /**
+   * Crosses through `gate` with the company loaded (session.travel): the
+   * crossing over the screen while the game starts again on the other side.
+   * False, with a toast saying why, when it cannot.
+   */
+  const crossBy = (gate: GateDefinition): boolean => {
+    const travelled = session.travel(gate.id);
+    if (!travelled.ok) {
+      const region = strings.t(`region.${gate.toMapId}.name`);
+      const key = travelled.error === 'contractUnderWay' ? 'ferry.busy' : travelled.error === 'locked' ? 'ferry.locked' : 'ferry.failed';
+      toasts.show(strings.t(key, { region, level: gate.requiredCompanyLevel ?? 1 }), 'warning');
+      return false;
+    }
+    new FerryCrossing(document, strings, 'departing', strings.t(`region.${gate.toMapId}.name`));
+    leavePendingBoot(tabStorage, { continueCompany: true, crossingTo: gate.toMapId });
+    window.setTimeout(() => window.location.reload(), FERRY_BOARDING_MS);
+    return true;
+  };
   // The ferry terminals: the crossing to the other region (the game starts again there, the company carried on).
   const ferry = new FerryPanel(ui, strings, { driving, missions, company }, {
     onTravel: (gate) => {
-      const travelled = session.travel(gate.id);
-      if (!travelled.ok) {
-        const region = strings.t(`region.${gate.toMapId}.name`);
-        const key = travelled.error === 'contractUnderWay' ? 'ferry.busy' : travelled.error === 'locked' ? 'ferry.locked' : 'ferry.failed';
-        toasts.show(strings.t(key, { region, level: gate.requiredCompanyLevel ?? 1 }), 'warning');
-        return;
-      }
-      // On board: the crossing over the screen while the game starts again on the other side.
-      new FerryCrossing(document, strings, 'departing', strings.t(`region.${gate.toMapId}.name`));
-      leavePendingBoot(tabStorage, { continueCompany: true, crossingTo: gate.toMapId });
-      window.setTimeout(() => window.location.reload(), FERRY_BOARDING_MS);
+      crossBy(gate);
     },
   });
   const restArea = new RestAreaPanel(
@@ -1417,18 +1426,23 @@ async function start(strings: Strings): Promise<void> {
     root.dataset.tutorialStep = tutorial.step;
     gameState.transitionTo('driving');
   };
-  /** Where a new company's truck starts: the place picked on the main menu (a new company's own start for `left`). */
+  /**
+   * Where a new company's truck starts: the place picked on the main menu (a
+   * new company's own start for `left`), in the region of the places shown
+   * or the one picked.
+   */
   let newCompanyStart = HOME_START_ID;
+  let newCompanyRegion = config.newGame.startingMapId;
   const newCompany = new NewCompanyDialog(ui, strings, {
     onStart: (companyName) => {
-      if (driving.world.id !== config.newGame.startingMapId) {
-        // A new company starts in the starting region: the game starts again there to found it.
-        if (validateCompanyName(companyName).ok && leavePendingBoot(tabStorage, { mapId: config.newGame.startingMapId, newCompany: { name: companyName, startId: newCompanyStart } })) {
+      if (driving.world.id !== newCompanyRegion) {
+        // Another region than the one built: the game starts again there to found it.
+        if (validateCompanyName(companyName).ok && leavePendingBoot(tabStorage, { mapId: newCompanyRegion, newCompany: { name: companyName, startId: newCompanyStart } })) {
           window.location.reload();
           return null;
         }
       }
-      const founded = session.startNewGame(companyName, newCompanyStart);
+      const founded = session.startNewGame(companyName, newCompanyStart, driving.world.id);
       if (!founded.ok) {
         return founded.error;
       }
@@ -1438,17 +1452,27 @@ async function start(strings: Strings): Promise<void> {
     },
     onBack: () => newCompany.close(),
   });
+  /** The region of the places the main menu shows: the saved company's, or the starting region without one. */
+  const menuRegion = (): string => {
+    const read = session.readSave();
+    return read.ok && content.maps.has(read.value.mapId) ? read.value.mapId : config.newGame.startingMapId;
+  };
   const mainMenu = new MainMenu(ui, strings, {
-    onContinue: (startId) => {
-      const continued = session.continueGame(startId);
-      if (continued.ok) {
-        enterCompany();
-      } else {
+    onContinue: (startId, regionId) => {
+      const continued = session.continueGame(regionId === null ? startId : LEFT_START_ID);
+      if (!continued.ok) {
         showMainMenu(strings.t(`menu.problem.${continued.error}`));
+        return;
+      }
+      // The region over the water picked: straight on board its ferry, without the drive to the terminal.
+      const gate = regionId === null ? undefined : driving.world.gates.find((candidate) => candidate.toMapId === regionId);
+      if (gate === undefined || !crossBy(gate)) {
+        enterCompany();
       }
     },
-    onNewCompany: (startId) => {
-      newCompanyStart = startId === LEFT_START_ID ? HOME_START_ID : startId;
+    onNewCompany: (startId, regionId) => {
+      newCompanyRegion = regionId ?? menuRegion();
+      newCompanyStart = regionId !== null || startId === LEFT_START_ID ? HOME_START_ID : startId;
       newCompany.open(session.hasSavedGame());
     },
     onPreviewStart: (place) => {
@@ -1483,6 +1507,10 @@ async function start(strings: Strings): Promise<void> {
       saved,
       truckWhere: saved === null ? null : whereLeft(saved),
       places: session.startPlaces(saved),
+      regions: (content.maps.get(menuRegion()).gates ?? []).map((gate) => ({
+        mapId: gate.toMapId,
+        lockedUntilLevel: saved !== null && saved.level < (gate.requiredCompanyLevel ?? 1) ? (gate.requiredCompanyLevel ?? 1) : null,
+      })),
       startLocked: saved !== null && saved.contract !== null,
       message: problem ?? readProblem ?? menuMessage(),
     });
@@ -3129,7 +3157,7 @@ async function start(strings: Strings): Promise<void> {
     }
     arrivingCrossing?.hide();
   } else if (pendingBoot?.newCompany !== undefined) {
-    const founded = session.startNewGame(pendingBoot.newCompany.name, pendingBoot.newCompany.startId);
+    const founded = session.startNewGame(pendingBoot.newCompany.name, pendingBoot.newCompany.startId, driving.world.id);
     if (founded.ok) {
       enterCompany();
     }

@@ -3,7 +3,7 @@ import { bootGame, newCompany, play } from '../../../support/game';
 
 describe('travelling between regions', () => {
   it('takes the ferry from Gull Point to Metropol: saved on the other map at its terminal, continued there', async () => {
-    const game = await newCompany(4, 40_000);
+    const game = await newCompany(2, 40_000);
     const gate = game.driving.world.gates.find((candidate) => candidate.id === 'gull_point_ferry')!;
     expect(game.driving.world.gateAt(gate.area.x, gate.area.z)).toBe(gate);
 
@@ -22,8 +22,23 @@ describe('travelling between regions', () => {
     expect(next.session.travel('metropol_ferry')).toEqual({ ok: true, value: { mapId: 'north_valley' } });
   });
 
+  it('founds a new company in Metropol at once, on its board, without the ferry', async () => {
+    const game = await bootGame();
+    expect(game.session.startNewGame('Metro Lojistik', 'home', 'metropol')).toEqual({ ok: true, value: undefined });
+    expect(game.driving.world.id).toBe('metropol');
+    expect(game.company.level).toBe(1);
+    const next = await bootGame(game.storage, 5_000);
+    expect(next.session.readSave()).toMatchObject({ ok: true, value: { mapId: 'metropol', companyName: 'Metro Lojistik' } });
+    const metropolCities = new Set(game.driving.world.depots.map((depot) => depot.cityId));
+    const open = game.missions.jobBoard().filter((offer) => offer.blockedBy === null);
+    expect(open.length).toBeGreaterThan(0);
+    for (const offer of open) {
+      expect(metropolCities.has(offer.mission.originCityId), offer.mission.id).toBe(true);
+    }
+  });
+
   it('does not set off before the company reaches the ferry\'s level, with a contract under way, nor through a gate the map does not have', async () => {
-    const early = await newCompany(3, 40_000);
+    const early = await newCompany(1, 40_000);
     expect(early.session.travel('gull_point_ferry')).toEqual({ ok: false, error: 'locked' });
     expect(early.session.isActive).toBe(true);
 

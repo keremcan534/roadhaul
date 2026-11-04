@@ -222,22 +222,24 @@ export class GameSessionService {
   }
 
   /**
-   * Founds a new company with the player's name, replacing any saved game.
-   * Its truck starts at the map's own start, or at the depot or rest area
-   * `startId` picks (startPlaces).
+   * Founds a new company with the player's name, replacing any saved game,
+   * in region `mapId` (the starting region unless another is picked: the one
+   * the world is built for). Its truck starts at the map's own start, or at
+   * the depot or rest area `startId` picks (startPlaces).
    */
-  startNewGame(companyName: string, startId: string = HOME_START_ID): Result<void, CompanyNameError> {
+  startNewGame(companyName: string, startId: string = HOME_START_ID, mapId?: string): Result<void, CompanyNameError> {
     const name = validateCompanyName(companyName);
     if (!name.ok) {
       return err(name.error);
     }
-    this.checkStart(startId, this.deps.config.newGame.startingMapId);
     const { config, content, clock } = this.deps;
+    const region = mapId ?? config.newGame.startingMapId;
+    this.checkStart(startId, region);
     const save = createNewSaveGameData({
       companyName: name.value,
       startingCredits: config.newGame.startingCredits,
       startingVehicle: content.vehicles.get(config.newGame.startingVehicleId),
-      startingMapId: config.newGame.startingMapId,
+      startingMapId: region,
       nowMs: clock.now(),
     });
     this.apply(save);

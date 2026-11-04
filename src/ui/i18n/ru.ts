@@ -287,6 +287,7 @@ export const RU: StringTable = {
   'menu.start.home': 'База: {city}',
   'menu.start.restArea': 'Зона отдыха',
   'menu.start.locked': 'Заказ в работе: поездка продолжится оттуда, где стоит грузовик.',
+  'menu.start.regionNew': 'Новая компания может начать там сразу.',
   'menu.card.level': 'Уровень {level}',
   'menu.card.credits': 'Кредиты',
   'menu.card.trucks': 'Грузовики',
