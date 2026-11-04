@@ -66,7 +66,7 @@ import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
-import { RenderHost } from './presentation/RenderHost';
+import { RenderHost, isSoftwareRenderer } from './presentation/RenderHost';
 import { TruckView, truckViewKey, type TruckViewOptions } from './presentation/vehicles/TruckView';
 import { DEFAULT_TRAILER_TEXT, liveryThumbnail } from './presentation/textures/liveryImages';
 import { pixelImageUrl } from './presentation/textures/pixelImageUrl';
@@ -425,7 +425,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const bootRegion = pendingBoot?.mapId !== undefined && content.maps.has(pendingBoot.mapId) ? pendingBoot.mapId : (savedRegion ?? config.newGame.startingMapId);
   driving.start(config.newGame.startingVehicleId, bootRegion);
 
-  const renderHost = new RenderHost(canvas, config.rendering);
+  // Drawn in software every sample costs a pixel: no smoothing of the canvas's edges there.
+  const renderHost = new RenderHost(canvas, { ...config.rendering, antialias: config.rendering.antialias && !isSoftwareRenderer(device.gpu) });
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
   // Broken cloud's shadows drift over the land, on the pre-lit ground and the lit things alike; not drawn in software,

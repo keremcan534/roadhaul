@@ -1,13 +1,18 @@
 /**
- * Frames slower on average than SLOW_SHARE of the target frame rate lower
- * the resolution (the target: the screen's rate, or the player's cap under
- * it; never slower than 27 FPS, the old floor); frames at QUICK_SHARE of it
- * or better, for a good while, raise it again. A 60 Hz screen: under 48 FPS
- * down, over 57 up; 120 Hz: under 96, over 114.
+ * Frames slower on average than SLOW_SHARE of the rate aimed at lower the
+ * resolution; frames at QUICK_SHARE of it or better, for a good while, raise
+ * it again. The rate aimed at is the screen's (or the player's cap under it),
+ * but never above SHARP_FPS for the pixels' sake: past 60 frames a second a
+ * sharp picture is worth more than more frames, so a 90 or 120 Hz screen
+ * shows as many as the phone draws at its full resolution, and only frames
+ * under 48 a second (SLOW_SHARE of 60) cost pixels. Never slower than 27 FPS,
+ * the old floor.
  */
 const SLOW_SHARE = 0.8;
 const QUICK_SHARE = 0.95;
 const FLOOR_FRAME_SECONDS = 1 / 27;
+/** The most frames a second the resolution is lowered for. */
+const SHARP_FPS = 60;
 /** Before any frame is measured, the target is taken as this. */
 const DEFAULT_TARGET_FPS = 60;
 /** The screens' usual refresh rates: the one nearest the shortest frame seen is the screen's. */
@@ -37,10 +42,10 @@ const HITCH_SECONDS = 0.2;
 const CPU_BOUND_SHARE = 0.8;
 /**
  * Slow windows in a row at the lowest scale before the target is taken as
- * out of the device's reach: from then on it aims at half the rate (a 120 Hz
- * screen's 60, a 60 Hz screen's 30), and the pixels come back as frames
- * keep up with that. Without it a phone whose GPU cannot draw 96 frames a
- * second at any resolution would stay blurred at the lowest for nothing.
+ * out of the device's reach: from then on it aims at half the rate (a 60 Hz
+ * screen's 30), and the pixels come back as frames keep up with that.
+ * Without it a phone whose GPU cannot draw 48 frames a second at any
+ * resolution would stay blurred at the lowest for nothing.
  */
 const OUT_OF_REACH_WINDOWS = 2;
 /** The lowest target an out-of-reach one steps down to, frames a second. */
@@ -48,8 +53,8 @@ const LOWEST_TARGET_FPS = 30;
 
 /**
  * Dynamic resolution (ARCHITECTURE.md §11): when frames fall well short of
- * the target frame rate (the screen's, 60, 90 or 120, under the player's
- * cap) on average, draw fewer pixels; when they are quick again for
+ * the target frame rate (the screen's under the player's cap, at most 60)
+ * on average, draw fewer pixels; when they are quick again for
  * a good while, draw more, up to the full pixel ratio. The wide gap between
  * the two thresholds keeps it from see-sawing. Frames slow because the main
  * thread's own work fills them (a low-end phone's CPU) keep their pixels:
@@ -120,7 +125,8 @@ export class AdaptiveResolution {
       this.warmingUp = false;
       return false;
     }
-    const target = this.targetFps;
+    // The rate the pixels are traded for: the target, but not above SHARP_FPS.
+    const target = Math.min(this.targetFps, SHARP_FPS);
     if (average > Math.min(FLOOR_FRAME_SECONDS, 1 / (SLOW_SHARE * target))) {
       this.quickWindows = 0;
       if (work >= CPU_BOUND_SHARE) {

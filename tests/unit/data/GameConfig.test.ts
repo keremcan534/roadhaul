@@ -280,9 +280,13 @@ describe('GameConfig', () => {
     expect(low!.lampGlows).toBe(false);
     // Low draws straight to the screen; medium grades, blooms and smooths the picture in one colour pass; high
     // multisamples the scene for smoother edges.
-    expect(low).toMatchObject({ postProcessing: false, bloom: false });
-    expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0 });
-    expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4 });
+    expect(low).toMatchObject({ postProcessing: false, bloom: false, antialias: true });
+    expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0, antialias: false });
+    expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4, antialias: false });
+    // The dynamic resolution never takes a preset under one pixel per CSS pixel: fewer pixels show as blocks.
+    for (const preset of [low!, medium!, high!]) {
+      expect(preset.maxPixelRatio * preset.minResolutionScale).toBeGreaterThanOrEqual(1);
+    }
     // Real-time shadows are for the high preset only (CLAUDE.md: none by default on phones).
     expect([low!.shadowMapSize, medium!.shadowMapSize]).toEqual([0, 0]);
     expect(high!.shadowMapSize).toBeGreaterThanOrEqual(1024);

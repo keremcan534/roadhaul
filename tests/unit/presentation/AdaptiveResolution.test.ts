@@ -29,11 +29,13 @@ describe('AdaptiveResolution', () => {
     expect(capped.scale).toBe(1);
   });
 
-  it('aims for the screen\'s rate: on a 120 Hz screen frames at 80 a second are slow, and under a cap of 60 they are not', () => {
+  it('trades no pixels for more than 60 frames a second: a 120 Hz screen stays sharp at 70, and lowers them under 48', () => {
     const resolution = new AdaptiveResolution(0.6);
     run(resolution, 120, 3);
     expect(resolution.targetFps).toBe(120);
-    run(resolution, 80, 4);
+    run(resolution, 70, 30);
+    expect(resolution.scale).toBe(1);
+    run(resolution, 40, 4);
     expect(resolution.scale).toBeLessThan(1);
 
     const capped = new AdaptiveResolution(0.6);
@@ -62,20 +64,20 @@ describe('AdaptiveResolution', () => {
     expect(resolution.targetFps).toBe(120);
   });
 
-  it('aims at half the screen\'s rate when even its fewest pixels cannot keep up with it, and draws more again', () => {
+  it('aims at half the rate when even its fewest pixels cannot keep up, and draws more again', () => {
     const resolution = new AdaptiveResolution(0.6);
-    run(resolution, 120, 3);
-    // A GPU that draws 70 frames a second whatever the resolution: down to the floor, then 60 aimed at.
-    run(resolution, 70, 30);
-    expect(resolution.targetFps).toBe(60);
-    run(resolution, 70, 60);
+    run(resolution, 60, 3);
+    // A GPU that draws 40 frames a second whatever the resolution: down to the floor, then 30 aimed at.
+    run(resolution, 40, 30);
+    expect(resolution.targetFps).toBe(30);
+    run(resolution, 40, 60);
     expect(resolution.scale).toBe(1);
-    expect(resolution.targetFps).toBe(60);
+    expect(resolution.targetFps).toBe(30);
 
     // Frames the CPU holds back keep the pixels and the target.
     const cpuBound = new AdaptiveResolution(0.6);
     run(cpuBound, 120, 3, 0.9);
-    run(cpuBound, 70, 60, 0.9);
+    run(cpuBound, 40, 60, 0.9);
     expect(cpuBound.targetFps).toBe(120);
     expect(cpuBound.scale).toBe(1);
 

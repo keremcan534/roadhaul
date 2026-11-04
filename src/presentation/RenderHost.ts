@@ -35,6 +35,11 @@ const SHADERS_PER_PAUSE = 4;
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render driver/i;
 
+/** True for a WebGL renderer name that runs on the CPU (gpuName.ts gives it before the renderer is made). */
+export function isSoftwareRenderer(name: string | undefined): boolean {
+  return name !== undefined && SOFTWARE_RENDERER.test(name);
+}
+
 /**
  * Owns the WebGL renderer, the scene graph root and the active camera.
  * Views add objects to `scene`; nothing outside the presentation layer
@@ -301,7 +306,9 @@ export class RenderHost {
    */
   private applySize(): void {
     const cap = this.softwareRendering ? Math.min(1, this.settings.maxPixelRatio) : this.settings.maxPixelRatio;
-    const pixelRatio = Math.min(this.devicePixelRatio, cap) * this.resolutionScale;
+    // Never under one pixel per CSS pixel (the screen's own, if coarser): fewer shows as blocks, not as speed.
+    const full = Math.min(this.devicePixelRatio, cap);
+    const pixelRatio = Math.max(full * this.resolutionScale, Math.min(full, 1));
     if (
       this.cssWidth === this.appliedWidth &&
       this.cssHeight === this.appliedHeight &&

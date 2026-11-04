@@ -34,7 +34,10 @@ export interface GameConfig {
      */
     readonly maxPixelRatio: number;
     readonly antialias: boolean;
-    /** The adaptive resolution lowers the pixel ratio to no less than this share of maxPixelRatio. */
+    /**
+     * The adaptive resolution lowers the pixel ratio to no less than this share of maxPixelRatio, and never under
+     * one pixel per CSS pixel (RenderHost): the presets' shares stop there.
+     */
     readonly minResolutionScale: Fraction;
     /** Share of the rain's streaks drawn. */
     readonly rainDensity: Fraction;
@@ -493,6 +496,8 @@ export function isQualityChoice(value: unknown): value is QualityChoice {
 /** What a graphics preset sets (applyQualityPreset). */
 export interface QualityPreset {
   readonly maxPixelRatio: number;
+  /** The canvas's own edge smoothing: for the preset without the colour pass, which smooths them otherwise. */
+  readonly antialias: boolean;
   readonly minResolutionScale: Fraction;
   readonly rainDensity: Fraction;
   readonly particleDensity: Fraction;
@@ -509,7 +514,9 @@ export interface QualityPreset {
 export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = frozenCopy({
   low: {
     maxPixelRatio: 1,
-    minResolutionScale: 0.7,
+    // No colour pass to smooth the edges: the canvas does, cheaply on phones' tiled GPUs.
+    antialias: true,
+    minResolutionScale: 1,
     rainDensity: 0.5,
     particleDensity: 0.5,
     vegetationDensity: 0.45,
@@ -522,7 +529,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
   },
   medium: {
     maxPixelRatio: 1.25,
-    minResolutionScale: 0.6,
+    antialias: false,
+    minResolutionScale: 0.8,
     rainDensity: 0.75,
     particleDensity: 0.75,
     vegetationDensity: 0.75,
@@ -535,7 +543,8 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
   },
   high: {
     maxPixelRatio: 1.5,
-    minResolutionScale: 0.6,
+    antialias: false,
+    minResolutionScale: 0.67,
     rainDensity: 1,
     particleDensity: 1,
     vegetationDensity: 1,
@@ -573,7 +582,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     quality: 'high',
     maxPixelRatio: 1.5,
     antialias: false,
-    minResolutionScale: 0.6,
+    minResolutionScale: 0.67,
     rainDensity: 1,
     particleDensity: 1,
     vegetationDensity: 1,
