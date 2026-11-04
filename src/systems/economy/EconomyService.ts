@@ -27,7 +27,6 @@ export const MONEY_REASONS = [
   'adBonus',
   'adBoost',
   'dailyReward',
-  'casino',
   'achievement',
   'crate',
   'levelReward',

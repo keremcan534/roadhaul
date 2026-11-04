@@ -25,7 +25,6 @@ const PAGES_FIGURES_AND_MENUS = [
   'wrench',
   'cargo',
   'trophy',
-  'slots',
   'express',
   'careful',
   'heavy',

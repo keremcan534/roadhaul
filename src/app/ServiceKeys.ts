@@ -16,7 +16,6 @@ import type { RoadPassService } from '../systems/rewards/RoadPassService';
 import type { CityIncidentService } from '../systems/world/CityIncidentService';
 import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
-import type { CasinoService } from '../systems/casino/CasinoService';
 import type { ReviewService } from '../systems/review/ReviewService';
 import type { AchievementService } from '../systems/achievements/AchievementService';
 import type { CrateService } from '../systems/rewards/CrateService';
@@ -82,8 +81,6 @@ export const ServiceKeys = Object.freeze({
   facilities: serviceKey<FacilityService>('FacilityService'),
   /** The daily reward: credits for each day's first claim, more for days in a row. */
   dailyReward: serviceKey<DailyRewardService>('DailyRewardService'),
-  /** The truck stop's slot machine, for the company's credits. */
-  casino: serviceKey<CasinoService>('CasinoService'),
   /** Asks for a rating on the store, seldom, after deliveries in good order. */
   review: serviceKey<ReviewService>('ReviewService'),
   /** The company's goals and their rewards. */

@@ -30,12 +30,8 @@ const COUNTED: readonly AchievementMetric[] = [
   'rivalsBoughtOut',
   'dailyStreak',
   'upgradesFitted',
-  'bigWins',
   'skyWonders',
 ];
-
-/** A multiplier the slot machine pays this high or more is a big win. */
-const BIG_WIN_MULTIPLIER = 10;
 
 /** A goal as the company stands. */
 export interface AchievementView {
@@ -97,12 +93,6 @@ export class AchievementService {
       events.on('UpgradePurchased', () => {
         this.add('upgradesFitted', 1);
         this.check();
-      }),
-      events.on('SlotSpun', ({ multiplier }) => {
-        if (multiplier >= BIG_WIN_MULTIPLIER) {
-          this.add('bigWins', 1);
-          this.check();
-        }
       }),
       events.on('CompanyLevelUp', check),
       events.on('VehiclePurchased', check),
@@ -217,7 +207,6 @@ export class AchievementService {
       rivalsBoughtOut: this.counted('rivalsBoughtOut'),
       dailyStreak: this.counted('dailyStreak'),
       upgradesFitted: this.counted('upgradesFitted'),
-      bigWins: this.counted('bigWins'),
       perfectStreak: measures.bestPerfectStreak,
       cratesOpened: measures.cratesOpened,
       skyWonders: this.counted('skyWonders'),

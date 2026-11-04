@@ -14,7 +14,6 @@ const GOALS: readonly AchievementDefinition[] = [
   { id: 'perfect_1', metric: 'perfectDeliveries', target: 1, reward: 300 },
   { id: 'distance_10', metric: 'distanceKm', target: 10, reward: 500 },
   { id: 'streak_3', metric: 'dailyStreak', target: 3, reward: 600 },
-  { id: 'big_win_1', metric: 'bigWins', target: 1, reward: 700 },
 ];
 
 function setup() {
@@ -72,14 +71,18 @@ describe('AchievementService', () => {
     const { goals, events, reached, measure } = setup();
     events.emit('DailyRewardClaimed', { day: 3, streak: 3, credits: 100 });
     events.emit('DailyRewardClaimed', { day: 1, streak: 1, credits: 100 });
-    events.emit('SlotSpun', { bet: 50, payout: 100, kind: 'pair', multiplier: 2 });
     expect(reached).toEqual(['streak_3']);
-    events.emit('SlotSpun', { bet: 50, payout: 1000, kind: 'three', multiplier: 20 });
     measure({ distanceMeters: 10_400 });
     events.emit('GameStateChanged', { previous: 'driving', current: 'mainMenu' } as GameEvents['GameStateChanged']);
-    expect(reached).toEqual(['streak_3', 'big_win_1', 'distance_10']);
+    expect(reached).toEqual(['streak_3', 'distance_10']);
     expect(goals.list().find((goal) => goal.definition.id === 'distance_10')).toMatchObject({ progress: 10, reached: true });
-    expect(goals.snapshot().counters).toEqual({ dailyStreak: 3, bigWins: 1 });
+    expect(goals.snapshot().counters).toEqual({ dailyStreak: 3 });
+  });
+
+  it('drops what an older build counted for the slot machine, and its goal, from a save', () => {
+    const { goals } = setup();
+    goals.restore({ counters: { dailyStreak: 3, bigWins: 2 }, claimed: ['big_win_1', 'streak_3'] });
+    expect(goals.snapshot()).toEqual({ counters: { dailyStreak: 3 }, claimed: ['streak_3'] });
   });
 
   it('takes up a saved game without announcing what it had reached, and drops goals the game no longer has', () => {

@@ -34,7 +34,6 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
   { id: 'streak_7', metric: 'dailyStreak', target: 7, reward: 5000 },
   { id: 'upgrades_5', metric: 'upgradesFitted', target: 5, reward: 3000 },
   { id: 'upgrades_15', metric: 'upgradesFitted', target: 15, reward: 10_000 },
-  { id: 'big_win_1', metric: 'bigWins', target: 1, reward: 2000 },
   { id: 'crates_1', metric: 'cratesOpened', target: 1, reward: 500 },
   { id: 'crates_25', metric: 'cratesOpened', target: 25, reward: 8000 },
   { id: 'sky_1', metric: 'skyWonders', target: 1, reward: 1000 },

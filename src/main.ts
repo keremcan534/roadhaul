@@ -154,12 +154,10 @@ import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
-import { CasinoDialog } from './ui/menus/CasinoDialog';
 import { AchievementsDialog } from './ui/menus/AchievementsDialog';
 import { CrateDialog, type CratePage, type CratesShown } from './ui/menus/CrateDialog';
 import { LevelUpDialog } from './ui/menus/LevelUpDialog';
 import { levelUnlocks } from './ui/menus/levelUnlocks';
-import { isIconName } from './ui/iconShapes';
 import { SettingsDialog } from './ui/menus/SettingsDialog';
 import './ui/styles.css';
 
@@ -394,7 +392,6 @@ async function start(strings: Strings): Promise<void> {
     convoy.sendConvoy();
   }
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
-  const casino = services.resolve(ServiceKeys.casino);
   const review = services.resolve(ServiceKeys.review);
   const achievements = services.resolve(ServiceKeys.achievements);
   const crates = services.resolve(ServiceKeys.crates);
@@ -734,57 +731,6 @@ async function start(strings: Strings): Promise<void> {
       }
     });
   }, { star: (index, lit) => audio.star(index, lit) });
-  // The truck stop's slot machine, from the company panel (the truck already waiting under it): credits only.
-  const casinoDialog = new CasinoDialog(
-    ui,
-    strings,
-    config.casino.symbols.map((symbol) => ({
-      icon: isIconName(symbol.id) ? symbol.id : 'coins',
-      three: symbol.three,
-      pair: symbol.pair,
-    })),
-    casino.bets,
-    {
-      onSpin: (bet) => {
-        const spun = casino.spin(bet);
-        if (!spun.ok) {
-          if (spun.error === 'insufficientFunds') {
-            toasts.show(strings.t('toast.casinoShort'), 'warning');
-          }
-          return;
-        }
-        audio.click();
-        // The money as it was before the reels stop: what the spin paid shows once they have.
-        casinoDialog.showMoney(strings.money(economy.credits - spun.value.payout), casinoSitting(-spun.value.payout));
-        casinoDialog.play(
-          {
-            reels: spun.value.reels,
-            kind: spun.value.win.kind,
-            multiplier: spun.value.win.multiplier,
-            payout: strings.money(spun.value.payout),
-          },
-          () => {
-            if (spun.value.payout > 0) {
-              audio.chime();
-            }
-            showCasinoMoney();
-          },
-        );
-      },
-      onClose: () => casinoDialog.close(),
-    },
-  );
-  /** What this sitting has won or lost, less `pending` not yet shown; null before the first spin. */
-  const casinoSitting = (pending = 0): string | null =>
-    casino.sessionSpins === 0 ? null : strings.signedMoney(casino.sessionNet + pending);
-  const showCasinoMoney = (): void => {
-    casinoDialog.showMoney(strings.money(economy.credits), casinoSitting());
-    casinoDialog.showAffordable(economy.credits);
-  };
-  const openCasino = (): void => {
-    casinoDialog.open(strings.money(economy.credits), casinoSitting());
-    casinoDialog.showAffordable(economy.credits);
-  };
   // The company's goals, from the company panel: a badge there counts the rewards waiting.
   const goalsShown = () =>
     achievements.list().map((goal) => ({
@@ -1378,12 +1324,8 @@ async function start(strings: Strings): Promise<void> {
     onPause: () => {
       if (photoMode.isOpen) {
         closePhoto();
-      } else if (casinoDialog.isOpen) {
-        if (!casinoDialog.isSpinning) {
-          casinoDialog.close(); // Over the company panel, which stays.
-        }
       } else if (goalsDialog.isOpen) {
-        goalsDialog.close(); // The same.
+        goalsDialog.close(); // Over the company panel, which stays.
       } else if (levelUpDialog.isOpen) {
         levelUpDialog.close(); // Over the result or the panel; its reward waits.
         // Collected, with another level's waiting: that one's turn. Not collected: it waits for the panel again.
@@ -2142,7 +2084,6 @@ async function start(strings: Strings): Promise<void> {
         }
       },
       onOpenMap: () => openMap(),
-      onOpenCasino: () => openCasino(),
       onOpenGoals: () => goalsDialog.open(goalsShown(), careerShown(), passShown()),
       onOpenCrates: () => openCrates(),
       onClose: () => closePanel(),
@@ -2528,7 +2469,6 @@ async function start(strings: Strings): Promise<void> {
       showEarningsBoost();
     }
     if (!drivingNow) {
-      casinoDialog.close();
       goalsDialog.close();
       crateDialog.close();
       levelUpDialog.close();
@@ -2626,7 +2566,6 @@ async function start(strings: Strings): Promise<void> {
         controlsDialog.isOpen ||
         newCompany.isOpen ||
         worldMap.isOpen ||
-        casinoDialog.isOpen ||
         goalsDialog.isOpen ||
         photoMode.isOpen,
       panelOpen: hq.isOpen,
@@ -2637,12 +2576,6 @@ async function start(strings: Strings): Promise<void> {
       case 'closeDialog':
         if (photoMode.isOpen) {
           closePhoto();
-          break;
-        }
-        if (casinoDialog.isOpen) {
-          if (!casinoDialog.isSpinning) {
-            casinoDialog.close();
-          }
           break;
         }
         if (goalsDialog.isOpen) {

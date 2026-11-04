@@ -14,7 +14,6 @@ import type { Credits } from '../units';
  * - tendersWon, rivalsBoughtOut: beating the rivals.
  * - dailyStreak: the longest run of days the daily reward was collected.
  * - upgradesFitted: upgrade levels bought.
- * - bigWins: the slot machine paying ten times the bet or more.
  * - perfectStreak: the longest run of perfect deliveries (three stars).
  * - cratesOpened: crates opened.
  * - skyWonders: the sky's wonders seen (the northern lights, shooting
@@ -33,7 +32,6 @@ export const ACHIEVEMENT_METRICS = [
   'rivalsBoughtOut',
   'dailyStreak',
   'upgradesFitted',
-  'bigWins',
   'perfectStreak',
   'cratesOpened',
   'skyWonders',

@@ -298,17 +298,6 @@ export interface GameConfig {
       readonly weights: Readonly<Record<BoosterKind, number>>;
     };
   };
-  /**
-   * The truck stop's slot machine (CasinoService): played for the company's credits only, never for money; credits
-   * are never sold. Three reels on one line, each reel the same weighted strip of symbols. Three alike pay `three`
-   * times the bet, two alike `pair` times it; no win is ever less than the bet back. Content-free: the symbols' ids
-   * name their pictures (the UI's).
-   */
-  readonly casino: {
-    /** The bets on offer, smallest first. */
-    readonly bets: readonly Credits[];
-    readonly symbols: readonly SlotSymbolConfig[];
-  };
   /** The sky's wonders (SkyWonderService): the northern lights some nights, and what counts as seeing them. */
   readonly skyWonders: {
     /** The share of the nights with the northern lights, by season (they also need a clear, dark sky). */
@@ -484,17 +473,6 @@ export interface CrateTierConfig {
 export interface LevelRewardConfig {
   readonly credits: Credits;
   readonly crate: CrateTier;
-}
-
-/** A symbol on the slot machine's reels. */
-export interface SlotSymbolConfig {
-  readonly id: string;
-  /** How often it comes up on a reel, against the others' weights. */
-  readonly weight: number;
-  /** Three alike pay this many times the bet… */
-  readonly three: number;
-  /** …two alike this many (at least 1: the bet back). */
-  readonly pair: number;
 }
 
 /** More NPC vehicles than this would cost too much on low-end phones. */
@@ -869,20 +847,6 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     daysBetween: 60,
     maxAsks: 3,
   },
-  casino: {
-    bets: [50, 100, 250, 500],
-    // Returns about 95.6% of what is bet in the long run; a win on about 46% of spins, ten times the bet or more on
-    // 1.4% (tests/unit/domain/casino/slotMachine.test.ts works it out).
-    symbols: [
-      { id: 'wrench', weight: 7, three: 5, pair: 1 },
-      { id: 'fuel', weight: 6, three: 8, pair: 1 },
-      { id: 'wheels', weight: 5, three: 12, pair: 1 },
-      { id: 'cargo', weight: 4, three: 20, pair: 1.5 },
-      { id: 'engine', weight: 3, three: 40, pair: 2 },
-      { id: 'truck', weight: 2, three: 100, pair: 5 },
-      { id: 'trophy', weight: 1, three: 250, pair: 10 },
-    ],
-  },
   debug: {
     logLevel: 'info',
     showPerfOverlay: false,
@@ -960,7 +924,6 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     monetization,
     dailyReward,
     crates,
-    casino,
     skyWonders,
     research,
     roadPass,
@@ -1215,7 +1178,6 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.positiveInteger(reward.credits, `company.levelRewards[${index}].credits`);
     validator.check(isCrateTier(reward.crate), `company.levelRewards[${index}].crate`, `unknown crate "${String(reward.crate)}"`);
   });
-  validateCasino(validator, casino);
   for (const season of SEASONS) {
     validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
   }
@@ -1411,20 +1373,4 @@ function validateCrates(validator: Validator, crates: GameConfig['crates']): voi
   validator.positiveInteger(streak.goldEvery, 'crates.perfectStreak.goldEvery');
   validator.check(isCrateTier(crates.dailyCrate), 'crates.dailyCrate', `unknown crate "${String(crates.dailyCrate)}"`);
   validator.check(isCrateTier(crates.dailyStreakCrate), 'crates.dailyStreakCrate', `unknown crate "${String(crates.dailyStreakCrate)}"`);
-}
-
-function validateCasino(validator: Validator, casino: GameConfig['casino']): void {
-  validator.check(casino.bets.length > 0, 'casino.bets', 'must offer at least one bet');
-  casino.bets.forEach((bet, index) => {
-    validator.positiveInteger(bet, `casino.bets[${index}]`);
-    validator.check(index === 0 || bet > casino.bets[index - 1]!, `casino.bets[${index}]`, 'must be more than the bet before');
-  });
-  validator.check(casino.symbols.length >= 3, 'casino.symbols', 'must have at least three symbols');
-  casino.symbols.forEach((symbol, index) => {
-    const path = `casino.symbols[${index}]`;
-    validator.check(casino.symbols.findIndex((other) => other.id === symbol.id) === index, `${path}.id`, `"${symbol.id}" is there twice`);
-    validator.positiveInteger(symbol.weight, `${path}.weight`);
-    validator.check(Number.isFinite(symbol.pair) && symbol.pair >= 1, `${path}.pair`, 'must be at least 1: never less than the bet back');
-    validator.check(Number.isFinite(symbol.three) && symbol.three > symbol.pair, `${path}.three`, 'must be more than its pair');
-  });
 }

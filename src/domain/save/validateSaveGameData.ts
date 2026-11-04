@@ -33,6 +33,9 @@ function isFiniteNumber(value: unknown): value is number {
  * game trusts it: every field, range and reference to content. A save that
  * fails is treated as corrupted, never half-loaded.
  */
+/** What an older build counted and this one does not: dropped on loading (AchievementService.restore), not refused. */
+const RETIRED_METRICS: readonly string[] = ['bigWins'];
+
 export function validateSaveGameData(
   data: unknown,
   content: ContentCatalog,
@@ -157,7 +160,7 @@ export function validateSaveGameData(
     if (validator.check(isJson(counters), 'achievements.counters', 'must be an object')) {
       for (const [metric, value] of Object.entries(counters as Json)) {
         validator.check(
-          (ACHIEVEMENT_METRICS as readonly string[]).includes(metric),
+          (ACHIEVEMENT_METRICS as readonly string[]).includes(metric) || RETIRED_METRICS.includes(metric),
           `achievements.counters.${metric}`,
           'unknown metric',
         );

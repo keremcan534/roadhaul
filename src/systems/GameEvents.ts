@@ -1,6 +1,5 @@
 import type { NewsItem } from './world/NewsService';
 import type { CityIncidentKind } from '../data/definitions/CityIncident';
-import type { SlotWinKind } from '../domain/casino/slotMachine';
 import type { CrateTier } from '../data/config/GameConfig';
 import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
@@ -192,13 +191,6 @@ export interface GameEvents {
     readonly day: number;
     readonly streak: number;
     readonly credits: Credits;
-  };
-  /** The slot machine was spun (CasinoService): the bet, what it paid (0 for nothing) and how it won. */
-  SlotSpun: {
-    readonly bet: Credits;
-    readonly payout: Credits;
-    readonly kind: SlotWinKind;
-    readonly multiplier: number;
   };
   /** A goal's target was reached (AchievementService): its reward waits to be collected. */
   AchievementReached: {

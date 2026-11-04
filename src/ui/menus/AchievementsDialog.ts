@@ -40,7 +40,6 @@ const METRIC_ICONS: Readonly<Record<AchievementMetric, IconName>> = {
   rivalsBoughtOut: 'megaphone',
   dailyStreak: 'clock',
   upgradesFitted: 'wrench',
-  bigWins: 'slots',
   perfectStreak: 'star',
   cratesOpened: 'crate',
   skyWonders: 'eye',

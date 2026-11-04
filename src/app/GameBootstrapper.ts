@@ -20,7 +20,6 @@ import { RoadPassService } from '../systems/rewards/RoadPassService';
 import { CityIncidentService } from '../systems/world/CityIncidentService';
 import { NewsService } from '../systems/world/NewsService';
 import { DailyRewardService } from '../systems/rewards/DailyRewardService';
-import { CasinoService } from '../systems/casino/CasinoService';
 import { CrateService } from '../systems/rewards/CrateService';
 import { QuestService } from '../systems/rewards/QuestService';
 import { SupplyService } from '../systems/rewards/SupplyService';
@@ -216,12 +215,6 @@ export class GameBootstrapper {
           logger.withCategory('DailyReward'),
         ),
       );
-      // The slot machine's luck: a new run of it each time the game starts.
-      const luck = new SeededRandom(clock.now() % 2_147_483_647);
-      container.register(
-        ServiceKeys.casino,
-        new CasinoService(config.casino, economy, () => luck.next(), events, logger.withCategory('Casino')),
-      );
       const dailyContracts = container.register(
         ServiceKeys.dailyContracts,
         new DailyContracts(catalog, driving, clock, config.missions.dailyContracts, perks),
@@ -291,7 +284,7 @@ export class GameBootstrapper {
         ServiceKeys.supplies,
         new SupplyService(config.crates.boosters, economy, company, fuel, damage, events, logger.withCategory('Supplies')),
       );
-      // The crates' draws: a run of their own, so the slot machine's spins do not change what a crate holds.
+      // The crates' draws: a run of their own.
       const crateLuck = new SeededRandom((clock.now() * 7 + 13) % 2_147_483_647);
       const crates = container.register(
         ServiceKeys.crates,

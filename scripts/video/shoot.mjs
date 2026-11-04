@@ -128,10 +128,13 @@ const frameName = (index) => `${String(index + 1).padStart(4, '0')}.jpg`;
 const step = (page, ms) => page.evaluate((frameMs) => window.__video.step(frameMs), ms);
 
 /** Opens the game with the capture hook at a small size, founds a company and holds the frames. */
-async function openGame(browser, baseUrl, query, lang, viewport = SMALL, deviceScaleFactor = 1) {
+async function openGame(browser, baseUrl, query, lang, viewport = SMALL, deviceScaleFactor = 1, save = undefined) {
   const page = await browser.newPage({ viewport, deviceScaleFactor });
   page.setDefaultTimeout(300_000);
   await page.addInitScript({ content: HOOK });
+  if (save !== undefined) {
+    await page.addInitScript((json) => localStorage.setItem('roadhaul.save', json), JSON.stringify(save));
+  }
   await page.goto(`${baseUrl}?${COMMON_QUERY}&lang=${lang}&${query}`);
   await page.waitForFunction(() => document.documentElement.dataset.gameState === 'mainMenu');
   return page;
@@ -151,6 +154,19 @@ async function foundCompany(page, name) {
   }
 }
 
+/** Goes on with the saved company a clip's `save` put on the page (a level, a truck and a region no new company has). */
+async function continueCompany(page) {
+  await page.locator('[data-action="continue-game"]').click();
+  await page.waitForFunction(() => document.documentElement.dataset.gameState === 'driving');
+  await page.evaluate(() => window.__video.hold());
+  await step(page, 1000 / FPS);
+  // The day's reward waits for later; the picture has no use for its dialog.
+  const later = page.locator('[data-action="later-daily"]');
+  if (await later.count()) {
+    await later.first().dispatchEvent('click');
+  }
+}
+
 /**
  * Shoots `clip` into `<dir>/<id>/0001.jpg…`, unless the folder already holds this very clip; the HUD, when it shows,
  * in `lang` (one of the game's languages).
@@ -164,11 +180,20 @@ export async function shootClip(browser, baseUrl, clip, dir, lang = 'en') {
   }
   rmSync(folder, { recursive: true, force: true });
   mkdirSync(folder, { recursive: true });
-  const page = await openGame(browser, baseUrl, `${clip.query}&spawn=${clip.spawn}`, lang, SMALL, clip.phone ? 2 : 1);
+  const query = clip.save === undefined ? `${clip.query}&spawn=${clip.spawn}` : clip.query;
+  const page = await openGame(browser, baseUrl, query, lang, SMALL, clip.phone ? 2 : 1, clip.save);
   const size = clip.phone ? PHONE : VIDEO;
   try {
-    await foundCompany(page, 'RoadHaul');
+    if (clip.save === undefined) {
+      await foundCompany(page, 'RoadHaul');
+    } else {
+      await continueCompany(page);
+    }
     if (clip.camera === 'cabin') {
+      await page.keyboard.press('KeyC');
+    }
+    if (clip.camera === 'hood') {
+      await page.keyboard.press('KeyC');
       await page.keyboard.press('KeyC');
     }
     await page.evaluate((hud) => {

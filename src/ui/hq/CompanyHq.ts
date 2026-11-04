@@ -129,8 +129,6 @@ export interface CompanyHqActions {
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
-  /** Opens the truck stop's slot machine over the panel. */
-  readonly onOpenCasino: () => void;
   /** Opens the company's goals over the panel. */
   readonly onOpenGoals: () => void;
   /** Opens the company's crates over the panel. */
@@ -202,7 +200,7 @@ export class CompanyHq {
     this.sheet.setAttribute('role', 'dialog');
     this.sheet.setAttribute('aria-label', strings.t('hq.title'));
 
-    // The company, its money, its goals, its crates, the slot machine, the map and the way back to the road.
+    // The company, its money, its goals, its crates, the map and the way back to the road.
     const header = el('header', 'hq__header');
     const company = el('div', 'hq__company');
     this.companyName = el('h2', 'hq__company-name');
@@ -244,7 +242,6 @@ export class CompanyHq {
       money,
       goalsButton,
       cratesButton,
-      iconButton('slots', strings.t('casino.open'), 'open-casino', actions.onOpenCasino),
       iconButton('map', strings.t('hq.map'), 'hq-map', actions.onOpenMap),
       iconButton('close', strings.t('hq.close'), 'close-hq', actions.onClose),
     );
