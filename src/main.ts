@@ -66,7 +66,7 @@ import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
-import { RenderHost, isSoftwareRenderer } from './presentation/RenderHost';
+import { RenderHost, SOFTWARE_MIN_RESOLUTION_SCALE, isSoftwareRenderer } from './presentation/RenderHost';
 import { TruckView, truckViewKey, type TruckViewOptions } from './presentation/vehicles/TruckView';
 import { DEFAULT_TRAILER_TEXT, liveryThumbnail } from './presentation/textures/liveryImages';
 import { pixelImageUrl } from './presentation/textures/pixelImageUrl';
@@ -631,7 +631,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const crashEffects = new CrashEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const slowMotion = new SlowMotion();
   const effectsState = createTruckEffectsState();
-  const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
+  // Drawn in software, fewer pixels are the only speed to be had (RenderHost sets no floor there): down to 60%.
+  const adaptiveResolution = new AdaptiveResolution(
+    isSoftwareRenderer(renderHost.gpu) ? Math.min(SOFTWARE_MIN_RESOLUTION_SCALE, config.rendering.minResolutionScale) : config.rendering.minResolutionScale,
+  );
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   /** Company trucks in the traffic, as last written to the page (e2e tests read it). */

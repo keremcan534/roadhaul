@@ -36,6 +36,9 @@ const SHADERS_PER_PAUSE = 4;
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render driver/i;
 
 /** True for a WebGL renderer name that runs on the CPU (gpuName.ts gives it before the renderer is made). */
+/** How far the dynamic resolution may lower the pixels when drawn in software, whatever the preset says. */
+export const SOFTWARE_MIN_RESOLUTION_SCALE = 0.6;
+
 export function isSoftwareRenderer(name: string | undefined): boolean {
   return name !== undefined && SOFTWARE_RENDERER.test(name);
 }
@@ -306,9 +309,11 @@ export class RenderHost {
    */
   private applySize(): void {
     const cap = this.softwareRendering ? Math.min(1, this.settings.maxPixelRatio) : this.settings.maxPixelRatio;
-    // Never under one pixel per CSS pixel (the screen's own, if coarser): fewer shows as blocks, not as speed.
+    // On a GPU never under one pixel per CSS pixel (the screen's own, if coarser): fewer shows as blocks, not as
+    // speed. Drawn in software every pixel is the processor's work, and there fewer pixels are the speed.
     const full = Math.min(this.devicePixelRatio, cap);
-    const pixelRatio = Math.max(full * this.resolutionScale, Math.min(full, 1));
+    const floor = this.softwareRendering ? 0 : Math.min(full, 1);
+    const pixelRatio = Math.max(full * this.resolutionScale, floor);
     if (
       this.cssWidth === this.appliedWidth &&
       this.cssHeight === this.appliedHeight &&
