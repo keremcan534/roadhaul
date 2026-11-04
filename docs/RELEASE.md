@@ -126,9 +126,10 @@ the declarations.
 
 ### 6. Selling in the app (in-app purchases)
 
-The game sells two one-time products (`src/data/config/products.ts`): **Remove ads** (no ads between contracts, and the
-bonuses without an ad; the shop offers it only in a build with ads) and **Premium paints** (six premium garage colours,
-free to use once bought). Nothing in the shop speeds the game up. The app reads what the player owns from Google Play
+The game sells six one-time products (`src/data/config/products.ts`): **Remove ads** (no ads between contracts, and the
+bonuses without an ad; the shop offers it only in a build with ads), **Premium paints** (the premium garage colours,
+free to use once bought), two **design packs** (three truck designs each), **Road Pass Plus** (the pass's second track,
+every season) and the **Supporter pack** (all of them in one). Nothing in the shop speeds the game up. The app reads what the player owns from Google Play
 at every start, so a purchase follows the player to a new phone, and a refund takes it back.
 
 1. Play Console → Setup → **Payments profile**: link or make a merchant account (it needs a bank account and, in many
@@ -137,15 +138,36 @@ at every start, so a purchase follows the player to a new phone, and a refund ta
    billing library in it (every build has).
 3. Monetize with Play → Products → **In-app products** → Create product, once for each. The product ids must be exactly
    `remove_ads`, `premium_paints`, `designs_street`, `designs_neon`, `supporter_pack` and `road_pass` (they are in the
-   game's code and stored on players' phones: never rename them). Suggested prices: €2.99, €1.99, €1.99, €1.99, €6.99
-   and €3.99. `road_pass` is a one-time product too (not a subscription): Road Pass Plus for every season.
-   Give each a name and a description (translate them for the listings' languages), a price, and **activate** it.
+   game's code and stored on players' phones: never rename them). Suggested prices: €1.99, €0.99, €0.99, €0.99, €2.99
+   and €1.49 (see "Local prices" below). `road_pass` is a one-time product too (not a subscription): Road Pass Plus for
+   every season. `supporter_pack` holds all five others: the shop shows it first, as the best value, so keep its price
+   well under theirs together. Give each a name and a description (translate them for the listings' languages), a price,
+   and **activate** it.
 4. Setup → **License testing**: add the Google accounts that test purchases. Their purchases are free test orders,
    and they can test a pending (slow) payment too.
 5. On a tester's phone, install the build from the testing track: Settings shows "Restore purchases", the main menu
    a Shop button, and the garage the premium colours (dimmed until bought).
 
 In a browser, `?store=simulated` stands in for Google Play (development and the end-to-end tests).
+
+#### Local prices
+
+The game never names a price itself: the shop shows the one Google Play gives, in the player's currency. What a
+player in each country pays is set in the Play Console, and a euro price turned into lira, rupiah or złoty at the
+exchange rate is far more than people there pay for a game's extras. So:
+
+1. Monetize with Play → Products → **Pricing templates** → Create template, one per price point (for example
+   "Small" €0.99, "Medium" €1.49, "Ads" €1.99, "Bundle" €2.99). Each product takes its price from a template, and a
+   change to the template changes every product on it.
+2. In each template, after the default price, open **Local prices**. Play fills in every country from the exchange
+   rate and rounds to local habits (…,99 and so on); then lower the countries where that is too much for the place.
+   As a start, about half the converted price in Türkiye, Indonesia, Brazil, India and the other markets Play marks as
+   emerging, and about 70% in Poland and the rest of Eastern Europe. Keep each above Play's minimum for the country.
+3. Watch the conversion (Monetize with Play → **Financial reports**) for a month or two, and adjust one template at a
+   time. Play's **Price experiments** (Monetize with Play → Products) can try two prices in a country on part of its
+   players before changing it for everyone.
+
+Players who bought keep what they bought: a price change only affects new purchases.
 
 ### 7. Switching the ads on
 
@@ -183,6 +205,24 @@ The numbers are in `GameConfig.monetization` (`src/data/config/GameConfig.ts`).
 
 Never tap your own live ads, and never ask players to: AdMob closes accounts for invalid clicks. Test with the debug
 APK's test ads.
+
+### 8. The cloud save
+
+The app keeps the player's company in their Google account through **Android's own backup** (Auto Backup and the
+phone-to-phone transfer): nothing to sign up for, no server, nothing in the Play Console. The game mirrors its save,
+settings and purchases to `files/roadhaul/` in the app's storage, and the backup rules
+(`android/app/src/main/res/xml/data_extraction_rules.xml`, `backup_rules.xml`) carry only that folder. Android backs
+it up about once a day, while the phone is idle, charging and on Wi-Fi, if the player has backup on (Settings →
+Google → Backup), and brings it back when the game is installed again with the same account, before it first starts.
+
+- **Data safety** (Play Console → App content): the backup is Android's, encrypted in the player's account, not data
+  the game collects: nothing to declare for it.
+- **Try it** on a phone with the debug APK and a Google account: play, then
+  `adb shell bmgr backupnow com.keremcan534.roadhaul`, uninstall, install again (`adb install`), and the company is back.
+  `adb shell bmgr restore com.keremcan534.roadhaul` restores without reinstalling.
+- **Across phones at once** (a save the player picks on any device, any time) needs Google Play Games' saved games:
+  a Play Games project in the Play Console, its plugin in the app and a sign-in. The game's backup text
+  (`SaveService.exportText`) is what it would store. That is an online service, so it waits for the owner's go-ahead.
 
 ## Each release
 

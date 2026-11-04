@@ -510,6 +510,22 @@ The owner, looking at the map: crop the big empty land or fill it, make the map'
 
 Known: by the performance run's estimate Metropol sits at the low-end phone's 30 FPS floor (downtown and the pass ≈28–33 fps by the CPU), and its GPU's share (the pass draws ~340k triangles on low) only a phone can tell. Step 29 should try it on a low-end phone first; if it falls short, the low preset could draw the world's tiles less far (1 km now) and switch the forests to their simpler crowns sooner (450 m now).
 
+### The owner's play-through: Metropol at once, a menu that fits, giving up a contract, prices and a cloud save (between steps 28 and 29)
+
+The owner, after playing: the ferry said level 4; the main menu ran off a landscape screen; take Metropol's jobs straight away; show where a drive starts on the map; no way to cancel a job; everything too expensive, local prices needed, and the shop's offers better; the game is long-lived, so a cloud save ("yeni yere gitmek istedim de olmadı 4. seviye diyordu … iş iptali yok … her şey pahalıymış … cloud save'imiz yok").
+
+| Item | Status | Notes |
+|---|---|---|
+| Metropol from the main menu | ✅ | The ferry opens at level 2. The menu's start places end with the region over the water: a new company is founded there at once (`startNewGame(name, start, mapId)`, the game starting again in Metropol), and a saved company of the ferry's level crosses from the menu without the drive to Gull Point (the crossing screen, then Metropol). Below the level, Continue waits and says when the ferry opens, and that a new company can start there now |
+| The menu on a landscape phone | ✅ | Under 520 px tall it packs tighter: three columns of start places (names on two lines, not cut), smaller buttons and card, nothing off the screen at 640×360 |
+| Start places on the map | ✅ | "On the map" by the start places opens the full map round the truck at the place picked; the map marks the company's headquarters (an amber house), and its legend names the marks: headquarters, depot, rest area, ferry |
+| Giving up a contract | ✅ | The job board's current contract has "Abandon the contract": the first tap says what it costs, the second gives it up (as the pause menu's: the contract fails, the cargo is lost) |
+| Prices | ✅ | The suggested Play prices are about half: Remove ads €1.99, the paints and each design pack €0.99, Road Pass Plus €1.49, the Supporter pack €2.99. RELEASE.md §6 sets them in pricing templates and lowers the local prices where a euro price at the exchange rate is too much (about half in Türkiye, Indonesia, Brazil, India; 70% in Eastern Europe) |
+| Better offers | ✅ | The Supporter pack holds everything now, Road Pass Plus too, and the shop shows it first, marked as the best value |
+| A cloud save | ✅ | Android's own backup, no service of the game's: the save, settings and purchases are mirrored to files (`MirroredStorage`) that the backup rules carry to the player's Google account and to a new phone; a reinstall with the same account brings the company back before the game starts. Settings say so in the app. Play Games' saved games (a slot across devices at any time) wait for the owner's go-ahead (RELEASE.md §8) |
+
+Known: the backup runs when Android decides (about daily, idle, charging, on Wi-Fi), so a reinstall brings back the company as it was then. The in-game prices (trucks, parts) were left as they are: the owner's "too expensive" was read as the shop's real money; a faster early game is the next lever if the first hours feel long.
+
 ## Next step: 29 Device testing
 
 Suggested request:
