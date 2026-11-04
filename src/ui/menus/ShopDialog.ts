@@ -1,4 +1,4 @@
-import type { ProductId } from '../../data/config/products';
+import { PRODUCT_BUNDLES, type ProductId } from '../../data/config/products';
 import type { StoreProduct } from '../../systems/monetization/PurchaseStore';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
@@ -76,15 +76,19 @@ export class ShopDialog {
     const document = this.overlay.ownerDocument;
     this.note.textContent = products.length === 0 ? strings.t('shop.unavailable') : '';
     this.buyButtons = [];
+    // A bundle first, marked as the best value: it holds the others for much less.
+    const ordered = [...products.filter(({ id }) => PRODUCT_BUNDLES[id] !== undefined), ...products.filter(({ id }) => PRODUCT_BUNDLES[id] === undefined)];
     this.list.replaceChildren(
-      ...products.map(({ id, price }) => {
-        const card = element(document, 'article', 'shop__product');
+      ...ordered.map(({ id, price }) => {
+        const bundle = PRODUCT_BUNDLES[id] !== undefined;
+        const card = element(document, 'article', bundle ? 'shop__product shop__product--bundle' : 'shop__product');
         card.dataset.product = id;
         const text = element(document, 'div', 'shop__product-text');
-        text.append(
-          element(document, 'h3', 'shop__product-name', strings.t(`product.${id}.name`)),
-          element(document, 'p', 'shop__product-description', strings.t(`product.${id}.description`)),
-        );
+        const name = element(document, 'h3', 'shop__product-name', strings.t(`product.${id}.name`));
+        text.append(name, element(document, 'p', 'shop__product-description', strings.t(`product.${id}.description`)));
+        if (bundle && !owned(id)) {
+          text.prepend(element(document, 'span', 'shop__badge', strings.t('shop.bestValue')));
+        }
         card.append(icon(document, PRODUCT_ICONS[id], 'shop__product-icon'), text);
         if (owned(id)) {
           card.classList.add('is-owned');

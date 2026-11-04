@@ -366,7 +366,7 @@ describe('purchases', () => {
     const context = setup();
     await context.monetization.attachStore(context.store);
     expect(await context.monetization.buy('supporter_pack')).toBe('purchased');
-    for (const part of ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon'] as const) {
+    for (const part of ['remove_ads', 'premium_paints', 'designs_street', 'designs_neon', 'road_pass'] as const) {
       expect(context.monetization.offersNothingNew(part), part).toBe(true);
       expect(await context.monetization.buy(part), part).toBe('failed');
     }
@@ -377,8 +377,9 @@ describe('purchases', () => {
     for (const part of ['remove_ads', 'premium_paints', 'designs_street'] as const) {
       await oneByOne.monetization.buy(part);
     }
-    expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(false);
     await oneByOne.monetization.buy('designs_neon');
+    expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(false);
+    await oneByOne.monetization.buy('road_pass');
     expect(oneByOne.monetization.offersNothingNew('supporter_pack')).toBe(true);
     expect(await oneByOne.monetization.buy('supporter_pack')).toBe('failed');
   });

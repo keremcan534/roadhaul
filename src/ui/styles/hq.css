@@ -396,6 +396,26 @@
   font-weight: 600;
 }
 
+.hq__current-job-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Giving the contract up: quiet until asked, then in the warning's colour. */
+.hq .hq__abandon {
+  flex: none;
+  min-height: 34px;
+  padding: 5px 10px;
+  color: var(--rh-muted);
+  font-size: 12px;
+}
+
+.hq .hq__abandon[data-confirm='yes'] {
+  flex-shrink: 1;
+  border-color: var(--rh-danger);
+  color: var(--rh-danger);
+}
+
 .hq__empty {
   color: var(--rh-muted);
 }

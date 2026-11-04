@@ -206,6 +206,23 @@
   width: 100%;
 }
 
+/* The label, and the map on the place picked at its end. */
+.main-menu__start-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.main-menu .main-menu__map {
+  min-height: 30px;
+  margin: -6px -8px -6px 0;
+  padding: 4px 8px;
+  color: var(--rh-accent-hi);
+  font-size: 12px;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 85%);
+}
+
 /* Over the world, not a panel: lighter, and lifted off a bright sky. */
 .main-menu .main-menu__label {
   color: var(--rh-fg-2);
@@ -1314,6 +1331,23 @@
   border: 1px solid var(--rh-line);
   border-radius: var(--rh-radius);
   background: var(--rh-surface-2);
+}
+
+.shop__product--bundle {
+  border-color: var(--rh-accent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--rh-accent) 14%, var(--rh-surface-2)), var(--rh-surface-2) 70%);
+}
+
+.shop__badge {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--rh-accent);
+  color: var(--rh-accent-ink);
+  font: 600 11px/1.4 var(--rh-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .shop__product-icon {

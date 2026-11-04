@@ -503,6 +503,11 @@ export class MapPainter {
         context.fillText('P', x, y + 0.5);
       }
     }
+    // The headquarters: a house on the company's amber, where a new company starts and "Home" on the main menu.
+    const home = sketch.home;
+    if (view.sees(this.around(home.x, home.z), 12)) {
+      paintHome(context, view.screenX(home.x, home.z), view.screenY(home.x, home.z));
+    }
     // The other regions' depots, as this region's but quieter: their contracts are over there.
     for (let i = 0; i < this.regionDepots.length; i++) {
       const depot = this.regionDepots[i]!;
@@ -820,6 +825,23 @@ export class MapPainter {
     context.textBaseline = 'middle';
     context.fillText('N', x, y + 0.5);
   }
+}
+
+/** The headquarters' mark at (x, y): a dark house on an amber disc, ringed dark. */
+export function paintHome(context: CanvasRenderingContext2D, x: number, y: number): void {
+  disc(context, x, y, 10, COLORS.truckEdge);
+  disc(context, x, y, 8.5, COLORS.fleet);
+  context.fillStyle = COLORS.truckEdge;
+  context.beginPath();
+  context.moveTo(x, y - 5.5);
+  context.lineTo(x + 5.5, y - 0.5);
+  context.lineTo(x + 3.8, y - 0.5);
+  context.lineTo(x + 3.8, y + 4.5);
+  context.lineTo(x - 3.8, y + 4.5);
+  context.lineTo(x - 3.8, y - 0.5);
+  context.lineTo(x - 5.5, y - 0.5);
+  context.closePath();
+  context.fill();
 }
 
 function disc(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {

@@ -192,6 +192,8 @@ export interface MapSketch {
   readonly depots: readonly MapDepot[];
   readonly restAreas: readonly MapRestArea[];
   readonly ferries: readonly MapFerry[];
+  /** The company's headquarters: where the map's own start is (a new company's truck, "Home" on the main menu). */
+  readonly home: { readonly x: number; readonly z: number };
   /**
    * This region's land (landArea): its square, and past it the mountains out
    * to a natural coast; a sea of its own west of its shore. The sea is all
@@ -316,6 +318,7 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
     depots,
     restAreas,
     ferries,
+    home: { x: world.spawn.x, z: world.spawn.z },
     // The towns' own buildings place their names: not the farms and villages round them.
     cities: cityLabels(
       depots,

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { closePanel, openCompanyHq, openGame, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
+import { closePanel, openCompanyHq, openGame, openMainMenu, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
 
 /** Pixels of a map canvas in one of its colours: the route's blue, or a street's grey. */
 async function pixelsOf(page: Page, selector: string, rgb: readonly [number, number, number]): Promise<number> {
@@ -167,5 +167,22 @@ test('names the companies in a legend, and tells who leads a city or whose truck
   // Out at sea: nothing there.
   await tap(-2200, -600);
   await expect(card).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test('shows where a drive can start on the map from the main menu, its marks named in the legend', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openMainMenu(page, '?lang=en&traffic=0');
+  await page.locator('.main-menu__place[data-kind="depot"]').first().click();
+  await page.locator('[data-action="menu-map"]').click();
+  const map = page.locator('.world-map');
+  await expect(map).toBeVisible();
+  // Close round the truck, which stands at the place picked; no company is loaded, so none is listed.
+  await expect.poll(() => mapScale(page)).toBeGreaterThanOrEqual(0.6);
+  await expect(page.locator('.world-map__legend-row')).toHaveCount(0);
+  await expect(page.locator('.world-map__place')).toHaveText(['Headquarters', 'Depot', 'Rest area', 'Ferry']);
+  await page.locator('[data-action="close-map"]').click();
+  await expect(map).toBeHidden();
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'mainMenu');
   expect(problems).toEqual([]);
 });

@@ -27,6 +27,8 @@ export interface MainMenuActions {
   readonly onShop: () => void;
   /** Starts the earnings boost (after its ad): offered only when it can be (earningsBoost). */
   readonly onEarningsBoost: () => void;
+  /** Opens the map on the place picked (the truck is shown there). */
+  readonly onMap: () => void;
 }
 
 /** The earnings boost, as the main menu offers it. */
@@ -163,7 +165,13 @@ export class MainMenu {
     this.places.setAttribute('aria-label', strings.t('menu.start'));
     this.startNote = element(document, 'p', 'main-menu__start-note', strings.t('menu.start.locked'));
     this.startNote.hidden = true;
-    start.append(element(document, 'h3', 'main-menu__label', strings.t('menu.start')), this.places, this.startNote);
+    // Its label, and beside it the map, on the place picked: where the depots, the rest area and home lie.
+    const startHead = element(document, 'div', 'main-menu__start-head');
+    startHead.append(
+      element(document, 'h3', 'main-menu__label', strings.t('menu.start')),
+      withIcon(button(document, 'button--ghost main-menu__map', strings.t('menu.start.map'), 'menu-map', () => actions.onMap()), 'map'),
+    );
+    start.append(startHead, this.places, this.startNote);
 
     this.continueButton = withIcon(
       button(document, 'button--primary main-menu__play', strings.t('menu.continue'), 'continue-game', () =>

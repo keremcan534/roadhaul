@@ -21,7 +21,7 @@ import type { FuelService } from '../../systems/vehicles/FuelService';
 import type { UsedTruckMarket } from '../../systems/vehicles/UsedTruckMarket';
 import type { GarageService, OwnedTruck } from '../../systems/vehicles/GarageService';
 import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
-import { element, setText } from '../dom';
+import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
 import { LabelFitter } from '../LabelFitter';
@@ -89,6 +89,8 @@ export type TruckPreview =
 
 export interface CompanyHqActions {
   readonly onAccept: (missionId: string) => void;
+  /** Gives up the contract under way (asked twice: it fails, the cargo is lost). */
+  readonly onAbandon: () => void;
   readonly onRefuel: () => void;
   readonly onRepair: () => void;
   /** The same at half price, after a rewarded ad. */
@@ -535,10 +537,20 @@ export class CompanyHq {
     }
     const current = missions.activeDefinition;
     if (current !== null) {
-      const note = element(document, 'p', 'hq__note hq__current-job');
+      const note = element(document, 'div', 'hq__note hq__current-job');
+      // Giving it up, asked twice: the first tap says what it costs, the second gives it up.
+      const abandon = button(document, 'button--ghost hq__abandon', strings.t('pause.abandon'), 'hq-abandon', () => {
+        if (abandon.dataset.confirm === 'yes') {
+          actions.onAbandon();
+          return;
+        }
+        abandon.dataset.confirm = 'yes';
+        setText(abandon, strings.t('hq.jobs.abandonConfirm'));
+      });
       note.append(
         icon(document, 'route'),
-        element(document, 'span', '', strings.t('hq.jobs.current', { title: strings.missionTitle(current), route: routeText(strings, current) })),
+        element(document, 'span', 'hq__current-job-text', strings.t('hq.jobs.current', { title: strings.missionTitle(current), route: routeText(strings, current) })),
+        abandon,
       );
       page.push(note);
     }

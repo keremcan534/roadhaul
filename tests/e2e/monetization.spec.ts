@@ -117,9 +117,12 @@ test('sells the premium paints in the shop, keeps them, and paints a truck in on
   const shop = page.locator('.shop');
   await expect(shop.locator('.shop__product')).toHaveCount(5);
   await expect(shop.locator('.shop__product[data-product="remove_ads"]')).toHaveCount(0);
+  // The bundle first, marked as the best value.
+  await expect(shop.locator('.shop__product').first()).toHaveAttribute('data-product', 'supporter_pack');
+  await expect(shop.locator('.shop__product').first().locator('.shop__badge')).toHaveText('Best value');
   const paints = shop.locator('.shop__product[data-product="premium_paints"]');
   await expect(paints.locator('.shop__product-name')).toHaveText('Premium paints');
-  await expect(paints.locator('[data-action="buy-product"]')).toHaveText('Buy · €1.99');
+  await expect(paints.locator('[data-action="buy-product"]')).toHaveText('Buy · €0.99');
 
   // Cancelled first: nothing bought.
   await paints.locator('[data-action="buy-product"]').click();

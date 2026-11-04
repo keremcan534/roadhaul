@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The cloud save up to Android 11: the same as data_extraction_rules.xml. -->
+<full-backup-content>
+    <include domain="file" path="roadhaul" />
+</full-backup-content>

@@ -7,12 +7,12 @@ import { simulatedSheet } from './simulatedSheet';
 const RECEIPTS_KEY = 'roadhaul.simulatedStore';
 
 const PRICES: Readonly<Record<ProductId, string>> = {
-  remove_ads: '€2.99',
-  premium_paints: '€1.99',
-  designs_street: '€1.99',
-  designs_neon: '€1.99',
-  supporter_pack: '€6.99',
-  road_pass: '€3.99',
+  remove_ads: '€1.99',
+  premium_paints: '€0.99',
+  designs_street: '€0.99',
+  designs_neon: '€0.99',
+  supporter_pack: '€2.99',
+  road_pass: '€1.49',
 };
 
 /**

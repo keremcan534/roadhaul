@@ -49,6 +49,7 @@ import {
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
 import { gpuName } from './platform/browser/gpuName';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
+import { MirroredStorage, restoreMirror, type MirrorFiles } from './platform/native/mirroredStorage';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
@@ -259,7 +260,7 @@ declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly reward
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
 const PRIVACY_POLICY_URL = 'https://keremcan534.github.io/roadhaul/privacy.html';
 
-async function start(strings: Strings): Promise<void> {
+async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise<void> {
   const root = document.documentElement;
   const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
   if (canvas === null) {
@@ -267,7 +268,16 @@ async function start(strings: Strings): Promise<void> {
   }
 
   const query = new URLSearchParams(window.location.search);
-  const { storage, persistent } = browserStorage(window);
+  const local = browserStorage(window);
+  const { persistent } = local;
+  // In the Android app the keys that matter are also kept in files that Android's backup carries to the player's
+  // Google account (the cloud save, mirroredStorage.ts).
+  const mirrored =
+    mirrorFiles !== null && persistent
+      ? new MirroredStorage(local.storage, mirrorFiles, (key, error) => logger.warn(`The cloud copy of ${key} was not written.`, error))
+      : null;
+  mirrored?.mirrorAll();
+  const storage = mirrored ?? local.storage;
   // Graphics: `?quality=`, else the player's setting, else what the device can carry. URL flags win over the preset.
   // The phone's settings; sound can change while the game runs.
   let settings = loadSettings(storage);
@@ -1486,6 +1496,7 @@ async function start(strings: Strings): Promise<void> {
     onSettings: () => openSettings(),
     onShop: () => openShop(),
     onEarningsBoost: () => startEarningsBoost(),
+    onMap: () => openMap(true),
   });
   /**
    * The main menu as the save stands: the saved company's card (its truck
@@ -1658,6 +1669,7 @@ async function start(strings: Strings): Promise<void> {
       weather: weatherChoiceFor(weather.held),
       season: season.held ?? 'auto',
       vibration: canVibrate ? settings.vibration : null,
+      cloudSave: mirrored !== null,
       about: {
         version: __APP_VERSION__,
         build: __APP_BUILD__,
@@ -1903,6 +1915,10 @@ async function start(strings: Strings): Promise<void> {
       liveryPicture,
     },
     {
+      onAbandon: () => {
+        closePanel();
+        missions.abandon(); // MissionFailed opens the result.
+      },
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
         if (accepted.ok) {
@@ -2150,7 +2166,8 @@ async function start(strings: Strings): Promise<void> {
   };
   /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
   let pausedForMap = false;
-  const openMap = (): void => {
+  /** Opens the full map; from the main menu (`aroundTruck`), on the truck where the drive would start. */
+  const openMap = (aroundTruck = false): void => {
     if (worldMap.isOpen) {
       return;
     }
@@ -2158,7 +2175,7 @@ async function start(strings: Strings): Promise<void> {
       paused = true;
       pausedForMap = true;
     }
-    worldMap.open();
+    worldMap.open(aroundTruck);
   };
   const closeMap = (): void => {
     worldMap.close();
@@ -3187,11 +3204,38 @@ function fatalText(strings: Strings, error: unknown): FatalErrorText {
 }
 
 /**
+ * In the Android app, the files Android's backup keeps for the player (the cloud save): on a new phone or a reinstall
+ * with no company yet, they bring the company and the settings back before anything reads them. Null in a browser,
+ * or when the files cannot be reached.
+ */
+async function cloudSaveFiles(): Promise<MirrorFiles | null> {
+  if (!isNativeApp(window)) {
+    return null;
+  }
+  const local = browserStorage(window);
+  if (!local.persistent) {
+    return null;
+  }
+  try {
+    const { capacitorMirrorFiles } = await import('./platform/native/capacitorMirrorFiles');
+    const restored = await restoreMirror(local.storage, capacitorMirrorFiles);
+    if (restored.length > 0) {
+      console.info(`Brought back from the cloud save: ${restored.join(', ')}.`);
+    }
+    return capacitorMirrorFiles;
+  } catch (error) {
+    console.warn('The cloud save could not be reached.', error);
+    return null;
+  }
+}
+
+/**
  * The language first (`?lang=`, the player's setting, the device's), so a
  * failure at boot is told in it too; its table loads with its own chunk,
  * English should that fail. Then the game.
  */
 async function boot(): Promise<void> {
+  const mirrorFiles = await cloudSaveFiles();
   // Older WebViews may only have navigator.language.
   const language = chooseLanguage(
     new URLSearchParams(window.location.search).get('lang'),
@@ -3206,7 +3250,7 @@ async function boot(): Promise<void> {
       return stringsFor('en');
     });
     document.documentElement.lang = strings.language;
-    await start(strings);
+    await start(strings, mirrorFiles);
   } catch (error) {
     console.error(error);
     document.documentElement.dataset.bootState = 'error';

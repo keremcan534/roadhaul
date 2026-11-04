@@ -166,6 +166,29 @@ test('abandoning a contract from the pause menu fails it, and the road is back w
   expect(problems).toEqual([]);
 });
 
+test('gives up the contract from the job board, asked twice', async ({ page }) => {
+  const problems = watchForProblems(page);
+  await openCompanyHq(page, '?lang=en');
+  await takeContract(page, 'market_shipment');
+  // Under way, the job board opens from the truck's button.
+  await expect(page.locator('[data-action="dock-jobs"]')).toBeHidden();
+  await openPanel(page, 'jobs');
+  const abandon = page.locator('[data-action="hq-abandon"]');
+  await abandon.click();
+  // The first tap only asks.
+  await expect(abandon).toHaveAttribute('data-confirm', 'yes');
+  await expect(abandon).toHaveText('Tap again to give it up: the cargo is lost');
+  await abandon.click();
+
+  const result = page.locator('.result-dialog');
+  await expect(result.locator('.panel__title')).toHaveText('Contract failed');
+  await expect(result.locator('.result-dialog__reason')).toHaveText('You abandoned the contract.');
+  await result.locator('[data-action="continue"]').click();
+  await expect(html(page)).toHaveAttribute('data-panel', 'none');
+  await expect(page.locator('[data-action="dock-jobs"]')).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
 test('pausing stops the truck, and Escape resumes', async ({ page }) => {
   await openGame(page, '?lang=en');
   // As the driving tests do: past the first frames on the road (drawn in software, they build the shaders and the

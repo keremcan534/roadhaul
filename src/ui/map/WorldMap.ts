@@ -54,11 +54,14 @@ export class WorldMap {
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private readonly resizeObserver: ResizeObserver | null = null;
   private readonly legend: HTMLDivElement;
+  private readonly companies: HTMLDivElement;
   private readonly card: HTMLDivElement;
   /** The finger (or mouse button) that may be tapping: where it went down, and whether it has moved off. */
   private tapping: { readonly id: number; readonly x: number; readonly y: number; moved: boolean } | null = null;
   private pixelRatio = 1;
   private dirty = true;
+  /** Opened from the main menu: on the truck where the drive would start (open). */
+  private aroundTruck = false;
   /** The painter's version as last painted (MapPainter.version: the lands' relief comes in after the map opens). */
   private paintedVersion = -1;
 
@@ -94,9 +97,30 @@ export class WorldMap {
       tool('−', 'map-zoom-out', strings.t('map.zoomOut'), () => this.zoomBy(1 / ZOOM_STEP)),
       tool('◎', 'map-truck', strings.t('map.showTruck'), () => this.showTruck()),
     );
+    // The legend: the companies' colours, then what the places' marks are (where a drive can start).
     this.legend = element(document, 'div', 'world-map__legend');
-    this.legend.setAttribute('role', 'list');
-    this.legend.setAttribute('aria-label', strings.t('map.legend'));
+    this.companies = element(document, 'div', 'world-map__companies');
+    this.companies.setAttribute('role', 'list');
+    this.companies.setAttribute('aria-label', strings.t('map.legend'));
+    const places = element(document, 'div', 'world-map__places');
+    places.setAttribute('role', 'list');
+    places.setAttribute('aria-label', strings.t('map.places'));
+    const place = (kind: string, name: string): HTMLElement => {
+      const row = element(document, 'div', 'world-map__place');
+      row.setAttribute('role', 'listitem');
+      row.dataset.place = kind;
+      const mark = element(document, 'span', `map-mark map-mark--${kind}`);
+      mark.setAttribute('aria-hidden', 'true');
+      row.append(mark, element(document, 'span', 'world-map__legend-name', name));
+      return row;
+    };
+    places.append(
+      place('home', strings.t('map.place.home')),
+      place('depot', strings.t('map.place.depot')),
+      place('restArea', strings.t('menu.start.restArea')),
+      place('ferry', strings.t('map.place.ferry')),
+    );
+    this.legend.append(this.companies, places);
     this.card = element(document, 'div', 'world-map__card');
     this.card.setAttribute('role', 'status');
     this.card.hidden = true;
@@ -120,12 +144,20 @@ export class WorldMap {
     return !this.overlay.hidden;
   }
 
-  /** Opens on the whole region. */
-  open(): void {
+  /**
+   * Opens on the whole region; or, from the main menu (`aroundTruck`), close
+   * round the truck where the drive would start, without the companies (none
+   * is loaded yet).
+   */
+  open(aroundTruck = false): void {
     this.overlay.hidden = false;
-    this.renderLegend();
+    this.companies.hidden = aroundTruck;
+    if (!aroundTruck) {
+      this.renderLegend();
+    }
     this.card.hidden = true;
-    this.showAll();
+    this.aroundTruck = aroundTruck;
+    this.showOpening();
   }
 
   close(): void {
@@ -152,7 +184,7 @@ export class WorldMap {
 
   /** The company's colour and each rival's still in business, with their names. */
   private renderLegend(): void {
-    const document = this.legend.ownerDocument;
+    const document = this.companies.ownerDocument;
     const rows: HTMLElement[] = [
       this.legendRow(document, PLAYER_COMPANY_ID, PLAYER_COLOR, this.strings.t('hq.rivals.you', { name: this.sources.company.companyName })),
     ];
@@ -162,7 +194,7 @@ export class WorldMap {
         rows.push(this.legendRow(document, rival.id, cssColor(rival.color), this.strings.rivalName(rival.id)));
       }
     }
-    this.legend.replaceChildren(...rows);
+    this.companies.replaceChildren(...rows);
   }
 
   private legendRow(document: Document, companyId: string, color: string, name: string): HTMLElement {
@@ -262,6 +294,14 @@ export class WorldMap {
     this.dirty = true;
   }
 
+  /** What the map opens on: the whole region, or close round the truck (open). */
+  private showOpening(): void {
+    this.showAll();
+    if (this.aroundTruck) {
+      this.showTruck();
+    }
+  }
+
   private showTruck(): void {
     const view = this.viewport;
     const vehicle = this.driving.vehicle;
@@ -289,7 +329,7 @@ export class WorldMap {
     const wasFitted = this.viewport.width > 1;
     this.viewport.resize(width, height);
     if (!wasFitted && this.isOpen) {
-      this.showAll();
+      this.showOpening();
     }
     this.dirty = true;
   }

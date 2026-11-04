@@ -40,6 +40,8 @@ export interface SettingsShown {
   readonly weather: WeatherChoice;
   /** The season: the calendar's, or the one held. */
   readonly season: SeasonChoice;
+  /** The company is kept in the player's Google account's backup too (the Android app's cloud save). */
+  readonly cloudSave: boolean;
   /** About the game: its version and build, and where its privacy policy is published. */
   readonly about: {
     readonly version: string;
@@ -327,6 +329,7 @@ export class SettingsDialog {
     company.append(
       element(document, 'h3', 'settings__label', strings.t('settings.company')),
       element(document, 'p', 'settings__note', strings.t('settings.companyNote')),
+      ...(shown.cloudSave ? [element(document, 'p', 'settings__note settings__cloud-note', strings.t('settings.cloudNote'))] : []),
       companyLinks,
       this.restoreNote,
       this.restoreConfirm,
