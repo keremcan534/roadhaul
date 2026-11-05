@@ -17,9 +17,10 @@ jobs:
   verify:
     name: Typecheck, test, build, e2e
     runs-on: ubuntu-latest
-    # The e2e suite draws in software: about 24 minutes on a runner since the country grows round the
-    # towns (more to draw, fewer frames a second in software), longer on a slow one.
-    timeout-minutes: 45
+    # The e2e suite draws in software: about 33 minutes on a runner now that the country grows round the
+    # towns (more to draw, fewer frames a second in software), and past 40 on a slow one (a runner a
+    # fifth slower, its unit tests too, ran out at 40 with every test passed but two left).
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -44,7 +45,7 @@ jobs:
 
       # Under the job's own limit: a run cut off fails here, and the report of what had failed by then is still uploaded.
       - name: End-to-end smoke tests
-        timeout-minutes: 40
+        timeout-minutes: 52
         run: npm run test:e2e
 
       - name: Upload e2e report
