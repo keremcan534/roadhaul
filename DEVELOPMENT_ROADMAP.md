@@ -527,6 +527,20 @@ The owner, after playing: the ferry said level 4; the main menu ran off a landsc
 
 Known: the backup runs when Android decides (about daily, idle, charging, on Wi-Fi), so a reinstall brings back the company as it was then. The in-game prices (trucks, parts) were left as they are: the owner's "too expensive" was read as the shop's real money; a faster early game is the next lever if the first hours feel long.
 
+### The same picture, less work a frame (between steps 28 and 29)
+
+The owner asked for more speed without hurting the graphics ("grafikleri öldürmeden performansı geliştirebilir misin?"). A low-end phone's frame (`npm run perf`, Metropol, the pass, the highway, a city at night) was profiled again: three.js drawing is about seven tenths of the game's work, and most of that is `setProgram` sending each material's uniforms as a draw switches to it. The 48 programs a frame were already at their fewest (`opaqueByProgram`), so what was left to cut was the uniforms sent for nothing.
+
+| Item | Status | Notes |
+|---|---|---|
+| Uniforms the shaders skip, not sent | ✅ | Some uniforms are read only behind a branch that is off most of the time: the mist's light and way to the sun (`mistDensity > 0`), the way up for snow (`snowCover > 0`), the truck's body's box (only in the light of a vehicle it shades), the pre-lit ground's albedo (only in the lamps' light) and where the clouds' shadows lie (nothing to take without darkness). Each is marked `needsUpdate: false` while its branch is off, as the lamps were by day. WebGL uniform calls a frame in Metropol on the low-end phone: 417 → 358 by day, 749 → 556 at night |
+| Less garbage | ✅ | `hypot2` for `Math.hypot` where the frame calls it: every walker's point along its pavement (`RoadPath.pointAt`), the lamps, the people's dodges |
+| The picture | ✅ | A paused frame drawn as the game leaves the uniforms and again with every one sent: not one pixel differs, in nine scenes (Metropol by day on low and high, at night with the lamps on low and medium, in the morning mist, in snow; North Valley in rain on high, by day, and on an autumn evening on high) |
+
+What it measures: the performance run's frames, before and after alternately (two runs of four scenes), came out within the run's own noise (43.8 ms a frame before, 45.0 after, the same build swinging 40–56 ms from run to run). So the paused frame was timed alone: three.js drawing it 300 times on the low-end phone's CPU (six times slower, the GPU's draws stubbed), the builds before and after alternately, three rounds each. By day 15.5 → 12.7 ms a frame, faster in every round; at night 18.9 → 18.6 ms, within the noise. What moved for certain is the count of WebGL calls above; a phone will tell the time it saves.
+
+Not done: the minimap's paint (a few milliseconds a dozen times a second on the low-end phone) turns with the truck, so its layers cannot simply be kept; merging shader variants and sending the lamps in world space would change the picture, and were left.
+
 ## Next step: 29 Device testing
 
 Suggested request:
