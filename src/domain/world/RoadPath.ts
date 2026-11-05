@@ -214,7 +214,8 @@ export class RoadPath {
     const t = end > start ? Math.max(0, Math.min(1, (distance - start) / (end - start))) : 0;
     const dx = this.x(next) - this.x(segment);
     const dz = this.z(next) - this.z(segment);
-    const pieceLength = Math.hypot(dx, dz) || 1;
+    // hypot2, not Math.hypot: every frame, for every walker and vehicle placed along a road.
+    const pieceLength = hypot2(dx, dz) || 1;
     out.x = this.x(segment) + dx * t;
     out.z = this.z(segment) + dz * t;
     out.directionX = dx / pieceLength;

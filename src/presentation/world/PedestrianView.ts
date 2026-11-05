@@ -13,6 +13,7 @@ import {
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { hypot2 } from '../../core/math/scalar';
 import {
   createPedestrianPose,
   crowdShows,
@@ -336,7 +337,7 @@ export class PedestrianView {
     steps[i * 2] = nowX;
     steps[i * 2 + 1] = nowZ;
     // Off the ground while still jumping clear.
-    this.hop = toX !== 0 || toZ !== 0 ? Math.min(DODGE_HOP_METERS, Math.hypot(toX - nowX, toZ - nowZ) * 0.5) : 0;
+    this.hop = toX !== 0 || toZ !== 0 ? Math.min(DODGE_HOP_METERS, hypot2(toX - nowX, toZ - nowZ) * 0.5) : 0;
   }
 
   /** Whether any of pavement `index` comes within reach of `eye`. */

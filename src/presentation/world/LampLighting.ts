@@ -10,6 +10,7 @@ import {
   type Material,
   type Object3D,
 } from 'three';
+import { hypot2 } from '../../core/math/scalar';
 import type { PrelitMaterials } from './lighting';
 
 /** Headlights: a neutral LED white, a touch warm. */
@@ -621,7 +622,7 @@ export class LampLighting {
     const world = camera.matrixWorld.elements;
     const lookX = -world[8]!;
     const lookZ = -world[10]!;
-    const look = Math.hypot(lookX, lookZ);
+    const look = hypot2(lookX, lookZ);
     const ahead = look > 1e-6 ? LAMP_PICK_AHEAD_METERS / look : 0;
     const pickX = world[12]! + lookX * ahead;
     const pickZ = world[14]! + lookZ * ahead;
@@ -696,12 +697,12 @@ export class LampLighting {
    */
   private truckAhead(lamp: Vector3, forward: Vector3): boolean {
     const size = this.uniforms.truckBoxSize.value;
-    const radius = Math.hypot(size.x, size.z);
+    const radius = hypot2(size.x, size.z);
     const dx = this.boxMiddle.x - lamp.x;
     const dz = this.boxMiddle.z - lamp.z;
-    const level = Math.hypot(forward.x, forward.z);
+    const level = hypot2(forward.x, forward.z);
     const ahead = level > 1e-6 ? (dx * forward.x + dz * forward.z) / level : 0;
-    return ahead > -radius && Math.hypot(dx, dz) < TRUCK_SHADE_REACH_METERS + radius;
+    return ahead > -radius && hypot2(dx, dz) < TRUCK_SHADE_REACH_METERS + radius;
   }
 
   /** The way `forward` (world) faces and its right, level, as `view` sees them. */
