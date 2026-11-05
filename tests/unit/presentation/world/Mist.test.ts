@@ -121,6 +121,23 @@ describe('Mist', () => {
     expect(mist.uniforms.mistDensity.value).toBe(0);
   });
 
+  it('spares three.js sending its light to the GPU without mist, when the shaders skip it, and sends it again when it lies', () => {
+    const mist = new Mist();
+    const u: Record<string, { value: unknown; needsUpdate?: boolean }> = mist.uniforms;
+    const sent = (name: string): boolean => u[name]!.needsUpdate !== false;
+    const light = ['mistColor', 'mistGlow', 'mistSun'];
+    // Before any set(): no mist.
+    expect(light.map(sent)).toEqual([false, false, false]);
+    mist.set(0, new Color(1, 1, 1), new Color(1, 1, 1), new Vector3(0, 1, 0));
+    // The density always goes: it tells the shaders to skip the rest.
+    expect(sent('mistDensity')).toBe(true);
+    expect(light.map(sent)).toEqual([false, false, false]);
+    mist.set(0.01, new Color(1, 1, 1), new Color(1, 1, 1), new Vector3(0, 1, 0));
+    expect([sent('mistDensity'), ...light.map(sent)]).toEqual([true, true, true, true]);
+    mist.set(-1, new Color(1, 1, 1), new Color(1, 1, 1), new Vector3(0, 1, 0));
+    expect(light.map(sent)).toEqual([false, false, false]);
+  });
+
   it('hides the far land from the cab and the feet of what stands in it, while treetops and hills rise out of it', () => {
     const eye = 3;
     const lost = (x: number, y: number) => mistAmount(eye, new Vector3(x, y - eye, 0), MIST_DENSITY);

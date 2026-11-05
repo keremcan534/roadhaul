@@ -121,6 +121,8 @@ const TRAFFIC_REACH_METERS = 160;
  */
 const TRUCK_SHADE_REACH_METERS = 120;
 const TRUCK_SHADE_SOFT_METERS = 0.3;
+/** The uniforms of the truck's body's box (LampLighting.uniforms), sent only while a vehicle's light looks for it. */
+const TRUCK_BOX_UNIFORMS: readonly string[] = ['truckBox', 'truckBoxAlong', 'truckBoxAcross', 'truckBoxSize'];
 
 /** The flags views set on what the lamps should leave alone, light every way, or light as a road that goes wet. */
 const UNLIT = 'lampsUnlit';
@@ -504,12 +506,21 @@ export class LampLighting {
     lampData: { value: new Float32Array(LAMP_DATA.size * 4) },
   };
   private readonly lit = new WeakSet<Material>();
-  /** Every uniform but lampLevel, which three.js need not send while the lamps are off (sendLamps). */
+  /**
+   * Every uniform but lampLevel and the truck's body's box, which three.js
+   * need not send while the lamps are off (sendLamps); and the pre-lit
+   * materials' albedo (lightPrelit), which only the lamps read.
+   */
   private readonly lampUniforms: { value: unknown; needsUpdate?: boolean }[] = Object.entries(this.uniforms)
-    .filter(([name]) => name !== 'lampLevel')
+    .filter(([name]) => name !== 'lampLevel' && !TRUCK_BOX_UNIFORMS.includes(name))
+    .map(([, uniform]) => uniform);
+  /** The truck's body's box: read only in the light of a vehicle the truck shades (sendBox). */
+  private readonly boxUniforms: { value: unknown; needsUpdate?: boolean }[] = Object.entries(this.uniforms)
+    .filter(([name]) => TRUCK_BOX_UNIFORMS.includes(name))
     .map(([, uniform]) => uniform);
   /** Whether those are sent as it stands (three.js sends a uniform unless it says needsUpdate: false). */
   private lampsSent = true;
+  private boxSent = true;
   private readonly streetLampsShown: number;
   private readonly trafficShown: number;
   /** Every street lamp's light in the world: x, y, z and the way it faces (x, z) per lamp. */
@@ -590,6 +601,7 @@ export class LampLighting {
     u.lampLevel.value = Math.max(0, level);
     this.sendLamps(level > 0);
     if (level <= 0) {
+      this.sendBox(false);
       return;
     }
     camera.updateMatrixWorld();
@@ -615,6 +627,7 @@ export class LampLighting {
     const pickZ = world[14]! + lookZ * ahead;
 
     let vehicles = 0;
+    let shaded = false;
     if (traffic !== null && this.trafficShown > 0) {
       vehicles = Math.min(
         this.trafficShown,
@@ -627,12 +640,15 @@ export class LampLighting {
       this.scratch.copy(this.trafficWorld[v * 2]!).applyMatrix4(view).toArray(data, at);
       this.scratch.copy(this.trafficWorld[v * 2 + 1]!).applyMatrix4(view).toArray(data, at + 4);
       data[at + 3] = this.trafficStrength[v]!;
-      data[at + 7] = this.truckAhead(this.trafficWorld[v * 2]!, this.trafficHeading[v]!) ? 1 : 0;
+      const ahead = this.truckAhead(this.trafficWorld[v * 2]!, this.trafficHeading[v]!);
+      data[at + 7] = ahead ? 1 : 0;
+      shaded ||= ahead;
       this.facing(this.trafficHeading[v]!, view, this.scratch, this.scratchRight);
       this.scratch.toArray(data, at + 8);
       this.scratchRight.toArray(data, at + 12);
     }
     u.trafficLampCount.value = vehicles * 2;
+    this.sendBox(shaded);
 
     u.streetLampCount.value = this.nearestStreetLamps(pickX, pickZ, view);
   }
@@ -653,6 +669,22 @@ export class LampLighting {
     this.lampsSent = send;
     for (let i = 0; i < this.lampUniforms.length; i++) {
       this.lampUniforms[i]!.needsUpdate = send;
+    }
+  }
+
+  /**
+   * Whether three.js sends the truck's body's box: the shaders look for its
+   * shadow only in the light of a vehicle it shades (trafficShaded), so with
+   * none of those, or the lamps off, they never read it. Only when that
+   * changes: no allocation.
+   */
+  private sendBox(send: boolean): void {
+    if (send === this.boxSent) {
+      return;
+    }
+    this.boxSent = send;
+    for (let i = 0; i < this.boxUniforms.length; i++) {
+      this.boxUniforms[i]!.needsUpdate = send;
     }
   }
 
@@ -746,6 +778,15 @@ export class LampLighting {
     return count;
   }
 
+  /** `uniform`, sent from now on only while the lamps are (sendLamps): only their light reads it. Returns it. */
+  private lampsOnly<T extends { value: unknown; needsUpdate?: boolean }>(uniform: T): T {
+    if (!this.lampUniforms.includes(uniform)) {
+      this.lampUniforms.push(uniform);
+      uniform.needsUpdate = this.lampsSent;
+    }
+    return uniform;
+  }
+
   private light(material: Material, prelit: PrelitMaterials): void {
     if (this.lit.has(material) || material.userData[UNLIT] === true) {
       return;
@@ -786,7 +827,7 @@ export class LampLighting {
     const defines = `${scatters ? '#define LAMPS_SCATTER\n' : ''}${wettable ? '#define LAMPS_WET\n' : ''}`;
     this.chain(material, scatters ? 'lamplit-scatter' : wettable ? 'lamplit-wet' : 'lamplit-ground', (shader) => {
       Object.assign(shader.uniforms, uniforms);
-      shader.uniforms['prelitAlbedo'] = prelit.albedo;
+      shader.uniforms['prelitAlbedo'] = this.lampsOnly(prelit.albedo);
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>\n${PRELIT_VERTEX_PARS}`)
         .replace('#include <project_vertex>', `#include <project_vertex>\n${PRELIT_VERTEX}`);

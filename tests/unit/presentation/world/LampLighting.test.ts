@@ -224,22 +224,51 @@ describe('LampLighting', () => {
   });
 
   it('spares three.js sending the lamps to the GPU by day, when the shaders skip them, and sends them all again at dusk', () => {
+    const prelit = new PrelitMaterials();
     const lighting = new LampLighting();
+    const ground = prelit.add(new MeshBasicMaterial());
+    lighting.lightScene(meshOf(ground), prelit);
+    compiled(ground);
     const camera = cameraAt(-4, 6, -12, new Vector3(0, 1, 10));
-    const u: Record<string, { value: unknown; needsUpdate?: boolean }> = lighting.uniforms;
+    const u: Record<string, { value: unknown; needsUpdate?: boolean }> = { ...lighting.uniforms, prelitAlbedo: prelit.albedo };
+    const box = ['truckBox', 'truckBoxAlong', 'truckBoxAcross', 'truckBoxSize'];
     const others = Object.keys(u).filter((name) => name !== 'lampLevel');
-    expect(others).toEqual(expect.arrayContaining(['lampData', 'truckForward', 'streetLampCount']));
+    expect(others).toEqual(expect.arrayContaining(['lampData', 'truckForward', 'streetLampCount', ...box]));
+    const sent = (name: string): boolean => u[name]!.needsUpdate !== false;
 
     lighting.update(TRUCK, null, camera, 0);
-    // Only the level goes: it tells the shaders to skip the rest.
-    expect(u['lampLevel']!.needsUpdate).not.toBe(false);
+    // Only the level goes: it tells the shaders to skip the rest (the pre-lit ground's albedo too).
+    expect(sent('lampLevel')).toBe(true);
     for (const name of others) {
-      expect(u[name]!.needsUpdate, name).toBe(false);
+      expect(sent(name), name).toBe(false);
     }
 
+    // At dusk, all of it but the truck's body's box: no vehicle's light looks for its shadow.
     lighting.update(TRUCK, null, camera, 0.2);
+    for (const name of others) {
+      expect(sent(name), name).toBe(!box.includes(name));
+    }
+
+    // A vehicle following the truck: its light looks for the truck's shadow, so the box goes too.
+    const following: TrafficHeadlamps = {
+      headlampsNear(_x, _z, _reach, lamps, forwards, strengths) {
+        lamps[0]!.set(0.8, 0.7, -12);
+        lamps[1]!.set(-0.8, 0.7, -12);
+        forwards[0]!.set(0, 0, 1);
+        strengths[0] = 1;
+        return 1;
+      },
+    };
+    lighting.update(TRUCK, following, camera, 0.2);
+    expect(packed.trafficShaded(lighting.uniforms, 0)).toBe(1);
     for (const name of Object.keys(u)) {
-      expect(u[name]!.needsUpdate, name).not.toBe(false);
+      expect(sent(name), name).toBe(true);
+    }
+
+    // Day again: none of it, the box neither.
+    lighting.update(TRUCK, following, camera, 0);
+    for (const name of others) {
+      expect(sent(name), name).toBe(false);
     }
   });
 

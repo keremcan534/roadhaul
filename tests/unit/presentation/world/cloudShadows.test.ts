@@ -40,6 +40,26 @@ describe('CloudShadows', () => {
     clouds.dispose();
   });
 
+  it('spares three.js sending where the clouds lie to the GPU while their shadows take nothing', () => {
+    const clouds = new CloudShadows();
+    const u: Record<string, { value: unknown; needsUpdate?: boolean }> = clouds.uniforms;
+    const sent = (name: string): boolean => u[name]!.needsUpdate !== false;
+    const where = ['cloudOffset', 'cloudShare'];
+    // Before any setClouds(): no shadows.
+    expect(where.map(sent)).toEqual([false, false]);
+    clouds.setClouds(0.55, 0.6);
+    expect(where.map(sent)).toEqual([true, true]);
+    // At night, and under a sky all cloud, a shadow takes nothing. The darkness (and the map) always go.
+    clouds.setClouds(0.55, 0);
+    expect(where.map(sent)).toEqual([false, false]);
+    expect(['cloudMap', 'cloudDarkness', 'cloudGroundDarkness'].map(sent)).toEqual([true, true, true]);
+    clouds.setClouds(1, 0.6);
+    expect(where.map(sent)).toEqual([false, false]);
+    clouds.setClouds(0.2, 0.6);
+    expect(where.map(sent)).toEqual([true, true]);
+    clouds.dispose();
+  });
+
   it('drifts with the wind, round and round its picture', () => {
     const clouds = new CloudShadows();
     const offset = clouds.uniforms.cloudOffset.value;
