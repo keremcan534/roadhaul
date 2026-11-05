@@ -35,10 +35,10 @@ const SHADERS_PER_PAUSE = 4;
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render driver/i;
 
-/** True for a WebGL renderer name that runs on the CPU (gpuName.ts gives it before the renderer is made). */
 /** How far the dynamic resolution may lower the pixels when drawn in software, whatever the preset says. */
 export const SOFTWARE_MIN_RESOLUTION_SCALE = 0.6;
 
+/** True for a WebGL renderer name that runs on the CPU (gpuName.ts gives it before the renderer is made). */
 export function isSoftwareRenderer(name: string | undefined): boolean {
   return name !== undefined && SOFTWARE_RENDERER.test(name);
 }
