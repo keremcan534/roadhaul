@@ -7,6 +7,7 @@ import type { MovingObstacles } from '../world/DrivingWorld';
 import { COMFORTABLE_DECELERATION, type LaneGraph, type LanePosition } from './LaneGraph';
 import { TRAFFIC_MASS_KG } from './trafficMass';
 import type { LaneRoute } from './laneRoutes';
+import { GREEN_LIGHT, signalLight, type TrafficSignals } from './trafficSignals';
 
 /** What a vehicle is doing (spec §19's traffic behaviours). */
 export const TRAFFIC_BEHAVIOURS = ['cruise', 'follow', 'stop', 'avoid', 'changeLane', 'turn', 'emergencyStop'] as const;
@@ -34,6 +35,8 @@ export interface TrafficSettings {
    * every vehicle the truck hits stops.
    */
   readonly wrecks?: boolean;
+  /** The traffic lights the vehicles stop at (placeTrafficSignals); absent: none. */
+  readonly signals?: TrafficSignals | null;
 }
 
 /** Up to this many vehicles are wrecked between two updates. */
@@ -61,6 +64,18 @@ export interface TrafficTruck {
   readonly z: number;
   readonly heading: number;
   readonly speed: number;
+  /** The height it drives at, meters (VehicleRuntimeState.y): traffic on another level passes it by. Absent: 0. */
+  readonly y?: number;
+}
+
+/** Vehicles further above or below the truck than this, meters, are on another level (DrivingWorld.LEVEL_METERS). */
+const TRAFFIC_LEVEL_METERS = 4;
+
+/** A tractor unit's semi-trailer as the traffic sees it: where its axles stand and the way it faces (semiTrailer.ts). */
+export interface TrafficTrailer {
+  readonly x: number;
+  readonly z: number;
+  readonly heading: number;
 }
 
 /** Car following (the Intelligent Driver Model): gap kept at a standstill, m… */
@@ -135,6 +150,9 @@ const NO_LEADER = 0;
 const VEHICLE_LEADER = 1;
 const TRUCK_LEADER = 2;
 const STOP_LINE_LEADER = 3;
+/** At an amber light a vehicle stops if it can within this much past its comfortable braking, meters; slower than this it always can. */
+const SIGNAL_STOP_MARGIN_METERS = 1.5;
+const SIGNAL_CREEP_SPEED = 2;
 
 /**
  * Waypoint-based NPC traffic around the truck (roadmap step 22, spec §19).
@@ -165,9 +183,13 @@ export class TrafficSimulation implements MovingObstacles {
   readonly x: Float64Array;
   readonly z: Float64Array;
   readonly heading: Float64Array;
+  /** The height its lane runs at (its road's: LaneGraph.pointY), and the lane's rise per meter along it. */
+  readonly y: Float64Array;
+  readonly grade: Float64Array;
   readonly previousX: Float64Array;
   readonly previousZ: Float64Array;
   readonly previousHeading: Float64Array;
+  readonly previousY: Float64Array;
   readonly speed: Float64Array;
   readonly link: Int32Array;
   readonly s: Float64Array;
@@ -175,6 +197,7 @@ export class TrafficSimulation implements MovingObstacles {
 
   readonly circleX: Float64Array;
   readonly circleZ: Float64Array;
+  readonly circleY: Float64Array;
   readonly circleRadius: Float64Array;
   readonly circleVelocityX: Float64Array;
   readonly circleVelocityZ: Float64Array;
@@ -226,6 +249,9 @@ export class TrafficSimulation implements MovingObstacles {
   private activeCount = 0;
   /** Everyone drives at this share of their usual speed (the weather). */
   private speedFactor = 1;
+  /** The traffic lights, and the traffic's time they keep, seconds (signalSeconds). */
+  private readonly signals: TrafficSignals | null;
+  private signalClock = 0;
   /** Vehicles holding each turn (they may drive it; conflicting turns wait). */
   private readonly holders: Int32Array;
   /**
@@ -275,6 +301,9 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly located: LanePosition = { link: -1, s: 0 };
   /** Scratch results of pointAt() and scanTruck(). */
   private pointXOut = 0;
+  private pointYOut = 0;
+  /** The height the truck drives at (TrafficTruck.y). */
+  private truckY = 0;
   private pointZOut = 0;
   private truckGap = Infinity;
   private truckFar = -Infinity;
@@ -289,6 +318,7 @@ export class TrafficSimulation implements MovingObstacles {
     const capacity = types.length === 0 || graph.spawnLanes.length === 0 ? 0 : Math.max(0, settings.maxVehicles);
     this.capacity = capacity;
     this.random = new SeededRandom(seed);
+    this.signals = settings.signals ?? null;
     this.active = new Uint8Array(capacity);
     this.serial = new Int32Array(capacity);
     this.type = new Uint8Array(capacity);
@@ -296,9 +326,12 @@ export class TrafficSimulation implements MovingObstacles {
     this.x = new Float64Array(capacity);
     this.z = new Float64Array(capacity);
     this.heading = new Float64Array(capacity);
+    this.y = new Float64Array(capacity);
+    this.grade = new Float64Array(capacity);
     this.previousX = new Float64Array(capacity);
     this.previousZ = new Float64Array(capacity);
     this.previousHeading = new Float64Array(capacity);
+    this.previousY = new Float64Array(capacity);
     this.speed = new Float64Array(capacity);
     this.link = new Int32Array(capacity);
     this.s = new Float64Array(capacity);
@@ -330,6 +363,7 @@ export class TrafficSimulation implements MovingObstacles {
     const circles = capacity * MAX_CIRCLES_PER_VEHICLE;
     this.circleX = new Float64Array(circles);
     this.circleZ = new Float64Array(circles);
+    this.circleY = new Float64Array(circles);
     this.circleRadius = new Float64Array(circles);
     this.circleVelocityX = new Float64Array(circles);
     this.circleVelocityZ = new Float64Array(circles);
@@ -374,6 +408,11 @@ export class TrafficSimulation implements MovingObstacles {
       weights += type.spawnWeight;
       this.typeCumulative[index] = weights;
     });
+  }
+
+  /** The traffic's own time, seconds: what the traffic lights keep (signalLight). */
+  get signalSeconds(): number {
+    return this.signalClock;
   }
 
   /** Vehicles on the road now. */
@@ -428,12 +467,20 @@ export class TrafficSimulation implements MovingObstacles {
 
   /**
    * Advances every vehicle by `dt` seconds, with the truck where it is now
-   * (`footprint` is its collision shape). Call once per fixed step, before
-   * the truck moves. Allocation-free.
+   * (`footprint` is its collision shape), and its semi-trailer, if it pulls
+   * one (`trailerFootprint` along it). Call once per fixed step, before the
+   * truck moves. Allocation-free.
    */
-  update(dt: number, truck: TrafficTruck, footprint: VehicleFootprint): void {
+  update(
+    dt: number,
+    truck: TrafficTruck,
+    footprint: VehicleFootprint,
+    trailer: TrafficTrailer | null = null,
+    trailerFootprint: VehicleFootprint | null = null,
+  ): void {
     this.wrecks.count = 0;
-    this.readTruck(truck, footprint);
+    this.signalClock += dt;
+    this.readTruck(truck, footprint, trailer, trailerFootprint);
     if (this.capacity === 0) {
       return;
     }
@@ -452,16 +499,35 @@ export class TrafficSimulation implements MovingObstacles {
     this.writeCircles();
   }
 
-  private readTruck(truck: TrafficTruck, footprint: VehicleFootprint): void {
+  private readTruck(
+    truck: TrafficTruck,
+    footprint: VehicleFootprint,
+    trailer: TrafficTrailer | null,
+    trailerFootprint: VehicleFootprint | null,
+  ): void {
     const sin = Math.sin(truck.heading);
     const cos = Math.cos(truck.heading);
-    const count = Math.min(MAX_TRUCK_CIRCLES, footprint.offsets.length);
+    let count = Math.min(MAX_TRUCK_CIRCLES, footprint.offsets.length);
     let reach = 0;
     for (let k = 0; k < count; k++) {
       const offset = footprint.offsets[k]!;
       this.truckCircleX[k] = truck.x + sin * offset;
       this.truckCircleZ[k] = truck.z + cos * offset;
       reach = Math.max(reach, Math.abs(offset));
+    }
+    if (trailer !== null && trailerFootprint !== null) {
+      // The trailer's circles, as wide as the tractor's: the truck reaches as far as the furthest of them.
+      const trailerSin = Math.sin(trailer.heading);
+      const trailerCos = Math.cos(trailer.heading);
+      for (let k = 0; k < trailerFootprint.offsets.length && count < MAX_TRUCK_CIRCLES; k++) {
+        const offset = trailerFootprint.offsets[k]!;
+        const x = trailer.x + trailerSin * offset;
+        const z = trailer.z + trailerCos * offset;
+        this.truckCircleX[count] = x;
+        this.truckCircleZ[count] = z;
+        count++;
+        reach = Math.max(reach, hypot2(x - truck.x, z - truck.z));
+      }
     }
     this.truckCircleCount = count;
     this.truckRadius = footprint.radius;
@@ -471,6 +537,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.truckZ = truck.z;
     this.truckHeading = truck.heading;
     this.truckSpeed = truck.speed;
+    this.truckY = truck.y ?? 0;
     if (this.truckKnown && moved > TELEPORT_METERS) {
       // Placed somewhere new: clear the spot and fill the roads around it.
       const clear = CLEAR_AROUND_TELEPORT_METERS + this.truckReach;
@@ -733,10 +800,17 @@ export class TrafficSimulation implements MovingObstacles {
     this.leaderKind[i] = NO_LEADER;
     this.speed[i] =
       speed ?? 0.8 * Math.min(this.cruiseSpeed(i), graph.advisorySpeed[graph.pointStart[lane]! + this.segment[i]! + 1]!);
+    const group = this.signals?.groupOf[lane] ?? -1;
+    if (speed === null && group >= 0 && signalLight(this.signalClock, group) !== GREEN_LIGHT) {
+      // Appearing before lights that are not green: no faster than it can stop at their line.
+      const toLine = graph.length[lane]! - s - this.halfLength[i]! - 1;
+      this.speed[i] = Math.min(this.speed[i]!, Math.sqrt(2 * COMFORTABLE_DECELERATION * Math.max(0, toLine)));
+    }
     this.updatePose(i, 0);
     this.previousX[i] = this.x[i]!;
     this.previousZ[i] = this.z[i]!;
     this.previousHeading[i] = this.heading[i]!;
+    this.previousY[i] = this.y[i]!;
     return i;
   }
 
@@ -850,6 +924,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.previousX[i] = this.x[i]!;
     this.previousZ[i] = this.z[i]!;
     this.previousHeading[i] = this.heading[i]!;
+    this.previousY[i] = this.y[i]!;
     if (this.bumped[i]! >= 0) {
       this.crashSeconds[i] = CRASH_WAIT_SECONDS;
       this.bumped[i] = -1;
@@ -1017,6 +1092,26 @@ export class TrafficSimulation implements MovingObstacles {
     let waiting = false;
     const speed = this.speed[i]!;
     const toLine = toEnd - half;
+    // At the lights: stop at the line on red, and on amber where there is room to; too close to stop, go on.
+    let atLights = false;
+    const signals = this.signals;
+    if (signals !== null && nextIsTurn) {
+      const group = signals.groupOf[link]!;
+      if (group >= 0 && signalLight(this.signalClock, group) !== GREEN_LIGHT && toLine > 0.5) {
+        const stopping = (speed * speed) / (2 * COMFORTABLE_DECELERATION);
+        if (toLine - 1 >= stopping - SIGNAL_STOP_MARGIN_METERS || speed < SIGNAL_CREEP_SPEED) {
+          atLights = true;
+          if (this.holding[i] === next) {
+            this.release(i); // Claimed on green further back: there is room to stop, so it waits after all.
+          }
+          if (toLine - 1 < gap) {
+            gap = Math.max(0, toLine - 1);
+            leaderSpeed = 0;
+            kind = STOP_LINE_LEADER;
+          }
+        }
+      }
+    }
     if (
       nextIsTurn &&
       this.holding[i] === next &&
@@ -1025,7 +1120,7 @@ export class TrafficSimulation implements MovingObstacles {
     ) {
       this.release(i); // The truck turned up: still time to stop, so give way after all.
     }
-    if (nextIsTurn && this.holding[i] !== next && this.needsReservation(next)) {
+    if (!atLights && nextIsTurn && this.holding[i] !== next && this.needsReservation(next)) {
       const commit = (speed * speed) / (2 * COMFORTABLE_DECELERATION) + speed + 12;
       if (toLine <= commit) {
         if (this.canEnter(i, next, toEnd)) {
@@ -1126,7 +1221,12 @@ export class TrafficSimulation implements MovingObstacles {
     const reach = lookAhead + this.truckReach + 10;
     const toTruckX = this.truckX - this.x[i]!;
     const toTruckZ = this.truckZ - this.z[i]!;
-    if (this.truckCircleCount === 0 || toTruckX * toTruckX + toTruckZ * toTruckZ > reach * reach) {
+    if (
+      this.truckCircleCount === 0 ||
+      toTruckX * toTruckX + toTruckZ * toTruckZ > reach * reach ||
+      // On another level: over or under a deck the truck is under or on.
+      Math.abs(this.y[i]! - this.truckY) > TRAFFIC_LEVEL_METERS
+    ) {
       return;
     }
     const graph = this.graph;
@@ -1216,6 +1316,9 @@ export class TrafficSimulation implements MovingObstacles {
       if (offset > -behind - this.halfLength[j]! && offset < ahead + this.halfLength[j]!) {
         return false;
       }
+    }
+    if (Math.abs(this.y[i]! - this.truckY) > TRAFFIC_LEVEL_METERS) {
+      return true;
     }
     const s = graph.mapAcross(this.link[i]!, this.s[i]!, lane);
     this.pointAt(lane, s);
@@ -1345,12 +1448,17 @@ export class TrafficSimulation implements MovingObstacles {
     const s = this.s[i]!;
     const length = graph.length[link]!;
     this.segment[i] = graph.segmentAt(link, s);
-    this.pointAt(link, Math.max(0, s - HEADING_SPAN_METERS));
+    const back = Math.max(0, s - HEADING_SPAN_METERS);
+    const ahead = Math.min(length, s + HEADING_SPAN_METERS);
+    this.pointAt(link, back);
     const backX = this.pointXOut;
     const backZ = this.pointZOut;
-    this.pointAt(link, Math.min(length, s + HEADING_SPAN_METERS));
+    const backY = this.pointYOut;
+    this.pointAt(link, ahead);
     let pathHeading = Math.atan2(this.pointXOut - backX, this.pointZOut - backZ);
+    this.grade[i] = ahead > back ? (this.pointYOut - backY) / (ahead - back) : 0;
     this.pointAt(link, s);
+    this.y[i] = this.pointYOut;
 
     const lateral = this.lateral[i]!;
     const lateralSpeed =
@@ -1382,6 +1490,7 @@ export class TrafficSimulation implements MovingObstacles {
     const t = span > 0 ? clamp((s - graph.along[k]!) / span, 0, 1) : 0;
     this.pointXOut = graph.pointX[k]! + (graph.pointX[k + 1]! - graph.pointX[k]!) * t;
     this.pointZOut = graph.pointZ[k]! + (graph.pointZ[k + 1]! - graph.pointZ[k]!) * t;
+    this.pointYOut = graph.pointY[k]! + (graph.pointY[k + 1]! - graph.pointY[k]!) * t;
   }
 
   /** Collision circles along every vehicle, like the truck's footprint. */
@@ -1401,6 +1510,7 @@ export class TrafficSimulation implements MovingObstacles {
         const offset = -reach + (2 * reach * c) / (circles - 1);
         this.circleX[count] = this.x[i]! + sin * offset;
         this.circleZ[count] = this.z[i]! + cos * offset;
+        this.circleY[count] = this.y[i]!;
         this.circleRadius[count] = radius;
         this.circleVelocityX[count] = sin * speed;
         this.circleVelocityZ[count] = cos * speed;

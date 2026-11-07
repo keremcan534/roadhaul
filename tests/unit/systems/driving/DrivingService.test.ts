@@ -31,11 +31,17 @@ function setup(mapOverrides: Partial<MapDefinition> = {}) {
   const map = mapFixture(mapOverrides);
   const bigTruck = vehicleFixture({ id: 'big_truck', maxPayloadTons: 20 });
   const content = ContentCatalog.create(
-    contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }] }),
+    contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }, RIG] }),
   );
   const driving = new DrivingService(content, events, logger);
   return { driving, collisions, overturned };
 }
+
+/** A tractor unit with a semi-trailer: its axles 7 m behind the coupling, its back 4.3 m behind them. */
+const RIG = vehicleFixture({
+  id: 'test_rig',
+  trailer: { lengthMeters: 12.5, heightMeters: 4, couplingAheadMeters: 0.35, kingpinMeters: 1.2, axleBehindKingpinMeters: 7, axles: 3 },
+});
 
 /** Steps at 60 Hz for `seconds`, or until `until` returns true. */
 function stepFor(driving: DrivingService, seconds: number, driverInput = input(), until = (): boolean => false): void {
@@ -62,7 +68,7 @@ describe('DrivingService', () => {
     expect(driving.definition.id).toBe('test_truck');
     expect(driving.vehicle).toMatchObject({ x: 0, z: 0, speed: 0, gear: 1 });
     expect(driving.vehicle.heading).toBeCloseTo(Math.PI / 2, 12);
-    expect(driving.previousPose).toEqual({ x: 0, z: 0, heading: driving.vehicle.heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
+    expect(driving.previousPose).toEqual({ x: 0, z: 0, heading: driving.vehicle.heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0, y: 0, grade: 0 });
   });
 
   it('drives the same world again on the same map, a new drive, with nothing left knocked over', () => {
@@ -187,7 +193,7 @@ describe('DrivingService', () => {
     expect(driving.world).toBe(world);
     expect(driving.vehicle).toBe(state); // Presentation may hold on to the state.
     expect(driving.vehicle).toMatchObject({ x, z, heading, odometerMeters, speed: 0, gear: 1 });
-    expect(driving.previousPose).toEqual({ x, z, heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
+    expect(driving.previousPose).toEqual({ x, z, heading, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0, y: 0, grade: 0 });
     expect(driving.cargoMassKg).toBe(2000);
     expect(driving.totalMassKg).toBe(14000);
     expect(() => driving.switchVehicle('ghost_truck')).toThrow('Unknown vehicle "ghost_truck".');
@@ -261,7 +267,7 @@ describe('DrivingService', () => {
 
     expect(driving.vehicle).toMatchObject({ x: -100, z: -20, heading: Math.PI, speed: 0, steerAngle: 0, gear: 1 });
     expect(driving.vehicle.odometerMeters).toBe(odometer);
-    expect(driving.previousPose).toEqual({ x: -100, z: -20, heading: Math.PI, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
+    expect(driving.previousPose).toEqual({ x: -100, z: -20, heading: Math.PI, bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0, y: 0, grade: 0 });
   });
 
   it('recovers a stuck truck onto the nearest road, facing along it the way it was heading, in the right-hand lane', () => {
@@ -299,9 +305,9 @@ describe('DrivingService', () => {
 
   it('interpolates the body between fixed steps, its roll and pitch the short way round', () => {
     const out = createTruckPose();
-    const before = { bank: 3.1, tilt: 0, rise: 0.2, lean: 0.02, dip: -0.01 };
+    const before = { bank: 3.1, tilt: 0, rise: 0.2, lean: 0.02, dip: -0.01, y: 0, grade: 0 };
     // Landed a turn round, the roll was taken back by 2π: in between it still turns on the short way.
-    const after = { bank: 3.2 - 2 * Math.PI, tilt: 0.1, rise: 0.4, lean: 0.06, dip: 0.03 };
+    const after = { bank: 3.2 - 2 * Math.PI, tilt: 0.1, rise: 0.4, lean: 0.06, dip: 0.03, y: 0, grade: 0 };
 
     expect(interpolateBodyPose(out, before, after, 0.5)).toBe(out);
 
@@ -345,6 +351,142 @@ describe('DrivingService', () => {
     driving.setCargoMass(5000);
 
     expect(driving.build.cogHeight).toBeGreaterThan(empty);
+  });
+
+  it('couples a tractor unit\'s semi-trailer straight behind it at the start, on a swap and wherever it is placed; a rigid truck has none', () => {
+    const { driving } = setup({ spawn: { x: 0, z: -40, headingDegrees: 0 } });
+    driving.start('test_truck', 'test_map');
+    expect(driving.trailer).toBeNull();
+    expect(driving.trailerFootprint).toBeNull();
+
+    driving.switchVehicle('test_rig');
+    expect(driving.trailer).toEqual({ x: 0, z: -40 - 6.65, heading: 0, y: 0, grade: 0 });
+    expect(driving.trailerFootprint!.radius).toBe(RIG.body.widthMeters / 2);
+    stepFor(driving, 3, input({ throttle: 1, steer: -1 }));
+    expect(Math.abs(driving.trailer!.heading - driving.vehicle.heading)).toBeGreaterThan(0.05);
+
+    driving.placeTruck(100, -60, Math.PI / 2);
+    expect(driving.trailer!.x).toBeCloseTo(100 - 6.65, 9);
+    expect(driving.trailer!.z).toBeCloseTo(-60, 9);
+    expect(driving.trailer!.heading).toBe(Math.PI / 2);
+    expect(driving.previousTrailer).toEqual(driving.trailer);
+    driving.switchVehicle('test_truck');
+    expect(driving.trailer).toBeNull();
+  });
+
+  it('strikes what the semi-trailer backs into: the rig stops, the trailer kept outside, one collision', () => {
+    // Facing away from the building (z 35..45), the trailer's back 4.3 + 6.65 m behind the rear axle, 4 m short of it.
+    const { driving, collisions } = setup({ spawn: { x: 0, z: 20, headingDegrees: 180 } });
+    driving.start('test_rig', 'test_map');
+    expect(driving.trailer!.z + 4.3).toBeCloseTo(30.95, 9);
+
+    stepFor(driving, 20, input({ brake: 1 }));
+
+    expect(collisions.length).toBe(1);
+    expect(driving.trailer!.z + 4.3).toBeLessThanOrEqual(35 + 1e-6);
+    expect(Math.abs(driving.vehicle.speed)).toBeLessThan(0.5);
+    // Backed straight, it stayed straight.
+    expect(driving.trailer!.heading).toBeCloseTo(Math.PI, 6);
+    expect(driving.jackknifed).toBe(false);
+  });
+
+  it('jackknifes a semi-trailer backed while steering, and holds it at the limit', () => {
+    const { driving } = setup({ spawn: { x: -60, z: -60, headingDegrees: 0 } });
+    driving.start('test_rig', 'test_map');
+
+    stepFor(driving, 30, input({ brake: 1, steer: 0.6 }), () => driving.jackknifed);
+
+    expect(driving.jackknifed).toBe(true);
+    const turned = Math.abs(driving.trailer!.heading - driving.vehicle.heading);
+    expect(turned).toBeCloseTo((75 * Math.PI) / 180, 3);
+  });
+
+  it('drives up and over a hill: the truck stands on the ground, feels its grade, and climbs slower than on the flat', () => {
+    // The fixture's road runs along z = 0 from x -150 to 150; a hill rises over its middle.
+    const hill = { hills: [{ x: 0, z: 0, radiusMeters: 180, heightMeters: 25 }] };
+    const climb = setup({ spawn: { x: -140, z: 0, headingDegrees: 90 }, buildings: [], terrain: hill });
+    climb.driving.start('test_truck', 'test_map');
+    const flat = setup({ spawn: { x: -140, z: 0, headingDegrees: 90 }, buildings: [] });
+    flat.driving.start('test_truck', 'test_map');
+
+    expect(climb.driving.vehicle.y).toBeCloseTo(climb.driving.world.terrain.heightAt(-140, 0), 6);
+    let steepest = 0;
+    stepFor(climb.driving, 12, input({ throttle: 1 }), () => {
+      steepest = Math.max(steepest, climb.driving.vehicle.grade);
+      return false;
+    });
+    stepFor(flat.driving, 12, input({ throttle: 1 }));
+
+    expect(steepest).toBeGreaterThan(0.03);
+    expect(steepest).toBeLessThanOrEqual(0.081);
+    expect(climb.driving.vehicle.y).toBeCloseTo(climb.driving.world.terrain.heightAt(climb.driving.vehicle.x, climb.driving.vehicle.z), 6);
+    expect(climb.driving.vehicle.y).toBeGreaterThan(5);
+    expect(climb.driving.vehicle.x).toBeLessThan(flat.driving.vehicle.x - 3);
+    expect(flat.driving.vehicle.y).toBe(0);
+    expect(flat.driving.vehicle.grade).toBe(0);
+  });
+
+  describe('on a map with a road carried over another on a deck', () => {
+    // A street crossing the test road (z = 0) north to south, up a ramp onto a 7.5 m deck over it and down again.
+    const overpass = {
+      id: 'overpass',
+      kind: 'street' as const,
+      widthMeters: 8,
+      closed: false,
+      controlPoints: [
+        [0, -180],
+        [0, 180],
+      ] as [number, number][],
+      profile: [
+        { atMeters: 60, heightMeters: 0 },
+        { atMeters: 160, heightMeters: 7.5 },
+        { atMeters: 200, heightMeters: 7.5 },
+        { atMeters: 300, heightMeters: 0 },
+      ],
+      elevated: [[150, 210]] as [number, number][],
+    };
+    const roadsWith = mapFixture().roads.concat(overpass);
+
+    it('keeps the two roads apart, and drives on whichever level the truck is at', () => {
+      const { driving } = setup({ roads: roadsWith, buildings: [] });
+      driving.start('test_truck', 'test_map');
+      const world = driving.world;
+
+      expect(world.flat).toBe(false);
+      expect(world.groundAt(0, 0, 0)).toBeCloseTo(0, 6);
+      expect(world.groundAt(0, 0, 7.5)).toBeCloseTo(7.5, 6);
+      // Beside the deck, the ground.
+      expect(world.groundAt(20, 0, 7.5)).toBeCloseTo(0, 6);
+      // No junction where they cross: no junction anywhere near (0, 0).
+      expect(world.network.junctions.some((junction) => Math.hypot(junction.x, junction.z) < 20)).toBe(false);
+    });
+
+    it('drives along the lower road under the deck without touching it', () => {
+      const { driving, collisions } = setup({ roads: roadsWith, buildings: [], spawn: { x: -120, z: 0, headingDegrees: 90 } });
+      driving.start('test_truck', 'test_map');
+
+      stepFor(driving, 30, input({ throttle: 1 }), () => driving.vehicle.x > 60);
+
+      expect(driving.vehicle.x).toBeGreaterThan(60);
+      expect(collisions).toEqual([]);
+      expect(Math.abs(driving.vehicle.y)).toBeLessThan(0.05);
+    });
+
+    it('drives up the ramp, over the deck and down again', () => {
+      const { driving, collisions } = setup({ roads: roadsWith, buildings: [], spawn: { x: 0, z: -170, headingDegrees: 0 } });
+      driving.start('test_truck', 'test_map');
+      let highest = 0;
+
+      stepFor(driving, 40, input({ throttle: 1 }), () => {
+        highest = Math.max(highest, driving.vehicle.y);
+        return driving.vehicle.z > 150;
+      });
+
+      expect(driving.vehicle.z).toBeGreaterThan(150);
+      expect(highest).toBeCloseTo(7.5, 1);
+      expect(collisions).toEqual([]);
+      expect(Math.abs(driving.vehicle.y)).toBeLessThan(0.05);
+    });
   });
 
   it('stops driving on stop() and on dispose()', () => {

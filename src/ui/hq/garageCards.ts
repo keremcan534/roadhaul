@@ -54,7 +54,7 @@ export function truckCard(document: Document, strings: Strings, state: TruckCard
     element(document, 'span', `badge badge--${definition.vehicleClass}`, strings.t(`vehicleClass.${definition.vehicleClass}`)),
   );
   const picture = truckSilhouette(document, definition, owned?.paint?.color ?? definition.factoryColor);
-  const body = element(document, 'p', 'truck-card__body', strings.t(`body.${definition.bodyType}`));
+  const body = element(document, 'p', 'truck-card__body', strings.bodyName(definition));
   const facts = element(document, 'dl', 'truck-card__facts');
   for (const [label, value] of truckFacts(strings, definition)) {
     const fact = element(document, 'div', 'truck-card__fact');

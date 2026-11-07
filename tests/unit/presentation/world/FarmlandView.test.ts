@@ -28,10 +28,14 @@ function fieldMesh(scene: Scene): Mesh {
 describe('FarmlandView', () => {
   it('draws every field in one draw call and every bale in another', () => {
     const scene = new Scene();
-    new FarmlandView(scene, FIELDS, BALES);
+    new FarmlandView(scene, FIELDS, BALES).showAround(0, 0);
 
     expect(drawCallCount(scene)).toBe(2);
     expect((scene.getObjectByName('hay-bales') as InstancedMesh).count).toBe(BALES.length);
+    // Only those within a kilometre of the camera are drawn: far off, none.
+    const far = new Scene();
+    new FarmlandView(far, FIELDS, BALES).showAround(5000, 5000);
+    expect((far.getObjectByName('hay-bales') as InstancedMesh).count).toBe(0);
   });
 
   it('lays each field flat on its area, tinted with its crop', () => {
@@ -68,7 +72,7 @@ describe('FarmlandView', () => {
 
   it('stands each bale on the ground where it lies', () => {
     const scene = new Scene();
-    new FarmlandView(scene, [], BALES);
+    new FarmlandView(scene, [], BALES).showAround(0, 0);
     const bales = scene.getObjectByName('hay-bales') as InstancedMesh;
     const matrix = new Matrix4();
     const at = new Vector3();
@@ -85,6 +89,7 @@ describe('FarmlandView', () => {
   it('takes a bale knocked over out of its place, draws it tumbling with the debris, and puts it back once it stands', () => {
     const scene = new Scene();
     const view = new FarmlandView(scene, FIELDS, BALES, { baleCircles: [3, 4], debrisCapacity: 2 });
+    view.showAround(0, 0);
     const bales = scene.getObjectByName('hay-bales') as InstancedMesh;
     const fallen = scene.getObjectByName('hay-bales:fallen') as InstancedMesh;
     const knocked = new Uint8Array(5);

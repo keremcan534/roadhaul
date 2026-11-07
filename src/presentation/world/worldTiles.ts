@@ -1,4 +1,4 @@
-import { Box3, type Object3D } from 'three';
+import { Box3, type Frustum, type Object3D } from 'three';
 import type { RoadPath } from '../../domain/world/RoadPath';
 
 /**
@@ -106,16 +106,30 @@ export function freezeTransforms(root: Object3D): void {
 /** A frozen root's updateMatrixWorld (freezeTransforms): its world matrices, and those under it, stay as they are. */
 function keepMatrixWorld(): void {}
 
+/** What FarCulling shows and hides: an object, or a tile of a TileBatch. */
+export interface Cullable {
+  visible: boolean;
+}
+
+/**
+ * A tile is kept while its box comes this near the view, meters: the trees
+ * sway and the grass bends past the meshes' own bounds in their shaders.
+ */
+const VIEW_MARGIN_METERS = 6;
+
 /**
  * Hides what lies too far from the camera to see: objects (a tile's
  * meshes, grouped), each with the rectangle of ground it covers, shown only
- * while that rectangle comes within `reachMeters` of the camera.
+ * while that rectangle comes within `reachMeters` of the camera; and, given
+ * the camera's view, only while its box (and a margin) is in it, so three.js
+ * does not look over each of a tile's meshes to leave them out one by one.
  */
 export class FarCulling {
-  private readonly objects: Object3D[] = [];
-  /** Each object's rectangle: min x, max x, min z, max z. */
-  private bounds = new Float64Array(64);
+  private readonly objects: Cullable[] = [];
+  /** Each object's box: min x, max x, min z, max z, min y, max y. */
+  private bounds = new Float64Array(96);
   private readonly reachSquared: number;
+  private readonly box = new Box3();
 
   constructor(reachMeters = FAR_CULL_METERS) {
     this.reachSquared = reachMeters * reachMeters;
@@ -127,27 +141,45 @@ export class FarCulling {
 
   /** Culls `object` from now on, by the ground its meshes (as they stand now) cover. */
   add(object: Object3D): void {
-    const box = new Box3().setFromObject(object);
+    this.addBox(object, new Box3().setFromObject(object));
+  }
+
+  /** Culls `target` from now on, by `box` (in the world): what it draws. */
+  addBox(target: Cullable, box: Box3): void {
     if (box.isEmpty()) {
       return;
     }
-    const at = this.objects.length * 4;
-    if (at + 4 > this.bounds.length) {
+    const at = this.objects.length * 6;
+    if (at + 6 > this.bounds.length) {
       const grown = new Float64Array(this.bounds.length * 2);
       grown.set(this.bounds);
       this.bounds = grown;
     }
-    this.bounds.set([box.min.x, box.max.x, box.min.z, box.max.z], at);
-    this.objects.push(object);
+    this.bounds.set([box.min.x, box.max.x, box.min.z, box.max.z, box.min.y, box.max.y], at);
+    this.objects.push(target);
   }
 
-  /** Shows the objects near (x, z), the camera, and hides the others. Allocation-free: call it every frame. */
-  update(x: number, z: number): void {
+  /**
+   * Shows the objects near (x, z), the camera, and hides the others; given
+   * the camera's `view` (its frustum as it will be drawn), also those out of
+   * it. Leave the view out where something is drawn from another camera
+   * too (the shadow map's: a tile out of view can cast a shadow into it).
+   * Allocation-free: call it every frame.
+   */
+  update(x: number, z: number, view: Frustum | null = null): void {
     const bounds = this.bounds;
+    const box = this.box;
     for (let i = 0; i < this.objects.length; i++) {
-      const dx = Math.max(bounds[i * 4]! - x, 0, x - bounds[i * 4 + 1]!);
-      const dz = Math.max(bounds[i * 4 + 2]! - z, 0, z - bounds[i * 4 + 3]!);
-      this.objects[i]!.visible = dx * dx + dz * dz <= this.reachSquared;
+      const at = i * 6;
+      const dx = Math.max(bounds[at]! - x, 0, x - bounds[at + 1]!);
+      const dz = Math.max(bounds[at + 2]! - z, 0, z - bounds[at + 3]!);
+      let shown = dx * dx + dz * dz <= this.reachSquared;
+      if (shown && view !== null) {
+        box.min.set(bounds[at]! - VIEW_MARGIN_METERS, bounds[at + 4]! - VIEW_MARGIN_METERS, bounds[at + 2]! - VIEW_MARGIN_METERS);
+        box.max.set(bounds[at + 1]! + VIEW_MARGIN_METERS, bounds[at + 5]! + VIEW_MARGIN_METERS, bounds[at + 3]! + VIEW_MARGIN_METERS);
+        shown = view.intersectsBox(box);
+      }
+      this.objects[i]!.visible = shown;
     }
   }
 }

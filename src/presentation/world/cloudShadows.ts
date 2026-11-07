@@ -56,9 +56,9 @@ export class CloudShadows {
   readonly uniforms = {
     cloudMap: { value: toTexture(cloudShadowImage(), { repeat: true, srgb: false }) },
     /** Where the wind has taken them (meters). */
-    cloudOffset: { value: new Vector2() },
+    cloudOffset: { value: new Vector2(), needsUpdate: false },
     /** How much of the land they shade (0..1). */
-    cloudShare: { value: 0 },
+    cloudShare: { value: 0, needsUpdate: false },
     /** How much of the sun's light a shadow takes (0..1)… */
     cloudDarkness: { value: 0 },
     /** …and of a pre-lit surface's whole light: that times the sun's share of it. */
@@ -69,13 +69,19 @@ export class CloudShadows {
   /**
    * Clouds cover `cover` of the sky (0..1) and hide a sun that gives
    * `sunShare` of the ground's light (0..1; little at dusk and at night).
-   * Cheap.
+   * Cheap. Without darkness (at night, under a sky all cloud) a shadow
+   * takes nothing (`1 - 0 * shade`), so where the clouds lie does not
+   * matter: three.js leaves their offset and share out of every material's
+   * upload (`needsUpdate: false`), the same picture with fewer GL calls.
    */
   setClouds(cover: number, sunShare: number): void {
     const darkness = CLOUD_SHADOW_DARKNESS * (1 - smoothstep(0.85, 1, cover)) * smoothstep(0, 0.3, sunShare);
+    const shading = darkness > 0;
     this.uniforms.cloudShare.value = CLOUD_SHADOW_SHARE * cover;
     this.uniforms.cloudDarkness.value = darkness;
     this.uniforms.cloudGroundDarkness.value = darkness * sunShare;
+    this.uniforms.cloudOffset.needsUpdate = shading;
+    this.uniforms.cloudShare.needsUpdate = shading;
   }
 
   /** The wind drifts the shadows `deltaSeconds` on. Allocation-free. */

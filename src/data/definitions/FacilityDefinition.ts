@@ -2,8 +2,8 @@ import type { Validator } from '../../core/validation/Validator';
 import type { Credits } from '../units';
 
 /**
- * What a company facility does for the whole company, its size given per
- * level (FacilityLevelDefinition.value):
+ * What a company facility or a research (ResearchDefinition) does for the
+ * whole company, its size given per level (FacilityLevelDefinition.value):
  *
  * - repairDiscount: share taken off every repair, the fleet's too.
  * - fuelDiscount: share taken off the price of diesel, the fleet's too.
@@ -13,6 +13,10 @@ import type { Credits } from '../units';
  *   the cities (against the rivals).
  * - xpBonus: share more experience a delivery brings.
  * - extraContracts: contracts of the day beyond the job board's own.
+ * - deliveryPayBonus: share more the company's own deliveries pay.
+ * - cargoDamageReduction: share of the cargo damage a knock does kept away.
+ * - fuelUseReduction: share of the company's own truck's diesel saved.
+ * - loadingTimeReduction: share taken off loading and unloading.
  */
 export const FACILITY_EFFECTS = [
   'repairDiscount',
@@ -22,11 +26,21 @@ export const FACILITY_EFFECTS = [
   'marketShareBonus',
   'xpBonus',
   'extraContracts',
+  'deliveryPayBonus',
+  'cargoDamageReduction',
+  'fuelUseReduction',
+  'loadingTimeReduction',
 ] as const;
 export type FacilityEffect = (typeof FACILITY_EFFECTS)[number];
 
-/** Effects that take a share off a price: below 1, or it would be free. */
-const DISCOUNTS: readonly FacilityEffect[] = ['repairDiscount', 'fuelDiscount'];
+/** Effects that take a share off (a price, damage, diesel, time): below 1, or it would be nothing. */
+const DISCOUNTS: readonly FacilityEffect[] = [
+  'repairDiscount',
+  'fuelDiscount',
+  'cargoDamageReduction',
+  'fuelUseReduction',
+  'loadingTimeReduction',
+];
 /** Effects that count things (trucks, contracts): whole numbers. */
 const COUNTS: readonly FacilityEffect[] = ['garageSlots', 'extraContracts'];
 /** The most a counting effect may add, and a bonus may be (+200 %). */
@@ -82,7 +96,7 @@ export function validateFacilityDefinition(facility: FacilityDefinition, path: s
     if (level.requiredCompanyLevel !== undefined) {
       usable = validator.positiveInteger(level.requiredCompanyLevel, `${levelPath}.requiredCompanyLevel`) && usable;
     }
-    usable = (effectValid && validateValue(facility.effect, level.value, `${levelPath}.value`, validator)) && usable;
+    usable = (effectValid && validatePerkValue(facility.effect, level.value, `${levelPath}.value`, validator)) && usable;
     if (usable && previous !== undefined) {
       // A higher level never costs less, unlocks earlier, or does less.
       validator.check(level.cost >= previous.cost, `${levelPath}.cost`, 'must not be lower than the previous level');
@@ -97,8 +111,8 @@ export function validateFacilityDefinition(facility: FacilityDefinition, path: s
   });
 }
 
-/** A level's value suits its effect: a share below 1 for a discount, a whole count, a bonus up to +200 %. */
-function validateValue(effect: FacilityEffect, value: number, path: string, validator: Validator): boolean {
+/** A value suits its effect: a share below 1 for a discount, a whole count, a bonus up to +200 %. */
+export function validatePerkValue(effect: FacilityEffect, value: number, path: string, validator: Validator): boolean {
   if (!validator.check(typeof value === 'number' && Number.isFinite(value) && value > 0, path, 'must be a number above 0')) {
     return false;
   }

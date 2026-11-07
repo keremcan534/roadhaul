@@ -6,6 +6,10 @@ import { DEFAULT_GAME_CONFIG, QUALITY_CHOICES } from '../../../../src/data/confi
 import { BODY_TYPES } from '../../../../src/data/definitions/BodyType';
 import { CARGO_CATEGORIES } from '../../../../src/data/definitions/CargoDefinition';
 import { FACILITY_EFFECTS } from '../../../../src/data/definitions/FacilityDefinition';
+import { RESEARCH_BRANCHES } from '../../../../src/data/definitions/ResearchDefinition';
+import { RIVAL_PERSONALITIES } from '../../../../src/data/definitions/RivalCompanyDefinition';
+import { CITY_INCIDENT_KINDS } from '../../../../src/data/definitions/CityIncident';
+import { FLAVOR_HEADLINES } from '../../../../src/systems/world/NewsService';
 import { MISSION_DIFFICULTIES } from '../../../../src/data/definitions/MissionDefinition';
 import { VEHICLE_STATS } from '../../../../src/data/definitions/UpgradeDefinition';
 import { VEHICLE_CLASSES } from '../../../../src/data/definitions/VehicleDefinition';
@@ -35,7 +39,8 @@ const en = stringsFor('en');
 const TABLES: Readonly<Record<Language, StringTable>> = { de: DE, en: EN, es: ES, fr: FR, id: ID, it: IT, pl: PL, pt: PT, ru: RU, tr: TR };
 
 /** Names are the same in every language: the cities, villages, trucks, drivers and rival companies. */
-const NAME = /^(city|village|vehicle|driver|rival)\./;
+/** Names stay as they are in every language (a rival's motto is said in each). */
+const NAME = /^(city|village|vehicle|driver|rival)\.[^.]+\.(name|boss)$/;
 
 describe('string tables', () => {
   it('have the same keys in every language', () => {
@@ -55,7 +60,7 @@ describe('string tables', () => {
     }
   });
 
-  it('name every city, village, cargo, mission, truck, upgrade, paint, product, weather, time of day, clock setting, event, driver, rival, facility and its effect, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
+  it('name every city, village, cargo, mission, truck, upgrade, paint, product, weather, time of day, clock setting, event, driver, rival, facility and its effect, research and its branch, cargo category, tutorial step, graphics setting, stat, difficulty, level, damage band and message in both languages', () => {
     const keys = [
       ...GAME_CONTENT.cities.map((city) => `city.${city.id}.name`),
       ...GAME_CONTENT.paints.map((paint) => `paint.${paint.id}.name`),
@@ -77,6 +82,17 @@ describe('string tables', () => {
       ...GAME_CONTENT.rivals.map((rival) => `rival.${rival.id}.name`),
       ...GAME_CONTENT.facilities.flatMap((facility) => [`facility.${facility.id}.name`, `facility.${facility.id}.description`]),
       ...FACILITY_EFFECTS.map((effect) => `facility.effect.${effect}`),
+      ...GAME_CONTENT.research.map((research) => `research.${research.id}.name`),
+      ...RESEARCH_BRANCHES.map((branch) => `hq.research.branch.${branch}`),
+      ...GAME_CONTENT.rivals.flatMap((rival) => [`rival.${rival.id}.boss`, `rival.${rival.id}.motto`]),
+      ...RIVAL_PERSONALITIES.flatMap((personality) => [
+        `rivalPersonality.${personality}`,
+        `news.tenderLost.${personality}`,
+        `news.rivalLeads.${personality}`,
+        `news.campaign.${personality}`,
+      ]),
+      ...CITY_INCIDENT_KINDS.map((kind) => `news.incident.${kind}`),
+      ...Array.from({ length: FLAVOR_HEADLINES }, (_, index) => `news.flavor.${index + 1}`),
       ...CARGO_CATEGORIES.map((category) => `cargoCategory.${category}`),
       ...TUTORIAL_STEPS.filter((step) => step !== 'done').map((step) => `tutorial.${step}`),
       ...QUALITY_CHOICES.map((choice) => `settings.quality.${choice}`),
@@ -127,6 +143,16 @@ describe('Strings', () => {
     expect(en.t('hud.pickup', { depot: 'Havenport depot' })).toBe('Pick up at Havenport depot');
     expect(en.t('hud.pickup')).toBe('Pick up at {depot}');
     expect(en.t('no.such.key')).toBe('no.such.key');
+  });
+
+  it('writes one full stop where a sentence ends with a value that ends in one', () => {
+    const de = new Strings('de', DE);
+    const time = de.timeSpan(6 * 60 * 60_000);
+    expect(time).toBe('6 Std. 0 Min.');
+    expect(de.t('hq.dailyNote', { hours: 6, time })).toBe('Die Tagesaufträge wechseln alle 6 Std., die nächsten kommen in 6 Std. 0 Min.');
+    // A value without one keeps the sentence's, and a placeholder without a value stays as it is.
+    expect(en.t('hq.dailyNote', { hours: 6, time: '6 h 0 min' })).toBe('Contracts of the day change every 6 hours: the next ones come in 6 h 0 min.');
+    expect(new Strings('en', { 'a.b': 'In {time}.' }).t('a.b', {})).toBe('In {time}.');
   });
 
   it('groups whole numbers the way each language does', () => {

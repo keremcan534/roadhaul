@@ -1,7 +1,10 @@
 import type { Validator } from '../../core/validation/Validator';
 
-/** City roles from spec §20 (A = starting city, B = industrial, C = agricultural), and a mining town's (D). */
-export const CITY_SPECIALIZATIONS = ['starter', 'industrial', 'agricultural', 'mining'] as const;
+/**
+ * City roles from spec §20 (A = starting city, B = industrial, C = agricultural), a mining town's (D), and those of
+ * the towns at the corners: a fishing port (E), a quarry town (F) and a market town (G).
+ */
+export const CITY_SPECIALIZATIONS = ['starter', 'industrial', 'agricultural', 'mining', 'coastal', 'quarry', 'market'] as const;
 export type CitySpecialization = (typeof CITY_SPECIALIZATIONS)[number];
 
 /**

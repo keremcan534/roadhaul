@@ -8,6 +8,8 @@ import { ROUTE_LOOK_AHEAD_METERS, type RouteGuidance } from './roadRoute';
  * exact, and roads that merely pass near each other stay apart.
  */
 export const JUNCTION_RADIUS_METERS = 0.5;
+/** …and no further apart in height, meters: a road on a deck passes over another without meeting it. */
+export const JUNCTION_LEVEL_METERS = 1.5;
 /** linkJunctions numbers its cells from here: keys stay exact for maps up to ±500 km. */
 const JUNCTION_CELL_OFFSET = 1 << 20;
 
@@ -77,6 +79,8 @@ export class RoadNetwork {
   readonly nodeCount: number;
   private readonly nodeX: Float64Array;
   private readonly nodeZ: Float64Array;
+  /** Each sample's road's height there (terrainGrading.ts): 0 on a flat map. */
+  private readonly nodeY: Float64Array;
   /** Which road each node belongs to, and each road's first node. */
   private readonly roadOf: Int32Array;
   private readonly firstNode: Int32Array;
@@ -85,6 +89,8 @@ export class RoadNetwork {
   private readonly neighbours: Int32Array;
   private readonly edgeLengths: Float64Array;
   private readonly fields = new Map<number, RouteField>();
+  /** What passing each node costs on top of its roads' length, meters: road works (setDetour). */
+  private readonly detour: Float64Array;
   /** Where roads meet (one entry per junction). */
   readonly junctions: readonly Junction[];
   /** Ends of open roads that join no other road: traffic turns round there. */
@@ -95,7 +101,9 @@ export class RoadNetwork {
     this.nodeCount = count;
     this.nodeX = new Float64Array(count);
     this.nodeZ = new Float64Array(count);
+    this.nodeY = new Float64Array(count);
     this.roadOf = new Int32Array(count);
+    this.detour = new Float64Array(count);
     const links: number[][] = Array.from({ length: count }, () => []);
     const link = (a: number, b: number): void => {
       if (a !== b && !links[a]!.includes(b)) {
@@ -112,6 +120,7 @@ export class RoadNetwork {
       for (let i = 0; i < road.pointCount; i++) {
         this.nodeX[base + i] = road.x(i);
         this.nodeZ[base + i] = road.z(i);
+        this.nodeY[base + i] = road.heights[i]!;
         this.roadOf[base + i] = roadIndex;
       }
       for (let i = 0; i < road.segmentCount; i++) {
@@ -210,6 +219,24 @@ export class RoadNetwork {
       }
     }
     return best;
+  }
+
+  /**
+   * Routes from now on count each stretch of `stretches` (its nodes) as
+   * `extraMeters` longer than it is, so they go round it where another way
+   * is not that much longer: road works. Replaces the stretches set before;
+   * none for none. The routes already worked out are forgotten.
+   */
+  setDetour(stretches: readonly (readonly number[])[], extraMeters: number): void {
+    this.detour.fill(0);
+    for (const nodes of stretches) {
+      for (const node of nodes) {
+        if (node >= 0 && node < this.nodeCount) {
+          this.detour[node] = extraMeters / nodes.length;
+        }
+      }
+    }
+    this.fields.clear();
   }
 
   /** The node of road `roadIndex`'s sample `sampleIndex`. */
@@ -353,8 +380,10 @@ export class RoadNetwork {
             continue;
           }
           for (const j of cell) {
+            // Close, and at the same height: a road passing over another on a deck meets it nowhere.
             const close =
-              Math.hypot(this.nodeX[j]! - this.nodeX[i]!, this.nodeZ[j]! - this.nodeZ[i]!) <= JUNCTION_RADIUS_METERS;
+              Math.hypot(this.nodeX[j]! - this.nodeX[i]!, this.nodeZ[j]! - this.nodeZ[i]!) <= JUNCTION_RADIUS_METERS &&
+              Math.abs(this.nodeY[j]! - this.nodeY[i]!) <= JUNCTION_LEVEL_METERS;
             if (j > i && close && this.roadOf[j] !== this.roadOf[i]) {
               link(i, j);
             }
@@ -379,7 +408,7 @@ export class RoadNetwork {
       const node = queue.pop();
       for (let edge = this.firstNeighbour[node]!; edge < this.firstNeighbour[node + 1]!; edge++) {
         const neighbour = this.neighbours[edge]!;
-        const viaNode = distance[node]! + this.edgeLengths[edge]!;
+        const viaNode = distance[node]! + this.edgeLengths[edge]! + this.detour[neighbour]!;
         if (viaNode < distance[neighbour]!) {
           distance[neighbour] = viaNode;
           next[neighbour] = node;

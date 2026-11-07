@@ -5,6 +5,7 @@ import { loadSettings, saveSettings, SETTINGS_KEY, type DeviceSettings } from '.
 const DEFAULTS: DeviceSettings = {
   language: 'auto',
   quality: 'auto',
+  frameRate: 'max',
   sound: true,
   vibration: true,
   stats: false,
@@ -16,6 +17,7 @@ const DEFAULTS: DeviceSettings = {
   clockMinutes: 600,
   weather: 'auto',
   season: 'auto',
+  radio: 'off',
 };
 
 describe('device settings', () => {
@@ -26,6 +28,7 @@ describe('device settings', () => {
     const picked: DeviceSettings = {
       language: 'de',
       quality: 'low',
+      frameRate: '60',
       sound: false,
       vibration: false,
       stats: true,
@@ -37,6 +40,7 @@ describe('device settings', () => {
       clockMinutes: 21 * 60 + 15,
       weather: 'rain',
       season: 'winter',
+      radio: 'night',
     };
     expect(saveSettings(storage, picked)).toBe(true);
 

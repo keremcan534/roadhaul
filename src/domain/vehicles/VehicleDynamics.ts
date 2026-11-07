@@ -191,11 +191,13 @@ export class VehicleDynamics {
   }
 
   /** A truck at rest in first gear. */
-  createState(x: number, z: number, heading: number): VehicleRuntimeState {
+  createState(x: number, z: number, heading: number, y = 0): VehicleRuntimeState {
     return {
       x,
       z,
+      y,
       heading,
+      grade: 0,
       speed: 0,
       slipSpeed: 0,
       spinRate: 0,
@@ -229,7 +231,13 @@ export class VehicleDynamics {
     };
   }
 
-  /** Advances `state` by `dt` seconds. Out-of-range input is clamped; non-positive `dt` does nothing. */
+  /**
+   * Advances `state` by `dt` seconds on the ground at `state.grade` (the
+   * caller sets it: uphill the weight holds the truck back, downhill it
+   * pushes it on; stopped with no pedal driving it, the hill-start aid
+   * holds it).
+   * Out-of-range input is clamped; non-positive `dt` does nothing.
+   */
   step(state: VehicleRuntimeState, input: Readonly<VehicleInput>, surface: Surface, dt: number): void {
     if (!(dt > 0) || !Number.isFinite(dt)) {
       return;
@@ -401,8 +409,13 @@ export class VehicleDynamics {
     const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons * this.brakeFactor, grip * weight);
     const resistance = drag + rolling + engineBrake + braking;
 
+    // The weight's pull down the slope along the truck (g · sin of the slope's angle): it can move the truck either way.
+    // Standing with no pedal driving it, the hill-start aid holds it where it is (nothing to do on a phone's pedals).
+    const grade = finiteOr(state.grade, 0);
+    const held = drivePedal === 0 && Math.abs(state.speed) < STANDSTILL_SPEED;
+    const downhill = held ? 0 : (GRAVITY * grade) / Math.sqrt(1 + grade * grade);
     const previousSpeed = state.speed;
-    let speed = previousSpeed + ((reversing ? -driveForce : driveForce) / mass) * dt;
+    let speed = previousSpeed + ((reversing ? -driveForce : driveForce) / mass - downhill) * dt;
     // Resistance opposes motion but can never push the truck the other way.
     const slowdown = (resistance / mass) * dt;
     speed = Math.abs(speed) <= slowdown ? 0 : speed - Math.sign(speed) * slowdown;

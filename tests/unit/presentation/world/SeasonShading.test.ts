@@ -64,6 +64,20 @@ describe('SeasonShading', () => {
     expect(seasons.uniforms.snowCover.value).toBe(1);
   });
 
+  it('spares three.js sending the way up to the GPU without snow, when the shaders skip it', () => {
+    const seasons = new SeasonShading('winter');
+    const camera = new PerspectiveCamera();
+    const snowUp: { needsUpdate?: boolean } = seasons.uniforms.snowUp;
+    const snowCover: { value: unknown; needsUpdate?: boolean } = seasons.uniforms.snowCover;
+    seasons.update(1 / 60, 0, camera);
+    expect(snowUp.needsUpdate).toBe(false);
+    expect(snowCover.needsUpdate).not.toBe(false);
+    seasons.update(1 / 60, 0.2, camera);
+    expect(snowUp.needsUpdate).toBe(true);
+    seasons.update(1 / 60, 0, camera);
+    expect(snowUp.needsUpdate).toBe(false);
+  });
+
   it('lets snow settle on what faces up in the lit materials, once each, and leaves out what should stay clear', () => {
     const seasons = new SeasonShading();
     const lambert = new MeshLambertMaterial();

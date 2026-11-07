@@ -65,7 +65,7 @@ describe('GameConfig', () => {
       ...DEFAULT_GAME_CONFIG,
       economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairShare: 1.5 },
       fuel: { consumptionScale: -1, lowFuelFraction: 2 },
-      company: { levelXp: [100, 50, 60, 70, 80] },
+      company: { levelXp: [100, 50, 60, 70, 80, 90, 100, 110, 120, 130], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards },
     };
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
@@ -81,7 +81,7 @@ describe('GameConfig', () => {
   it('reports contracts, trucks, upgrades, drivers and facilities locked behind a company level that does not exist', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
-      company: { levelXp: [0, 1000] },
+      company: { levelXp: [0, 1000], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 1) },
       fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3] },
     };
     const beyondLevel2 = (level: number | undefined): boolean => (level ?? 1) > 2;
@@ -280,9 +280,13 @@ describe('GameConfig', () => {
     expect(low!.lampGlows).toBe(false);
     // Low draws straight to the screen; medium grades, blooms and smooths the picture in one colour pass; high
     // multisamples the scene for smoother edges.
-    expect(low).toMatchObject({ postProcessing: false, bloom: false });
-    expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0 });
-    expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4 });
+    expect(low).toMatchObject({ postProcessing: false, bloom: false, antialias: true });
+    expect(medium).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 0, antialias: false });
+    expect(high).toMatchObject({ postProcessing: true, bloom: true, msaaSamples: 4, antialias: false });
+    // The dynamic resolution never takes a preset under one pixel per CSS pixel: fewer pixels show as blocks.
+    for (const preset of [low!, medium!, high!]) {
+      expect(preset.maxPixelRatio * preset.minResolutionScale).toBeGreaterThanOrEqual(1);
+    }
     // Real-time shadows are for the high preset only (CLAUDE.md: none by default on phones).
     expect([low!.shadowMapSize, medium!.shadowMapSize]).toEqual([0, 0]);
     expect(high!.shadowMapSize).toBeGreaterThanOrEqual(1024);
@@ -320,6 +324,15 @@ describe('GameConfig', () => {
       'rendering.bloom',
       'rendering.msaaSamples',
       'rendering.shadowMapSize',
+    ]);
+  });
+
+  it('checks the daily reward', () => {
+    const paths = (config: GameConfig): string[] => validateGameConfig(config, catalog).map((issue) => issue.path);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [], levelBonus: 0.5, bonusLevels: 4 } })).toEqual(['dailyReward.credits']);
+    expect(paths({ ...DEFAULT_GAME_CONFIG, dailyReward: { credits: [100, 0], levelBonus: 2, bonusLevels: 4 } })).toEqual([
+      'dailyReward.credits[1]',
+      'dailyReward.levelBonus',
     ]);
   });
 

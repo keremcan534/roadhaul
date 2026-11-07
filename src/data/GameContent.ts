@@ -1,3 +1,4 @@
+import type { AchievementDefinition } from './definitions/AchievementDefinition';
 import type { CargoDefinition } from './definitions/CargoDefinition';
 import type { CityDefinition } from './definitions/CityDefinition';
 import type { DaylightDefinition } from './definitions/DaylightDefinition';
@@ -6,7 +7,10 @@ import type { EventDefinition } from './definitions/EventDefinition';
 import type { FacilityDefinition } from './definitions/FacilityDefinition';
 import type { MapDefinition } from './definitions/MapDefinition';
 import type { MissionDefinition } from './definitions/MissionDefinition';
+import type { LiveryDefinition } from './definitions/LiveryDefinition';
 import type { PaintDefinition } from './definitions/PaintDefinition';
+import type { QuestDefinition } from './definitions/QuestDefinition';
+import type { ResearchDefinition } from './definitions/ResearchDefinition';
 import type { RivalCompanyDefinition } from './definitions/RivalCompanyDefinition';
 import type { TrafficVehicleDefinition } from './definitions/TrafficVehicleDefinition';
 import type { UpgradeDefinition } from './definitions/UpgradeDefinition';
@@ -37,4 +41,11 @@ export interface GameContent {
   readonly rivals: readonly RivalCompanyDefinition[];
   /** What the company can build for itself at the head office, a level at a time. */
   readonly facilities: readonly FacilityDefinition[];
+  readonly achievements: readonly AchievementDefinition[];
+  /** The daily quests' pool. */
+  readonly quests: readonly QuestDefinition[];
+  /** The designs the trucks can wear. */
+  readonly liveries: readonly LiveryDefinition[];
+  /** The research tree: perks for the whole company, researched once a step at a time. */
+  readonly research: readonly ResearchDefinition[];
 }

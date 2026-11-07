@@ -46,6 +46,8 @@ export class RainView {
     readonly fall: { value: number };
     readonly drift: { value: Vector2 };
     readonly center: { value: Vector2 };
+    /** The ground's height under the camera: the box of falling drops stands on it (a map's hills). */
+    readonly floorY: { value: number };
     readonly resolution: { value: Vector2 };
     readonly color: { value: Color };
     readonly opacity: { value: number };
@@ -92,6 +94,7 @@ export class RainView {
       fall: { value: 0 },
       drift: { value: new Vector2() },
       center: { value: new Vector2() },
+      floorY: { value: 0 },
       resolution: { value: new Vector2(1, 1) },
       color: { value: new Color(COLOR) },
       opacity: { value: OPACITY },
@@ -118,6 +121,7 @@ export class RainView {
         uniform float fall;
         uniform vec2 drift;
         uniform vec2 center;
+        uniform float floorY;
         uniform vec2 resolution;
         uniform float clearance;
         attribute vec2 corner;
@@ -127,7 +131,7 @@ export class RainView {
         void main() {
           // The drop's place: carried by the wind, wrapped into the box round the camera, falling and wrapping to the top.
           vec2 around = mod(position.xz * BOX_WIDTH + drift - center + BOX_WIDTH * 0.5, BOX_WIDTH) - BOX_WIDTH * 0.5;
-          vec3 drop = vec3(center.x + around.x, fract(position.y - fall) * BOX_HEIGHT, center.y + around.y);
+          vec3 drop = vec3(center.x + around.x, floorY + fract(position.y - fall) * BOX_HEIGHT, center.y + around.y);
           vec4 head = projectionMatrix * viewMatrix * vec4(drop, 1.0);
           vec4 tail = projectionMatrix * viewMatrix * vec4(drop + TAIL, 1.0);
           float nearest = min(head.w, tail.w);
@@ -204,7 +208,7 @@ export class RainView {
    * (cameraX, cameraZ), `deltaSeconds` on from the last frame (0 freezes it).
    * Allocation-free.
    */
-  update(deltaSeconds: number, cameraX: number, cameraZ: number, rain: number): void {
+  update(deltaSeconds: number, cameraX: number, cameraZ: number, rain: number, groundY = 0): void {
     const drops = Math.round(this.maxDrops * Math.min(1, Math.max(0, rain)));
     this.mesh.visible = drops > 0;
     if (drops === 0) {
@@ -218,6 +222,7 @@ export class RainView {
     this.uniforms.fall.value = this.fall;
     this.uniforms.drift.value.set(this.driftX, this.driftZ);
     this.uniforms.center.value.set(cameraX, cameraZ);
+    this.uniforms.floorY.value = groundY;
   }
 
   dispose(): void {

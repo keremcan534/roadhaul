@@ -15,8 +15,9 @@ const GRAVEL = '#8b8178';
  * (TruckView): a cab-over cab in `color`, its body (a box with a stripe in
  * `color`, a refrigerated box with its cooling unit, a flatbed with its load of
  * bricks, a tank banded in `color`, or a tipper's tub in `color` heaped with
- * gravel), and one rear axle, or two on a heavy truck. For the
- * garage's cards and the truck page.
+ * gravel), and one rear axle, or two on a heavy truck; a tractor unit
+ * pulls its body as a semi-trailer, its axles at the back, a gap before the
+ * cab. For the garage's cards and the truck page.
  */
 export function truckSilhouette(document: Document, definition: VehicleDefinition, color: number): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -25,7 +26,10 @@ export function truckSilhouette(document: Document, definition: VehicleDefinitio
   svg.setAttribute('aria-hidden', 'true');
   const paint = `#${color.toString(16).padStart(6, '0')}`;
   const tandem = definition.vehicleClass === 'heavy';
-  const rearAxles = tandem ? [14, 26] : [19];
+  const trailer = definition.trailer;
+  // A tractor unit: its two rear axles under the trailer's front, the trailer's own axles at its back.
+  const rearAxles =
+    trailer !== undefined ? [...Array.from({ length: trailer.axles }, (_, index) => 10 + index * 12), 59, 71] : tandem ? [14, 26] : [19];
   let body: string;
   switch (definition.bodyType) {
     case 'flatbed':
@@ -67,7 +71,10 @@ export function truckSilhouette(document: Document, definition: VehicleDefinitio
     .map((x) => `<circle cx="${x}" cy="37" r="6.5" fill="${CHASSIS}"/><circle cx="${x}" cy="37" r="3" fill="#b8bec5"/>`)
     .join('');
   svg.innerHTML =
-    `<rect x="3" y="32" width="93" height="4" fill="${CHASSIS}"/>` +
+    (trailer === undefined
+      ? `<rect x="3" y="32" width="93" height="4" fill="${CHASSIS}"/>`
+      : `<rect x="3" y="31" width="66" height="3" fill="${CHASSIS}"/><rect x="54" y="32" width="42" height="4" fill="${CHASSIS}"/>` +
+        `<rect x="66" y="28" width="7" height="3" fill="${STEEL}"/>`) +
     body +
     `<path d="M74 9a3 3 0 0 1 3-3h14a4 4 0 0 1 4 4v24H74z" fill="${paint}"/>` +
     `<path d="M80 9h11.5a2 2 0 0 1 2 2v8H80z" fill="${GLASS}"/>` +

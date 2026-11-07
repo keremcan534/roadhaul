@@ -114,6 +114,81 @@
   min-width: 0;
 }
 
+/* The companies over the places' marks, which go two to a row. */
+.world-map__companies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.world-map__companies[hidden] {
+  display: none;
+}
+
+.world-map__places {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+.world-map__companies:not([hidden]) + .world-map__places {
+  padding-top: 7px;
+  border-top: 1px solid var(--rh-plate-line);
+}
+
+.world-map__place {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* The places' marks as the map draws them (MapPainter): home's house on amber, a depot's square, the rest area's P,
+   the ferry's teal. */
+.map-mark {
+  position: relative;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 50%;
+}
+
+.map-mark--home {
+  border: 1.5px solid #0d1116;
+  background: #ffb020;
+}
+
+.map-mark--home::after {
+  position: absolute;
+  inset: 2.5px 2.5px 3px;
+  background: #0d1116;
+  clip-path: polygon(50% 0, 100% 45%, 85% 45%, 85% 100%, 15% 100%, 15% 45%, 0 45%);
+  content: '';
+}
+
+.map-mark--depot {
+  border: 2px solid #0d1116;
+  border-radius: 1px;
+  background: #c9d3dc;
+}
+
+.map-mark--restArea {
+  background: #4aa3ff;
+  color: #ffffff;
+  font: 800 9px/14px system-ui, sans-serif;
+  text-align: center;
+}
+
+.map-mark--restArea::after {
+  content: 'P';
+}
+
+.map-mark--ferry {
+  background: #16a99c;
+  box-shadow: 0 0 0 3px rgb(22 169 156 / 35%);
+}
+
 .world-map__legend-name {
   overflow: hidden;
   text-overflow: ellipsis;

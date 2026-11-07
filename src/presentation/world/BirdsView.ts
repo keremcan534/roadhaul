@@ -17,7 +17,7 @@ import type { PrelitMaterials } from './lighting';
 import { keptFromSnow } from './SeasonShading';
 
 /** Flocks over the fields: this many (every so many fields), of this many birds. */
-const FIELD_FLOCKS = 4;
+const FIELD_FLOCKS = 6;
 const FIELD_FLOCK_SIZE = 7;
 const HARBOUR_FLOCK_SIZE = 8;
 const CROW_COLOR = 0x26282b;

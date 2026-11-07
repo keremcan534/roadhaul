@@ -5,7 +5,15 @@
 const ads = process.env.ROADHAUL_ADS || 'off';
 
 /** The plugins the app is built with: every other package is left out of it. */
-const plugins = ['@capacitor/app', '@capgo/native-purchases', ...(ads === 'off' ? [] : ['@capacitor-community/admob'])];
+const plugins = [
+  '@capacitor/app',
+  '@capacitor-community/in-app-review',
+  '@capgo/native-purchases',
+  // The photo mode's pictures: written to the app's cache and handed to the share sheet.
+  '@capacitor/filesystem',
+  '@capacitor/share',
+  ...(ads === 'off' ? [] : ['@capacitor-community/admob']),
+];
 
 /** @type {import('@capacitor/cli').CapacitorConfig} */
 const config = {

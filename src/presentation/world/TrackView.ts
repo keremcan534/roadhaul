@@ -6,6 +6,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DoubleSide,
+  Euler,
   Group,
   IcosahedronGeometry,
   InstancedMesh,
@@ -18,6 +19,9 @@ import {
   Quaternion,
   Vector2,
   Vector3,
+  Vector4,
+  type Object3D,
+  type Frustum,
   type Material,
   type Scene,
   type Texture,
@@ -32,6 +36,8 @@ import { fractalNoise } from '../textures/noise';
 import type { PixelImage } from '../textures/pixelImage';
 import {
   asphaltImage,
+  glassFacadeImage,
+  glassWindowLightsImage,
   grassImage,
   gravelImage,
   meadowImage,
@@ -48,6 +54,7 @@ import {
 import { toTexture } from '../textures/toTexture';
 import {
   chimneyStackGeometry,
+  coloured,
   flatRoofGeometry,
   formGeometry,
   frontDoorGeometry,
@@ -59,12 +66,17 @@ import {
   rooftopGeometry,
   shopfrontGeometry,
 } from './buildingParts';
+import { isMotorway, laneWidthMeters, medianWidthMeters } from '../../domain/world/lanes';
 import { flatGroundLight, SHADOW_OFFSET_PER_METER, SUN_DIRECTION, type PrelitMaterials } from './lighting';
 import type { SkyUniforms } from './EnvironmentView';
 import { wetUnderLamps } from './LampLighting';
 import { createPuddleMap, PUDDLE_GLSL } from './puddles';
 import { RIBBON_MAX_SPAN_METERS, RIBBON_TOLERANCE_METERS, ribbonRows } from './roadRibbons';
-import { FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
+import { ForestBatch, TREE_DETAIL, TREE_FAR } from './ForestBatch';
+import { TerrainGround, type GroundWindow } from './TerrainGround';
+import type { Terrain } from '../../domain/world/terrain';
+import { TileBatch } from './TileBatch';
+import { FAR_CULL_METERS, FarCulling, freezeTransforms, TileParts, tileRuns } from './worldTiles';
 import { createForestFloorMask } from './forestFloor';
 import type { GroundMask } from './groundMask';
 import { createChannelMask } from './riverChannel';
@@ -145,6 +157,9 @@ const WINDOW_LIGHT_TILES = 4;
 const WINDOW_GLOW = 1.2;
 /** Footprints larger than this are warehouses (ribbed cladding), smaller ones offices. */
 const WAREHOUSE_MIN_AREA = 350;
+/** A town's districts' building details lie in tiles this wide, drawn within this far of the camera, meters. */
+const TOWN_TILE_METERS = 300;
+const TOWN_DETAIL_METERS = 350;
 /** The ground reaches this far past the map edge, so it fades into the haze instead of ending. */
 const GROUND_MARGIN = 1000;
 /** The ground's colour patches (lush, plain, dry) are this big, meters. */
@@ -170,7 +185,17 @@ const TREE_TILE_METERS = 500;
  */
 const TREE_DETAIL_METERS = 450;
 
+
 const UP = new Vector3(0, 1, 0);
+/** A glass tower's tints, multiplying its curtain wall's picture: blue-green, grey, a warmer bronze. */
+const GLASS_TINTS = [0xc4dce8, 0xb4ccd8, 0xd2dade, 0xa8c4cf, 0xd8d0c4, 0xbcc8d6] as const;
+/** Towers this tall and taller step back into a crown with a mast. */
+const CROWN_FROM_METERS = 110;
+const MAST_COLOR = 0x9aa0a6;
+/** On a map's hills, what stands on the ground has its foot this far into it (a slope's low side would show daylight). */
+const SLOPE_FOOT_METERS = 0.3;
+/** …and a flat decal lies this far over the ground's height at its middle. */
+const SLOPE_DECAL_LIFT_METERS = 0.08;
 
 /**
  * The grass, sampled twice: as tiled, and larger and turned (a period of
@@ -229,10 +254,17 @@ varying vec2 vGroundXZ;
   uniform sampler2D forestMask;
   uniform vec4 forestFrame;
 #endif
+#ifdef NEAR_WINDOW
+  uniform vec4 nearWindow;
+#endif
 `;
 const CHANNEL_CUT_FRAGMENT = /* glsl */ `
 #ifdef CHANNELS
   if ( texture2D( channelMask, ( vGroundXZ - channelFrame.xy ) * channelFrame.zw ).r < 0.5 ) discard;
+#endif
+#ifdef NEAR_WINDOW
+  // The hills' far ground under the near ground's square (TerrainGround) is left out.
+  if ( all( lessThan( abs( vGroundXZ - nearWindow.xy ), vec2( nearWindow.z ) ) ) ) discard;
 #endif
 `;
 /** Under a forest's trees the grass gives way to needles and fallen leaves in the crowns' shade: the floor's colour, as a factor. */
@@ -430,12 +462,27 @@ export class TrackView {
   };
   /** The wind in the trees' crowns: its clock (seconds) and strength. */
   private readonly wind = { windTime: { value: 0 }, windStrength: { value: 1 } };
-  /** The country's tiles (COUNTRY_TILE_METERS), by key: the roads and buildings it grew there, a group each. */
-  private readonly countryTiles = new Map<string, Group>();
-  /** The forest's and the country's tiles, hidden while far from the camera (showAround). */
+  /**
+   * What the country grew (COUNTRY_TILE_METERS: its roads and buildings) and
+   * the towns' districts' building details (TOWN_TILE_METERS), by layer (a
+   * material and name): each layer's tiles by key, drawn as one TileBatch.
+   */
+  private readonly tileLayers: { readonly name: string; readonly material: Material; readonly town: boolean; readonly tiles: Map<string, BufferGeometry> }[] = [];
+  /** The country's batches, hidden past FAR_CULL_METERS, and the towns', past TOWN_DETAIL_METERS (showAround). */
+  private readonly countryBatches: TileBatch[] = [];
+  private readonly townBatches: TileBatch[] = [];
+  /** The forest's tiles, hidden while far from the camera (showAround). */
   private readonly culling = new FarCulling();
   /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
   private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
+  /** The forest kinds' crowns near and far, in pairs: each far one shown while its near one is culled. */
+  private readonly treeLods: InstancedMesh[] = [];
+  /** The forest's tiles in view, drawn a kind of mesh at a time (ForestBatch); null without trees. */
+  private forestBatch: ForestBatch | null = null;
+  /** The ground's height (flat on most maps): what stands on it stands at its height. */
+  private readonly terrain: Terrain;
+  /** A map with hills' ground (TerrainGround): its fine square moves with the camera (showAround). */
+  private terrainGround: TerrainGround | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -453,6 +500,7 @@ export class TrackView {
       roadWear: { value: this.texture(toTexture(roadWearImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 })) },
     };
     const anisotropy = options.anisotropy ?? 1;
+    this.terrain = world.terrain;
     this.root.add(this.createGround(world, anisotropy, options.groundDetail ?? true));
     if (world.roads.length > 0) {
       this.root.add(...this.createRoads(world, anisotropy));
@@ -460,29 +508,44 @@ export class TrackView {
     if (world.trees.length > 0) {
       const forest = new Group();
       forest.name = 'forest';
-      for (const tile of this.createTrees(world.trees)) {
+      const tiles = this.createTrees(world.trees);
+      for (const tile of tiles) {
         forest.add(tile);
         this.culling.add(tile);
         for (const mesh of tile.children) {
-          if (mesh.name === 'forest:shadows' || mesh.name === 'forest:trunks:inner') {
+          if (mesh.userData[TREE_DETAIL] === true) {
             this.treeDetail.add(mesh);
           }
         }
       }
-      this.root.add(forest);
+      // The tiles stay to be culled; the batches draw what of them is in view, a kind at a time.
+      const batches = new Group();
+      batches.name = 'forest:batches';
+      this.forestBatch = new ForestBatch(tiles, batches);
+      this.root.add(forest, batches);
     }
     if (world.buildings.length > 0) {
       this.root.add(...this.createBuildings(world.buildings, (box, reach) => world.frontOf(box, reach)));
     }
-    if (this.countryTiles.size > 0) {
-      const country = new Group();
-      country.name = 'country';
-      for (const tile of this.countryTiles.values()) {
-        country.add(tile);
-        this.culling.add(tile);
+    // A town's details are hidden past TOWN_DETAIL_METERS: in a town, nearer buildings stand before the far ones.
+    for (const town of [true, false]) {
+      const layers = this.tileLayers.filter((layer) => layer.town === town);
+      if (layers.length === 0) {
+        continue;
       }
-      this.root.add(country);
+      const group = new Group();
+      group.name = town ? 'town' : 'country';
+      for (const { name, material, tiles } of layers) {
+        const batch = this.track(new TileBatch([...tiles.values()], material, `${group.name}:${name}`, town ? TOWN_DETAIL_METERS : FAR_CULL_METERS));
+        for (const tile of tiles.values()) {
+          tile.dispose();
+        }
+        group.add(batch.mesh);
+        (town ? this.townBatches : this.countryBatches).push(batch);
+      }
+      this.root.add(group);
     }
+    this.tileLayers.length = 0;
     freezeTransforms(this.root);
     scene.add(this.root);
   }
@@ -490,12 +553,26 @@ export class TrackView {
   /**
    * Shows the forest's and the country's tiles near (x, z), the camera, and
    * hides the ones lost in the haze (FAR_CULL_METERS); the forest's further
-   * than TREE_DETAIL_METERS without their shadows and inner trunks.
+   * than TREE_DETAIL_METERS without their shadows and inner trunks; given
+   * the camera's `view`, also the tiles out of it (FarCulling.update). The
+   * forest's tiles are left out of view by `eyeView` (the camera's view, even
+   * where `view` is null for the shadow map: the trees cast no shadow there).
    * Allocation-free: call it every frame once the camera has moved.
    */
-  showAround(x: number, z: number): void {
-    this.culling.update(x, z);
+  showAround(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
+    this.terrainGround?.update(x, z);
+    this.culling.update(x, z, view);
     this.treeDetail.update(x, z);
+    for (let i = 0; i < this.treeLods.length; i += 2) {
+      this.treeLods[i + 1]!.visible = !this.treeLods[i]!.visible;
+    }
+    this.forestBatch?.update(eyeView);
+    for (let i = 0; i < this.countryBatches.length; i++) {
+      this.countryBatches[i]!.update(x, z, view, eyeView);
+    }
+    for (let i = 0; i < this.townBatches.length; i++) {
+      this.townBatches[i]!.update(x, z, view, eyeView);
+    }
   }
 
   /** How brightly lamps shine, 0..1 (the weather: 0 by day, 1 at night): lit windows glow. Cheap to call every frame. */
@@ -532,6 +609,7 @@ export class TrackView {
 
   dispose(): void {
     this.scene.remove(this.root);
+    this.forestBatch?.dispose();
     for (const resource of this.resources) {
       resource.dispose();
     }
@@ -548,8 +626,12 @@ export class TrackView {
     return this.groundMaterial(null, null);
   }
 
-  /** The ground plane, cut open over the rivers' channels (createChannelMask), darker under the forests (createForestFloorMask). */
-  private createGround(world: DrivingWorld, anisotropy: number, detail: boolean): Mesh {
+  /**
+   * The ground plane, cut open over the rivers' channels (createChannelMask),
+   * darker under the forests (createForestFloorMask); on a map with hills,
+   * the hills' ground (TerrainGround), the same material on it.
+   */
+  private createGround(world: DrivingWorld, anisotropy: number, detail: boolean): Object3D {
     const size = (world.halfSizeMeters + GROUND_MARGIN) * 2;
     this.groundSizeMeters = size;
     const geometry = this.track(new PlaneGeometry(size, size, 96, 96));
@@ -577,6 +659,24 @@ export class TrackView {
         this.texture(mask.texture);
       }
     }
+    if (!world.terrain.flat) {
+      geometry.dispose();
+      let terrainGround: TerrainGround | null = null;
+      const window: GroundWindow = { value: new Vector4(0, 0, -1, 0) };
+      const far = this.groundMaterial(channels, forests, window);
+      // Behind the near ground where both are drawn.
+      far.polygonOffset = true;
+      far.polygonOffsetFactor = 1;
+      far.polygonOffsetUnits = 4;
+      terrainGround = new TerrainGround(world.terrain, size, groundTint, far, this.groundMaterial(channels, forests));
+      window.value = terrainGround.window.value;
+      this.terrainGround = terrainGround;
+      this.track(terrainGround);
+      const hills = new Group();
+      hills.name = 'ground';
+      hills.add(terrainGround.far, terrainGround.near);
+      return hills;
+    }
     return new Mesh(geometry, this.groundMaterial(channels, forests));
   }
 
@@ -585,7 +685,7 @@ export class TrackView {
    * With `channels`, left out where they cut the ground open, the banks and
    * water below showing through; with `forests`, darker under the trees.
    */
-  private groundMaterial(channels: GroundMask | null, forests: GroundMask | null): MeshBasicMaterial {
+  private groundMaterial(channels: GroundMask | null, forests: GroundMask | null, window: GroundWindow | null = null): MeshBasicMaterial {
     const ground = this.ground;
     if (ground === null) {
       throw new Error('The ground has not been made yet.');
@@ -597,6 +697,7 @@ export class TrackView {
       ...(seasons === null ? {} : { SEASONS: '' }),
       ...(channels === null ? {} : { CHANNELS: '' }),
       ...(forests === null ? {} : { FORESTS: '' }),
+      ...(window === null ? {} : { NEAR_WINDOW: '' }),
     };
     material.onBeforeCompile = (shader) => {
       shader.uniforms['meadow'] = ground.meadow;
@@ -605,7 +706,10 @@ export class TrackView {
         .replace('#include <common>', `#include <common>\nuniform sampler2D meadow;\n${seasons === null ? '' : SEASON_GLSL}`)
         .replace('#include <map_fragment>', GROUND_MAP_FRAGMENT)
         .replace('#include <color_fragment>', GROUND_SNOW_FRAGMENT);
-      if (channels !== null || forests !== null) {
+      if (channels !== null || forests !== null || window !== null) {
+        if (window !== null) {
+          shader.uniforms['nearWindow'] = window;
+        }
         if (channels !== null) {
           shader.uniforms['channelMask'] = { value: channels.texture };
           shader.uniforms['channelFrame'] = { value: channels.frame };
@@ -634,10 +738,12 @@ export class TrackView {
    * different layers (roadLevels), so none fights another over the same
    * depth where they overlap.
    *
-   * The map's own roads are drawn whole, in four draw calls, with every
-   * road's markings (a few triangles). The asphalt and shoulders of the ones
-   * the country grew (DrivingWorld.mapRoadCount) go into its tiles, two draw
-   * calls a tile: only the tiles near the camera are drawn (showAround).
+   * The map's highway, ring road and streets are drawn whole, in four draw
+   * calls, with every road's markings (a few triangles). The asphalt and
+   * shoulders of its country roads and of the ones the country grew
+   * (DrivingWorld.mapRoadCount) go into its tiles, two draw calls a tile:
+   * only the tiles near the camera are drawn (showAround). Kilometres of
+   * country road lie far off in the haze from anywhere on the map.
    */
   private createRoads(world: DrivingWorld, anisotropy: number): Mesh[] {
     const { roads, network, turningCircles, mapRoadCount } = world;
@@ -684,7 +790,7 @@ export class TrackView {
       surfaces: new TileParts<BufferGeometry>(),
     };
     roads.forEach((road, index) => {
-      const grown = index >= mapRoadCount;
+      const tiled = index >= mapRoadCount || road.kind === 'rural';
       const shoulder = road.widthMeters / 2 + SHOULDER_WIDTH / 2 - 0.2;
       const shoulderBands = [
         { offset: -shoulder, width: SHOULDER_WIDTH },
@@ -692,7 +798,7 @@ export class TrackView {
       ];
       const surfaceBands = [{ offset: 0, width: road.widthMeters }];
       const surfaceY = ROAD_Y + levels[index]! * ROAD_STACK;
-      if (grown) {
+      if (tiled) {
         for (const run of tileRuns(road, ribbonRows(road))) {
           country.shoulders.add(run.x, run.z, stripGeometry(road, shoulderBands, SHOULDER_Y, GRAVEL_TILE_METERS, undefined, run.rows));
           country.surfaces.add(run.x, run.z, stripGeometry(road, surfaceBands, surfaceY, ASPHALT_TILE_METERS, undefined, run.rows));
@@ -712,9 +818,10 @@ export class TrackView {
     });
     // Turning circles lie over the end of their road, with a gravel rim like its shoulders.
     for (const circle of turningCircles) {
-      const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y, GRAVEL_TILE_METERS);
-      const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY, ASPHALT_TILE_METERS);
-      if (circle.roadIndex >= mapRoadCount) {
+      const end = roads[circle.roadIndex]!.heights[circle.sampleIndex]!;
+      const rim = flatDisc(circle.x, circle.z, circle.radiusMeters + SHOULDER_WIDTH - 0.2, SHOULDER_Y + end, GRAVEL_TILE_METERS);
+      const paving = flatDisc(circle.x, circle.z, circle.radiusMeters, circleY + end, ASPHALT_TILE_METERS);
+      if (circle.roadIndex >= mapRoadCount || roads[circle.roadIndex]!.kind === 'rural') {
         country.shoulders.add(circle.x, circle.z, rim);
         country.surfaces.add(circle.x, circle.z, paving);
       } else {
@@ -741,12 +848,15 @@ export class TrackView {
         meshes.push(mesh);
       }
     }
-    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions, paintMaterial);
+    // A material drawn as a mesh, an instanced mesh and a batch is a program for each: three.js keeps one current per
+    // material and looked the others up again twice every frame. The dashes (instanced) and the country's tiles (a
+    // TileBatch each) have materials of their own, made alike (the same programs, uniforms and look).
+    const dashMesh = this.createDashes(dashes, markingY, clearOfJunctions, this.overlayMaterial({ color: MARKING_COLOR }, 3));
     if (dashMesh !== null) {
       meshes.push(dashMesh);
     }
-    this.addToCountry(country.shoulders, gravelMaterial, 'roads:shoulders');
-    this.addToCountry(country.surfaces, asphaltMaterial, 'roads:asphalt');
+    this.addToCountry(country.shoulders, this.overlayMaterial({ map: gravel }, 1), 'roads:shoulders');
+    this.addToCountry(country.surfaces, this.wettable(this.overlayMaterial({ map: asphalt }, 2)), 'roads:asphalt');
     return meshes;
   }
 
@@ -760,11 +870,13 @@ export class TrackView {
     const position = new Vector3();
     const rotation = new Quaternion();
     const scale = new Vector3(1, 1, 1);
+    const turn = new Euler(0, 0, 0, 'YXZ');
     const matrices: Matrix4[] = [];
     for (const { road, offset } of lines) {
       for (const dash of dashesAlong(road, offset, clearOfJunctions)) {
-        position.set(dash.x, y, dash.z);
-        rotation.setFromAxisAngle(UP, dash.heading);
+        // On the road's height, tilted with its grade (level on a flat map).
+        position.set(dash.x, y + dash.y, dash.z);
+        rotation.setFromEuler(turn.set(-Math.atan(dash.grade), dash.heading, 0));
         matrices.push(new Matrix4().compose(position, rotation, scale));
       }
     }
@@ -779,18 +891,23 @@ export class TrackView {
     return dashes;
   }
 
-  /** One mesh of `material` a tile of `parts`, named `name`, in that country tile's group. */
-  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string): void {
+  /** `parts` merged a tile at a time into the layer of `material` (named `name`) of the country's tiles, or the towns'. */
+  private addToCountry(parts: TileParts<BufferGeometry>, material: Material, name: string, town = false): void {
+    if (parts.tiles.size === 0) {
+      return;
+    }
+    let layer = this.tileLayers.find((candidate) => candidate.material === material && candidate.name === name && candidate.town === town);
+    if (layer === undefined) {
+      layer = { name, material, town, tiles: new Map() };
+      this.tileLayers.push(layer);
+    }
     for (const [key, tile] of parts.tiles) {
-      const mesh = new Mesh(this.merged(tile), material);
-      mesh.name = name;
-      let group = this.countryTiles.get(key);
-      if (group === undefined) {
-        group = new Group();
-        group.name = `country:${key}`;
-        this.countryTiles.set(key, group);
+      const geometry = mergeGeometries(tile);
+      for (const part of tile) {
+        part.dispose();
       }
-      group.add(mesh);
+      const earlier = layer.tiles.get(key);
+      layer.tiles.set(key, earlier === undefined ? geometry : mergeGeometries([earlier, geometry]));
     }
   }
 
@@ -828,6 +945,10 @@ export class TrackView {
       innerCrowns: {
         pine: this.track(innerPineCrownGeometry()),
         broadleaf: this.track(innerBroadleafCrownGeometry()),
+      },
+      farCrowns: {
+        pine: this.track(farPineCrownGeometry()),
+        broadleaf: this.track(farBroadleafCrownGeometry()),
       },
       crownMaterials: {
         evergreen: this.track(this.swaying(new MeshLambertMaterial({ color: 0xffffff, flatShading: true }), false)),
@@ -916,13 +1037,15 @@ export class TrackView {
       const shape = TREE_SHAPES[kind];
       const s = tree.scale;
       const trunkHeight = shape.trunkHeight * s;
+      // On the ground's height (a map's hills), its foot sunk a little so a slope does not show under it.
+      const base = this.terrain.flat ? 0 : this.terrain.heightAt(tree.x, tree.z) - SLOPE_FOOT_METERS;
       rotation.setFromAxisAngle(UP, index * 2.399); // Golden-angle spin so neighbours differ.
       const trunk = simple ? innerTrunks : trunks;
       trunk.setMatrixAt(
         trunk.count++,
-        matrix.compose(position.set(tree.x, 0, tree.z), rotation, scale.set(s * shape.trunkGirth, trunkHeight, s * shape.trunkGirth)),
+        matrix.compose(position.set(tree.x, base, tree.z), rotation, scale.set(s * shape.trunkGirth, trunkHeight, s * shape.trunkGirth)),
       );
-      position.set(tree.x, trunkHeight, tree.z);
+      position.set(tree.x, base + trunkHeight, tree.z);
       scale.setScalar(s);
       const shade = 0.88 + 0.24 * hash(tree.z, tree.x);
       const crown = crowns.get(crownOf(tree, kind))!;
@@ -935,7 +1058,7 @@ export class TrackView {
       // The shadow falls away from the sun, centred under the crown's projection: the decal's shader moves it
       // there from the tree's foot (followTheSun), by the crown's height, kept in the flat decal's y scale.
       const crownHeight = trunkHeight + shape.crownMiddle * s;
-      position.set(tree.x, SHOULDER_Y / 2, tree.z);
+      position.set(tree.x, this.terrain.flat ? SHOULDER_Y / 2 : base + SLOPE_FOOT_METERS + SLOPE_DECAL_LIFT_METERS, tree.z);
       const width = shape.shadowWidth * s;
       shadows.setMatrixAt(shadows.count++, matrix.compose(position, rotation.identity(), scale.set(width, crownHeight, width)));
     }
@@ -947,6 +1070,26 @@ export class TrackView {
       }
       mesh.computeBoundingSphere();
     }
+    shadows.userData[TREE_DETAIL] = true;
+    innerTrunks.userData[TREE_DETAIL] = true;
+    // The forest kinds' crowns past TREE_DETAIL_METERS: simpler ones on the same trees (their instances shared).
+    for (const [key, crown] of crowns) {
+      const kind = key.split(':')[0] as TreeKind;
+      if (crown.count === 0 || (kind !== 'pine' && kind !== 'broadleaf')) {
+        continue;
+      }
+      const far = this.track(new InstancedMesh(parts.farCrowns[kind], crown.material, 0));
+      far.name = `forest:crowns:${kind}:far`;
+      far.instanceMatrix = crown.instanceMatrix;
+      far.instanceColor = crown.instanceColor;
+      far.count = crown.count;
+      far.computeBoundingSphere();
+      far.userData[TREE_FAR] = true;
+      far.visible = false;
+      crown.userData[TREE_DETAIL] = true;
+      this.treeLods.push(crown, far);
+      meshes.push(far);
+    }
     return meshes;
   }
 
@@ -954,20 +1097,26 @@ export class TrackView {
    * The buildings: walls with facades (offices and houses, or warehouses),
    * tiled roofs, the rest of their roofs and plinths, and soft shadows, a
    * draw call each for every building on the map (a few triangles each),
-   * but the rest of the roofs and the plinths of the houses and farms the
-   * country grew (BuildingObstacle.country): those, the most triangles, go
-   * into the country's tiles, drawn only near the camera (showAround).
+   * but their details (the rest of the roofs, the plinths, the shopfronts and
+   * doors, the silos, chimneys and towers): those, the most triangles, go
+   * into the country's tiles, drawn only near the camera (showAround). A
+   * town a kilometre off is deep in the haze.
    */
   private createBuildings(
     buildings: readonly BuildingObstacle[],
     frontOf: (box: BuildingObstacle, reachMeters: number) => BuildingSide | null,
   ): Mesh[] {
-    /** A layer's parts: the whole map's, and the country's by tile (the details only). */
-    const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry> } => ({ town: [], country: new TileParts() });
+    /** A layer's parts: the whole map's, and by tile (the details only: the districts' in the towns' smaller tiles). */
+    const layer = (): { town: BufferGeometry[]; country: TileParts<BufferGeometry>; districts: TileParts<BufferGeometry> } => ({
+      town: [],
+      country: new TileParts(),
+      districts: new TileParts(TOWN_TILE_METERS),
+    });
     const offices = layer();
     const warehouses = layer();
     const tiledRoofs = layer();
     const details = layer();
+    const glass = layer();
     const shadows = layer();
     const random = new SeededRandom(311);
     // The fronts' shops, doors and the chimneys draw their own numbers: the roofs' are the same as ever.
@@ -980,8 +1129,8 @@ export class TrackView {
       const x = box.minX + width / 2;
       const z = box.minZ + depth / 2;
       const add = (parts: ReturnType<typeof layer>, part: BufferGeometry): void => {
-        if (box.country === true && parts === details) {
-          parts.country.add(x, z, part);
+        if (parts === details) {
+          (box.district === undefined ? parts.country : parts.districts).add(x, z, part);
         } else {
           parts.town.push(part);
         }
@@ -991,8 +1140,19 @@ export class TrackView {
       // buildings after it draw the same numbers as ever.
       const block = box.form === undefined;
       const small = width * depth < WAREHOUSE_MIN_AREA;
-      if (block) {
-        add(small || box.shops === true ? offices : warehouses, wallsGeometry(box, tint, index));
+      // A town's district: windows all round, but the harbour's sheds; anywhere else, big blocks are warehouses.
+      const windowed = box.district === undefined ? small || box.shops === true : box.district !== 'harbour';
+      if (block && box.district === 'towers') {
+        // A tower in glass; the tallest step back into a crown, a mast on top.
+        const glassTint = new Color(GLASS_TINTS[index % GLASS_TINTS.length]!);
+        add(glass, wallsGeometry(box, glassTint, index));
+        if (box.heightMeters >= CROWN_FROM_METERS) {
+          for (const part of crownGeometry(box, glassTint, index, dressing)) {
+            add(part.layer === 'glass' ? glass : details, part.geometry);
+          }
+        }
+      } else if (block) {
+        add(windowed ? offices : warehouses, wallsGeometry(box, tint, index));
         for (const part of plinthGeometry(box)) {
           add(details, part);
         }
@@ -1002,11 +1162,13 @@ export class TrackView {
           const dressed =
             box.shops === true
               ? shopfrontGeometry(box, front, dressing)
-              : !small
-                ? loadingDoorsGeometry(box, front)
-                : box.country === true
-                  ? frontDoorGeometry(box, front, dressing)
-                  : [];
+              : box.district !== undefined && box.district !== 'harbour'
+                ? frontDoorGeometry(box, front, dressing)
+                : !small
+                  ? loadingDoorsGeometry(box, front)
+                  : box.country === true
+                    ? frontDoorGeometry(box, front, dressing)
+                    : [];
           for (const part of dressed) {
             add(details, part);
           }
@@ -1041,7 +1203,9 @@ export class TrackView {
           }
           break;
         case 'flat': {
-          const parts = [...flatRoofGeometry(box), ...rooftopGeometry(box, random, sunBearing)];
+          // A town's blocks keep their roofs' plant out of sight from the street: their parapets only.
+          const unseen = box.district !== undefined;
+          const parts = [...flatRoofGeometry(box), ...(unseen ? [] : rooftopGeometry(box, random, sunBearing))];
           if (block) {
             for (const part of parts) {
               add(details, part);
@@ -1056,6 +1220,7 @@ export class TrackView {
       [shadows, this.shadowMaterial(softBoxShadowImage(), 0.38, 'building'), 'buildings:shadows'],
       [offices, this.facadeMaterial(officeFacadeImage(), officeWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:offices'],
       [warehouses, this.facadeMaterial(warehouseFacadeImage(), warehouseWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:warehouses'],
+      [glass, this.facadeMaterial(glassFacadeImage(), glassWindowLightsImage(WINDOW_LIGHT_TILES)), 'buildings:glass'],
       [
         tiledRoofs,
         this.track(
@@ -1078,6 +1243,7 @@ export class TrackView {
         meshes.push(mesh);
       }
       this.addToCountry(parts.country, material, name);
+      this.addToCountry(parts.districts, material, name, true);
     }
     return meshes;
   }
@@ -1312,6 +1478,16 @@ function innerPineCrownGeometry(): BufferGeometry {
   return crown;
 }
 
+/** A pine's crown far off (past TREE_DETAIL_METERS): one open cone over both an inner pine's tiers. */
+function farPineCrownGeometry(): BufferGeometry {
+  return new ConeGeometry(2.1, 5.8, 6, 1, true).translate(0, 2.7, 0);
+}
+
+/** A broadleaf's crown far off: one faceted blob round both an inner broadleaf's. */
+function farBroadleafCrownGeometry(): BufferGeometry {
+  return blobCrown([[0.1, 2.2, -0.05, 2.4]]);
+}
+
 /** An inner broadleaf's crown: two faceted blobs, the full crown's cluster in outline. */
 function innerBroadleafCrownGeometry(): BufferGeometry {
   return blobCrown([
@@ -1342,6 +1518,8 @@ interface TreeParts {
   readonly crowns: Readonly<Record<TreeKind, BufferGeometry>>;
   /** The inner trees' crowns: the same shape, in a few faces (their shape is seen over the edge's crowns). */
   readonly innerCrowns: Readonly<Record<'pine' | 'broadleaf', BufferGeometry>>;
+  /** The forest kinds' crowns past TREE_DETAIL_METERS, edge and inner alike: one cone, one blob. */
+  readonly farCrowns: Readonly<Record<'pine' | 'broadleaf', BufferGeometry>>;
   /** The crowns of trees in leaf all year, and of those that lose their leaves (they follow the season). */
   readonly crownMaterials: { readonly evergreen: Material; readonly deciduous: Material };
   readonly shadow: BufferGeometry;
@@ -1463,7 +1641,52 @@ function broadleafCrownGeometry(): BufferGeometry {
  * tile picked by the building's `index` and side: the facade looks the
  * same, but the pattern of windows lit at night differs from wall to wall.
  */
-function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): BufferGeometry {
+/**
+ * A tall tower's top (CROWN_FROM_METERS and up): a narrower crown of glass
+ * stepped back from its walls, its parapet, and a mast on it; some carry a
+ * second, smaller step. The glass parts for the glass layer, the rest for
+ * the details'.
+ */
+function crownGeometry(
+  box: BuildingObstacle,
+  tint: Color,
+  index: number,
+  random: SeededRandom,
+): { readonly layer: 'glass' | 'details'; readonly geometry: BufferGeometry }[] {
+  const parts: { layer: 'glass' | 'details'; geometry: BufferGeometry }[] = [];
+  let base = box;
+  const steps = random.next() < 0.45 ? 2 : 1;
+  for (let step = 0; step < steps; step++) {
+    const width = base.maxX - base.minX;
+    const depth = base.maxZ - base.minZ;
+    const inset = Math.min(width, depth) * random.range(0.12, 0.2);
+    const rise = box.heightMeters * random.range(0.06, 0.11);
+    const crown: BuildingObstacle = {
+      ...base,
+      minX: base.minX + inset,
+      maxX: base.maxX - inset,
+      minZ: base.minZ + inset,
+      maxZ: base.maxZ - inset,
+      heightMeters: base.heightMeters + rise,
+    };
+    parts.push({ layer: 'glass', geometry: wallsGeometry(crown, tint, index + step + 1, base.heightMeters) });
+    for (const geometry of flatRoofGeometry(crown)) {
+      parts.push({ layer: 'details', geometry });
+    }
+    base = crown;
+  }
+  // The mast.
+  const x = (base.minX + base.maxX) / 2;
+  const z = (base.minZ + base.maxZ) / 2;
+  const mast = box.heightMeters * random.range(0.08, 0.18);
+  parts.push({
+    layer: 'details',
+    geometry: coloured(new CylinderGeometry(0.25, 0.6, mast, 6).translate(x, base.heightMeters + mast / 2, z), MAST_COLOR),
+  });
+  return parts;
+}
+
+function wallsGeometry(box: BuildingObstacle, tint: Color, index: number, from = 0): BufferGeometry {
   const corners = [
     [box.minX, box.maxZ],
     [box.maxX, box.maxZ],
@@ -1483,7 +1706,7 @@ function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): Buffe
     const nx = -(bz - az) / length;
     const nz = (bx - ax) / length;
     const base = positions.length / 3;
-    positions.push(ax, 0, az, bx, 0, bz, bx, height, bz, ax, height, az);
+    positions.push(ax, from, az, bx, from, bz, bx, height, bz, ax, height, az);
     for (let i = 0; i < 4; i++) {
       normals.push(nx, 0, nz);
       colors.push(tint.r, tint.g, tint.b);
@@ -1491,7 +1714,7 @@ function wallsGeometry(box: BuildingObstacle, tint: Color, index: number): Buffe
     const u0 = (index * 3 + side) % WINDOW_LIGHT_TILES;
     const v0 = (index + side * 2) % WINDOW_LIGHT_TILES;
     const u1 = u0 + length / FACADE_TILE_WIDTH;
-    const v1 = v0 + height / FACADE_TILE_HEIGHT;
+    const v1 = v0 + (height - from) / FACADE_TILE_HEIGHT;
     uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
     indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   });
@@ -1615,8 +1838,10 @@ function stripGeometry(
       const inner = band.offset - band.width / 2;
       const outer = band.offset + band.width / 2;
       const vertex = (base + row * 2) * 3;
-      positions.set([road.x(i) + rightX * inner, y, road.z(i) + rightZ * inner], vertex);
-      positions.set([road.x(i) + rightX * outer, y, road.z(i) + rightZ * outer], vertex + 3);
+      // On the road's height there (0 on a flat map: terrainGrading.ts).
+      const height = y + road.heights[i]!;
+      positions.set([road.x(i) + rightX * inner, height, road.z(i) + rightZ * inner], vertex);
+      positions.set([road.x(i) + rightX * outer, height, road.z(i) + rightZ * outer], vertex + 3);
       normals.set([0, 1, 0, 0, 1, 0], vertex);
       const along = (kept[row] === count ? road.lengthMeters : (road.distances[i] ?? 0)) / tileMeters;
       uvs.set([0, along, 1, along], (base + row * 2) * 2);
@@ -1645,8 +1870,8 @@ function stripGeometry(
  * Where a road's lines are painted, meters from its centreline (positive to
  * the right). Streets and the ring road have edge lines and a dashed centre
  * line; the highway has two lanes each way, a double centre line and dashed
- * lane lines; country roads only a dashed centre line; the lanes off them
- * none.
+ * lane lines (a motorway three, and edge lines along its median); country
+ * roads only a dashed centre line; the lanes off them none.
  */
 function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; readonly dashed: readonly number[] } {
   const edge = road.widthMeters / 2 - EDGE_LINE_INSET;
@@ -1655,6 +1880,16 @@ function roadMarkings(road: RoadPath): { readonly solid: readonly number[]; read
     case 'ringRoad':
       return { solid: [-edge, edge], dashed: [0] };
     case 'highway': {
+      if (isMotorway(road.kind, road.widthMeters)) {
+        // A motorway: edge lines along its median either side of the barrier, three lanes each way.
+        const median = medianWidthMeters(road.kind, road.widthMeters) / 2 + EDGE_LINE_INSET;
+        const lane = laneWidthMeters(road.kind, road.widthMeters);
+        const inner = medianWidthMeters(road.kind, road.widthMeters) / 2;
+        return {
+          solid: [-edge, -median, median, edge],
+          dashed: [-(inner + lane), -(inner + 2 * lane), inner + lane, inner + 2 * lane],
+        };
+      }
       const lane = road.widthMeters / 4;
       return { solid: [-edge, -0.15, 0.15, edge], dashed: [-lane, lane] };
     }
@@ -1673,17 +1908,20 @@ function dashesAlong(
   road: RoadPath,
   offset: number,
   clearOfJunctions: (x: number, z: number) => boolean,
-): { readonly x: number; readonly z: number; readonly heading: number }[] {
+): { readonly x: number; readonly z: number; readonly y: number; readonly grade: number; readonly heading: number }[] {
   const position = new Vector3();
-  const dashes: { x: number; z: number; heading: number }[] = [];
+  const dashes: { x: number; z: number; y: number; grade: number; heading: number }[] = [];
   const count = Math.floor(road.lengthMeters / DASH_SPACING);
   for (let i = 0; i < count; i++) {
-    const heading = pointAlong(road, (i + 0.5) * DASH_SPACING, position);
+    const along = (i + 0.5) * DASH_SPACING;
+    const heading = pointAlong(road, along, position);
     // Right of the direction of travel: the tangent turned 90° clockwise seen from above.
     const x = position.x - Math.cos(heading) * offset;
     const z = position.z + Math.sin(heading) * offset;
     if (clearOfJunctions(x, z)) {
-      dashes.push({ x, z, heading });
+      const y = road.heightAtDistance(along);
+      const grade = (road.heightAtDistance(along + 1) - road.heightAtDistance(along - 1)) / 2;
+      dashes.push({ x, z, y, grade, heading });
     }
   }
   return dashes;

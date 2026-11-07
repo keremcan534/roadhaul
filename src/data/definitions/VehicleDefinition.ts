@@ -34,6 +34,30 @@ export interface VehicleDefinition {
   readonly body: VehicleBody;
   readonly powertrain: VehiclePowertrain;
   readonly handling: VehicleHandling;
+  /**
+   * A tractor unit's semi-trailer, which carries the load (`bodyType`,
+   * `maxPayloadTons`); `body` is then the tractor's, except its mass, which
+   * is the whole rig's. Omit for a rigid truck, its body part of it.
+   */
+  readonly trailer?: TrailerBody;
+}
+
+/**
+ * A semi-trailer: it rests on the tractor's fifth wheel by its kingpin and
+ * turns about it, following on its own axles (semiTrailer.ts). It is as
+ * wide as the tractor.
+ */
+export interface TrailerBody {
+  readonly lengthMeters: number;
+  readonly heightMeters: number;
+  /** The fifth wheel, ahead of the tractor's rear axle (the middle of its two). */
+  readonly couplingAheadMeters: number;
+  /** The kingpin, behind the trailer's front. */
+  readonly kingpinMeters: number;
+  /** From the kingpin back to the middle of the trailer's axles: the longer, the more it cuts across a bend. */
+  readonly axleBehindKingpinMeters: number;
+  /** How many axles it stands on, 1.3 m apart (1 to 3). */
+  readonly axles: number;
 }
 
 /** Size and mass. The visual model and the collision shape are derived from these. */
@@ -107,6 +131,31 @@ export function validateVehicleDefinition(vehicle: VehicleDefinition, path: stri
   validateBody(vehicle.body, `${path}.body`, validator);
   validatePowertrain(vehicle.powertrain, `${path}.powertrain`, validator);
   validateHandling(vehicle.handling, `${path}.handling`, validator);
+  if (vehicle.trailer !== undefined) {
+    validateTrailer(vehicle.trailer, vehicle.body, `${path}.trailer`, validator);
+  }
+}
+
+function validateTrailer(trailer: TrailerBody, body: VehicleBody, path: string, validator: Validator): void {
+  if (!validator.check(typeof trailer === 'object' && trailer !== null, path, 'must be an object')) {
+    return;
+  }
+  validator.positiveNumber(trailer.lengthMeters, `${path}.lengthMeters`);
+  validator.positiveNumber(trailer.heightMeters, `${path}.heightMeters`);
+  validator.check(
+    Number.isFinite(trailer.couplingAheadMeters) && trailer.couplingAheadMeters >= 0 && trailer.couplingAheadMeters < body.wheelbaseMeters,
+    `${path}.couplingAheadMeters`,
+    'must be from 0 to less than the tractor\'s wheelbase',
+  );
+  validator.positiveNumber(trailer.kingpinMeters, `${path}.kingpinMeters`);
+  if (validator.positiveNumber(trailer.axleBehindKingpinMeters, `${path}.axleBehindKingpinMeters`)) {
+    validator.check(
+      trailer.kingpinMeters + trailer.axleBehindKingpinMeters + 1.3 * (trailer.axles - 1) / 2 < trailer.lengthMeters,
+      `${path}.axleBehindKingpinMeters`,
+      'puts the axles past the trailer\'s end',
+    );
+  }
+  validator.check(Number.isInteger(trailer.axles) && trailer.axles >= 1 && trailer.axles <= 3, `${path}.axles`, 'must be 1, 2 or 3');
 }
 
 function validateBody(body: VehicleBody, path: string, validator: Validator): void {

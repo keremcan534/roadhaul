@@ -5,6 +5,7 @@ import { err, ok, type Result } from '../../core/Result';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { Credits, Fraction } from '../../data/units';
 import type { SpendError } from '../../domain/economy/CurrencyWallet';
+import { NO_PERK_SOURCE, type PerkSource } from '../../domain/company/facilities';
 import { fuelUsedLiters } from '../../domain/vehicles/fuelConsumption';
 import { MAX_SAVING } from '../../domain/vehicles/upgradeBonuses';
 import type { DrivingService } from '../driving/DrivingService';
@@ -46,6 +47,8 @@ export class FuelService {
     private readonly events: EventBus<GameEvents>,
     private readonly config: GameConfig['fuel'],
     private readonly logger: Logger,
+    /** The company's perks: research saves some of the diesel. */
+    private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {}
 
   get fuelLiters(): number {
@@ -115,7 +118,7 @@ export class FuelService {
       this.driving.surface.fuelFactor,
       vehicle.speed,
       this.damage.damage,
-      this.config.consumptionScale * this.consumptionFactor,
+      this.config.consumptionScale * this.consumptionFactor * (1 - this.perks.perks.fuelUseReduction),
     );
     this.liters = Math.max(0, this.liters - burnt);
     if (this.liters <= 0) {

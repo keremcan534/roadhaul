@@ -28,7 +28,7 @@ export class CompanyService {
 
   constructor(
     private readonly events: EventBus<GameEvents>,
-    private readonly config: GameConfig['company'],
+    private readonly config: Pick<GameConfig['company'], 'levelXp'>,
     private readonly logger: Logger,
   ) {
     this.unsubscribe = [

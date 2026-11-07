@@ -315,7 +315,7 @@ html[data-camera='cabin'] .dashboard {
   stroke: var(--rh-accent);
   stroke-dasharray: 100;
   stroke-dashoffset: 100;
-  transition: stroke-dashoffset 150ms linear;
+  /* No transition: the arc is not drawn by the compositor, so one would repaint the dial every frame (the speed changes ten times a second). */
 }
 
 .dashboard__speed {
@@ -991,7 +991,8 @@ html[data-camera='cabin'] .dashboard {
 @media (orientation: landscape) {
   .mission-hud,
   .toasts,
-  .rest-area-panel {
+  .rest-area-panel,
+  .ferry-panel {
     left: calc(50% + 55px);
   }
 
@@ -1005,7 +1006,8 @@ html[data-camera='cabin'] .dashboard {
     width: min(420px, calc(100vw - 250px));
   }
 
-  .rest-area-panel {
+  .rest-area-panel,
+  .ferry-panel {
     width: max-content;
     max-width: min(520px, calc(100vw - 250px));
   }
@@ -1176,7 +1178,8 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 /* ---- Rest area counter (src/ui/hud/RestAreaPanel.ts): under the mission HUD, clear of the truck ---- */
 
-.rest-area-panel {
+.rest-area-panel,
+.ferry-panel {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 92px);
   left: 50%;
@@ -1196,7 +1199,8 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   transform: translateX(-50%);
 }
 
-.rest-area-panel[hidden] {
+.rest-area-panel[hidden],
+.ferry-panel[hidden] {
   display: none;
 }
 
@@ -1225,10 +1229,154 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   display: none;
 }
 
+/* The ferry terminal's counter (src/ui/hud/FerryPanel.ts): the rest area's, teal like the ferry on the maps, with a line on the crossing. */
+.ferry-panel {
+  border-top-color: #16a99c;
+}
+
+.ferry-panel .rest-area-panel__title {
+  color: #3fd0c2;
+}
+
+.ferry-panel__note {
+  max-width: 44ch;
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 /* Upright phones: below the mission HUD, above the truck. */
 @media (orientation: portrait) {
-  .rest-area-panel {
+  .rest-area-panel,
+  .ferry-panel {
     top: calc(env(safe-area-inset-top, 0px) + 170px);
+  }
+}
+
+/* ---- The ferry crossing (src/ui/menus/FerryCrossing.ts): the boat riding the swell over the whole screen, over the boot
+   screen too, while the game starts again on the other side. Only transforms and opacity move. ---- */
+
+.ferry-crossing {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  background: linear-gradient(180deg, #16303f 0%, #1d4a66 62%, #163a52 100%);
+  text-align: center;
+  transition: opacity 0.45s ease;
+}
+
+.ferry-crossing.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ferry-crossing__scene {
+  position: relative;
+  width: min(78vw, 420px);
+  height: 120px;
+  overflow: hidden;
+  /* The sea fades out at the sides rather than ending in a box. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+}
+
+.ferry-crossing__boat {
+  position: absolute;
+  left: 0;
+  bottom: 26px;
+  width: 132px;
+  will-change: transform;
+  animation:
+    ferry-crossing-sail 5.5s linear infinite,
+    ferry-crossing-bob 1.6s ease-in-out infinite alternate;
+}
+
+.ferry-crossing__boat svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ferry-crossing--arriving .ferry-crossing__boat {
+  animation-delay: -2.2s, 0s;
+}
+
+.ferry-crossing__waves {
+  position: absolute;
+  left: -50%;
+  bottom: 0;
+  width: 200%;
+  height: 40px;
+  /* A line of crests over the water the hull sits in. */
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='12'%3E%3Cpath d='M0 8 Q12 1 24 8 T48 8' fill='none' stroke='white' stroke-opacity='.45' stroke-width='2'/%3E%3C/svg%3E")
+      repeat-x top / 48px 12px,
+    linear-gradient(180deg, transparent 7px, rgb(14 38 54 / 75%) 7px);
+  will-change: transform;
+  animation: ferry-crossing-waves 2.4s linear infinite;
+}
+
+.ferry-crossing__waves--far {
+  bottom: 24px;
+  opacity: 0.4;
+  animation-duration: 4s;
+  animation-direction: reverse;
+}
+
+.ferry-crossing__title {
+  margin: 8px 0 0;
+  color: #3fd0c2;
+  font: 500 15px/1.2 var(--rh-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.ferry-crossing__note {
+  margin: 0;
+  color: rgb(236 240 244 / 82%);
+  font-size: 14px;
+}
+
+@keyframes ferry-crossing-sail {
+  from {
+    transform: translateX(-140px);
+  }
+  to {
+    transform: translateX(min(78vw, 420px));
+  }
+}
+
+@keyframes ferry-crossing-bob {
+  from {
+    translate: 0 0;
+    rotate: -1.5deg;
+  }
+  to {
+    translate: 0 4px;
+    rotate: 1.5deg;
+  }
+}
+
+@keyframes ferry-crossing-waves {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(48px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ferry-crossing__boat,
+  .ferry-crossing__waves {
+    animation-duration: 12s;
   }
 }
 
@@ -1341,4 +1489,122 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 .perf-overlay {
   z-index: 20;
+}
+
+/* ---- The road's alert (src/ui/hud/RoadAlert.ts): a camera or road works ahead, over the speedometer ---- */
+
+.road-alert {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 7px;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 20px;
+  background: var(--rh-plate);
+  color: var(--rh-fg);
+  font: 500 13px/1 var(--rh-numeric);
+  pointer-events: none;
+}
+
+.road-alert[hidden] {
+  display: none;
+}
+
+.road-alert[data-alert='works'],
+.road-alert[data-alert='worksAhead'] {
+  border-color: rgb(255 106 19 / 70%);
+}
+
+.road-alert__icon {
+  width: 20px;
+  height: 20px;
+}
+
+.road-alert__limit[hidden] {
+  display: none;
+}
+
+.road-alert[data-alert='riding'] {
+  border-color: rgb(85 197 133 / 70%);
+}
+
+/* A round limit sign: a red ring, the number in black. */
+.road-alert__limit {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border: 3px solid #d5281b;
+  border-radius: 50%;
+  background: #fff;
+  color: #111;
+  font: 700 11px/1 var(--rh-numeric);
+}
+
+/* The camera's flash, over the whole screen for a moment. */
+.speed-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.speed-flash.is-flashing {
+  animation: speed-flash 0.35s ease-out;
+}
+
+@keyframes speed-flash {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---- The cab radio's button (src/ui/hud/RadioButton.ts), beside the camera button ---- */
+
+.radio-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: calc(env(safe-area-inset-right, 0px) + 70px);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg-2);
+  touch-action: manipulation;
+  transition: transform var(--rh-quick) var(--rh-ease);
+}
+
+.radio-button[hidden] {
+  display: none;
+}
+
+.radio-button:active {
+  transform: scale(0.95);
+}
+
+.radio-button.is-on {
+  border-color: var(--rh-accent);
+  color: var(--rh-fg);
+}
+
+.radio-button__icon {
+  width: 24px;
+  height: 24px;
 }

@@ -6,7 +6,7 @@ import type { Clock } from '../../core/time/Clock';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { MapDefinition } from '../../data/definitions/MapDefinition';
-import type { VehicleBody } from '../../data/definitions/VehicleDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import { validateCompanyName, type CompanyNameError } from '../../domain/company/companyName';
 import type { TruckPose } from '../../domain/missions/loadingBay';
@@ -16,6 +16,19 @@ import { summarizeSave, type SaveSummary } from '../../domain/save/saveSummary';
 import { HOME_START_ID, LEFT_START_ID, startPlaces, type StartPlace } from '../../domain/world/startPlaces';
 import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
+import type { ResearchService } from '../company/ResearchService';
+import type { CareerService } from '../company/CareerService';
+import type { RoadEventService } from '../world/RoadEventService';
+import type { UsedTruckMarket } from '../vehicles/UsedTruckMarket';
+import type { WeeklyCupService } from '../rivals/WeeklyCupService';
+import type { RoadPassService } from '../rewards/RoadPassService';
+import type { DailyRewardService } from '../rewards/DailyRewardService';
+import type { AchievementService } from '../achievements/AchievementService';
+import type { LevelRewardService } from '../company/LevelRewardService';
+import type { CrateService } from '../rewards/CrateService';
+import type { QuestService } from '../rewards/QuestService';
+import type { SupplyService } from '../rewards/SupplyService';
+import type { LiveryService } from '../vehicles/LiveryService';
 import type { DrivingService } from '../driving/DrivingService';
 import type { EconomyService } from '../economy/EconomyService';
 import type { EventService } from '../events/EventService';
@@ -23,7 +36,7 @@ import type { FleetService } from '../fleet/FleetService';
 import type { GameEvents } from '../GameEvents';
 import type { MissionService } from '../missions/MissionService';
 import type { RivalService } from '../rivals/RivalService';
-import type { LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
+import type { BackupProblem, LoadProblem, SaveProblem, SaveService } from '../save/SaveService';
 import type { TutorialService } from '../tutorial/TutorialService';
 import type { GarageService } from '../vehicles/GarageService';
 
@@ -47,18 +60,47 @@ export interface GameSessionDependencies {
   readonly rivals: RivalService;
   /** What the company has built for itself. */
   readonly facilities: FacilityService;
+  /** The research tree. */
+  readonly research: ResearchService;
+  /** The career's records. */
+  readonly career: CareerService;
+  /** The road's events: the warning given, the contract's fines and knocks. */
+  readonly roadEvents: RoadEventService;
+  /** The used-truck market: the trucks bought from its list. */
+  readonly usedTrucks: UsedTruckMarket;
+  /** The weekly cup: the week's points, the last cup's result. */
+  readonly weeklyCup: WeeklyCupService;
+  /** The Road Pass: the season's points, the tiers collected, the colours kept. */
+  readonly roadPass: RoadPassService;
+  /** The daily reward's streak. */
+  readonly dailyReward: DailyRewardService;
+  /** The company's goals. */
+  readonly achievements: AchievementService;
+  /** The crates, the colours they gave and the perfect streak. */
+  readonly crates: CrateService;
+  /** The company levels' rewards collected. */
+  readonly levelRewards: LevelRewardService;
+  /** The parts and boosters crates gave. */
+  readonly supplies: SupplyService;
+  /** The day's quests. */
+  readonly quests: QuestService;
+  /** The trucks' designs and the trailer text. */
+  readonly liveries: LiveryService;
   /** The company's progress in the special events (spec §22). */
   readonly specialEvents: EventService;
   readonly tutorial: TutorialService;
   readonly logger: Logger;
 }
 
+/** Why the company cannot travel: nothing loaded, a contract under way, no such gate, or the save could not be written. */
+export type TravelProblem = 'noCompany' | 'locked' | 'contractUnderWay' | 'unknownGate' | 'storageFailed';
+
 /**
  * The company being played (spec §41 onboarding, §32 saving): starts a new
  * game or continues the saved one, hands each part of the save to the
  * service that owns it, and writes it back. It saves after every delivery,
  * failure, purchase and truck change, every change in the fleet and each of
- * its deliveries, every campaign, buy-out, facility built and change of a
+ * its deliveries, every campaign, buy-out, facility built, daily reward and change of a
  * city's leader,
  * when the player leaves the road for a menu, and every 20 s of driving, so
  * closing the tab loses little. A company continued after a while away finds
@@ -88,6 +130,9 @@ export class GameSessionService {
       events.on('Refuelled', saveNow),
       events.on('VehicleRepaired', saveNow),
       events.on('VehiclePurchased', saveNow),
+      events.on('VehicleSold', saveNow),
+      events.on('WeeklyCupEnded', saveNow),
+      events.on('RoadPassClaimed', saveNow),
       events.on('UpgradePurchased', saveNow),
       events.on('VehiclePainted', saveNow),
       events.on('ActiveVehicleChanged', saveNow),
@@ -99,6 +144,14 @@ export class GameSessionService {
       events.on('FleetCaughtUp', saveNow),
       events.on('RivalAcquired', saveNow),
       events.on('FacilityBuilt', saveNow),
+      events.on('ResearchCompleted', saveNow),
+      events.on('DailyRewardClaimed', saveNow),
+      events.on('AchievementClaimed', saveNow),
+      events.on('CrateOpened', saveNow),
+      events.on('LevelRewardCollected', saveNow),
+      events.on('CrateEarned', saveNow),
+      events.on('SuppliesChanged', saveNow),
+      events.on('LiveryChanged', saveNow),
       events.on('CampaignRun', ({ companyId, away }) => {
         if (companyId === PLAYER_COMPANY_ID && !away) {
           saveNow();
@@ -121,6 +174,11 @@ export class GameSessionService {
         }
       }),
     ];
+  }
+
+  /** Metres the company's trucks were driven by the player, this drive's included. */
+  get distanceDrivenMeters(): number {
+    return this.active ? this.distanceBeforeThisDrive + this.deps.driving.vehicle.odometerMeters : 0;
   }
 
   /** A company is loaded (new or continued). */
@@ -158,28 +216,30 @@ export class GameSessionService {
           : { x: saved.truck.x, z: saved.truck.z, heading: saved.truck.headingRadians };
     return this.placesOn(
       saved?.mapId ?? config.newGame.startingMapId,
-      content.vehicles.get(saved?.truckModelId ?? config.newGame.startingVehicleId).body,
+      content.vehicles.get(saved?.truckModelId ?? config.newGame.startingVehicleId),
       left,
     );
   }
 
   /**
-   * Founds a new company with the player's name, replacing any saved game.
-   * Its truck starts at the map's own start, or at the depot or rest area
-   * `startId` picks (startPlaces).
+   * Founds a new company with the player's name, replacing any saved game,
+   * in region `mapId` (the starting region unless another is picked: the one
+   * the world is built for). Its truck starts at the map's own start, or at
+   * the depot or rest area `startId` picks (startPlaces).
    */
-  startNewGame(companyName: string, startId: string = HOME_START_ID): Result<void, CompanyNameError> {
+  startNewGame(companyName: string, startId: string = HOME_START_ID, mapId?: string): Result<void, CompanyNameError> {
     const name = validateCompanyName(companyName);
     if (!name.ok) {
       return err(name.error);
     }
-    this.checkStart(startId, this.deps.config.newGame.startingMapId);
     const { config, content, clock } = this.deps;
+    const region = mapId ?? config.newGame.startingMapId;
+    this.checkStart(startId, region);
     const save = createNewSaveGameData({
       companyName: name.value,
       startingCredits: config.newGame.startingCredits,
       startingVehicle: content.vehicles.get(config.newGame.startingVehicleId),
-      startingMapId: config.newGame.startingMapId,
+      startingMapId: region,
       nowMs: clock.now(),
     });
     this.apply(save);
@@ -215,6 +275,49 @@ export class GameSessionService {
     return ok(undefined);
   }
 
+  /**
+   * Takes the company to another region through gate `gateId` of the map it
+   * is on (a ferry): the game is saved with the truck at the gate it
+   * arrives at on the other map, then closed (nothing saves over it), for
+   * the game to start again there. Not before the company reaches the
+   * gate's level, nor while a contract is under way (its depots are in this
+   * region), nor while nothing is loaded.
+   */
+  travel(gateId: string): Result<{ readonly mapId: string }, TravelProblem> {
+    const { driving, content, missions, saves } = this.deps;
+    if (!this.active) {
+      return err('noCompany');
+    }
+    if (missions.active !== null) {
+      return err('contractUnderWay');
+    }
+    const gate = driving.world.gates.find((candidate) => candidate.id === gateId);
+    if (gate === undefined || !content.maps.has(gate.toMapId)) {
+      return err('unknownGate');
+    }
+    if (this.deps.company.level < (gate.requiredCompanyLevel ?? 1)) {
+      return err('locked');
+    }
+    const arrival = content.maps.get(gate.toMapId).gates?.find((candidate) => candidate.id === gate.toGateId);
+    if (arrival === undefined) {
+      return err('unknownGate');
+    }
+    const snapshot = this.snapshot();
+    const saved = saves.save({
+      ...snapshot,
+      world: {
+        mapId: gate.toMapId,
+        truck: { x: arrival.arrival.x, z: arrival.arrival.z, headingRadians: (arrival.arrival.headingDegrees * Math.PI) / 180 },
+      },
+    });
+    if (!saved.ok) {
+      return err('storageFailed');
+    }
+    this.active = false;
+    this.deps.logger.info(`Travelling to ${gate.toMapId} through ${gate.id}.`);
+    return ok({ mapId: gate.toMapId });
+  }
+
   /** Writes the current game. Does nothing (successfully) before a game is loaded. */
   save(): Result<void, SaveProblem> {
     if (!this.active) {
@@ -222,6 +325,42 @@ export class GameSessionService {
     }
     this.sinceAutosave = 0;
     return this.deps.saves.save(this.snapshot());
+  }
+
+  /**
+   * The company as a backup file's text: the latest save, at this version
+   * (written first if a company is loaded, so nothing since the last
+   * autosave is left out).
+   */
+  exportBackup(): Result<string, LoadProblem> {
+    this.save();
+    return this.deps.saves.exportText();
+  }
+
+  /** What a backup holds, at a glance, for the player to confirm; or why it cannot be restored. */
+  readBackup(text: string): Result<SaveSummary, BackupProblem> {
+    const read = this.deps.saves.readText(text);
+    return read.ok ? ok(summarizeSave(read.value, this.deps.content)) : err(read.error);
+  }
+
+  /**
+   * Makes a backup's company the saved one, replacing the company saved
+   * now. A company loaded is closed first (saved, then no longer saved
+   * over): the game starts again after, to load the restored one.
+   */
+  restoreBackup(text: string): Result<void, BackupProblem | SaveProblem> {
+    const read = this.deps.saves.readText(text);
+    if (!read.ok) {
+      return read;
+    }
+    this.save();
+    const restored = this.deps.saves.importText(text);
+    if (!restored.ok) {
+      return restored;
+    }
+    this.active = false;
+    this.deps.logger.info(`Restored "${restored.value.profile.companyName}" from a backup.`);
+    return ok(undefined);
   }
 
   /** Counts driving time and saves every AUTOSAVE_INTERVAL_SECONDS. Call every fixed step while driving. */
@@ -237,7 +376,31 @@ export class GameSessionService {
 
   /** The whole game as save data. */
   snapshot(): SaveGameData {
-    const { driving, missions, economy, company, garage, fleet, rivals, facilities, specialEvents, tutorial } = this.deps;
+    const {
+      driving,
+      missions,
+      economy,
+      company,
+      garage,
+      fleet,
+      rivals,
+      facilities,
+      research,
+      career,
+      roadEvents,
+      usedTrucks,
+      weeklyCup,
+      roadPass,
+      dailyReward,
+      achievements,
+      crates,
+      levelRewards,
+      supplies,
+      quests,
+      liveries,
+      specialEvents,
+      tutorial,
+    } = this.deps;
     const vehicle = driving.vehicle;
     const progress = company.levelProgress;
     return {
@@ -262,6 +425,19 @@ export class GameSessionService {
       fleet: fleet.snapshot(),
       rivals: rivals.snapshot(),
       facilities: facilities.snapshot(),
+      research: research.snapshot(),
+      career: career.snapshot(),
+      roadEvents: roadEvents.snapshot(),
+      usedTrucks: usedTrucks.snapshot(),
+      weeklyCup: weeklyCup.snapshot(),
+      roadPass: roadPass.snapshot(),
+      daily: dailyReward.snapshot(),
+      achievements: achievements.snapshot(),
+      crates: crates.snapshot(),
+      levelRewards: levelRewards.snapshot(),
+      supplies: supplies.snapshot(),
+      quests: quests.snapshot(),
+      liveries: liveries.snapshot(),
     };
   }
 
@@ -271,10 +447,10 @@ export class GameSessionService {
     }
   }
 
-  /** The start places on map `mapId`, parked for a truck of `body`; `left` as in startPlaces. */
-  private placesOn(mapId: string, body: VehicleBody, left: TruckPose | null): StartPlace[] {
+  /** The start places on map `mapId`, parked for a `truck` of the model (with its trailer); `left` as in startPlaces. */
+  private placesOn(mapId: string, truck: VehicleDefinition, left: TruckPose | null): StartPlace[] {
     const map = this.deps.content.maps.get(mapId);
-    return startPlaces({ spawn: mapStart(map), depots: map.depots, restAreas: map.restAreas }, body, left);
+    return startPlaces({ spawn: mapStart(map), depots: map.depots, restAreas: map.restAreas }, truck, left);
   }
 
   /**
@@ -300,7 +476,7 @@ export class GameSessionService {
    */
   private startAt(startId: string): void {
     const { driving, logger } = this.deps;
-    const place = this.placesOn(driving.world.id, driving.definition.body, null).find((candidate) => candidate.id === startId);
+    const place = this.placesOn(driving.world.id, driving.definition, null).find((candidate) => candidate.id === startId);
     if (place === undefined || place.kind === 'home') {
       return;
     }
@@ -310,7 +486,31 @@ export class GameSessionService {
 
   /** Hands every part of `save` to the service that owns it. */
   private apply(save: SaveGameData): void {
-    const { driving, missions, economy, company, garage, fleet, rivals, facilities, specialEvents, tutorial } = this.deps;
+    const {
+      driving,
+      missions,
+      economy,
+      company,
+      garage,
+      fleet,
+      rivals,
+      facilities,
+      research,
+      career,
+      roadEvents,
+      usedTrucks,
+      weeklyCup,
+      roadPass,
+      dailyReward,
+      achievements,
+      crates,
+      levelRewards,
+      supplies,
+      quests,
+      liveries,
+      specialEvents,
+      tutorial,
+    } = this.deps;
     const truck = save.garage.vehicles.find((vehicle) => vehicle.instanceId === save.garage.activeVehicleInstanceId);
     if (truck === undefined) {
       throw new Error('The save has no active truck.'); // validateSaveGameData guarantees one.
@@ -323,7 +523,18 @@ export class GameSessionService {
     economy.restore(save.economy.credits);
     company.restore(save.profile, save.company, save.stats);
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
+    research.restore(save.research);
+    career.restore(save.career);
+    roadEvents.restore(save.roadEvents);
+    usedTrucks.restore(save.usedTrucks);
+    weeklyCup.restore(save.weeklyCup);
+    roadPass.restore(save.roadPass);
+    dailyReward.restore(save.daily);
+    crates.restore(save.crates); // Before the garage: a truck may wear a crate colour.
+    levelRewards.restore(save.levelRewards);
+    supplies.restore(save.supplies);
     garage.restore(save.garage);
+    liveries.restore(save.liveries);
     fleet.restore(save.fleet);
     missions.restore(save.missions.active);
     rivals.restore(save.rivals); // After the contract under way: a tender being raced must be it.
@@ -331,8 +542,10 @@ export class GameSessionService {
     tutorial.restore(save.tutorial.step);
     this.createdAtMs = save.createdAtMs;
     this.distanceBeforeThisDrive = save.stats.distanceDrivenMeters;
+    achievements.restore(save.achievements); // Last: the goals measure everything above.
     this.sinceAutosave = 0;
     this.active = true;
+    quests.restore(save.quests); // Once active: the day's kilometres count from the distance driven.
   }
 }
 

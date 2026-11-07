@@ -3,7 +3,7 @@ import { MemoryStorage, type KeyValueStorage } from '../../../../src/core/storag
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
-import { SAVE_KEYS, SaveService } from '../../../../src/systems/save/SaveService';
+import { MAX_BACKUP_CHARS, SAVE_KEYS, SaveService } from '../../../../src/systems/save/SaveService';
 import { contentFixture, vehicleFixture } from '../../../support/contentFixtures';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
@@ -160,5 +160,77 @@ describe('SaveService', () => {
     service.deleteAll();
 
     expect((storage as MemoryStorage).keys()).toEqual([]);
+  });
+
+  describe('backups', () => {
+    it('exports the latest save at this version, and reads it back as it was', () => {
+      const { service, storage } = setup();
+      expect(service.exportText()).toEqual({ ok: false, error: 'missing' });
+      const { world: _world, missions: _missions, stats: _stats, garage, ...rest } = newSave();
+      const v1Garage = { ...garage, vehicles: garage.vehicles.map(({ upgrades: _upgrades, ...truck }) => truck) };
+      storage.setItem(SAVE_KEYS.main, JSON.stringify({ ...rest, garage: v1Garage, version: 1 }));
+
+      const exported = service.exportText();
+
+      expect(exported.ok && JSON.parse(exported.value).version).toBe(CURRENT_SAVE_VERSION);
+      const read = service.readText(exported.ok ? exported.value : '');
+      expect(read.ok && read.value.profile.companyName).toBe('Kuzey Lojistik');
+      // Reading it wrote nothing.
+      expect(storage.getItem(SAVE_KEYS.backup)).toBeNull();
+    });
+
+    it('exports from the backup slot when the latest save is unreadable, without setting anything aside', () => {
+      const { service, storage } = setup();
+      service.save(newSave(1000));
+      service.save(newSave(2000));
+      storage.setItem(SAVE_KEYS.main, '{"trunc');
+
+      const exported = service.exportText();
+
+      expect(exported.ok && JSON.parse(exported.value).economy.credits).toBe(1000);
+      expect(storage.getItem(SAVE_KEYS.main)).toBe('{"trunc');
+      expect(storage.getItem(SAVE_KEYS.unreadable)).toBeNull();
+      storage.setItem(SAVE_KEYS.backup, '[]');
+      expect(service.exportText()).toEqual({ ok: false, error: 'corrupted' });
+    });
+
+    it('restores a backup as the save, the one before kept in the backup slot', () => {
+      const { service, storage } = setup();
+      service.save(newSave(1000));
+      const backup = JSON.stringify(newSave(9000));
+
+      const imported = service.importText(backup);
+
+      expect(imported.ok && imported.value.economy.credits).toBe(9000);
+      const loaded = service.load();
+      expect(loaded.ok && loaded.value.economy.credits).toBe(9000);
+      expect(JSON.parse(storage.getItem(SAVE_KEYS.backup)!).economy.credits).toBe(1000);
+    });
+
+    it('refuses what is not a save, a damaged or invalid one, one too long and one from a newer build, keeping the save', () => {
+      const { service, storage } = setup();
+      service.save(newSave(1000));
+      const kept = storage.getItem(SAVE_KEYS.main);
+      const invalid = { ...newSave(), garage: { ...newSave().garage, activeVehicleInstanceId: 'nobody' } };
+
+      for (const text of ['', 'hello', '{"version": 22', JSON.stringify({ photo: true }), JSON.stringify(invalid), ' '.repeat(MAX_BACKUP_CHARS + 1)]) {
+        expect(service.importText(text)).toEqual({ ok: false, error: 'unreadable' });
+      }
+      expect(service.importText(JSON.stringify({ ...newSave(), version: 99 }))).toEqual({ ok: false, error: 'tooNew' });
+      expect(storage.getItem(SAVE_KEYS.main)).toBe(kept);
+    });
+
+    it('reports a backup it could not write', () => {
+      const storage = new MemoryStorage();
+      const { service } = setup({
+        getItem: (key) => storage.getItem(key),
+        setItem: () => {
+          throw new Error('Quota exceeded');
+        },
+        removeItem: (key) => storage.removeItem(key),
+      });
+
+      expect(service.importText(JSON.stringify(newSave()))).toEqual({ ok: false, error: 'storageFailed' });
+    });
   });
 });

@@ -8,6 +8,7 @@ const CAMERA_TOGGLE = 'KeyC';
 const PAUSE = new Set(['Escape', 'KeyP']);
 const HORN = 'KeyH';
 const MAP = 'KeyM';
+const RADIO = 'KeyR';
 
 export interface KeyboardActions {
   readonly onToggleCamera: () => void;
@@ -16,11 +17,13 @@ export interface KeyboardActions {
   readonly onHorn: (pressed: boolean) => void;
   /** M: the map, opened or closed. */
   readonly onMap: () => void;
+  /** R: the cab radio's next station. */
+  readonly onRadio: () => void;
 }
 
 /**
  * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
- * H sounds the horn, M opens the map, Escape or P pauses. Uses physical key codes, so it
+ * H sounds the horn, M opens the map, R tunes the radio, Escape or P pauses. Uses physical key codes, so it
  * works the same on Turkish Q/F and other layouts. The truck's steering rate
  * smooths the digital steering.
  */
@@ -48,12 +51,14 @@ export class KeyboardInput {
     if (isTyping(event)) {
       return; // Letters typed into a form (the company name) are not driving.
     }
-    if (event.code === CAMERA_TOGGLE || event.code === MAP || PAUSE.has(event.code)) {
+    if (event.code === CAMERA_TOGGLE || event.code === MAP || event.code === RADIO || PAUSE.has(event.code)) {
       if (!event.repeat) {
         if (event.code === CAMERA_TOGGLE) {
           this.actions.onToggleCamera();
         } else if (event.code === MAP) {
           this.actions.onMap();
+        } else if (event.code === RADIO) {
+          this.actions.onRadio();
         } else {
           this.actions.onPause();
         }

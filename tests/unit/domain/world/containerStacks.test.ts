@@ -19,8 +19,11 @@ function rectangleOf(box: BuildingObstacle): RectangleDefinition {
 }
 
 describe('stackContainers', () => {
-  it('stands a stack or two of containers round every depot\'s yard, close by it', () => {
-    for (const depot of map.depots) {
+  it('stands a stack or two of containers round every depot\'s yard out in the open, close by it', () => {
+    // A depot in a town's district has its buildings close round it: no room for containers.
+    const inDistrict = (x: number, z: number): boolean =>
+      (map.districts ?? []).some(({ area }) => Math.abs(x - area.x) <= area.widthMeters / 2 && Math.abs(z - area.z) <= area.lengthMeters / 2);
+    for (const depot of map.depots.filter((candidate) => !inDistrict(candidate.yard.x, candidate.yard.z))) {
       const near = stacks.filter((box) => {
         const middle = rectangleOf(box);
         return Math.hypot(middle.x - depot.yard.x, middle.z - depot.yard.z) < depot.yard.lengthMeters / 2 + 30;

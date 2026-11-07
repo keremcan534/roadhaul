@@ -309,6 +309,67 @@ export function officeWindowLightsImage(tiles = 4, tileSize = 64, seed = 53): Pi
   return image;
 }
 
+/**
+ * A tower's glass curtain wall, 8 m × 7 m (2 bays × 2 floors): blue-green
+ * glass from floor to ceiling, darker at its foot and catching the sky
+ * higher up, between slim metal mullions and spandrel bands at each floor.
+ */
+export function glassFacadeImage(size = 256, seed = 61): PixelImage {
+  const image = createImage(size, size, [70, 92, 108]);
+  const cell = size / 2;
+  for (let floor = 0; floor < 2; floor++) {
+    const y0 = floor * cell;
+    for (let bay = 0; bay < 4; bay++) {
+      const x0 = bay * (size / 4);
+      const reflect = 0.82 + 0.3 * grain(bay, floor, seed);
+      for (let y = Math.floor(y0 + cell * 0.12); y < y0 + cell; y++) {
+        const sky = (y - y0) / cell;
+        const glass = mixRgb([38, 62, 78], [128, 158, 178], sky * 0.85);
+        for (let x = Math.floor(x0); x < x0 + size / 4; x++) {
+          const streak = 0.94 + 0.08 * fractalNoise(x / size, y / size, 6, 2, seed + floor);
+          blendPixel(image, x, y, [glass[0] * reflect * streak, glass[1] * reflect * streak, glass[2] * reflect * streak], 1);
+        }
+      }
+      // Mullions between the panes.
+      fillRect(image, x0, y0, x0 + 2.5, y0 + cell, [150, 160, 166]);
+    }
+    // The spandrel band hiding the floor slab.
+    fillRect(image, 0, y0, size, y0 + cell * 0.12, [44, 54, 62]);
+    fillRect(image, 0, y0 + cell * 0.12, size, y0 + cell * 0.12 + 2, [160, 168, 172]);
+  }
+  return image;
+}
+
+/**
+ * The same tower's floors lit at night, as an emissive map: `tiles` ×
+ * `tiles` tiles in glassFacadeImage()'s layout (4 panes × 2 floors each),
+ * whole stretches of a floor lit together (offices left on), cooler white
+ * than a home's windows. Black elsewhere.
+ */
+export function glassWindowLightsImage(tiles = 4, tileSize = 64, seed = 67): PixelImage {
+  const size = tiles * tileSize;
+  const image = createImage(size, size, [0, 0, 0]);
+  const cell = tileSize / 2;
+  const pane = tileSize / 4;
+  for (let row = 0; row < tiles * 2; row++) {
+    let lit = grain(0, row, seed) < 0.5;
+    for (let column = 0; column < tiles * 4; column++) {
+      // A floor's lights run in stretches: switch now and then.
+      if (grain(column, row, seed + 2) < 0.22) {
+        lit = !lit;
+      }
+      if (!lit) {
+        continue;
+      }
+      const tone = grain(column, row, seed + 1);
+      const light: readonly [number, number, number] = tone < 0.7 ? [226, 234, 240] : windowLight(tone);
+      const y0 = row * cell;
+      fillRect(image, column * pane + 1.5, y0 + cell * 0.16, (column + 1) * pane - 0.5, y0 + cell * 0.96, light);
+    }
+  }
+  return image;
+}
+
 /** The same for warehouses: warehouseFacadeImage()'s row of four high windows per tile. */
 export function warehouseWindowLightsImage(tiles = 4, tileSize = 64, seed = 59): PixelImage {
   const size = tiles * tileSize;
@@ -542,42 +603,19 @@ export function softBoxShadowImage(size = 64): PixelImage {
 }
 
 /**
- * Side of the cargo box: white panels, the company stripes in `accent` and
- * the RoadHaul logo. 2:1, matching the box side. Symmetric apart from the
- * lettering, so it suits both sides of the truck.
- */
-export function liveryImage(accent: Rgb, width = 1024, height = 512): PixelImage {
-  const image = createImage(width, height, [242, 242, 238]);
-  // Panel seams and a little road grime toward the bottom.
-  for (let panel = 1; panel < 6; panel++) {
-    fillRect(image, (panel * width) / 6 - 1, 0, (panel * width) / 6 + 1, height, [206, 206, 202]);
-  }
-  shade(image, (x, y) => 0.9 + 0.1 * smoothstep(0, 0.35, y / height) + 0.03 * fractalNoise(x / width, y / height, 8, 2, 5));
-  // Stripes: a broad accent band with a thin dark line above, rising into a chevron at each end.
-  fillRect(image, 0, height * 0.08, width, height * 0.22, accent);
-  fillRect(image, 0, height * 0.245, width, height * 0.27, [44, 52, 64]);
-  for (let y = Math.floor(height * 0.08); y < height * 0.62; y++) {
-    const rise = ((y - height * 0.08) / (height * 0.54)) * width * 0.08;
-    for (let x = 0; x < width * 0.06; x++) {
-      blendPixel(image, Math.floor(width * 0.02 + rise + x), y, accent, 1);
-      blendPixel(image, Math.floor(width * 0.98 - rise - x), y, accent, 1);
-    }
-  }
-  const style = { height: height * 0.2, weight: 0.17, spacing: 0.12, slant: 0.16, color: [44, 52, 64] as Rgb };
-  drawText(image, 'ROADHAUL', (width - measureText('ROADHAUL', style)) / 2, height * 0.42, style);
-  return image;
-}
-
-/**
  * Rear doors of the cargo box: the logo across the top, an accent band,
  * centre seam, locking bars, hinges and a reflector strip.
  */
-export function rearDoorsImage(accent: Rgb, size = 512): PixelImage {
+export function rearDoorsImage(accent: Rgb, size = 512, text = 'ROADHAUL'): PixelImage {
   const image = createImage(size, size, [236, 236, 232]);
   shade(image, (_x, y) => 0.92 + 0.08 * smoothstep(0, 0.4, y / size));
   fillRect(image, 0, size * 0.1, size, size * 0.17, accent);
-  const style = { height: size * 0.075, weight: 0.18, spacing: 0.12, slant: 0.16, color: [44, 52, 64] as Rgb };
-  drawText(image, 'ROADHAUL', (size - measureText('ROADHAUL', style)) / 2, size * 0.8, style);
+  let style = { height: size * 0.075, weight: 0.18, spacing: 0.12, slant: 0.16, color: [44, 52, 64] as Rgb };
+  const measured = measureText(text, style);
+  if (measured > size * 0.8) {
+    style = { ...style, height: (style.height * size * 0.8) / measured };
+  }
+  drawText(image, text, (size - measureText(text, style)) / 2, size * 0.8, style);
   fillRect(image, size * 0.497, 0, size * 0.503, size, [70, 74, 80]); // Seam.
   for (const u of [0.22, 0.34, 0.66, 0.78]) {
     fillRect(image, size * u - 4, size * 0.04, size * u + 4, size * 0.74, [150, 154, 160]); // Locking bars.

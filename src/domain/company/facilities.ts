@@ -18,9 +18,22 @@ export const NO_PERKS: FacilityPerks = Object.freeze({
   marketShareBonus: 0,
   xpBonus: 0,
   extraContracts: 0,
+  deliveryPayBonus: 0,
+  cargoDamageReduction: 0,
+  fuelUseReduction: 0,
+  loadingTimeReduction: 0,
 });
 
-/** Where the services that facilities change read the company's perks as they stand. */
+/** `a` and `b` together: each effect's sizes added up. */
+export function addPerks(a: FacilityPerks, b: FacilityPerks): FacilityPerks {
+  const sum: Record<FacilityEffect, number> = { ...a };
+  for (const effect of Object.keys(b) as FacilityEffect[]) {
+    sum[effect] += b[effect];
+  }
+  return sum;
+}
+
+/** Where the services that facilities and research change read the company's perks as they stand. */
 export interface PerkSource {
   readonly perks: FacilityPerks;
 }

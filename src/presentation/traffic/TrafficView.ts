@@ -1,4 +1,5 @@
 import {
+  Euler,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
@@ -53,6 +54,9 @@ const BUS_DOOR = 0x2a3a48;
 const SIGN = 0x121212;
 /** Number plates: plain and light, without letters. */
 const PLATE = 0xe4e4dc;
+/** A taxi's roof sign, and how tall it stands on the roof. */
+const TAXI_SIGN = 0xf7ecc0;
+const TAXI_SIGN_METERS = 0.17;
 /** A lorry's white box, its light grey ribs and rails, and the amber markers along its sides, lit at night. */
 const BOX_WHITE = 0xecece6;
 const RIB = 0xc4c8cc;
@@ -208,6 +212,8 @@ export class TrafficView implements TrafficHeadlamps {
   private nearest = new Int32Array(0);
   private nearestSq = new Float64Array(0);
 
+  private readonly tilt = new Euler(0, 0, 0, 'YXZ');
+
   constructor(
     private readonly scene: Scene,
     types: readonly TrafficVehicleDefinition[],
@@ -321,7 +327,15 @@ export class TrafficView implements TrafficHeadlamps {
         const x = traffic.previousX[i]! + (traffic.x[i]! - traffic.previousX[i]!) * alpha;
         const z = traffic.previousZ[i]! + (traffic.z[i]! - traffic.previousZ[i]!) * alpha;
         const heading = traffic.previousHeading[i]! + (traffic.heading[i]! - traffic.previousHeading[i]!) * alpha;
-        mesh.setMatrixAt(slot, this.matrix.makeRotationY(heading).setPosition(x, 0, z));
+        const y = traffic.previousY[i]! + (traffic.y[i]! - traffic.previousY[i]!) * alpha;
+        const grade = traffic.grade[i]!;
+        if (y === 0 && grade === 0) {
+          this.matrix.makeRotationY(heading).setPosition(x, 0, z);
+        } else {
+          // On its road's height (a map's hills, a deck), pitched with its lane's slope.
+          this.matrix.makeRotationFromEuler(this.tilt.set(-Math.atan(grade), heading, 0)).setPosition(x, y, z);
+        }
+        mesh.setMatrixAt(slot, this.matrix);
         this.castShadow(type, slot, x, z);
         const shadowSize = this.shadowSizes[type]!;
         this.shadows.setMatrixAt(shadows++, this.shadowMatrix.makeScale(shadowSize[0], 1, shadowSize[1]).premultiply(this.matrix));
@@ -351,15 +365,19 @@ export class TrafficView implements TrafficHeadlamps {
         mesh.count = counts[type]!;
         mesh.instanceMatrix.needsUpdate = true;
       }
+      // An empty instanced mesh still costs three.js a draw's set-up: none at all while no vehicle of the kind is about.
+      mesh.visible = counts[type]! > 0;
     }
     if (this.lamps.count !== lamps || lamps > 0) {
       this.lamps.count = lamps;
       this.lamps.instanceMatrix.needsUpdate = true;
     }
+    this.lamps.visible = lamps > 0;
     if (this.shadows.count !== shadows || shadows > 0) {
       this.shadows.count = shadows;
       this.shadows.instanceMatrix.needsUpdate = true;
     }
+    this.shadows.visible = shadows > 0;
     this.glows.setCount(glowing ? lamps : 0);
   }
 
@@ -560,7 +578,8 @@ export class TrafficView implements TrafficHeadlamps {
         const localX = spots[lamp * 3]!;
         const localZ = spots[lamp * 3 + 2]!;
         // Turned by the heading, like makeRotationY: the headlights face ahead, the tail lights back.
-        this.glows.setPosition(first + lamp, x + localX * cos + localZ * sin, spots[lamp * 3 + 1]!, z - localX * sin + localZ * cos);
+        // On the vehicle's height (this.matrix: placed by update()).
+        this.glows.setPosition(first + lamp, x + localX * cos + localZ * sin, this.matrix.elements[13]! + spots[lamp * 3 + 1]!, z - localX * sin + localZ * cos);
         const facing = lamp < 2 ? 1 : -1;
         this.glows.setFacing(first + lamp, facing * sin, 0, facing * cos);
       }
@@ -627,6 +646,7 @@ const CAR_BACKS: Readonly<
 > = {
   hatchback: { glassFoot: 0.26, glassRise: 0.04, roofEdge: 0.92, roof: 1.2, pillar: 0.2, door: 0.7, axle: 0.82, tailLamps: 0.74 },
   saloon: { glassFoot: 1.02, glassRise: 0.07, roofEdge: 1.5, roof: 1.78, pillar: 0.12, door: 1.25, axle: 0.95, tailLamps: 0.72 },
+  taxi: { glassFoot: 1.02, glassRise: 0.07, roofEdge: 1.5, roof: 1.78, pillar: 0.12, door: 1.25, axle: 0.95, tailLamps: 0.72 },
 };
 
 /**
@@ -638,8 +658,10 @@ const CAR_BACKS: Readonly<
  * them; the doors' lines and handles, the grille and the air intake in
  * bumpers of the body's colour, plates and mirrors.
  */
-function carShape(length: number, width: number, height: number, body: TrafficCarBody): VehicleShape {
+function carShape(length: number, width: number, overallHeight: number, body: TrafficCarBody): VehicleShape {
   const back = CAR_BACKS[body];
+  // A taxi's height counts its roof sign.
+  const height = overallHeight - (body === 'taxi' ? TAXI_SIGN_METERS : 0);
   const front = length / 2;
   const wheel = 0.31;
   const axles = [-front + back.axle, front - 0.8 - (length - 4.3) / 4];
@@ -647,7 +669,7 @@ function carShape(length: number, width: number, height: number, body: TrafficCa
   const waist = 0.9;
   // The tail: a hatch's squared-off end, or a saloon's boot lid over its lamps.
   const tail: [number, number][] =
-    body === 'saloon'
+    body !== 'hatchback'
       ? [
           [-front + back.glassFoot, waist + back.glassRise - 0.02],
           [-front + 0.3, waist + 0.1],
@@ -703,6 +725,10 @@ function carShape(length: number, width: number, height: number, body: TrafficCa
     box(0.5, 0.11, 0.02, 0, 0.56, -front - 0.01, PLATE),
     ...wheels(width, wheel, axles),
   ];
+  if (body === 'taxi') {
+    // The taxi's sign across the middle of its roof.
+    parts.push(box(0.64, TAXI_SIGN_METERS, 0.26, 0, height + TAXI_SIGN_METERS / 2, (back.roof - 2.35) / 2, TAXI_SIGN));
+  }
   for (const side of [1, -1]) {
     const glass = side * (cabinWidth / 2 + 0.006);
     const skin = side * (width / 2 + 0.004);

@@ -43,6 +43,8 @@ import {
 } from './lighting';
 import { unlitByLamps } from './LampLighting';
 import { Mist, MIST_GLSL, MIST_SKY_METERS } from './Mist';
+import type { MountainWorld } from './mountainRange';
+import { MountainRidges } from './MountainRidges';
 import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
 import type { ShadowReach } from './ShadowSubset';
 
@@ -256,6 +258,34 @@ const RAINBOW = /* glsl */ `
   }
 `;
 /**
+ * The northern lights (setAurora) over the north (-z) of a clear, dark sky:
+ * curtains whose foot wanders along the sky above the hills, green low and
+ * violet higher up, folding and drifting, with fine rays shimmering along
+ * them; strongest due north, gone by the south. `auroraTime` runs round
+ * AURORA_PERIOD_SECONDS, and every rate here is a whole hundredth of a
+ * radian a second, so it comes round without a jump.
+ */
+const AURORA_PERIOD_SECONDS = 200 * Math.PI;
+const AURORA = /* glsl */ `
+  uniform float aurora;
+  uniform float auroraTime;
+  vec3 auroraOver( vec3 sky, vec3 direction, float up ) {
+    float across = length( direction.xz ) + 1e-4;
+    float north = -direction.z / across;
+    float spread = smoothstep( -0.25, 0.7, north );
+    float around = atan( direction.x, -direction.z );
+    float t = auroraTime;
+    float foot = 0.13 + 0.05 * sin( around * 3.0 + t * 0.21 ) + 0.025 * sin( around * 7.0 - t * 0.37 );
+    float h = up - foot;
+    float body = smoothstep( -0.01, 0.025, h ) * exp( -max( h, 0.0 ) * 4.5 );
+    float rays = 0.5 + 0.5 * sin( around * 47.0 + t * 1.3 + 2.0 * sin( around * 11.0 - t * 0.5 ) );
+    float folds = 0.45 + 0.55 * sin( around * 4.0 - t * 0.15 ) * sin( around * 2.0 + t * 0.07 );
+    float glow = body * ( 0.55 + 0.45 * rays ) * max( folds, 0.1 ) * spread;
+    vec3 colour = mix( vec3( 0.12, 1.0, 0.5 ), vec3( 0.7, 0.25, 0.95 ), smoothstep( 0.04, 0.3, h ) );
+    return sky + colour * glow * aurora * 0.6;
+  }
+`;
+/**
  * Lightning's flash (setLightning, 0..1) lights up the sky and the haze in
  * this bluish white, the clouds by this much of their full brightness, and
  * the world by this much of a clear day's light from the sky.
@@ -315,6 +345,12 @@ export interface EnvironmentViewOptions {
   readonly latitudeDegrees?: number;
   /** The seasons, for the hills' green to follow, and the snow on their ridges. */
   readonly seasons?: SeasonShading;
+  /**
+   * The region the mountains stand round (MountainRidges): ranges fixed in
+   * the world past its edges. Absent: the horizon's hills go round with the
+   * camera, the same from everywhere.
+   */
+  readonly mountains?: MountainWorld;
 }
 
 /**
@@ -395,6 +431,9 @@ export class EnvironmentView implements ShadowReach {
     readonly townGlow: { value: Float32Array };
     /** How strongly the rainbow shows, 0..1. */
     readonly rainbow: { value: number };
+    /** How strongly the northern lights show, 0..1, and their time (AURORA). */
+    readonly aurora: { value: number };
+    readonly auroraTime: { value: number };
   };
   /**
    * The morning mist over the land (setMist): its uniforms, shared by the
@@ -413,6 +452,8 @@ export class EnvironmentView implements ShadowReach {
   private townLight = 0;
   /** How wet the ground is (setWetness): the rain's drops still in the air, for a rainbow. */
   private wetness = 0;
+  /** How strongly the northern lights are out (setAurora), before the clouds and the sky's light. */
+  private auroraOut = 0;
   /** How bright lightning flashes now (setLightning), and its light in the sky as it adds to the sky's colours. */
   private lightning = 0;
   private readonly lightningSky = new Color();
@@ -454,6 +495,8 @@ export class EnvironmentView implements ShadowReach {
   private readonly sceneLight = { keyDirection: this.keyDirection, key: new Color(), sky: new Color(), ground: new Color() };
 
   private readonly seasons: SeasonShading | null;
+  /** The mountains fixed in the world round the region, or null for hills that go round with the camera. */
+  private readonly ridges: MountainRidges | null;
 
   constructor(
     private readonly scene: Scene,
@@ -461,6 +504,7 @@ export class EnvironmentView implements ShadowReach {
   ) {
     this.fogScale = options.hdr === true ? LINEAR_FOG_SCALE : 1;
     this.seasons = options.seasons ?? null;
+    this.ridges = options.mountains === undefined ? null : this.track(new MountainRidges(options.mountains));
     const latitude = degreesToRadians(options.latitudeDegrees ?? DEFAULT_LATITUDE);
     this.pole = new Vector3(0, Math.sin(latitude), -Math.cos(latitude));
     this.background = new Color(HORIZON);
@@ -498,6 +542,8 @@ export class EnvironmentView implements ShadowReach {
       earthShadow: { value: EARTH_SHADOW_LOW },
       townGlow: { value: new Float32Array(GLOWING_TOWNS * 4) },
       rainbow: { value: 0 },
+      aurora: { value: 0 },
+      auroraTime: { value: 0 },
     };
     this.cloudGeometry = this.track(new InstancedBufferGeometry());
     this.clouds = this.createClouds(this.cloudGeometry);
@@ -604,6 +650,8 @@ export class EnvironmentView implements ShadowReach {
       smoothstep(0.15, RAINBOW_SUNLIT, look.sunlight) *
       smoothstep(SUNSET_BELOW, SUNSET_ABOVE, elevation) *
       (1 - smoothstep(RAINBOW_LOW_SUN, RAINBOW_HIGHEST_SUN, elevation));
+    // The northern lights, where the sky is dark and clear enough for the stars.
+    uniforms.aurora.value = this.auroraOut * smoothstep(0.25, 0.75, look.stars) * (1 - look.rain);
     // The sun glares while it is up and bright: less through haze and cloud, not at all in the rain.
     this.towardSun.set(sun.x, sun.y, sun.z).normalize();
     this.glare = Math.min(1, look.sunlight) * smoothstep(-0.01, 0.04, sun.y) * (1 - look.rain) * (1 - 0.7 * look.cloudCover);
@@ -705,6 +753,15 @@ export class EnvironmentView implements ShadowReach {
   }
 
   /**
+   * How strongly the northern lights are out tonight, 0..1
+   * (SkyWonderService.aurora): they show where the sky is dark and clear
+   * enough for the stars. Takes effect at the next applySky().
+   */
+  setAurora(strength: number): void {
+    this.auroraOut = clamp(strength, 0, 1);
+  }
+
+  /**
    * How thick the morning mist lies, 0..1 (morningMist): over the land, the
    * sky's horizon and the hills, and the sun's shafts through it. Takes
    * effect at the next applySky().
@@ -738,6 +795,21 @@ export class EnvironmentView implements ShadowReach {
   }
 
   /** The sun's share of the light on flat ground now (0..1): what the clouds' shadows can take (CloudShadows). */
+  /** How strongly the northern lights show on the sky now, 0..1. */
+  get auroraShown(): number {
+    return this.skyUniforms.aurora.value;
+  }
+
+  /** How strongly a rainbow shows on the sky now, 0..1. */
+  get rainbowShown(): number {
+    return this.skyUniforms.rainbow.value;
+  }
+
+  /** How brightly the stars shine now, 0..1 (none by day or under cloud). */
+  get starLevel(): number {
+    return this.stars.visible ? this.starUniforms.level.value : 0;
+  }
+
   get sunShare(): number {
     return this.groundSunShare;
   }
@@ -774,6 +846,7 @@ export class EnvironmentView implements ShadowReach {
    */
   update(cameraPosition: Readonly<{ x: number; z: number }>, deltaSeconds = 0): void {
     this.backdrop.position.set(cameraPosition.x, 0, cameraPosition.z);
+    this.ridges?.follow(cameraPosition.x, cameraPosition.z);
     const glow = this.skyUniforms.townGlow.value;
     for (let i = 0; i < GLOWING_TOWNS; i++) {
       const town = this.towns[i];
@@ -793,6 +866,8 @@ export class EnvironmentView implements ShadowReach {
     }
     const time = this.starUniforms.time;
     time.value = (time.value + deltaSeconds) % TWINKLE_PERIOD_SECONDS;
+    const auroraTime = this.skyUniforms.auroraTime;
+    auroraTime.value = (auroraTime.value + deltaSeconds) % AURORA_PERIOD_SECONDS;
     const drift = this.cloudUniforms.drift;
     drift.value = (drift.value + deltaSeconds * CLOUD_DRIFT) % (Math.PI * 2);
   }
@@ -836,6 +911,7 @@ export class EnvironmentView implements ShadowReach {
           uniform float earthShadow;
           ${TOWNS_GLOW}
           ${RAINBOW}
+          ${AURORA}
           ${MIST_GLSL}
           varying vec3 vDirection;
           void main() {
@@ -867,6 +943,9 @@ export class EnvironmentView implements ShadowReach {
             if (rainbow > 0.0) {
               sky = rainbowOver(sky, direction, up, sunDirection, sunColor, rainbow);
             }
+            if (aurora > 0.0) {
+              sky = auroraOver(sky, direction, up);
+            }
             // The morning mist: a white band along the horizon, thinning up the sky; the sun low in it a soft ball.
             if (mistDensity > 0.0) {
               sky = mistOver(sky, direction * ${MIST_SKY_METERS.toFixed(1)});
@@ -894,6 +973,12 @@ export class EnvironmentView implements ShadowReach {
    * draw call.
    */
   private createHills(): Mesh {
+    const geometry = this.ridges?.geometry ?? this.createRingHills();
+    return this.hillsMesh(geometry, this.ridges !== null);
+  }
+
+  /** The hills of HILL_LAYERS, the same all round the camera wherever it is. */
+  private createRingHills(): BufferGeometry {
     const positions: number[] = [];
     const colors: number[] = [];
     const hazes: number[] = [];
@@ -931,18 +1016,35 @@ export class EnvironmentView implements ShadowReach {
         }
       }
     }
-    const geometry = new BufferGeometry();
+    const geometry = this.track(new BufferGeometry());
     geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
     geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
     geometry.setAttribute('haze', new BufferAttribute(new Float32Array(hazes), 1));
+    // Their height as drawn is their height: the snow lies by it.
+    geometry.setAttribute('trueHeight', new BufferAttribute(new Float32Array(hazes.length).map((_, v) => positions[v * 3 + 1]!), 1));
     geometry.setIndex(indices);
     geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  /**
+   * The hills' mesh: smooth-shaded by the sun and the sky; the farther and
+   * the higher, the more they take the horizon's haze, whose colour is the
+   * sky's shared uniform, so it follows the weather. One draw call.
+   * `mountains`: the ranges round the region (MountainRidges), whose snow
+   * lies down to a line in meters of true height.
+   */
+  private hillsMesh(geometry: BufferGeometry, mountains: boolean): Mesh {
     const material = this.track(new MeshLambertMaterial({ vertexColors: true, fog: false }));
     const { horizon: hazeColor, townGlow } = this.skyUniforms;
     const mist = this.mist.uniforms;
     const seasons = this.seasons;
+    material.defines = {};
     if (seasons !== null) {
-      material.defines = { SEASONS: '' };
+      material.defines['SEASONS'] = '';
+    }
+    if (mountains) {
+      material.defines['MOUNTAINS'] = '';
     }
     material.onBeforeCompile = (shader) => {
       shader.uniforms['hazeColor'] = hazeColor;
@@ -954,13 +1056,13 @@ export class EnvironmentView implements ShadowReach {
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
-          `#include <common>\nattribute float haze;\nvarying float vHaze;\nvarying float vHillHeight;\nvarying vec3 vTownGlow;\n${TOWNS_GLOW}`,
+          `#include <common>\nattribute float haze;\nattribute float trueHeight;\nvarying float vHaze;\nvarying float vHillHeight;\nvarying vec3 vTownGlow;\n${TOWNS_GLOW}`,
         )
         .replace(
           '#include <begin_vertex>',
           `#include <begin_vertex>
           vHaze = haze;
-          vHillHeight = position.y;
+          vHillHeight = trueHeight;
           vec3 toHill = normalize((modelMatrix * vec4(transformed, 1.0)).xyz - cameraPosition);
           vTownGlow = townsGlow(normalize(toHill.xz + vec2(1e-5)), max(toHill.y, 0.0));`,
         );
@@ -978,8 +1080,14 @@ export class EnvironmentView implements ShadowReach {
           `#include <color_fragment>
           #ifdef SEASONS
             diffuseColor.rgb = mix( diffuseColor.rgb, dried( diffuseColor.rgb ) * seasonGrass, 0.7 );
-            float snowLine = 60.0 * ( 1.0 - snowCover ) - 10.0;
-            diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 20.0, vHillHeight ) );
+            #ifdef MOUNTAINS
+              // Meters of true height: the snow that lies all year is in the colours; more comes down in winter.
+              float snowLine = 700.0 * ( 1.0 - snowCover ) - 20.0;
+              diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 60.0, vHillHeight ) );
+            #else
+              float snowLine = 60.0 * ( 1.0 - snowCover ) - 10.0;
+              diffuseColor.rgb = mix( diffuseColor.rgb, SNOW * 0.9, snowCover * smoothstep( snowLine, snowLine + 20.0, vHillHeight ) );
+            #endif
           #endif`,
         )
         .replace(
@@ -991,8 +1099,8 @@ export class EnvironmentView implements ShadowReach {
           }`,
         );
     };
-    material.customProgramCacheKey = () => (seasons === null ? 'hills' : 'hills|seasons');
-    const hills = new Mesh(this.track(geometry), material);
+    material.customProgramCacheKey = () => `hills|${seasons === null ? '' : 'seasons'}|${mountains ? 'mountains' : ''}`;
+    const hills = new Mesh(geometry, material);
     hills.name = 'hills';
     hills.frustumCulled = false;
     return hills;

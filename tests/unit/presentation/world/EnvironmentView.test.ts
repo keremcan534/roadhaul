@@ -411,6 +411,31 @@ describe('EnvironmentView', () => {
     expect(dome(scene).fragmentShader).toContain('earthShadow');
   });
 
+  it('shows the northern lights on a clear, dark night only, and their curtains drift without a jump', () => {
+    const scene = new Scene();
+    const view = new EnvironmentView(scene);
+    const auroraAt = (elevation: number, weather: string, out: number): number => {
+      view.setAurora(out);
+      view.applySky(skyAt(elevation, weather), placed(toward(elevation, 250)));
+      return view.auroraShown;
+    };
+
+    expect(auroraAt(-30, 'clear', 1)).toBeGreaterThan(0.9);
+    expect(auroraAt(-30, 'clear', 0.5)).toBeCloseTo(auroraAt(-30, 'clear', 1) / 2, 5);
+    expect(auroraAt(-30, 'clear', 0)).toBe(0);
+    // Not by day, nor through the clouds or the rain.
+    expect(auroraAt(40, 'clear', 1)).toBe(0);
+    expect(auroraAt(-30, 'rain', 1)).toBe(0);
+    expect(auroraAt(-30, 'cloudy', 1)).toBeLessThan(auroraAt(-30, 'clear', 1));
+    expect(dome(scene).fragmentShader).toContain('auroraOver(sky, direction, up)');
+    // Their time goes round a whole number of every rate's turns.
+    const time = dome(scene).uniforms['auroraTime']!;
+    view.update({ x: 0, z: 0 }, 1);
+    expect(time.value).toBeCloseTo(1, 6);
+    view.update({ x: 0, z: 0 }, 200 * Math.PI);
+    expect(time.value).toBeCloseTo(1, 6);
+  });
+
   it('shows a rainbow opposite a low sun in the rain passing by or just gone, not in the rain, the dry, the dark or a high sun', () => {
     const scene = new Scene();
     const view = new EnvironmentView(scene);

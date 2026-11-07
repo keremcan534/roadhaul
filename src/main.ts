@@ -1,24 +1,27 @@
 import { GameBootstrapper } from './app/GameBootstrapper';
 import { ServiceKeys } from './app/ServiceKeys';
 import { ConsoleLogger } from './core/logging/ConsoleLogger';
-import type { Result } from './core/Result';
+import { err, type Result } from './core/Result';
 import { metersPerSecondToKmh } from './core/math/scalar';
 import { shiftedClock, systemClock } from './core/time/Clock';
 import { formatClock } from './core/time/dayTime';
 import { FixedTimestep } from './core/time/FixedTimestep';
 import { GameLoop } from './core/time/GameLoop';
-import { weatherChoiceFor, type SteeringMode, type TiltStatus } from './data/config/controls';
-import { applyQualityPreset, DEFAULT_GAME_CONFIG, type QualityLevel } from './data/config/GameConfig';
+import { frameRateCap, weatherChoiceFor, type FrameRateChoice, type SteeringMode, type TiltStatus } from './data/config/controls';
+import { applyQualityPreset, DEFAULT_GAME_CONFIG, type CrateTier, type QualityLevel } from './data/config/GameConfig';
 import { GAME_CONTENT } from './data/content';
 import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { Credits } from './data/units';
+import { validateCompanyName } from './domain/company/companyName';
 import type { KnockableKind } from './domain/crash/knockables';
 import { bayParkingPose } from './domain/missions/loadingBay';
+import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrailer';
 import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, type StartPlace } from './domain/world/startPlaces';
+import type { DrivingWorld } from './domain/world/DrivingWorld';
 import { damagePerformance } from './domain/vehicles/vehicleDamage';
 import {
   brakePedalOf,
@@ -34,31 +37,48 @@ import {
   requestedSeason,
   requestedLampLight,
   requestedMist,
+  requestedSkyWonder,
+  requestedCityIncident,
+  requestedRoadEvent,
   requestedSimulations,
   requestedSpawn,
+  requestedHills,
   requestedTimeOfDay,
   requestedWetness,
 } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
+import { gpuName } from './platform/browser/gpuName';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
+import { MirroredStorage, restoreMirror, type MirrorFiles } from './platform/native/mirroredStorage';
 import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
+import { shareFileInBrowser } from './platform/browser/fileShare';
+import type { GateDefinition } from './data/definitions/MapDefinition';
+import { leavePendingBoot, sessionStorageOf, takePendingBoot } from './platform/browser/pendingBoot';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
 import { TiltInput } from './platform/input/TiltInput';
 import { CameraRig, SHOWCASE_PAINT_ANGLE, SHOWCASE_PART_ANGLES } from './presentation/cameras/CameraRig';
+import { PhotoCamera } from './presentation/cameras/PhotoCamera';
+import { CabRadio } from './presentation/audio/CabRadio';
+import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
-import { RenderHost } from './presentation/RenderHost';
-import { TruckView, truckViewKey } from './presentation/vehicles/TruckView';
+import { RenderHost, SOFTWARE_MIN_RESOLUTION_SCALE, isSoftwareRenderer } from './presentation/RenderHost';
+import { TruckView, truckViewKey, type TruckViewOptions } from './presentation/vehicles/TruckView';
+import { DEFAULT_TRAILER_TEXT, liveryThumbnail } from './presentation/textures/liveryImages';
+import { pixelImageUrl } from './presentation/textures/pixelImageUrl';
+import type { LiveryPattern } from './data/definitions/LiveryDefinition';
 import { CrashEffects } from './presentation/effects/CrashEffects';
 import { SlowMotion } from './presentation/effects/SlowMotion';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
+import { ShootingStars } from './presentation/world/ShootingStars';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
+import { TrafficSignalView } from './presentation/traffic/TrafficSignalView';
 import { TrafficView } from './presentation/traffic/TrafficView';
 import { LightningView } from './presentation/weather/LightningView';
 import { RainView } from './presentation/weather/RainView';
@@ -70,6 +90,9 @@ import { WetReflections, type MirroredLamps } from './presentation/world/WetRefl
 import { PrelitMaterials } from './presentation/world/lighting';
 import { CitySignView } from './presentation/world/CitySignView';
 import { SignBoardView } from './presentation/world/SignBoardView';
+import { FieldWorkView } from './presentation/world/FieldWorkView';
+import { CityLifeView, FIREWORK_RISE_SECONDS } from './presentation/world/CityLifeView';
+import { newsText } from './ui/hq/newsFeed';
 import { BirdsView } from './presentation/world/BirdsView';
 import { CloudShadows } from './presentation/world/cloudShadows';
 import { SeasonShading } from './presentation/world/SeasonShading';
@@ -79,6 +102,8 @@ import { RiverView } from './presentation/world/RiverView';
 import { ParkView } from './presentation/world/ParkView';
 import { SeaView } from './presentation/world/SeaView';
 import { RestAreaView } from './presentation/world/RestAreaView';
+import { DeckView } from './presentation/world/DeckView';
+import { SuspensionBridgeView } from './presentation/world/SuspensionBridgeView';
 import { RoadFurnitureView } from './presentation/world/RoadFurnitureView';
 import { RoadsideView } from './presentation/world/RoadsideView';
 import { SceneryView } from './presentation/world/SceneryView';
@@ -102,6 +127,7 @@ import { objectiveText } from './ui/hq/eventText';
 import { HudDock } from './ui/hud/HudDock';
 import { Minimap } from './ui/hud/Minimap';
 import { MissionHud } from './ui/hud/MissionHud';
+import { FerryPanel } from './ui/hud/FerryPanel';
 import { RestAreaPanel } from './ui/hud/RestAreaPanel';
 import { RolloverPanel } from './ui/hud/RolloverPanel';
 import { GraphicsNotice } from './ui/hud/GraphicsNotice';
@@ -114,11 +140,26 @@ import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
+import { FerryCrossing } from './ui/menus/FerryCrossing';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
+import type { CareerShown } from './ui/menus/careerSheet';
+import { passRewardText, type RoadPassShown } from './ui/menus/roadPassSheet';
+import { backupFileName } from './ui/menus/backupFileName';
+import { PhotoMode, type PhotoOutcome } from './ui/menus/PhotoMode';
+import { RoadAlert } from './ui/hud/RoadAlert';
+import { RadioButton } from './ui/hud/RadioButton';
+import { nextRadioChoice } from './data/config/radio';
+import { photoFileName } from './ui/photo/photoFileName';
+import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
+import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
+import { AchievementsDialog } from './ui/menus/AchievementsDialog';
+import { CrateDialog, type CratePage, type CratesShown } from './ui/menus/CrateDialog';
+import { LevelUpDialog } from './ui/menus/LevelUpDialog';
+import { levelUnlocks } from './ui/menus/levelUnlocks';
 import { SettingsDialog } from './ui/menus/SettingsDialog';
 import './ui/styles.css';
 
@@ -139,6 +180,9 @@ import './ui/styles.css';
  */
 /** Slower than this (m/s), the truck counts as standing when the company panel opens: the world goes on around it. */
 const PANEL_STANDSTILL_SPEED = 0.5;
+/** The northern lights and a rainbow count as seen once they show this strongly on the sky (0..1). */
+const AURORA_SEEN = 0.35;
+const RAINBOW_SEEN = 0.45;
 /**
  * Drawn in software (RenderHost.softwareRendering): the shadow map at most
  * this size, and this share of the plants and of the clouds.
@@ -200,6 +244,10 @@ const HQ_TICK_SECONDS = 0.5;
 const FLEET_FAST_FORWARD_SECONDS = 600;
 /** The main menu checks the earnings boost's time left this often, ms. */
 const EARNINGS_BOOST_REFRESH_MS = 15_000;
+/** How long the toast that the ferry is boarding shows before the game starts again across the water. */
+const FERRY_BOARDING_MS = 1_800;
+/** How long the toast that a backup was restored shows before the game starts again with it. */
+const RESTART_AFTER_RESTORE_MS = 1_200;
 /** From the driver's seat no rain falls nearer the eye than this: the windscreen is about a meter ahead. */
 const CAB_RAIN_CLEARANCE_METERS = 1.2;
 /** From this thick (0..1, morningMist) the mist hides the road ahead: the driver is told. */
@@ -212,7 +260,7 @@ declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly reward
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
 const PRIVACY_POLICY_URL = 'https://keremcan534.github.io/roadhaul/privacy.html';
 
-async function start(strings: Strings): Promise<void> {
+async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise<void> {
   const root = document.documentElement;
   const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
   if (canvas === null) {
@@ -220,13 +268,38 @@ async function start(strings: Strings): Promise<void> {
   }
 
   const query = new URLSearchParams(window.location.search);
-  const { storage, persistent } = browserStorage(window);
+  const local = browserStorage(window);
+  const { persistent } = local;
+  // In the Android app the keys that matter are also kept in files that Android's backup carries to the player's
+  // Google account (the cloud save, mirroredStorage.ts).
+  const mirrored =
+    mirrorFiles !== null && persistent
+      ? new MirroredStorage(local.storage, mirrorFiles, (key, error) => logger.warn(`The cloud copy of ${key} was not written.`, error))
+      : null;
+  mirrored?.mirrorAll();
+  const storage = mirrored ?? local.storage;
   // Graphics: `?quality=`, else the player's setting, else what the device can carry. URL flags win over the preset.
   // The phone's settings; sound can change while the game runs.
   let settings = loadSettings(storage);
   const qualityChoice = qualitySetting(query.get('quality'), settings.quality, persistent);
-  const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(deviceHints(navigator)));
-  const config = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
+  const device = deviceHints(navigator, gpuName(document));
+  const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(device));
+  const overridden = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
+  // `?map=metropol` founds new companies in that region (a debug switch: to look round it without the ferry).
+  const requestedMap = query.get('map');
+  const config =
+    requestedMap !== null && GAME_CONTENT.maps.some((map) => map.id === requestedMap)
+      ? { ...overridden, newGame: { ...overridden.newGame, startingMapId: requestedMap } }
+      : overridden;
+  // What the last page asked this start to do: go on in the region the company crossed to, or found a new company.
+  const tabStorage = sessionStorageOf(window);
+  const pendingBoot = takePendingBoot(tabStorage);
+  // Crossing by ferry: the boat rides the swell over the boot screen until the region over the water is ready.
+  const crossingTo = pendingBoot?.crossingTo;
+  const arrivingCrossing =
+    crossingTo !== undefined && GAME_CONTENT.maps.some((map) => map.id === crossingTo)
+      ? new FerryCrossing(document, strings, 'arriving', strings.t(`region.${crossingTo}.name`))
+      : null;
   const logger = new ConsoleLogger({ sink: console, minLevel: config.debug.logLevel });
   if (!persistent) {
     logger.warn('Storage is unavailable: this game will not be saved after the page closes.');
@@ -236,9 +309,22 @@ async function start(strings: Strings): Promise<void> {
   const clock = startDateMs === null ? systemClock : shiftedClock(systemClock, startDateMs - systemClock.now());
   // `?spawn=x,z,heading` starts a new game there (a debug switch: to look round a place without driving to it).
   const spawn = requestedSpawn(query);
+  // `?hills=x,z,radius,height;…` raises hills on the maps (a debug switch: the ground and roads on slopes).
+  const hills = requestedHills(query);
   const services = await new GameBootstrapper({
     config,
-    content: spawn === null ? GAME_CONTENT : { ...GAME_CONTENT, maps: GAME_CONTENT.maps.map((map) => ({ ...map, spawn })) },
+    content:
+      spawn === null && hills === null
+        ? GAME_CONTENT
+        : {
+            ...GAME_CONTENT,
+            maps: GAME_CONTENT.maps.map((map) => ({
+              ...map,
+              // On the map new companies start on only: the same spot on another may lie in its sea.
+              ...(spawn === null || map.id !== config.newGame.startingMapId ? {} : { spawn }),
+              ...(hills === null ? {} : { terrain: { hills: [...(map.terrain?.hills ?? []), ...hills] } }),
+            })),
+          },
     logger,
     clock,
     storage,
@@ -253,6 +339,14 @@ async function start(strings: Strings): Promise<void> {
   const weather = services.resolve(ServiceKeys.weather);
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
   const season = services.resolve(ServiceKeys.season);
+  const skyWonders = services.resolve(ServiceKeys.skyWonders);
+  const cityIncidents = services.resolve(ServiceKeys.cityIncidents);
+  const news = services.resolve(ServiceKeys.news);
+  const shownIncident = requestedCityIncident(query);
+  if (shownIncident !== null) {
+    cityIncidents.force(shownIncident);
+  }
+
   // The game's clock: the time the player picked and the way it goes (Settings), unless the address sets it
   // (`?time=`, `?weather=dawn|dusk|night`), which stops it there and keeps the player's own for later.
   const requestedTime = requestedTimeOfDay(query);
@@ -274,6 +368,9 @@ async function start(strings: Strings): Promise<void> {
   const keptWetness = requestedWetness(query);
   /** How thick the morning mist lies: the morning's, or as the address keeps it (`?mist=`). */
   const keptMist = requestedMist(query);
+  /** The sky's wonders brought out for a look (`?sky=`). */
+  const shownWonder = requestedSkyWonder(query);
+  skyWonders.forceAurora(shownWonder === 'aurora');
   /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
   const clearDay = content.weather.get(config.weather.clearWeatherId).look;
   const weatherLook = createSkyLook();
@@ -288,10 +385,31 @@ async function start(strings: Strings): Promise<void> {
   const fuel = services.resolve(ServiceKeys.fuel);
   const damage = services.resolve(ServiceKeys.damage);
   const garage = services.resolve(ServiceKeys.garage);
+  const usedTrucks = services.resolve(ServiceKeys.usedTrucks);
+  const weeklyCup = services.resolve(ServiceKeys.weeklyCup);
+  const roadPass = services.resolve(ServiceKeys.roadPass);
   const upgrades = services.resolve(ServiceKeys.upgrades);
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
   const facilities = services.resolve(ServiceKeys.facilities);
+  const research = services.resolve(ServiceKeys.research);
+  const career = services.resolve(ServiceKeys.career);
+  const roadEvents = services.resolve(ServiceKeys.roadEvents);
+  const convoy = services.resolve(ServiceKeys.convoy);
+  const requestedRoad = requestedRoadEvent(query);
+  if (requestedRoad === 'stranded') {
+    roadEvents.sendStrandedDriver();
+  } else if (requestedRoad === 'convoy') {
+    convoy.sendConvoy();
+  }
+  const dailyReward = services.resolve(ServiceKeys.dailyReward);
+  const review = services.resolve(ServiceKeys.review);
+  const achievements = services.resolve(ServiceKeys.achievements);
+  const crates = services.resolve(ServiceKeys.crates);
+  const liveries = services.resolve(ServiceKeys.liveries);
+  const supplies = services.resolve(ServiceKeys.supplies);
+  const quests = services.resolve(ServiceKeys.quests);
+  const levelRewards = services.resolve(ServiceKeys.levelRewards);
   const companyTraffic = services.resolve(ServiceKeys.companyTraffic);
   const crashes = services.resolve(ServiceKeys.crashes);
   const session = services.resolve(ServiceKeys.session);
@@ -299,9 +417,16 @@ async function start(strings: Strings): Promise<void> {
 
   // Behind the main menu the starting truck waits at the start of the map, seen from a circling camera.
   // Starting or continuing a company puts its own truck where it was left.
-  driving.start(config.newGame.startingVehicleId, config.newGame.startingMapId);
+  // The region built: the one asked for, else the saved company's, else the starting region (a new company's).
+  const savedRegion = (() => {
+    const read = session.readSave();
+    return read.ok && content.maps.has(read.value.mapId) ? read.value.mapId : null;
+  })();
+  const bootRegion = pendingBoot?.mapId !== undefined && content.maps.has(pendingBoot.mapId) ? pendingBoot.mapId : (savedRegion ?? config.newGame.startingMapId);
+  driving.start(config.newGame.startingVehicleId, bootRegion);
 
-  const renderHost = new RenderHost(canvas, config.rendering);
+  // Drawn in software every sample costs a pixel: no smoothing of the canvas's edges there.
+  const renderHost = new RenderHost(canvas, { ...config.rendering, antialias: config.rendering.antialias && !isSoftwareRenderer(device.gpu) });
   // The views add themselves to the scene for the page's lifetime. The pre-lit ground follows the weather's light.
   const prelit = new PrelitMaterials();
   // Broken cloud's shadows drift over the land, on the pre-lit ground and the lit things alike; not drawn in software,
@@ -310,6 +435,9 @@ async function start(strings: Strings): Promise<void> {
   const castShadows = config.rendering.shadowMapSize > 0;
   // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
+  // A phone's GPU gets the shaders a few at a time (RenderHost.precompileGradually): all at once, a weak one stays
+  // busy so long that Android reports the game not responding.
+  const gradualCompile = device.mobile && !software;
   // The night's lamps (the truck's and the traffic's headlights, the street lamps) light the world through its
   // materials' shaders (lightScene, at the end of boot). Drawn in software, the lamps' code costs every frame about
   // a fifth of its time even by day, when the shaders skip it: there they light nothing, unless ?lamps=1 asks.
@@ -317,11 +445,27 @@ async function start(strings: Strings): Promise<void> {
   const lampLight = requestedLampLight(query) ?? !software;
   // The seasons on the land: the grass, the broadleaf trees, the verges' flowers, the fields, the hills and the snow.
   const seasonShading = new SeasonShading(season.season);
+  /** The garage's pictures of the designs, in a colour: drawn once each, kept. */
+  const liveryPictures = new Map<string, string>();
+  const liveryPicture = (pattern: LiveryPattern, color: number): string => {
+    const key = `${pattern}:${color}`;
+    let url = liveryPictures.get(key);
+    if (url === undefined) {
+      url = pixelImageUrl(document, liveryThumbnail([(color >> 16) & 255, (color >> 8) & 255, color & 255], pattern));
+      liveryPictures.set(key, url);
+    }
+    return url;
+  };
+  /** Now and then on a clear night, a shooting star where the camera looks. */
+  const shootingStars = new ShootingStars(renderHost.scene);
+  shootingStars.fallOften = shownWonder === 'meteors';
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
     cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
     seasons: seasonShading,
+    // The ranges round the region stand still in the world, coming down to the sea where its coast meets the edges.
+    mountains: { halfSizeMeters: driving.world.halfSizeMeters, coastX: coastAtEdges(driving.world) },
   });
   /**
    * Shades what is in the scene so far, each material once: the clouds' shadows and the morning mist on the land (not
@@ -376,7 +520,9 @@ async function start(strings: Strings): Promise<void> {
     baleCircles: circlesOf(driving.world.hayBales),
     debrisCapacity,
   });
-  const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows });
+  // What stands on the ground stands at its height (a map's hills; 0 everywhere on a flat map).
+  const groundHeight = (x: number, z: number): number => driving.world.terrain.heightAt(x, z);
+  const windTurbines = new WindTurbineView(renderHost.scene, driving.world.windTurbines, { lampGlows, ground: groundHeight });
   const pedestrians = new PedestrianView(
     renderHost.scene,
     driving.world.roads,
@@ -392,8 +538,13 @@ async function start(strings: Strings): Promise<void> {
   // The GPU compiles the shaders of the land, the roads, the buildings, the trees, the lamps and the fields while the
   // rest of the world is built: a phone takes seconds over them, which would otherwise all come at the end of the boot.
   shadeScene();
-  renderHost.precompile();
+  if (!gradualCompile) {
+    renderHost.precompile();
+  }
   const roadFurniture = new RoadFurnitureView(renderHost.scene, driving.world, { sky: environment.sky, castShadows });
+  // The decks the roads are carried on (overpasses, viaducts) and the suspension bridges: none on a map without them.
+  new DeckView(renderHost.scene, driving.world);
+  const suspensionBridges = new SuspensionBridgeView(renderHost.scene, driving.world, lampGlows);
   // At night the towns glow on the horizon, over their depots.
   environment.setTowns(driving.world.depots.map((depot) => depot.yard));
   // The countryside's power lines, walls, rocks and herds, and the towns' pavements, benches, shelters and signs.
@@ -438,14 +589,23 @@ async function start(strings: Strings): Promise<void> {
       ? null
       : new HarbourView(renderHost.scene, coast, { anisotropy: renderHost.anisotropy, prelit, lampGlows });
   const birds = new BirdsView(renderHost.scene, driving.world, prelit);
+  // The region's happenings: a fire, a chase, fireworks; and planes, a helicopter and a ship passing by.
+  const cityLife = new CityLifeView(renderHost.scene, coast, driving.world.halfSizeMeters, prelit);
+  // The road's events: the speed cameras, the day's road works, a stranded car.
+  const roadEventsView = new RoadEventsView(renderHost.scene);
+  // Its cameras now, not on the first frame: in the scene before it is shaded and its shaders compiled.
+  roadEventsView.setWorld(driving.world);
+  // Tractors at work in the fields, by day, out of the rain and the winter.
+  const tractors = new FieldWorkView(renderHost.scene, driving.world.fields, driving.world.fieldWork, castShadows);
   const citySigns = new CitySignView(renderHost.scene, driving.world.citySigns, (cityId) => strings.cityName(cityId), {
     anisotropy: renderHost.anisotropy,
+    ground: groundHeight,
   });
   const signBoards = new SignBoardView(
     renderHost.scene,
     driving.world.directionBoards,
     (row) => (row.placeKind === 'city' ? strings.cityName(row.placeId) : strings.villageName(row.placeId)),
-    { anisotropy: renderHost.anisotropy },
+    { anisotropy: renderHost.anisotropy, ground: groundHeight },
   );
   const trafficView = new TrafficView(renderHost.scene, content.trafficVehicles.all, config.traffic.maxVehicles, {
     lampGlows,
@@ -454,9 +614,13 @@ async function start(strings: Strings): Promise<void> {
     sky: environment.sky,
     wrecks: debrisCapacity,
   });
+  // The traffic lights where the region's streets cross (Metropol's), lit by the traffic's time.
+  const signalHeads = traffic.signalsOf(driving.world)?.heads ?? [];
+  const trafficSignals = signalHeads.length > 0 ? new TrafficSignalView(renderHost.scene, signalHeads) : null;
   /** What carries lamps for a wet road to mirror: the truck (set every frame: it changes in the garage) and the traffic. */
   const mirroredSources: (MirroredLamps | null)[] = [null, trafficView];
   const gpsRoute = new GpsRouteView(renderHost.scene, navigation);
+  gpsRoute.terrain = driving.world.terrain;
   const rain = new RainView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   const snowfall = new SnowView(renderHost.scene, config.rendering.rainDensity, lampLight ? lampLighting.uniforms : null);
   // Lightning in a storm: the flash lights the sky and the world, a bolt shows toward near strikes, thunder follows.
@@ -467,7 +631,10 @@ async function start(strings: Strings): Promise<void> {
   const crashEffects = new CrashEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const slowMotion = new SlowMotion();
   const effectsState = createTruckEffectsState();
-  const adaptiveResolution = new AdaptiveResolution(config.rendering.minResolutionScale);
+  // Drawn in software, fewer pixels are the only speed to be had (RenderHost sets no floor there): down to 60%.
+  const adaptiveResolution = new AdaptiveResolution(
+    isSoftwareRenderer(renderHost.gpu) ? Math.min(SOFTWARE_MIN_RESOLUTION_SCALE, config.rendering.minResolutionScale) : config.rendering.minResolutionScale,
+  );
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   /** Company trucks in the traffic, as last written to the page (e2e tests read it). */
@@ -484,7 +651,7 @@ async function start(strings: Strings): Promise<void> {
   let sinceHqTick = 0;
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky, light: environment.light });
-  const cameraRig = new CameraRig(renderHost.camera, driving.definition.body);
+  const cameraRig = new CameraRig(renderHost.camera, driving.definition.body, driving.definition.trailer ?? null);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
   const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
@@ -522,13 +689,21 @@ async function start(strings: Strings): Promise<void> {
       toasts.show(strings.t(`camera.${mode}`), 'info');
     }
   };
+  // The page is going (a new language or graphics setting starts the game again): what it was loading is cut off,
+  // which is no fault to report.
+  let leavingPage = false;
+  window.addEventListener('beforeunload', () => {
+    leavingPage = true;
+  });
   // Sound starts at the page's first touch (browsers allow it only then) and follows the truck every frame.
   const audio = new GameAudio(
     () => (typeof AudioContext === 'undefined' ? null : new AudioContext()),
     settings.sound,
     (context) =>
       loadEngineLoops(context).catch((error: unknown) => {
-        logger.warn('The engine sound did not load: the truck runs silent.', error);
+        if (!leavingPage) {
+          logger.warn('The engine sound did not load: the truck runs silent.', error);
+        }
         return [];
       }),
   );
@@ -553,21 +728,341 @@ async function start(strings: Strings): Promise<void> {
   touch.size = settings.controlSize;
   const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals);
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
-  const mapSketch = sketchWorld(driving.world);
-  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic }, strings);
+  // The region driven, and the others across the water where they lie in the one world, with the ferry crossings.
+  const mapSketch = sketchWorld(driving.world, content.maps.all);
+  const mapPainter = new MapPainter(mapSketch, { driving, navigation, missions, fleet, rivals, companyTraffic, company }, strings, document);
   const minimap = new Minimap(ui, strings, mapPainter, driving, () => openMap());
   const toasts = new Toasts(ui);
 
   // From the result: the next contract, or back on the road; an ad between contracts first, when one is due.
   const result = new ResultDialog(ui, strings, (choice) => {
+    // An ad between contracts when one is due, then a rating asked for when one is (a few deliveries in good order).
     void monetization.betweenContracts().then(() => {
+      void review.askIfDue();
       paused = false;
       showHud();
       if (choice === 'jobs') {
         openPanel('jobs');
       }
     });
+  }, { star: (index, lit) => audio.star(index, lit) });
+  // The company's goals, from the company panel: a badge there counts the rewards waiting.
+  const goalsShown = () =>
+    achievements.list().map((goal) => ({
+      id: goal.definition.id,
+      metric: goal.definition.metric,
+      target: goal.definition.target,
+      progress: goal.progress,
+      reached: goal.reached,
+      claimed: goal.claimed,
+      reward: strings.money(goal.definition.reward),
+    }));
+  /** The career's record as the goals dialog's second tab shows it. */
+  const careerShown = (): CareerShown => {
+    const measured = achievements.measured;
+    return {
+      records: career.records,
+      distanceMeters: session.distanceDrivenMeters,
+      deliveries: company.stats.deliveriesCompleted,
+      failed: company.stats.deliveriesFailed,
+      earned: company.stats.creditsEarned,
+      perfect: measured.perfectDeliveries,
+      bestStreak: measured.perfectStreak,
+      tendersWon: measured.tendersWon,
+      cratesOpened: measured.cratesOpened,
+      skyWonders: measured.skyWonders,
+    };
+  };
+  /** The Road Pass as the goals dialog's third tab shows it. */
+  const passShown = (): RoadPassShown => ({
+    season: roadPass.currentSeason,
+    endsInMs: roadPass.endsInMs,
+    points: roadPass.seasonPoints,
+    pointsPerTier: config.roadPass.pointsPerTier,
+    tierReached: roadPass.tierReached,
+    tiers: roadPass.tiers(),
+    plus: roadPass.plus,
+    plusForSale: monetization.storeEnabled && !roadPass.plus,
+    paintColor: (paintId) => content.paints.get(paintId).color,
   });
+  const goalsDialog = new AchievementsDialog(ui, strings, {
+    onClaim: (achievementId) => {
+      if (achievements.claim(achievementId).ok) {
+        audio.chime();
+        goalsDialog.showClaimed(achievementId);
+      }
+    },
+    onClaimFree: (tier) => {
+      const claimed = roadPass.claimFree(tier);
+      if (claimed.ok) {
+        audio.chime();
+        toasts.show(strings.t('toast.passClaimed', { reward: passRewardText(strings, claimed.value) }), 'success');
+        goalsDialog.showPass(passShown());
+      }
+    },
+    onClaimPremium: (tier) => {
+      const claimed = roadPass.claimPremium(tier);
+      if (claimed.ok) {
+        audio.chime();
+        toasts.show(strings.t('toast.passClaimed', { reward: strings.t(`paint.${claimed.value.id}.name`) }), 'success');
+        goalsDialog.showPass(passShown());
+      }
+    },
+    onGetPlus: () => {
+      goalsDialog.close();
+      openShop();
+    },
+    onClose: () => goalsDialog.close(),
+  });
+  /** The rewards waiting: the goals' and the Road Pass's, on the cup in the panel's header. */
+  const showGoalsWaiting = (): void => {
+    hq.goalsWaiting = achievements.claimable + roadPass.claimable;
+  };
+  events.on('RoadPassTierReached', ({ tier }) => {
+    toasts.show(strings.t('toast.passTier', { tier: strings.number(tier) }), 'success');
+    showGoalsWaiting();
+  });
+  events.on('RoadPassClaimed', showGoalsWaiting);
+  events.on('PurchasesChanged', () => {
+    showGoalsWaiting();
+    if (goalsDialog.isOpen) {
+      goalsDialog.showPass(passShown());
+    }
+  });
+  events.on('AchievementReached', ({ achievementId }) => {
+    const goal = content.achievements.get(achievementId);
+    toasts.show(
+      strings.t('toast.achievementReached', { goal: strings.t(`achievement.metric.${goal.metric}`), target: strings.number(goal.target) }),
+      'success',
+    );
+    showGoalsWaiting();
+  });
+  events.on('AchievementClaimed', showGoalsWaiting);
+  // The sky's wonders, pointed out as they come into view.
+  events.on('SkyWonderSighted', ({ kind }) => toasts.show(strings.t(`toast.sky.${kind}`), 'success'));
+  // Breaking news: something is happening near the truck.
+  events.on('NewsPublished', ({ item }) => {
+    if (item.breaking && isDriving()) {
+      toasts.show(`${strings.t('news.breaking')}: ${newsText(strings, item, company.companyName)}`, 'info');
+    }
+    root.dataset.news = String(item.id);
+    // The job board's headline line follows the news (the rivals page follows it by itself; other pages, a text
+    // being typed among them, are left alone).
+    if (hq.isOpen && hq.currentTab === 'jobs') {
+      refreshHq();
+    }
+  });
+  events.on('CityIncidentStarted', ({ kind }) => (root.dataset.cityIncident = kind));
+  events.on('CityIncidentEnded', () => delete root.dataset.cityIncident);
+  events.on('GameStateChanged', ({ previous, current }) => {
+    if (previous === 'mainMenu' && current === 'driving') {
+      delete root.dataset.cityIncident; // A new company's: the last one's incident is gone (CityIncidentService).
+    }
+  });
+  // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
+  // quests, every few hours free, and for a rewarded ad the player asks for. Also the quests and the supplies.
+  const cratesShown = (): CratesShown => ({
+    counts: { bronze: crates.count('bronze'), silver: crates.count('silver'), gold: crates.count('gold') },
+    paintsGot: strings.t('crates.paintsGot', crates.paintsGot),
+    freeReadyAtMs: crates.freeCrate.readyAtMs,
+    ad: monetization.adCrateOffer,
+    quests: quests.quests.map((quest) => ({
+      id: quest.definition.id,
+      metric: quest.definition.metric,
+      target: quest.definition.target,
+      progress: quest.progress,
+      done: quest.done,
+      claimed: quest.claimed,
+      crate: quest.definition.crate,
+    })),
+    bonus: quests.bonus,
+    supplies: {
+      parts: supplies.parts,
+      partValue: strings.money(config.crates.partCredits),
+      boosters: {
+        pay_boost: supplies.count('pay_boost'),
+        xp_boost: supplies.count('xp_boost'),
+        free_refuel: supplies.count('free_refuel'),
+        free_repair: supplies.count('free_repair'),
+      },
+      payLeft: supplies.payBoostLeft,
+      xpLeft: supplies.xpBoostLeft,
+      payShare: strings.percent(config.crates.boosters.payShare),
+      boostDeliveries: config.crates.boosters.payDeliveries,
+    },
+  });
+  const crateDialog = new CrateDialog(
+    ui,
+    strings,
+    {
+      onOpen: (tier) => {
+        const opened = crates.open(tier);
+        if (!opened.ok) {
+          return null;
+        }
+        const paint = opened.value.paintId === null ? null : content.paints.get(opened.value.paintId);
+        const livery = opened.value.liveryId === null ? null : content.liveries.get(opened.value.liveryId);
+        const truckColor = garage.activeTruck.paint?.color ?? garage.activeTruck.definition.factoryColor;
+        return {
+          credits: strings.money(opened.value.credits),
+          paint:
+            paint === null || paint.crate === undefined
+              ? null
+              : { name: strings.t(`paint.${paint.id}.name`), color: paint.color, rarity: paint.crate },
+          livery:
+            livery === null || livery.crate === undefined
+              ? null
+              : { name: strings.t(`livery.${livery.id}.name`), picture: liveryPicture(livery.pattern, truckColor), rarity: livery.crate },
+          parts: opened.value.parts,
+          booster: opened.value.booster,
+        };
+      },
+      onClose: () => {
+        crateDialog.close();
+        celebrateLevel(); // Another level's reward may still wait.
+      },
+      onClaimFree: () => {
+        if (crates.claimFreeCrate().ok) {
+          audio.chime();
+        }
+      },
+      onAdCrate: () => {
+        void monetization.claimAdCrate().then((claimed) => {
+          if (claimed.ok) {
+            audio.chime();
+          } else {
+            boostFailed(claimed.error);
+          }
+          showCratesWaiting();
+        });
+      },
+      onClaimQuest: (questId) => {
+        if (quests.claim(questId).ok) {
+          audio.chime();
+        }
+      },
+      onClaimBonus: () => {
+        if (quests.claimBonus().ok) {
+          audio.chime();
+        }
+      },
+      onStartBooster: (kind) => {
+        if (supplies.start(kind).ok) {
+          audio.chime();
+          toasts.show(strings.t(`toast.boosterStarted.${kind}`), 'success');
+        }
+      },
+      onShake: (step) => audio.crateShake(step),
+      onBurst: (rarity) => audio.crateBurst(rarity),
+    },
+    () => clock.now(),
+  );
+  const openCrates = (tier?: CrateTier, page?: CratePage): void => crateDialog.show(cratesShown(), page, tier);
+  /** What waits on the crates' button: crates to open, quests' crates to collect, the free crate. */
+  const showCratesWaiting = (): void => {
+    hq.cratesWaiting = crates.total + quests.claimable + (crates.freeCrate.ready ? 1 : 0);
+    if (crateDialog.isOpen) {
+      crateDialog.update(cratesShown());
+    }
+  };
+  events.on('CrateEarned', ({ tier, source }) => {
+    showCratesWaiting();
+    // A streak's crate shows on the result, a level's on its celebration, the dialog's own there: the daily reward's
+    // needs a word.
+    if (source === 'dailyStreak' || source === 'daily') {
+      toasts.show(strings.t('toast.crateEarned', { crate: strings.t(`crate.name.${tier}`) }), 'success');
+    }
+  });
+  events.on('CrateOpened', () => {
+    showCratesWaiting();
+    refreshHq(); // A crate colour now on the garage's swatches.
+  });
+  events.on('SuppliesChanged', () => {
+    showCratesWaiting();
+    refreshHq(); // Parts off the upgrades' prices, tokens at the pump.
+  });
+  events.on('QuestsChanged', showCratesWaiting);
+  events.on('QuestCompleted', ({ questId }) => {
+    const quest = content.quests.get(questId);
+    toasts.show(
+      strings.t('toast.questDone', {
+        quest: strings.t(`quest.metric.${quest.metric}`, { target: strings.number(quest.target) }),
+      }),
+      'success',
+    );
+  });
+  // A new company level, celebrated where the player is not driving: over the result, or the company panel. Its
+  // reward waits until collected there; one level at a time.
+  const levelUpDialog = new LevelUpDialog(ui, strings, {
+    onCollect: () => {
+      if (!levelRewards.collect().ok) {
+        return false;
+      }
+      audio.chime();
+      return true;
+    },
+    onOpenCrate: (tier) => openCrates(tier),
+    onClose: () => celebrateLevel(),
+  });
+  let levelTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The level last celebrated: one closed without collecting it waits for the panel again. */
+  let celebratedLevel: number | null = null;
+  const celebrateLevel = (): void => {
+    const level = levelRewards.waitingLevel;
+    if (level === null || levelUpDialog.isOpen || crateDialog.isOpen || !(result.isOpen || hq.isOpen)) {
+      return;
+    }
+    celebratedLevel = level;
+    const reward = levelRewards.rewardFor(level);
+    levelUpDialog.open({
+      level,
+      name: strings.t(`company.levelName.${level}`),
+      credits: strings.money(reward.credits),
+      crate: reward.crate,
+      unlocks: levelUnlocks(content, level),
+    });
+    audio.fanfare();
+  };
+  /** Celebrates the level after `delayMs` (the result's stars first), if the result or the panel is still open. */
+  const celebrateLevelSoon = (delayMs: number): void => {
+    if (levelTimer !== null) {
+      clearTimeout(levelTimer);
+    }
+    levelTimer = setTimeout(() => {
+      levelTimer = null;
+      celebrateLevel();
+    }, delayMs);
+  };
+  // The daily reward: offered as the day's first drive starts (after the tutorial), the truck waiting until it is
+  // collected. Left for later, it waits until the game is started again.
+  let dailyLeft = false;
+  const dailyDialog = new DailyRewardDialog(ui, strings, {
+    onClaim: () => {
+      const claimed = dailyReward.claim();
+      if (claimed.ok) {
+        audio.chime();
+        dailyDialog.showClaimed(strings.money(claimed.value));
+      } else {
+        closeDailyReward();
+      }
+    },
+    onClose: () => closeDailyReward(),
+  });
+  const offerDailyReward = (): void => {
+    const offer = dailyReward.offer;
+    if (!offer.claimable || dailyLeft || tutorial.step !== 'done' || dailyDialog.isOpen || result.isOpen || paused) {
+      return;
+    }
+    paused = true;
+    pauseMenu.buttonVisible = false;
+    dailyDialog.open({ day: offer.day, streak: offer.streak, amounts: offer.credits.map((credits) => strings.money(credits)) });
+  };
+  const closeDailyReward = (): void => {
+    dailyLeft = true;
+    dailyDialog.close();
+    paused = false;
+    showHud();
+  };
   /** Why a rewarded boost gave nothing. */
   const boostFailed = (error: BoostError): void => {
     toasts.show(strings.t(error === 'skipped' ? 'ads.skipped' : error === 'used' ? 'ads.used' : 'ads.unavailable'), 'warning');
@@ -616,13 +1111,113 @@ async function start(strings: Strings): Promise<void> {
       boostFailed(repaired.error);
     }
   };
+  // Free with a crate's token (SupplyService): the same toasts, the service free.
+  const refuelToken = (): void => {
+    const filled = supplies.useFreeRefuel();
+    if (filled.ok) {
+      const liters = strings.t('format.liters', { value: Math.round(filled.value.liters) });
+      toasts.show(strings.t('toast.tokenRefuelled', { liters }), 'success');
+    } else if (filled.error !== 'none') {
+      showRefuel(err(filled.error));
+    }
+    refreshHq();
+  };
+  const repairToken = (): void => {
+    const repaired = supplies.useFreeRepair();
+    if (repaired.ok) {
+      toasts.show(strings.t('toast.tokenRepaired'), 'success');
+    } else if (repaired.error !== 'none') {
+      showRepair(err(repaired.error));
+    }
+    refreshHq();
+  };
+  /**
+   * Crosses through `gate` with the company loaded (session.travel): the
+   * crossing over the screen while the game starts again on the other side.
+   * False, with a toast saying why, when it cannot.
+   */
+  const crossBy = (gate: GateDefinition): boolean => {
+    const travelled = session.travel(gate.id);
+    if (!travelled.ok) {
+      const region = strings.t(`region.${gate.toMapId}.name`);
+      const key = travelled.error === 'contractUnderWay' ? 'ferry.busy' : travelled.error === 'locked' ? 'ferry.locked' : 'ferry.failed';
+      toasts.show(strings.t(key, { region, level: gate.requiredCompanyLevel ?? 1 }), 'warning');
+      return false;
+    }
+    new FerryCrossing(document, strings, 'departing', strings.t(`region.${gate.toMapId}.name`));
+    leavePendingBoot(tabStorage, { continueCompany: true, crossingTo: gate.toMapId });
+    window.setTimeout(() => window.location.reload(), FERRY_BOARDING_MS);
+    return true;
+  };
+  // The ferry terminals: the crossing to the other region (the game starts again there, the company carried on).
+  const ferry = new FerryPanel(ui, strings, { driving, missions, company }, {
+    onTravel: (gate) => {
+      crossBy(gate);
+    },
+  });
   const restArea = new RestAreaPanel(
     ui,
     strings,
-    { driving, fuel, damage, economy, discounts: monetization },
-    { onRefuel: () => refuel(false), onRepair: repair, onRefuelDiscounted: refuelDiscounted, onRepairDiscounted: repairDiscounted },
+    { driving, fuel, damage, economy, discounts: monetization, supplies },
+    {
+      onRefuel: () => refuel(false),
+      onRepair: repair,
+      onRefuelDiscounted: refuelDiscounted,
+      onRepairDiscounted: repairDiscounted,
+      onRefuelToken: refuelToken,
+      onRepairToken: repairToken,
+    },
   );
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
+  // The road's events: a camera or road works ahead, under the minimap; a camera's flash over the screen.
+  const roadAlert = new RoadAlert(ui, strings);
+  const speedFlash = document.createElement('div');
+  speedFlash.className = 'speed-flash';
+  speedFlash.addEventListener('animationend', () => speedFlash.classList.remove('is-flashing'));
+  ui.append(speedFlash);
+  events.on('SpeedingCaught', ({ speedKmh, limitKmh, fine, warning, workZone }) => {
+    audio.shutter();
+    speedFlash.classList.remove('is-flashing');
+    void speedFlash.offsetWidth; // Starts the flash over.
+    speedFlash.classList.add('is-flashing');
+    roadEventsView.flash(driving.vehicle.x, driving.vehicle.z);
+    const caught = { speed: strings.number(speedKmh), limit: strings.number(limitKmh), fine: strings.money(fine) };
+    toasts.show(
+      strings.t(warning ? 'road.warning' : workZone ? 'road.fineWorks' : 'road.fine', caught),
+      'warning',
+    );
+  });
+  // A red light run: the camera's flash, and a warning the first time ever, then the fine.
+  events.on('RedLightCaught', ({ fine, warning }) => {
+    audio.shutter();
+    speedFlash.classList.remove('is-flashing');
+    void speedFlash.offsetWidth; // Starts the flash over.
+    speedFlash.classList.add('is-flashing');
+    toasts.show(strings.t(warning ? 'road.redLight.warning' : 'road.redLight.fine', { fine: strings.money(fine) }), 'warning');
+  });
+  events.on('StrandedDriverAppeared', () => toasts.show(strings.t('road.stranded'), 'info'));
+  events.on('ConvoyStarted', () => toasts.show(strings.t('road.convoy'), 'info'));
+  events.on('ConvoyEnded', ({ riddenMeters, reward }) => {
+    if (reward > 0) {
+      audio.chime();
+      toasts.show(strings.t('road.convoyPaid', { distance: strings.distance(riddenMeters), reward: strings.money(reward) }), 'success');
+    } else {
+      toasts.show(strings.t('road.convoyGone'), 'info');
+    }
+  });
+  events.on('WeeklyCupEnded', ({ rank, credits, crate }) => {
+    const place = strings.number(rank);
+    if (credits > 0 && crate !== null) {
+      audio.fanfare();
+      toasts.show(strings.t('toast.cupWon', { place, credits: strings.money(credits), crate: strings.t(`crate.name.${crate}`) }), 'success');
+    } else {
+      toasts.show(strings.t('toast.cupEnded', { place }), 'info');
+    }
+  });
+  events.on('RoadsideHelped', ({ reward }) => {
+    audio.chime();
+    toasts.show(strings.t('road.helped', { reward: strings.money(reward) }), 'success');
+  });
   const roadsideFuelOffer = (): RoadsideFuelOffer => {
     if (fuel.missingLiters < 0.5) {
       return null;
@@ -666,19 +1261,106 @@ async function start(strings: Strings): Promise<void> {
     onControls: () => openControls(),
     onSettings: () => openSettings(),
     onMap: () => openMap(),
+    onPhoto: () => openPhoto(),
   });
+  // Photo mode, from the pause menu: the drive stays paused, the camera circles the truck, nothing else on the screen.
+  const photoCamera = new PhotoCamera(driving.definition.body);
+  /** Hands a picture on: Android's share sheet in the app (its module loaded at the first picture), else the browser's. */
+  const sharePicture = async (picture: Blob, fileName: string): Promise<PhotoOutcome> => {
+    if (!isNativeApp(window)) {
+      return shareFileInBrowser(window, picture, fileName, strings.t('photo.shareText'));
+    }
+    const { shareFileInApp } = await import('./platform/native/fileShare');
+    return shareFileInApp(picture, fileName, 'photos', strings.t('photo.shareText'), strings.t('photo.sheetTitle'));
+  };
+  const photoMode = new PhotoMode(ui, strings, {
+    onOrbit: (dx, dy) => photoCamera.orbit(dx, dy),
+    onZoom: (factor) => photoCamera.zoom(factor),
+    onLook: (filter) => {
+      renderHost.filter = filter;
+    },
+    onShoot: async (filter) => {
+      try {
+        const picture = await renderHost.capture((canvas) => photoPicture(document, canvas, filter));
+        return await sharePicture(picture, photoFileName(new Date()));
+      } catch (error) {
+        logger.warn('The photo was not taken.', error);
+        return 'failed';
+      }
+    },
+    onClose: () => closePhoto(),
+  });
+  const openPhoto = (): void => {
+    if (!isDriving() || photoMode.isOpen) {
+      return;
+    }
+    paused = true;
+    pauseMenu.close();
+    photoCamera.setBody(driving.definition.body);
+    photoCamera.start(renderHost.camera, pose);
+    showCamera(false); // The whole truck, the picture the right way round.
+    root.dataset.photo = 'on';
+    photoMode.open();
+  };
+  /** Back to the pause menu, the driving camera where it was. */
+  const closePhoto = (): void => {
+    if (!photoMode.isOpen) {
+      return;
+    }
+    photoMode.close();
+    delete root.dataset.photo;
+    showCamera(onRoad());
+    if (isDriving()) {
+      pauseMenu.open(missions.active !== null, roadsideFuelOffer());
+    }
+  };
+  // The cab radio: music made as it plays, a station at a tap (the button beside the camera's, or R).
+  const radio = new CabRadio((run, ms) => {
+    const timer = window.setInterval(run, ms);
+    return () => window.clearInterval(timer);
+  });
+  radio.station = settings.radio;
+  const tuneRadio = (): void => {
+    if (!isDriving()) {
+      return;
+    }
+    const next = nextRadioChoice(radio.station);
+    radio.station = next;
+    radioButton.show(next);
+    settings = { ...settings, radio: next };
+    saveSettings(storage, settings);
+    toasts.show(next === 'off' ? strings.t('radio.off') : strings.t('radio.tuned', { station: strings.t(`radio.station.${next}`) }), 'info');
+  };
+  const radioButton = new RadioButton(ui, strings, tuneRadio);
+  radioButton.show(settings.radio);
   const keyboard = new KeyboardInput(window, {
     onToggleCamera: toggleCamera,
+    onRadio: tuneRadio,
     onHorn: honk,
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
-      } else if (!settingsDialog.isOpen && !controlsDialog.isOpen && !newCompany.isOpen && !result.isOpen && isDriving()) {
+      } else if (!settingsDialog.isOpen && !controlsDialog.isOpen && !newCompany.isOpen && !result.isOpen && !photoMode.isOpen && isDriving()) {
         openMap();
       }
     },
     onPause: () => {
-      if (settingsDialog.isOpen) {
+      if (photoMode.isOpen) {
+        closePhoto();
+      } else if (goalsDialog.isOpen) {
+        goalsDialog.close(); // Over the company panel, which stays.
+      } else if (levelUpDialog.isOpen) {
+        levelUpDialog.close(); // Over the result or the panel; its reward waits.
+        // Collected, with another level's waiting: that one's turn. Not collected: it waits for the panel again.
+        if (levelRewards.waitingLevel !== null && levelRewards.waitingLevel !== celebratedLevel) {
+          celebrateLevel();
+        }
+      } else if (crateDialog.isOpen) {
+        if (!crateDialog.isOpening) {
+          crateDialog.close(); // The same.
+          celebrateLevel(); // As its close button: another level's reward may still wait.
+        }
+      } else if (settingsDialog.isOpen) {
         settingsDialog.close(); // Over the pause menu, which stays.
       } else if (controlsDialog.isOpen) {
         controlsDialog.close(); // The same.
@@ -710,7 +1392,10 @@ async function start(strings: Strings): Promise<void> {
     let definition = driving.definition;
     let paint = active?.paint?.color ?? definition.factoryColor;
     let fitted = active?.upgrades ?? {};
-    if (truckPreview?.kind === 'paint') {
+    let livery = active === null ? 'classic' : liveries.liveryOf(active.instanceId).pattern;
+    if (truckPreview?.kind === 'livery') {
+      livery = content.liveries.get(truckPreview.liveryId).pattern;
+    } else if (truckPreview?.kind === 'paint') {
       paint = truckPreview.paintId === null ? definition.factoryColor : content.paints.get(truckPreview.paintId).color;
     } else if (truckPreview?.kind === 'upgrade') {
       const upgrade = content.upgrades.get(truckPreview.upgradeId);
@@ -721,14 +1406,17 @@ async function start(strings: Strings): Promise<void> {
       definition = model;
       paint = owned?.paint?.color ?? model.factoryColor;
       fitted = owned?.upgrades ?? {};
+      livery = owned === undefined ? 'classic' : liveries.liveryOf(owned.instanceId).pattern;
     }
-    const options = {
+    const options: TruckViewOptions = {
       lampGlows,
       castShadows,
       sky: environment.sky,
       light: environment.light,
       paint,
       looks: truckLooks(fitted, content.upgrades.all),
+      livery,
+      ...(session.isActive && liveries.trailerText !== null ? { trailerText: liveries.trailerText } : {}),
     };
     if (truck.key !== truckViewKey(definition, options)) {
       truck.dispose();
@@ -736,7 +1424,7 @@ async function start(strings: Strings): Promise<void> {
       // The street lamps and the traffic's headlights light the new truck too (its own shine ahead of it), and the
       // clouds shade it.
       shadeScene();
-      cameraRig.setBody(definition.body);
+      cameraRig.setBody(definition.body, definition.trailer ?? null);
       showCamera(onRoad());
     }
     truck.setLoaded(truckPreview?.kind !== 'truck' && driving.cargoMassKg > 0);
@@ -752,11 +1440,23 @@ async function start(strings: Strings): Promise<void> {
     root.dataset.tutorialStep = tutorial.step;
     gameState.transitionTo('driving');
   };
-  /** Where a new company's truck starts: the place picked on the main menu (a new company's own start for `left`). */
+  /**
+   * Where a new company's truck starts: the place picked on the main menu (a
+   * new company's own start for `left`), in the region of the places shown
+   * or the one picked.
+   */
   let newCompanyStart = HOME_START_ID;
+  let newCompanyRegion = config.newGame.startingMapId;
   const newCompany = new NewCompanyDialog(ui, strings, {
     onStart: (companyName) => {
-      const founded = session.startNewGame(companyName, newCompanyStart);
+      if (driving.world.id !== newCompanyRegion) {
+        // Another region than the one built: the game starts again there to found it.
+        if (validateCompanyName(companyName).ok && leavePendingBoot(tabStorage, { mapId: newCompanyRegion, newCompany: { name: companyName, startId: newCompanyStart } })) {
+          window.location.reload();
+          return null;
+        }
+      }
+      const founded = session.startNewGame(companyName, newCompanyStart, driving.world.id);
       if (!founded.ok) {
         return founded.error;
       }
@@ -766,17 +1466,27 @@ async function start(strings: Strings): Promise<void> {
     },
     onBack: () => newCompany.close(),
   });
+  /** The region of the places the main menu shows: the saved company's, or the starting region without one. */
+  const menuRegion = (): string => {
+    const read = session.readSave();
+    return read.ok && content.maps.has(read.value.mapId) ? read.value.mapId : config.newGame.startingMapId;
+  };
   const mainMenu = new MainMenu(ui, strings, {
-    onContinue: (startId) => {
-      const continued = session.continueGame(startId);
-      if (continued.ok) {
-        enterCompany();
-      } else {
+    onContinue: (startId, regionId) => {
+      const continued = session.continueGame(regionId === null ? startId : LEFT_START_ID);
+      if (!continued.ok) {
         showMainMenu(strings.t(`menu.problem.${continued.error}`));
+        return;
+      }
+      // The region over the water picked: straight on board its ferry, without the drive to the terminal.
+      const gate = regionId === null ? undefined : driving.world.gates.find((candidate) => candidate.toMapId === regionId);
+      if (gate === undefined || !crossBy(gate)) {
+        enterCompany();
       }
     },
-    onNewCompany: (startId) => {
-      newCompanyStart = startId === LEFT_START_ID ? HOME_START_ID : startId;
+    onNewCompany: (startId, regionId) => {
+      newCompanyRegion = regionId ?? menuRegion();
+      newCompanyStart = regionId !== null || startId === LEFT_START_ID ? HOME_START_ID : startId;
       newCompany.open(session.hasSavedGame());
     },
     onPreviewStart: (place) => {
@@ -790,6 +1500,7 @@ async function start(strings: Strings): Promise<void> {
     onSettings: () => openSettings(),
     onShop: () => openShop(),
     onEarningsBoost: () => startEarningsBoost(),
+    onMap: () => openMap(true),
   });
   /**
    * The main menu as the save stands: the saved company's card (its truck
@@ -811,6 +1522,10 @@ async function start(strings: Strings): Promise<void> {
       saved,
       truckWhere: saved === null ? null : whereLeft(saved),
       places: session.startPlaces(saved),
+      regions: (content.maps.get(menuRegion()).gates ?? []).map((gate) => ({
+        mapId: gate.toMapId,
+        lockedUntilLevel: saved !== null && saved.level < (gate.requiredCompanyLevel ?? 1) ? (gate.requiredCompanyLevel ?? 1) : null,
+      })),
       startLocked: saved !== null && saved.contract !== null,
       message: problem ?? readProblem ?? menuMessage(),
     });
@@ -881,7 +1596,66 @@ async function start(strings: Strings): Promise<void> {
   const openSettings = (): void => {
     keepClock();
     settingsDialog.showClock(timeOfDay.minutes, clockPresets());
+    settingsDialog.restoreAllowed = gameState.current === 'mainMenu';
     settingsDialog.open();
+  };
+  /**
+   * Settings' backup: the company's save as a file, handed to Android's
+   * share sheet in the app (to the player's files, a drive, a message), in a
+   * browser to its share sheet on a phone where it takes the file, else
+   * downloaded.
+   */
+  const backUpCompany = async (): Promise<void> => {
+    const exported = session.exportBackup();
+    if (!exported.ok) {
+      toasts.show(strings.t(exported.error === 'missing' ? 'backup.none' : 'backup.failed'), 'warning');
+      return;
+    }
+    const read = session.readBackup(exported.value);
+    const file = new Blob([exported.value], { type: 'application/json' });
+    const fileName = backupFileName(read.ok ? read.value.companyName : '', new Date());
+    try {
+      const outcome = isNativeApp(window)
+        ? await (await import('./platform/native/fileShare')).shareFileInApp(
+            file,
+            fileName,
+            'backups',
+            strings.t('backup.shareText'),
+            strings.t('backup.sheetTitle'),
+          )
+        : await shareFileInBrowser(window, file, fileName, strings.t('backup.shareText'));
+      if (outcome !== 'cancelled') {
+        toasts.show(strings.t(outcome === 'saved' ? 'backup.saved' : 'backup.shared'), 'success');
+      }
+    } catch (error) {
+      logger.warn('The backup could not be handed on.', error);
+      toasts.show(strings.t('backup.failed'), 'warning');
+    }
+  };
+  /** The backup file the player picked, read and asked about, until they answer. */
+  let pendingBackup: string | null = null;
+  /** The backup's company replaces the player's; the game starts again to load it. */
+  const restoreBackup = (): void => {
+    const text = pendingBackup;
+    pendingBackup = null;
+    if (text === null || gameState.current !== 'mainMenu') {
+      return;
+    }
+    const read = session.readBackup(text);
+    const restored = session.restoreBackup(text);
+    if (!restored.ok) {
+      const problem = restored.error === 'unreadable' || restored.error === 'tooNew' ? restored.error : 'failed';
+      toasts.show(strings.t(`restore.${problem}`), 'warning');
+      return;
+    }
+    toasts.show(strings.t('restore.done', { company: read.ok ? read.value.companyName : '' }), 'success');
+    if (persistent) {
+      window.setTimeout(() => window.location.reload(), RESTART_AFTER_RESTORE_MS);
+    } else {
+      // Kept only in memory: starting again would lose it. The main menu continues it.
+      settingsDialog.close();
+      showMainMenu();
+    }
   };
   const settingsDialog = new SettingsDialog(
     ui,
@@ -892,15 +1666,19 @@ async function start(strings: Strings): Promise<void> {
       deviceLanguage: chooseLanguage(null, navigator.languages ?? [navigator.language]),
       quality: qualityChoice,
       qualityInUse: quality,
+      frameRate: settings.frameRate,
       clockMinutes: timeOfDay.minutes,
       timeFlow: timeOfDay.flow,
       clockPresets: clockPresets(),
       weather: weatherChoiceFor(weather.held),
       season: season.held ?? 'auto',
       vibration: canVibrate ? settings.vibration : null,
+      cloudSave: mirrored !== null,
       about: {
         version: __APP_VERSION__,
-        build: __APP_BUILD__,
+        // In the app, the build says which ads it carries (docs/RELEASE.md): "149" has the game's own, "149-testads"
+        // Google's test ads (they never pay), "149-noads" none. A phone shows at a glance what went to Google Play.
+        build: isNativeApp(window) && __ADS__.mode !== 'live' ? `${__APP_BUILD__}-${__ADS__.mode === 'test' ? 'testads' : 'noads'}` : __APP_BUILD__,
         privacyUrl: PRIVACY_POLICY_URL,
         // The Android app hands a link it is sent to to the phone's browser; a browser opens it in a new tab.
         linksInPlace: isNativeApp(window),
@@ -934,6 +1712,11 @@ async function start(strings: Strings): Promise<void> {
         query.set('quality', choice);
       }
       window.location.search = query.toString();
+    },
+    onFrameRate: (choice) => {
+      settings = { ...settings, frameRate: choice };
+      saveSettings(storage, settings);
+      applyFrameRate(choice);
     },
     onSound: (on) => {
       settings = { ...settings, sound: on };
@@ -977,6 +1760,24 @@ async function start(strings: Strings): Promise<void> {
     onAdPrivacy: () => {
       void monetization.showPrivacyOptions().then(showPurchaseOptions);
     },
+    onBackup: () => void backUpCompany(),
+    onBackupFile: (text) => {
+      const read = session.readBackup(text);
+      if (!read.ok) {
+        pendingBackup = null;
+        toasts.show(strings.t(`restore.${read.error}`), 'warning');
+        return;
+      }
+      pendingBackup = text;
+      settingsDialog.confirmRestore(
+        strings.t('settings.restoreConfirm', {
+          company: read.value.companyName,
+          level: strings.number(read.value.level),
+          credits: strings.money(read.value.credits),
+        }),
+      );
+    },
+    onRestoreBackup: () => restoreBackup(),
     onClose: () => settingsDialog.close(),
     },
   );
@@ -1004,7 +1805,7 @@ async function start(strings: Strings): Promise<void> {
   const fillShop = (): void => {
     void monetization.productsForSale().then((products) => {
       if (shop.isOpen) {
-        shop.show(products, monetization.owned);
+        shop.show(products, (id) => monetization.offersNothingNew(id));
       }
     });
   };
@@ -1089,8 +1890,41 @@ async function start(strings: Strings): Promise<void> {
   const hq = new CompanyHq(
     ui,
     strings,
-    { content, driving, missions, economy, company, fuel, damage, garage, upgrades, specialEvents, dailyContracts, fleet, rivals, facilities, clock, monetization },
     {
+      content,
+      driving,
+      missions,
+      economy,
+      company,
+      fuel,
+      damage,
+      garage,
+      usedTrucks,
+      weeklyCup,
+      cupRewards: config.weeklyCup.rewards,
+      upgrades,
+      specialEvents,
+      dailyContracts,
+      fleet,
+      rivals,
+      facilities,
+      research,
+      news,
+      researchPoints: {
+        perDelivery: config.research.pointsPerDelivery,
+        perPerfectDelivery: config.research.pointsPerDelivery + config.research.perfectBonusPoints,
+      },
+      clock,
+      monetization,
+      supplies,
+      liveries,
+      liveryPicture,
+    },
+    {
+      onAbandon: () => {
+        closePanel();
+        missions.abandon(); // MissionFailed opens the result.
+      },
       onAccept: (missionId) => {
         const accepted = missions.accept(missionId);
         if (accepted.ok) {
@@ -1103,6 +1937,30 @@ async function start(strings: Strings): Promise<void> {
       onRepair: repair,
       onRefuelDiscounted: refuelDiscounted,
       onRepairDiscounted: repairDiscounted,
+      onRefuelToken: refuelToken,
+      onRepairToken: repairToken,
+      onBuyLivery: (liveryId) => {
+        const bought = liveries.buy(liveryId);
+        if (bought.ok) {
+          audio.chime();
+          // Bought for the company: on the truck being driven at once.
+          liveries.apply(garage.activeTruck.instanceId, liveryId);
+          toasts.show(strings.t('toast.liveryBought', { livery: strings.t(`livery.${liveryId}.name`) }), 'success');
+        } else if (bought.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        }
+      },
+      onApplyLivery: (liveryId) => {
+        if (liveries.apply(garage.activeTruck.instanceId, liveryId).ok) {
+          toasts.show(strings.t('toast.liveryApplied', { livery: strings.t(`livery.${liveryId}.name`) }), 'success');
+        }
+      },
+      onSetTrailerText: (text) => {
+        const set = liveries.setTrailerText(text, strings.language);
+        if (set.ok) {
+          toasts.show(strings.t('toast.trailerText', { text: set.value ?? DEFAULT_TRAILER_TEXT }), 'success');
+        }
+      },
       onOpenShop: () => openShop(),
       onBuyTruck: (definitionId) => {
         const bought = garage.buy(definitionId);
@@ -1114,6 +1972,28 @@ async function start(strings: Strings): Promise<void> {
           toasts.show(strings.t('toast.garageFull'), 'warning');
         } else {
           logger.warn(`Could not buy ${definitionId}: ${bought.error}.`);
+        }
+      },
+      onBuyUsedTruck: (index) => {
+        const bought = usedTrucks.buy(index);
+        if (bought.ok) {
+          toasts.show(strings.t('toast.usedTruckBought', { truck: strings.vehicleName(bought.value.definition.id) }), 'success');
+        } else if (bought.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else if (bought.error === 'garageFull') {
+          toasts.show(strings.t('toast.garageFull'), 'warning');
+        } else {
+          logger.warn(`Could not buy used truck ${index}: ${bought.error}.`);
+        }
+      },
+      onSellTruck: (instanceId) => {
+        const definitionId = garage.trucks.find((truck) => truck.instanceId === instanceId)?.definition.id;
+        const sold = garage.sell(instanceId);
+        if (sold.ok && definitionId !== undefined) {
+          audio.chime();
+          toasts.show(strings.t('toast.truckSold', { truck: strings.vehicleName(definitionId), price: strings.money(sold.value) }), 'success');
+        } else if (!sold.ok) {
+          logger.warn(`Could not sell ${instanceId}: ${sold.error}.`);
         }
       },
       onPaintTruck: (instanceId, paintId) => {
@@ -1222,6 +2102,17 @@ async function start(strings: Strings): Promise<void> {
           logger.warn(`Could not build ${facilityId}: ${built.error}.`);
         }
       },
+      onResearch: (researchId) => {
+        const researched = research.research(researchId);
+        if (researched.ok) {
+          audio.fanfare();
+          toasts.show(strings.t('toast.researched', { research: strings.researchName(researchId) }), 'success');
+        } else if (researched.error === 'insufficientFunds') {
+          toasts.show(strings.t('toast.notEnoughCredits'), 'warning');
+        } else {
+          logger.warn(`Could not research ${researchId}: ${researched.error}.`);
+        }
+      },
       onBuyUpgrade: (upgradeId) => {
         const fitted = upgrades.buy(upgradeId);
         if (fitted.ok) {
@@ -1243,6 +2134,8 @@ async function start(strings: Strings): Promise<void> {
         }
       },
       onOpenMap: () => openMap(),
+      onOpenGoals: () => goalsDialog.open(goalsShown(), careerShown(), passShown()),
+      onOpenCrates: () => openCrates(),
       onClose: () => closePanel(),
     },
   );
@@ -1263,7 +2156,10 @@ async function start(strings: Strings): Promise<void> {
     worldHeld = Math.abs(driving.vehicle.speed) > PANEL_STANDSTILL_SPEED;
     lookAround.reset();
     hq.open(tab);
+    showGoalsWaiting();
+    showCratesWaiting();
     showHud();
+    celebrateLevelSoon(400);
   };
   /** Back on the road: straight ahead the way the phone is held now. */
   const closePanel = (): void => {
@@ -1276,7 +2172,8 @@ async function start(strings: Strings): Promise<void> {
   };
   /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
   let pausedForMap = false;
-  const openMap = (): void => {
+  /** Opens the full map; from the main menu (`aroundTruck`), on the truck where the drive would start. */
+  const openMap = (aroundTruck = false): void => {
     if (worldMap.isOpen) {
       return;
     }
@@ -1284,7 +2181,7 @@ async function start(strings: Strings): Promise<void> {
       paused = true;
       pausedForMap = true;
     }
-    worldMap.open();
+    worldMap.open(aroundTruck);
   };
   const closeMap = (): void => {
     worldMap.close();
@@ -1346,6 +2243,8 @@ async function start(strings: Strings): Promise<void> {
   const refreshHq = (): void => {
     if (hq.isOpen) {
       hq.refresh();
+      showGoalsWaiting();
+      showCratesWaiting();
     }
     if (restArea.isOpen) {
       restArea.refresh();
@@ -1403,10 +2302,23 @@ async function start(strings: Strings): Promise<void> {
     pauseMenu.close();
     pauseMenu.buttonVisible = false;
     result.showCompleted(delivery.mission, delivery, economy.credits);
+    // The stars, the pay counted up and the perfect streak (CrateService has seen the delivery already).
+    const celebration = crates.lastDelivery;
+    if (celebration !== null) {
+      result.celebrate(celebration, delivery.reward.total, (tier) => openCrates(tier));
+    }
     // The earnings boost's share, already paid, as a line of its own.
     if (monetization.earningsBoostPaid > 0) {
       result.showEarningsBoost(strings.percent(monetization.earningsBoost.share), monetization.earningsBoostPaid);
     }
+    // The crates' boosters running, theirs (SupplyService has seen the delivery already).
+    const boosted = supplies.lastDelivery;
+    result.showBoosted(strings.percent(config.crates.boosters.payShare), boosted.pay, boosted.xp);
+    // The research's pay bonus, already paid, and the research points earned (ResearchService has seen it too).
+    const researched = research.lastDelivery;
+    result.showResearch(strings.percent(research.perks.deliveryPayBonus), researched.pay, researched.points);
+    // The safe-driving bonus, already paid: no fine and no knock on the way.
+    result.showSafeDriving(strings.percent(config.roadEvents.safeDrivingShare), roadEvents.lastDelivery.pay);
     // A share of the pay again for a rewarded ad, if the player wants it (none in a build without ads).
     const bonus = monetization.deliveryBonusOffer;
     if (bonus > 0) {
@@ -1444,11 +2356,13 @@ async function start(strings: Strings): Promise<void> {
     }
   });
   events.on('CompanyLevelUp', ({ level }) => {
-    const name = strings.t(`company.levelName.${level}`);
     if (result.isOpen) {
       result.showLevelUp(level);
+      celebrateLevelSoon(1800); // Once the stars have landed.
+    } else if (hq.isOpen) {
+      celebrateLevelSoon(0);
     } else {
-      toasts.show(strings.t('toast.levelUp', { name }), 'success');
+      toasts.show(strings.t('toast.levelReward', { level }), 'success');
     }
   });
   let warnedLowFuel = false;
@@ -1491,8 +2405,17 @@ async function start(strings: Strings): Promise<void> {
   events.on('MoneyChanged', refreshHq);
   events.on('VehicleRepaired', refreshHq);
   events.on('VehiclePurchased', refreshHq);
+  events.on('VehicleSold', refreshHq);
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
+  events.on('ResearchCompleted', refreshHq);
+  // A dot on the company page's tab while a research step is within reach (points and credits).
+  const showResearchReady = (): void => {
+    hq.researchReady = research.readyCount(economy.credits) > 0;
+  };
+  for (const name of ['ResearchPointsChanged', 'ResearchCompleted', 'MoneyChanged', 'CompanyLevelUp', 'GameStateChanged'] as const) {
+    events.on(name, showResearchReady);
+  }
   for (const name of ['DriverHired', 'DriverDismissed', 'FleetTruckAssigned', 'FleetTruckRepaired'] as const) {
     events.on(name, refreshHq);
   }
@@ -1557,7 +2480,7 @@ async function start(strings: Strings): Promise<void> {
     }
   });
   // A purchase ends any preview (refreshHq), then the truck shows what was bought.
-  for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged'] as const) {
+  for (const name of ['UpgradePurchased', 'VehiclePainted', 'ActiveVehicleChanged', 'LiveryChanged'] as const) {
     events.on(name, () => {
       refreshHq();
       showTruck();
@@ -1580,7 +2503,7 @@ async function start(strings: Strings): Promise<void> {
     hud.visible = road;
     minimap.visible = road;
     dock.visible = road;
-    pauseMenu.buttonVisible = road && !result.isOpen;
+    pauseMenu.buttonVisible = road && !result.isOpen && !dailyDialog.isOpen;
     lookAround.enabled = road;
     cameraRig.showcase = !road;
     showCamera(road);
@@ -1597,6 +2520,9 @@ async function start(strings: Strings): Promise<void> {
       showEarningsBoost();
     }
     if (!drivingNow) {
+      goalsDialog.close();
+      crateDialog.close();
+      levelUpDialog.close();
       hq.close();
       toasts.clear();
     } else {
@@ -1608,6 +2534,15 @@ async function start(strings: Strings): Promise<void> {
       }
     }
     showHud();
+    if (drivingNow) {
+      offerDailyReward();
+      if (levelRewards.waitingLevel !== null) {
+        toasts.show(strings.t('toast.levelReward', { level: company.level }), 'success');
+      }
+    } else if (dailyDialog.isOpen) {
+      dailyDialog.close();
+      paused = false;
+    }
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
@@ -1661,6 +2596,7 @@ async function start(strings: Strings): Promise<void> {
     if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
       audio.unlock();
       tilt.unlock();
+      radio.connect(audio.output);
     }
   };
   window.addEventListener('pointerup', unlockSound, { capture: true });
@@ -1676,13 +2612,27 @@ async function start(strings: Strings): Promise<void> {
   const goBack = (): boolean => {
     const action = backAction({
       gameState: gameState.current,
-      menuDialogOpen: settingsDialog.isOpen || controlsDialog.isOpen || newCompany.isOpen || worldMap.isOpen,
+      menuDialogOpen:
+        settingsDialog.isOpen ||
+        controlsDialog.isOpen ||
+        newCompany.isOpen ||
+        worldMap.isOpen ||
+        goalsDialog.isOpen ||
+        photoMode.isOpen,
       panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
     });
     switch (action) {
       case 'closeDialog':
+        if (photoMode.isOpen) {
+          closePhoto();
+          break;
+        }
+        if (goalsDialog.isOpen) {
+          goalsDialog.close();
+          break;
+        }
         settingsDialog.stepBack();
         controlsDialog.close();
         newCompany.close();
@@ -1730,6 +2680,9 @@ async function start(strings: Strings): Promise<void> {
         })
         .catch((error: unknown) => logger.error('The ads did not start.', error));
     }
+    import('./platform/native/inAppReview')
+      .then(({ inAppReview }) => review.attach(inAppReview()))
+      .catch((error: unknown) => logger.warn('The rating sheet did not load.', error));
     import('./platform/native/playBilling')
       .then(({ playBilling }) => playBilling(logger.withCategory('Store')))
       .then(async (store) => {
@@ -1775,7 +2728,7 @@ async function start(strings: Strings): Promise<void> {
       const restArea = driving.world.restAreas[0];
       const spot = event.code === 'KeyT' ? target?.depot.bay : event.code === 'KeyY' ? restArea?.lot : undefined;
       if (spot !== undefined) {
-        const parked = bayParkingPose(spot, driving.definition.body);
+        const parked = bayParkingPose(spot, driving.definition.body, driving.definition.trailer);
         driving.placeTruck(parked.x, parked.z, parked.heading);
       }
     });
@@ -1808,6 +2761,8 @@ async function start(strings: Strings): Promise<void> {
   /** The last frame's own work on the main thread (AdaptiveResolution: slow frames that are the CPU's keep their pixels). */
   let lastFrameWorkSeconds = 0;
   const pose = { x: 0, z: 0, heading: 0 };
+  /** Where a tractor unit's semi-trailer stands between fixed steps (no allocation). */
+  const trailerPose = createTrailerPose();
   /** How the truck's body stands between fixed steps (no allocation). */
   const bodyPose = createTruckPose();
   /** The truck's attitude as last shown (html[data-attitude]). */
@@ -1830,12 +2785,17 @@ async function start(strings: Strings): Promise<void> {
         traffic.update(stepSeconds);
         timeOfDay.update(stepSeconds);
         season.update(stepSeconds);
+        skyWonders.update(stepSeconds);
+        cityIncidents.update(stepSeconds);
+        news.update();
         weather.update(stepSeconds);
         // The fleet's drivers and the rivals work on while the player is in the panel or the menus, and those near
         // the truck join the traffic.
         fleet.update(stepSeconds);
         rivals.update(stepSeconds);
         companyTraffic.update(stepSeconds);
+        weeklyCup.update();
+        roadPass.update();
         if (!onRoad()) {
           return;
         }
@@ -1848,6 +2808,9 @@ async function start(strings: Strings): Promise<void> {
         navigation.update(stepSeconds);
         fuel.update();
         session.update(stepSeconds);
+        career.update(stepSeconds);
+        roadEvents.update(stepSeconds);
+        convoy.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -1861,7 +2824,17 @@ async function start(strings: Strings): Promise<void> {
         // Standing still, show the current pose: interpolating would rock the truck between two steps.
         interpolatePose(pose, driving.previousPose, vehicle, simulating ? alpha : 1);
         interpolateBodyPose(bodyPose, driving.previousPose, vehicle, simulating ? alpha : 1);
+        // The semi-trailer where it stands, for the model of the truck driven (another model shown stands straight).
+        const trailer = driving.trailer;
+        let shownTrailer: TrailerPose | null = null;
+        if (trailer !== null && driving.previousTrailer !== null && truck.definition.id === driving.definition.id) {
+          interpolatePose(trailerPose, driving.previousTrailer, trailer, simulating ? alpha : 1);
+          trailerPose.y = trailer.y;
+          trailerPose.grade = trailer.grade;
+          shownTrailer = trailerPose;
+        }
         if (menuPreview !== null && gameState.current === 'mainMenu') {
+          shownTrailer = null;
           // Behind the main menu, the truck stands, level, where the drive would start.
           pose.x = menuPreview.x;
           pose.z = menuPreview.z;
@@ -1902,6 +2875,7 @@ async function start(strings: Strings): Promise<void> {
         citySigns.setLamps(lamps);
         signBoards.setLamps(lamps);
         windTurbines.setLamps(lamps);
+        suspensionBridges.setLamps(lamps);
         windTurbines.update(paused ? 0 : deltaSeconds);
         // The towns' people: fewer out at night and in the rain, their umbrellas up when it rains.
         const night = timeOfDay.weights.night + 0.4 * timeOfDay.weights.twilight;
@@ -1929,6 +2903,18 @@ async function start(strings: Strings): Promise<void> {
         riverView?.update(paused ? 0 : deltaSeconds);
         parkView?.update(paused ? 0 : deltaSeconds);
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
+        cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
+        roadEventsView.setWorld(driving.world);
+        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy);
+        if (cityLife.sounds.bursts > 0) {
+          audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
+        }
+        tractors.update(
+          paused ? 0 : deltaSeconds,
+          renderHost.camera.position.x,
+          renderHost.camera.position.z,
+          lamps < 0.5 && weather.rain < 0.3 && season.season !== 'winter',
+        );
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
         // The wipers sweep the snow off the glass too.
@@ -1942,7 +2928,8 @@ async function start(strings: Strings): Promise<void> {
         truck.setDashboard(dashboard);
         truck.setNavigation(minimap.picture, minimap.paintCount);
         truck.setBuild(driving.build);
-        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose);
+        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
+        cameraRig.setTrailerPose(shownTrailer);
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
         streetLamps.showKnocked(world.knocked, world.knockVersion);
@@ -1955,6 +2942,7 @@ async function start(strings: Strings): Promise<void> {
         farmland.drawDebris(debris, debrisAlpha);
         scenery.drawDebris(debris, debrisAlpha);
         trafficView.update(traffic.simulation, worldStill ? 1 : alpha, debris, crashes);
+        trafficSignals?.update(traffic.simulation?.signalSeconds ?? 0);
         gpsRoute.update(vehicle.x, vehicle.z, vehicle.heading, driving.world.roads);
         const vehicles = traffic.simulation?.vehicleCount ?? 0;
         if (vehicles !== shownTraffic) {
@@ -1966,15 +2954,19 @@ async function start(strings: Strings): Promise<void> {
           shownCompanyTrucks = companyTrucks;
           root.dataset.companyTrucks = String(companyTrucks);
         }
-        lookAround.update(deltaSeconds);
-        cameraRig.look(lookAround.yaw, lookAround.pitch);
-        // Over, the cameras on the truck give way to the chase camera; back on its wheels, they come back.
-        cameraRig.setBuild(driving.build);
-        cameraRig.setOverturned(vehicle.attitude === 'overturned');
-        if (cameraRig.shownMode !== root.dataset.camera) {
-          showCamera(onRoad());
+        if (photoMode.isOpen) {
+          photoCamera.apply(renderHost.camera, pose);
+        } else {
+          lookAround.update(deltaSeconds);
+          cameraRig.look(lookAround.yaw, lookAround.pitch);
+          // Over, the cameras on the truck give way to the chase camera; back on its wheels, they come back.
+          cameraRig.setBuild(driving.build);
+          cameraRig.setOverturned(vehicle.attitude === 'overturned');
+          if (cameraRig.shownMode !== root.dataset.camera) {
+            showCamera(onRoad());
+          }
+          cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
         }
-        cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
         // The land turns to the season (over a moment, even paused: a season picked in Settings shows behind them),
@@ -1999,17 +2991,33 @@ async function start(strings: Strings): Promise<void> {
           keptMist ?? morningMist(timeOfDay.sunElevationDegrees, timeOfDay.sunRising, weather.rain, skyLook.cloudCover, wetness);
         environment.setMist(mist);
         showMist(mist);
+        environment.setAurora(skyWonders.aurora);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
+        shootingStars.update(paused ? 0 : deltaSeconds, renderHost.camera, environment.starLevel);
+        // The sky's wonders count as the player sees them on the road (not behind the panel or a pause).
+        const watchingSky = isDriving() && !paused && !hq.isOpen;
+        skyWonders.observe('aurora', environment.auroraShown > AURORA_SEEN, watchingSky);
+        skyWonders.observe('rainbow', environment.rainbowShown > RAINBOW_SEEN, watchingSky);
+        skyWonders.observe('meteor', shootingStars.streaking, watchingSky);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
-        // What lies far off in the haze is not drawn.
-        track.showAround(eye.x, eye.z);
-        scenery.showAround(eye.x, eye.z);
+        // What lies far off in the haze is not drawn, nor whole tiles out of view (but where the sun's shadow map
+        // is drawn: a tile out of view can cast a shadow into it).
+        const eyeView = renderHost.currentView();
+        const view = renderHost.shadowsOn ? null : eyeView;
+        track.showAround(eye.x, eye.z, view, eyeView);
+        scenery.showAround(eye.x, eye.z, view, eyeView);
+        roadFurniture.showAround(eye.x, eye.z, view, eyeView);
+        streetLamps.showAround(eye.x, eye.z);
+        trafficSignals?.showAround(eye.x, eye.z);
+        farmland.showAround(eye.x, eye.z);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
-        rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain);
-        snowfall.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.snow);
+        // On a map's hills the drops fall round the camera from the ground under it (at the truck's level: a deck).
+        const fallsFrom = driving.world.flat ? 0 : Math.min(eye.y - 1, driving.world.groundAt(eye.x, eye.z, bodyPose.y + 1));
+        rain.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.rain, fallsFrom);
+        snowfall.update(paused ? 0 : deltaSeconds, eye.x, eye.z, weather.snow, fallsFrom);
         // Exhaust, dust and spray. In reverse the pedals swap roles (VehicleDynamics): the brake pedal drives.
         effectsState.driving = simulating;
         effectsState.engineRunning = driving.isEngineRunning;
@@ -2061,10 +3069,26 @@ async function start(strings: Strings): Promise<void> {
         worldMap.frame();
         restArea.visible = simulating;
         restArea.update();
+        ferry.visible = simulating;
+        ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);
         rollover.visible = simulating;
         rollover.update(vehicle.attitude, sliding, vehicle.bank);
+        roadAlert.visible = simulating;
+        radio.playing = onRoad() && !paused;
+        radioButton.visible = onRoad() && !paused;
+        roadAlert.show(
+          roadEvents.workZoneLimitKmh,
+          roadEvents.cameraAheadLimitKmh,
+          roadEvents.cameraAheadMeters,
+          roadEvents.cameraAheadIsWorks,
+        );
+        roadAlert.showConvoy(convoy.active, convoy.riding, convoy.riding ? convoy.riddenMetersSoFar : convoy.distanceMeters);
+        const stranded = roadEvents.stranded === null ? 'none' : 'waiting';
+        if (root.dataset.stranded !== stranded) {
+          root.dataset.stranded = stranded;
+        }
         const tutorialStep = tutorial.step;
         const tutorialAt = hintPlace();
         tutorialHint.show(tutorialAt !== null && tutorialShows(tutorialStep, tutorialAt) ? tutorialStep : null, tutorialAt);
@@ -2072,19 +3096,23 @@ async function start(strings: Strings): Promise<void> {
         toasts.update(deltaSeconds);
         // Slow frames on the road: fewer pixels (the rain's streaks and the wires keep their width in pixels). The menus,
         // drawn at half rate, are no measure.
-        if (simulating && adaptiveResolution.frame(deltaSeconds, lastFrameWorkSeconds)) {
+        // At 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second or more.
+        renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps >= 120;
+        // Measured in real time: a moment of slow motion's short game frames are not a quicker screen.
+        if (simulating && adaptiveResolution.frame(loop.realFrameSeconds, lastFrameWorkSeconds)) {
           renderHost.setResolutionScale(adaptiveResolution.scale);
           fitPixelSizes();
         }
         // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
         // saves the battery. The full map hides it all.
-        menuFrames = onRoad() && !paused ? 0 : menuFrames + 1;
+        // Photo mode is the picture itself: every frame.
+        menuFrames = (onRoad() && !paused) || photoMode.isOpen ? 0 : menuFrames + 1;
         if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
           renderHost.setGrade(environment.grade);
           renderHost.setSun(environment.sunTowards, environment.sunGlare, environment.sunShafts);
           renderHost.render();
         }
-        touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear);
+        touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear, deltaSeconds);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
@@ -2096,13 +3124,14 @@ async function start(strings: Strings): Promise<void> {
         soundState.reversing = reversing;
         soundState.speed = vehicle.speed;
         soundState.rain = weather.rain;
+        soundState.sirenMeters = cityLife.sounds.sirenMeters;
         audio.update(soundState);
         if (audio.status !== shownSound) {
           shownSound = audio.status;
           root.dataset.sound = shownSound;
         }
         if (perfOverlay.visible) {
-          perfOverlay.frame(deltaSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+          perfOverlay.frame(loop.realFrameSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
         }
         lastFrameWorkSeconds = (performance.now() - workStarted) / 1000;
       },
@@ -2119,11 +3148,54 @@ async function start(strings: Strings): Promise<void> {
         : config.simulation.maxFrameDeltaSeconds,
     },
   );
+  /**
+   * The player's frame rate (Settings): the loop's cap (none for `max`) and the dynamic resolution's target under it;
+   * in the Android app the screen's refresh rate asked for too, the fastest its screen has for `max` (90, 120 Hz…),
+   * 60 Hz otherwise (30 frames a second on a 60 Hz screen: every other one).
+   */
+  const applyFrameRate = (choice: FrameRateChoice): void => {
+    const cap = frameRateCap(choice);
+    loop.maxFramesPerSecond = cap;
+    adaptiveResolution.setFrameCap(cap);
+    if (isNativeApp(window)) {
+      void import('./platform/native/displayRate').then(({ preferRefreshRate }) => preferRefreshRate(cap === 0 ? 240 : 60));
+    }
+  };
   // Every view is in the scene: the rest of it shaded, and its shaders compiled now, behind the menu, not on the road.
   shadeScene();
-  renderHost.precompile();
+  if (gradualCompile) {
+    await renderHost.precompileGradually(afterNextFrame);
+  } else {
+    renderHost.precompile();
+  }
+  applyFrameRate(settings.frameRate);
   loop.start();
   root.dataset.bootState = 'ready';
+  // Asked by the last page: go on with the company that crossed to this region, or found the one named.
+  if (pendingBoot?.continueCompany === true) {
+    const continued = session.continueGame();
+    if (continued.ok) {
+      enterCompany();
+      toasts.show(strings.t('ferry.arrived', { region: strings.t(`region.${driving.world.id}.name`) }), 'success');
+    }
+    arrivingCrossing?.hide();
+  } else if (pendingBoot?.newCompany !== undefined) {
+    const founded = session.startNewGame(pendingBoot.newCompany.name, pendingBoot.newCompany.startId, driving.world.id);
+    if (founded.ok) {
+      enterCompany();
+    }
+  }
+}
+
+/** Resolves once the next frame is drawn, or after a moment where none is (a hidden page draws no frames). */
+function afterNextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    const fallback = setTimeout(resolve, 100);
+    requestAnimationFrame(() => {
+      clearTimeout(fallback);
+      setTimeout(resolve, 0);
+    });
+  });
 }
 
 /** The error screen's words: a device that cannot draw the game is told so; anything else is a crash, the save kept. */
@@ -2138,11 +3210,38 @@ function fatalText(strings: Strings, error: unknown): FatalErrorText {
 }
 
 /**
+ * In the Android app, the files Android's backup keeps for the player (the cloud save): on a new phone or a reinstall
+ * with no company yet, they bring the company and the settings back before anything reads them. Null in a browser,
+ * or when the files cannot be reached.
+ */
+async function cloudSaveFiles(): Promise<MirrorFiles | null> {
+  if (!isNativeApp(window)) {
+    return null;
+  }
+  const local = browserStorage(window);
+  if (!local.persistent) {
+    return null;
+  }
+  try {
+    const { capacitorMirrorFiles } = await import('./platform/native/capacitorMirrorFiles');
+    const restored = await restoreMirror(local.storage, capacitorMirrorFiles);
+    if (restored.length > 0) {
+      console.info(`Brought back from the cloud save: ${restored.join(', ')}.`);
+    }
+    return capacitorMirrorFiles;
+  } catch (error) {
+    console.warn('The cloud save could not be reached.', error);
+    return null;
+  }
+}
+
+/**
  * The language first (`?lang=`, the player's setting, the device's), so a
  * failure at boot is told in it too; its table loads with its own chunk,
  * English should that fail. Then the game.
  */
 async function boot(): Promise<void> {
+  const mirrorFiles = await cloudSaveFiles();
   // Older WebViews may only have navigator.language.
   const language = chooseLanguage(
     new URLSearchParams(window.location.search).get('lang'),
@@ -2157,7 +3256,7 @@ async function boot(): Promise<void> {
       return stringsFor('en');
     });
     document.documentElement.lang = strings.language;
-    await start(strings);
+    await start(strings, mirrorFiles);
   } catch (error) {
     console.error(error);
     document.documentElement.dataset.bootState = 'error';
@@ -2167,3 +3266,12 @@ async function boot(): Promise<void> {
 
 document.documentElement.dataset.bootState = 'booting';
 void boot();
+
+/** Where the coast meets the map's north and south edges, the westernmost; with no sea, far west of the map. */
+function coastAtEdges(world: DrivingWorld): number {
+  const shoreline = world.sea?.shoreline;
+  if (shoreline === undefined || shoreline.length === 0) {
+    return -world.halfSizeMeters * 3;
+  }
+  return Math.min(shoreline[0]![0], shoreline[shoreline.length - 1]![0]);
+}

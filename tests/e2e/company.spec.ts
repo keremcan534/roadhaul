@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
+import { continueGame, continueSavedCompany, openPanel, savedCompany, watchForProblems } from './support';
 
 /** A level 2 company with 30,000 credits, its truck half wrecked: a full repair would cost 1,500 (half of a quarter of the H1's 12,000). */
 function battered(): string {
@@ -51,7 +51,7 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
 
   // Kept in the save: the company comes back with its workshop.
   await page.reload();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   await openPanel(page, 'company');
   await expect(workshop).toHaveAttribute('data-level', '2');
@@ -59,3 +59,60 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
   await expect(repair).toHaveText('Repair · 1,050 credits');
   expect(problems).toEqual([]);
 });
+
+test('researches a step of the research tree with the points deliveries earned', async ({ page }, testInfo) => {
+  test.slow();
+  const problems = watchForProblems(page);
+  await continueSavedCompany(page, researchSave(5), '?lang=en');
+  await openPanel(page, 'company');
+  // A step within reach: a dot on the page's tab.
+  const companyTab = page.locator('.hq__tab[data-tab="company"]');
+  await expect(companyTab).toHaveClass(/has-dot/);
+
+  const tree = page.locator('.hq__section--research');
+  await expect(tree.locator('[data-value="research-points"]')).toHaveText('Research points: 5');
+  await expect(tree.locator('.research__branch')).toHaveCount(3);
+  await expect(tree.locator('.research-node')).toHaveCount(12);
+  await expect(tree.locator('.research-node[data-state="available"]')).toHaveCount(3);
+  const rates = tree.locator('.research-node[data-research-id="better_rates"]');
+  await expect(rates.locator('.research-node__name')).toHaveText('Better Rates');
+  await expect(rates.locator('.research-node__effect')).toHaveText('Delivery pay +3%');
+  await expect(rates.locator('[data-action="research"]')).toHaveText('Research · 3 RP · 2,000 credits');
+
+  await rates.locator('[data-action="research"]').click();
+  await expect(page.locator('.toast').filter({ hasText: 'Better Rates researched!' })).toBeVisible();
+  await expect(page.locator('.hq__credits')).toHaveText('8,000 credits');
+  await expect(rates).toHaveAttribute('data-state', 'researched');
+  await expect(tree.locator('[data-value="research-points"]')).toHaveText('Research points: 2');
+  // The next step opens, but takes more points than are left.
+  const training = tree.locator('.research-node[data-research-id="training_program"]');
+  await expect(training).toHaveAttribute('data-state', 'available');
+  await expect(training.locator('[data-action="research"]')).toBeDisabled();
+  await expect(companyTab).not.toHaveClass(/has-dot/);
+  await testInfo.attach('research', { body: await page.screenshot(), contentType: 'image/png' });
+  expect(problems).toEqual([]);
+});
+
+/** A level 2 company from this build with 10,000 credits and `points` research points, nothing researched. */
+function researchSave(points: number): string {
+  const save = JSON.parse(savedCompany({ credits: 10_000 })) as Record<string, unknown>;
+  Object.assign(save, {
+    version: 17,
+    tutorial: { step: 'done' },
+    fleet: { drivers: [], jobsPlanned: 0 },
+    rivals: { companies: [], standing: [], campaignCooldowns: [], tender: null, race: null, nextTenderSeconds: null, tendersPosted: 0, jobsPlanned: 0 },
+    events: { runs: [] },
+    facilities: { levels: {} },
+    daily: { lastClaimDay: null, streak: 0 },
+    achievements: { counters: {}, claimed: [] },
+    crates: { held: {}, opened: 0, paints: [], liveries: [], perfectStreak: 0, bestPerfectStreak: 0, freeCrateAtMs: 4_102_444_800_000 },
+    levelRewards: { rewardedLevel: 2 },
+    supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
+    quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
+    liveries: { bought: [], worn: {}, text: null },
+    research: { points, researched: [] },
+  });
+  const garage = save['garage'] as { vehicles: Record<string, unknown>[] };
+  garage.vehicles = garage.vehicles.map((vehicle) => ({ ...vehicle, paintId: null }));
+  return JSON.stringify(save);
+}

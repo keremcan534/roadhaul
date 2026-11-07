@@ -1,4 +1,16 @@
-import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import {
+  ACESFilmicToneMapping,
+  Frustum,
+  Matrix4,
+  PCFShadowMap,
+  PerspectiveCamera,
+  Scene,
+  Vector2,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
+import { compilePieces } from './compilePieces';
+import { opaqueByProgram } from './opaqueByProgram';
 import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
 
 export interface RenderSettings {
@@ -13,8 +25,23 @@ export interface RenderSettings {
   readonly shadowMapSize: number;
 }
 
+/**
+ * precompileGradually() lets a frame be drawn after this many new shaders:
+ * a weak phone GPU compiles them in well under a second, far from the five
+ * seconds Android waits before it reports the game not responding.
+ */
+const SHADERS_PER_PAUSE = 4;
+
 /** Renderer names of WebGL implementations that run on the CPU instead of a GPU. */
 const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render driver/i;
+
+/** How far the dynamic resolution may lower the pixels when drawn in software, whatever the preset says. */
+export const SOFTWARE_MIN_RESOLUTION_SCALE = 0.6;
+
+/** True for a WebGL renderer name that runs on the CPU (gpuName.ts gives it before the renderer is made). */
+export function isSoftwareRenderer(name: string | undefined): boolean {
+  return name !== undefined && SOFTWARE_RENDERER.test(name);
+}
 
 /**
  * Owns the WebGL renderer, the scene graph root and the active camera.
@@ -25,6 +52,8 @@ export class RenderHost {
   readonly renderer: WebGLRenderer;
   readonly scene = new Scene();
   readonly camera = new PerspectiveCamera(55, 1, 0.5, 1000);
+  private readonly view = new Frustum();
+  private readonly viewProjection = new Matrix4();
   /**
    * True when WebGL is emulated on the CPU (no GPU acceleration, headless
    * test browsers). Every pixel is then expensive, so the host renders at
@@ -69,6 +98,7 @@ export class RenderHost {
     // would rebuild every lit shader.
     this.renderer.shadowMap.enabled = settings.shadowMapSize > 0;
     this.renderer.shadowMap.type = PCFShadowMap;
+    this.renderer.setOpaqueSort(opaqueByProgram(this.renderer.properties));
     this.post =
       settings.postProcessing && PostProcessing.supported(this.renderer)
         ? new PostProcessing(this.renderer, {
@@ -173,13 +203,94 @@ export class RenderHost {
     this.renderer.getContext().flush();
   }
 
+  /**
+   * precompile(), a piece of the scene at a time, for phones: a weak GPU given
+   * every shader at once is busy with them for seconds, and Android, whose own
+   * drawing waits for it, reports the game not responding (an ANR). The
+   * pieces go to the GPU a few new shaders at a time, and `pause` lets a frame
+   * be drawn between; pieces whose shaders are compiled already cost nothing.
+   * Then precompile() for the colour pass's own. At boot only.
+   */
+  async precompileGradually(pause: () => Promise<void>): Promise<void> {
+    let compiling: Promise<unknown>[] = [];
+    let sincePause = this.programCount();
+    for (const piece of compilePieces(this.scene)) {
+      const before = this.programCount();
+      const ready =
+        this.post === null
+          ? this.renderer.compileAsync(piece, this.camera, this.scene)
+          : this.post.compileObject(piece, this.scene, this.camera);
+      if (this.programCount() > before) {
+        compiling.push(ready);
+      }
+      if (this.programCount() - sincePause >= SHADERS_PER_PAUSE) {
+        this.renderer.getContext().flush();
+        await Promise.all(compiling);
+        compiling = [];
+        await pause();
+        sincePause = this.programCount();
+      }
+    }
+    this.precompile();
+  }
+
+  /** Whether the preset draws shadow maps: then things out of view can still cast shadows into it. */
+  get shadowsOn(): boolean {
+    return this.renderer.shadowMap.enabled;
+  }
+
+  /**
+   * The camera's view as it stands now (its matrices brought up to date),
+   * for leaving out whole tiles beyond it (FarCulling). Call it once the
+   * camera has moved for the frame. Allocation-free.
+   */
+  currentView(): Frustum {
+    this.camera.updateMatrixWorld();
+    this.viewProjection.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    return this.view.setFromProjectionMatrix(this.viewProjection);
+  }
+
+  private programCount(): number {
+    return this.renderer.info.programs?.length ?? 0;
+  }
+
+  /**
+   * Draws the sun's shadow map every other frame only (at 120 Hz and more):
+   * the shadows then follow what moves 60 times a second or more, still
+   * smooth, and the frame is spared the casters' second drawing half the time
+   * (about a sixth of a flagship's frame). The shadows keep the matrix they
+   * were drawn with, so they never slip. Off: every frame.
+   */
+  shadowsEveryOtherFrame = false;
+  private shadowFrames = 0;
+
   render(): void {
     this.renderer.info.reset();
+    const shadows = this.renderer.shadowMap;
+    if (shadows.enabled) {
+      shadows.autoUpdate = false;
+      shadows.needsUpdate = !this.shadowsEveryOtherFrame || (this.shadowFrames++ & 1) === 0;
+    }
     if (this.post === null) {
       this.renderer.render(this.scene, this.camera);
     } else {
       this.post.render(this.scene, this.camera);
     }
+  }
+
+  /**
+   * Draws a frame and hands the canvas to `take` at once, while the frame is
+   * still in it (the drawing buffer is not kept past the task): photo mode's
+   * picture (photoPicture).
+   */
+  capture<T>(take: (picture: HTMLCanvasElement) => T): T {
+    this.render();
+    return take(this.renderer.domElement);
+  }
+
+  /** Shows the picture through a CSS filter (photo mode's look), 'none' for none. Only the canvas's showing changes. */
+  set filter(filter: string) {
+    this.renderer.domElement.style.filter = filter === 'none' ? '' : filter;
   }
 
   /**
@@ -198,7 +309,11 @@ export class RenderHost {
    */
   private applySize(): void {
     const cap = this.softwareRendering ? Math.min(1, this.settings.maxPixelRatio) : this.settings.maxPixelRatio;
-    const pixelRatio = Math.min(this.devicePixelRatio, cap) * this.resolutionScale;
+    // On a GPU never under one pixel per CSS pixel (the screen's own, if coarser): fewer shows as blocks, not as
+    // speed. Drawn in software every pixel is the processor's work, and there fewer pixels are the speed.
+    const full = Math.min(this.devicePixelRatio, cap);
+    const floor = this.softwareRendering ? 0 : Math.min(full, 1);
+    const pixelRatio = Math.max(full * this.resolutionScale, floor);
     if (
       this.cssWidth === this.appliedWidth &&
       this.cssHeight === this.appliedHeight &&

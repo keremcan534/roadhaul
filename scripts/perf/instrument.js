@@ -60,6 +60,22 @@
   if (stubDraws) {
     for (const name of ['clear', 'blitFramebuffer']) P[name] = function () {};
   }
+  // The batches' draws (TileBatch, WEBGL_multi_draw): one call drawing many ranges, left out (and counted) the same.
+  const getExtension = P.getExtension;
+  P.getExtension = function (name) {
+    const extension = getExtension.call(this, name);
+    if (name === 'WEBGL_multi_draw' && extension !== null && !extension.__perf) {
+      extension.__perf = true;
+      for (const method of ['multiDrawArraysWEBGL', 'multiDrawElementsWEBGL', 'multiDrawArraysInstancedWEBGL', 'multiDrawElementsInstancedWEBGL']) {
+        const original = extension[method];
+        if (typeof original !== 'function') continue;
+        extension[method] = stubDraws
+          ? function () { if (!lean) perf.draws++; }
+          : function (...args) { if (!lean) perf.draws++; return original.apply(extension, args); };
+      }
+    }
+    return extension;
+  };
   for (const name of lean ? [] : Object.getOwnPropertyNames(P).filter((n) => /^uniform(\d|Matrix)/.test(n))) {
     const original = P[name];
     P[name] = function (a, b, c, d, e) { perf.uniforms++; return original.call(this, a, b, c, d, e); };

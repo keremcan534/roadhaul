@@ -17,8 +17,15 @@ export interface VehicleRuntimeState {
    */
   x: number;
   z: number;
+  /**
+   * The ground's height under the rear axle, meters (terrain.ts; 0 on a
+   * flat map): where the truck stands up and down.
+   */
+  y: number;
   /** Radians. Never wrapped, so interpolating between two steps cannot jump. */
   heading: number;
+  /** The ground's rise per meter along the heading under the truck: positive uphill. 0 on the flat. */
+  grade: number;
   /** Meters per second along the heading; negative while reversing. */
   speed: number;
   /**

@@ -6,11 +6,12 @@ import {
   Group,
   InstancedMesh,
   Matrix4,
-  Mesh,
   MeshLambertMaterial,
   PlaneGeometry,
   Quaternion,
   Vector3,
+  type Frustum,
+  type Material,
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -21,6 +22,7 @@ import type { GuardRail } from '../../domain/world/guardRails';
 import { createRoadPoint } from '../../domain/world/RoadPath';
 import type { SkyUniforms } from './EnvironmentView';
 import { reflectSky } from './skyReflection';
+import { TileBatch } from './TileBatch';
 import { freezeTransforms } from './worldTiles';
 
 /**
@@ -119,7 +121,8 @@ export class RoadFurnitureView {
   private readonly posts: InstancedMesh;
   private readonly reflectors: InstancedMesh;
   private readonly studs: InstancedMesh;
-  private readonly rails: Mesh[] = [];
+  /** The guard rails' tiles and the median barriers', each drawn as one (TileBatch), culled in showAround. */
+  private readonly rails: TileBatch[] = [];
   private readonly resources: { dispose(): void }[] = [];
   /** Every post: where it stands, its matrix and its two reflectors' (16 floats each), in the same order. */
   private readonly postX: Float32Array;
@@ -164,9 +167,11 @@ export class RoadFurnitureView {
     const position = new Vector3();
     const one = new Vector3(1, 1, 1);
     const up = new Vector3(0, 1, 0);
+    // On the ground where each stands (a map's hills; 0 on a flat map).
+    const ground = (x: number, z: number): number => world.terrain.heightAt(x, z);
     spots.forEach(({ x, z, heading }, index) => {
       rotation.setFromAxisAngle(up, heading);
-      matrix.compose(position.set(x, 0, z), rotation, one);
+      matrix.compose(position.set(x, ground(x, z), z), rotation, one);
       matrix.toArray(this.postMatrices, index * 16);
       // One on each face, toward the traffic either way, near the post's top.
       for (const face of [0, 1] as const) {
@@ -195,7 +200,7 @@ export class RoadFurnitureView {
     const tint = new Color();
     studs.forEach(({ x, z, heading, amber }, index) => {
       rotation.setFromAxisAngle(up, heading);
-      this.studs.setMatrixAt(index, matrix.compose(position.set(x, STUD_Y, z), rotation, one));
+      this.studs.setMatrixAt(index, matrix.compose(position.set(x, STUD_Y + ground(x, z), z), rotation, one));
       this.studs.setColorAt(index, tint.setHex(amber ? REFLECTOR_COLOR : STUD_WHITE));
     });
     this.studs.count = studs.length;
@@ -206,16 +211,28 @@ export class RoadFurnitureView {
     if (options.sky !== undefined) {
       reflectSky(railMaterial, options.sky, { facing: 0.3, strength: 0.7, metal: true });
     }
-    for (const [tile, parts] of railTiles(world.guardRails)) {
-      const mesh = new Mesh(this.track(mergeGeometries(parts)), railMaterial);
-      for (const part of parts) {
-        part.dispose();
+    const batchOf = (tiles: Iterable<[string, BufferGeometry[]]>, material: Material, name: string): void => {
+      const merged = [...tiles].map(([, parts]) => {
+        const geometry = mergeGeometries(parts);
+        for (const part of parts) {
+          part.dispose();
+        }
+        return geometry;
+      });
+      if (merged.length === 0) {
+        return;
       }
-      mesh.name = `road-furniture:rails:${tile}`;
-      mesh.castShadow = options.castShadows === true;
-      this.rails.push(mesh);
-    }
-    this.root.add(this.posts, this.reflectors, this.studs, ...this.rails);
+      const batch = this.track(new TileBatch(merged, material, name));
+      for (const geometry of merged) {
+        geometry.dispose();
+      }
+      batch.mesh.castShadow = options.castShadows === true;
+      this.rails.push(batch);
+    };
+    batchOf(railTiles(world.guardRails, ground), railMaterial, 'road-furniture:rails');
+    // The motorways' median barriers, in concrete, in the rails' tiles.
+    batchOf(barrierTiles(world.medianBarriers), this.track(new MeshLambertMaterial({ vertexColors: true })), 'road-furniture:barriers');
+    this.root.add(this.posts, this.reflectors, this.studs, ...this.rails.map((batch) => batch.mesh));
     this.root.name = 'road-furniture';
     freezeTransforms(this.root);
     scene.add(this.root);
@@ -223,7 +240,17 @@ export class RoadFurnitureView {
 
   /** How many delineator posts there are, how many are drawn now, how many road studs and rail tiles. */
   get counts(): { readonly posts: number; readonly drawnPosts: number; readonly studs: number; readonly railTiles: number } {
-    return { posts: this.postX.length, drawnPosts: this.posts.count, studs: this.studs.count, railTiles: this.rails.length };
+    return { posts: this.postX.length, drawnPosts: this.posts.count, studs: this.studs.count, railTiles: this.rails.reduce((sum, batch) => sum + batch.size, 0) };
+  }
+
+  /**
+   * Shows the rails' and barriers' tiles near (x, z), the camera, and (given
+   * its view) in it, as TileBatch.update. Allocation-free.
+   */
+  showAround(x: number, z: number, view: Frustum | null = null, eyeView: Frustum | null = view): void {
+    for (let i = 0; i < this.rails.length; i++) {
+      this.rails[i]!.update(x, z, view, eyeView);
+    }
   }
 
   /** How brightly the truck's lamps shine, 0..1 (the weather's): the reflectors ahead catch them. Cheap. */
@@ -447,7 +474,67 @@ function studSpots(world: DrivingWorld): { x: number; z: number; heading: number
  * from the road, merged by the square tile (key "column,row") each piece
  * starts in.
  */
-function railTiles(rails: readonly GuardRail[]): Map<string, BufferGeometry[]> {
+/** A median barrier's section, across it from one face to the other: [across, up], a concrete safety shape. */
+const BARRIER_PROFILE = [
+  [-0.3, 0],
+  [-0.24, 0.12],
+  [-0.1, 0.82],
+  [0.1, 0.82],
+  [0.24, 0.12],
+  [0.3, 0],
+] as const;
+const BARRIER_COLOR = 0xc9c5bc;
+
+/**
+ * The motorways' median barriers (DrivingWorld.medianBarriers) as their
+ * section swept along each run, on the road's height, merged by tile
+ * (RAIL_TILE_METERS) as the rails are.
+ */
+function barrierTiles(runs: readonly (readonly (readonly [number, number, number])[])[]): Map<string, BufferGeometry[]> {
+  const tiles = new Map<string, BufferGeometry[]>();
+  const color = new Color(BARRIER_COLOR);
+  for (const run of runs) {
+    for (let k = 0; k + 1 < run.length; k++) {
+      const [ax, az, ay] = run[k]!;
+      const [bx, bz, by] = run[k + 1]!;
+      const length = Math.hypot(bx - ax, bz - az) || 1;
+      const rightX = -(bz - az) / length;
+      const rightZ = (bx - ax) / length;
+      const positions: number[] = [];
+      for (let p = 0; p + 1 < BARRIER_PROFILE.length; p++) {
+        const [acrossA, upA] = BARRIER_PROFILE[p]!;
+        const [acrossB, upB] = BARRIER_PROFILE[p + 1]!;
+        const corner = (x: number, z: number, y: number, across: number, up: number): number[] => [x + rightX * across, y + up, z + rightZ * across];
+        const a0 = corner(ax, az, ay, acrossA, upA);
+        const a1 = corner(ax, az, ay, acrossB, upB);
+        const b0 = corner(bx, bz, by, acrossA, upA);
+        const b1 = corner(bx, bz, by, acrossB, upB);
+        // Wound so each face looks out of the barrier (its normal away from the centreline and up).
+        positions.push(...a0, ...b1, ...b0, ...a0, ...a1, ...b1);
+      }
+      const geometry = new BufferGeometry();
+      geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+      geometry.computeVertexNormals();
+      const colors = new Float32Array(positions.length);
+      for (let v = 0; v < colors.length; v += 3) {
+        colors[v] = color.r;
+        colors[v + 1] = color.g;
+        colors[v + 2] = color.b;
+      }
+      geometry.setAttribute('color', new BufferAttribute(colors, 3));
+      const key = `${Math.floor(ax / RAIL_TILE_METERS)},${Math.floor(az / RAIL_TILE_METERS)}`;
+      let parts = tiles.get(key);
+      if (parts === undefined) {
+        parts = [];
+        tiles.set(key, parts);
+      }
+      parts.push(geometry);
+    }
+  }
+  return tiles;
+}
+
+function railTiles(rails: readonly GuardRail[], ground: (x: number, z: number) => number): Map<string, BufferGeometry[]> {
   const tiles = new Map<string, BufferGeometry[]>();
   const steel = new Color(0xb9c0c6);
   const post = new Color(0x8f969c);
@@ -477,20 +564,21 @@ function railTiles(rails: readonly GuardRail[]): Map<string, BufferGeometry[]> {
       const parts = partsAt(x, z);
       const heading = Math.atan2(dx, dz);
       const behind = RAIL_POST_BEHIND_METERS;
+      const base = ground(x, z);
       parts.push(
-        coloured(new BoxGeometry(0.1, 0.84, 0.1).rotateY(heading).translate(x - roadX * behind, 0.42, z - roadZ * behind), post),
-        coloured(new BoxGeometry(0.08, 0.2, behind).rotateY(heading).translate(x - (roadX * behind) / 2, 0.685, z - (roadZ * behind) / 2), post),
+        coloured(new BoxGeometry(0.1, 0.84, 0.1).rotateY(heading).translate(x - roadX * behind, base + 0.42, z - roadZ * behind), post),
+        coloured(new BoxGeometry(0.08, 0.2, behind).rotateY(heading).translate(x - (roadX * behind) / 2, base + 0.685, z - (roadZ * behind) / 2), post),
       );
       if (index + 1 < points.length) {
         const [nextX, nextZ] = points[index + 1]!;
-        parts.push(beamPiece(x, z, nextX, nextZ, roadX, roadZ, steel));
+        parts.push(beamPiece(x, z, nextX, nextZ, roadX, roadZ, steel, base, ground(nextX, nextZ)));
       }
       // Each end bends back, away from the road, so no bare edge faces the traffic.
       if (index === 0 || index === points.length - 1) {
         const outward = index === 0 ? -1 : 1;
         const endX = x + dx * RAIL_END.along * outward - roadX * RAIL_END.away;
         const endZ = z + dz * RAIL_END.along * outward - roadZ * RAIL_END.away;
-        parts.push(beamPiece(x, z, endX, endZ, roadX, roadZ, steel));
+        parts.push(beamPiece(x, z, endX, endZ, roadX, roadZ, steel, base, base));
       }
     }
   }
@@ -502,10 +590,20 @@ function railTiles(rails: readonly GuardRail[]): Map<string, BufferGeometry[]> {
  * folded toward (roadX, roadZ), both faces, flat-shaded so the folds catch
  * the light differently.
  */
-function beamPiece(ax: number, az: number, bx: number, bz: number, roadX: number, roadZ: number, color: Color): BufferGeometry {
+function beamPiece(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  roadX: number,
+  roadZ: number,
+  color: Color,
+  groundA = 0,
+  groundB = 0,
+): BufferGeometry {
   const positions: number[] = [];
   for (const { y, out } of BEAM_PROFILE) {
-    positions.push(ax + roadX * out, y, az + roadZ * out, bx + roadX * out, y, bz + roadZ * out);
+    positions.push(ax + roadX * out, groundA + y, az + roadZ * out, bx + roadX * out, groundB + y, bz + roadZ * out);
   }
   const indices: number[] = [];
   for (let row = 0; row < BEAM_PROFILE.length - 1; row++) {

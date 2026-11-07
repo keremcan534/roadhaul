@@ -22,6 +22,11 @@ export const SAVE_KEYS = Object.freeze({
  */
 export type LoadProblem = 'missing' | 'corrupted' | 'tooNew';
 export type SaveProblem = 'invalid' | 'storageFailed';
+/** unreadable: not a save, damaged, or not valid for this game. tooNew: written by a newer build. */
+export type BackupProblem = 'unreadable' | 'tooNew';
+
+/** A backup longer than this is refused unread (a save is a few tens of kilobytes; storage holds about five megabytes). */
+export const MAX_BACKUP_CHARS = 4_000_000;
 
 export interface SaveServiceOptions {
   readonly migration: SaveMigrationContext;
@@ -111,6 +116,45 @@ export class SaveService {
       this.logger.error('Saving failed.', error);
       return err('storageFailed');
     }
+  }
+
+  /**
+   * The latest readable save as text, at this version (migrated): what a
+   * backup file holds. Read-only: unlike `load`, an unreadable save is left
+   * where it is.
+   */
+  exportText(): Result<string, LoadProblem> {
+    let found = false;
+    for (const key of [SAVE_KEYS.main, SAVE_KEYS.backup]) {
+      const json = this.read(key);
+      if (json === null) {
+        continue;
+      }
+      found = true;
+      const parsed = this.parse(json);
+      if (parsed.ok) {
+        return ok(JSON.stringify(parsed.value));
+      }
+      if (parsed.error === 'tooNew') {
+        return err('tooNew');
+      }
+    }
+    return err(found ? 'corrupted' : 'missing');
+  }
+
+  /** A backup's save, migrated and validated as a save on load is, without writing it anywhere. */
+  readText(text: string): Result<SaveGameData, BackupProblem> {
+    return text.length > MAX_BACKUP_CHARS ? err('unreadable') : this.parse(text);
+  }
+
+  /** Makes a backup's save the save (written as `save` writes: the one there now becomes the backup slot's). */
+  importText(text: string): Result<SaveGameData, BackupProblem | SaveProblem> {
+    const read = this.readText(text);
+    if (!read.ok) {
+      return read;
+    }
+    const saved = this.save(read.value);
+    return saved.ok ? ok(read.value) : saved;
   }
 
   /** Removes every save slot: a fresh start. */

@@ -1,6 +1,6 @@
 import type { RoadKind } from '../../data/definitions/MapDefinition';
 import type { DrivingWorld } from '../world/DrivingWorld';
-import { laneOffsetMeters, lanesPerDirection } from '../world/lanes';
+import { laneOffsetMeters, lanesPerDirection, laneWidthMeters } from '../world/lanes';
 import type { RoadPath } from '../world/RoadPath';
 
 /**
@@ -71,6 +71,8 @@ interface DeadEndFrame {
 interface LinkBuild {
   readonly kind: number;
   readonly points: number[];
+  /** The road's height at each point (a lane's road's; a turn's, from its lane in to its lane out), meters. */
+  readonly heights: number[];
   /** Lanes: distance along the stretch's centreline at each point, from where the lane's direction starts. */
   readonly centre: number[];
   readonly speedLimit: number;
@@ -120,6 +122,8 @@ export class LaneGraph {
   readonly pointStart: Int32Array;
   readonly pointX: Float64Array;
   readonly pointZ: Float64Array;
+  /** The road's height at each point, meters (0 on a flat map). */
+  readonly pointY: Float64Array;
   /** Distance from the link's first point, meters. */
   readonly along: Float64Array;
   /** Fastest a vehicle should be going at each point to take the bends and turns ahead, m/s. */
@@ -180,6 +184,7 @@ export class LaneGraph {
     this.pointStart[count] = points;
     this.pointX = new Float64Array(points);
     this.pointZ = new Float64Array(points);
+    this.pointY = new Float64Array(points);
     this.along = new Float64Array(points);
     this.centre = new Float64Array(points);
     this.advisorySpeed = new Float64Array(points);
@@ -195,6 +200,7 @@ export class LaneGraph {
         }
         this.pointX[first + k] = x;
         this.pointZ[first + k] = z;
+        this.pointY[first + k] = link.heights[k] ?? 0;
         this.along[first + k] = distance;
         this.centre[first + k] = link.kind === LANE ? link.centre[k]! : distance;
       }
@@ -253,8 +259,11 @@ export class LaneGraph {
           return;
         }
         if (b.direction === a.direction) {
-          this.parallel[i] = j;
-        } else if (lanesPerDirection(world.roads[a.road]!.kind) === 1) {
+          // The lane to change into: the one left of the rightmost lane, else the one right of it.
+          if (b.laneIndex === (a.laneIndex === 0 ? 1 : a.laneIndex - 1)) {
+            this.parallel[i] = j;
+          }
+        } else if (lanesPerDirection(world.roads[a.road]!.kind, world.roads[a.road]!.widthMeters) === 1) {
           this.opposite[i] = j;
         }
       });
@@ -419,7 +428,7 @@ export class LaneGraph {
 }
 
 function laneWidthOf(road: RoadPath): number {
-  return road.widthMeters / 2 / lanesPerDirection(road.kind);
+  return laneWidthMeters(road.kind, road.widthMeters);
 }
 
 /** Junctions and turning circles, with how far short of each the lanes stop. */
@@ -507,7 +516,7 @@ function buildLanes(
       const endNode = road.closed && cuts.length === 0 ? -1 : nodeAt(to);
       const stretchLength = sampleDistance(road, to) - sampleDistance(road, from);
       for (const direction of [1, -1]) {
-        for (let laneIndex = 0; laneIndex < lanesPerDirection(road.kind); laneIndex++) {
+        for (let laneIndex = 0; laneIndex < lanesPerDirection(road.kind, road.widthMeters); laneIndex++) {
           const offset = laneOffsetMeters(road.kind, road.widthMeters, laneIndex);
           const clearanceAt = (node: number): number =>
             node < 0 ? 0 : nodes[node]!.deadEnd === null ? nodes[node]!.clearance : uTurnClearance(nodes[node]!, offset);
@@ -525,6 +534,7 @@ function buildLanes(
           links.push({
             kind: LANE,
             points: lane.points,
+            heights: lane.heights,
             centre: lane.centre,
             speedLimit: speedLimits[road.kind],
             road: roadIndex,
@@ -565,7 +575,7 @@ function lanePoints(
   high: number,
   direction: number,
   offset: number,
-): { points: number[]; centre: number[] } {
+): { points: number[]; centre: number[]; heights: number[] } {
   const start = sampleDistance(road, from);
   const stations: number[] = [start + low];
   for (let k = from + 1; k < to; k++) {
@@ -580,6 +590,8 @@ function lanePoints(
   }
   const points: number[] = [];
   const centre: number[] = [];
+  const heights: number[] = [];
+  const count = road.pointCount;
   let k = from;
   for (const distance of stations) {
     // Walk to the sample pair around this distance (forwards or backwards).
@@ -597,8 +609,10 @@ function lanePoints(
     rz /= length;
     points.push(x0 + (x1 - x0) * t + rx * offset * direction, z0 + (z1 - z0) * t + rz * offset * direction);
     centre.push(direction > 0 ? distance - start : sampleDistance(road, to) - distance);
+    const h0 = road.heights[k % count]!;
+    heights.push(h0 + (road.heights[(k + 1) % count]! - h0) * t);
   }
-  return { points, centre };
+  return { points, centre, heights };
 }
 
 /** Position of sample `k` and the unit vector to the right of the road's direction there (as TrackView draws it). */
@@ -638,9 +652,15 @@ function buildTurns(nodes: readonly NodeBuild[], laneIds: readonly number[], lin
         }
         const points = node.deadEnd !== null ? uTurnPoints(node, into.link, out.link) : turnPoints(into.link, out.link);
         const leadsToDeadEnd = out.link.endNode >= 0 && nodes[out.link.endNode]!.deadEnd !== null;
+        // From the height its lane in ends at to the one its lane out starts at.
+        const from = into.link.heights[into.link.heights.length - 1] ?? 0;
+        const to = out.link.heights[0] ?? 0;
+        const pointCount = points.length / 2;
+        const heights = Array.from({ length: pointCount }, (_, k) => from + ((to - from) * k) / Math.max(1, pointCount - 1));
         links.push({
           kind: node.deadEnd !== null ? U_TURN : TURN,
           points,
+          heights,
           centre: [],
           speedLimit: Math.min(into.link.speedLimit, out.link.speedLimit),
           road: -1,

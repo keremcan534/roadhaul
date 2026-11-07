@@ -1,13 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import {
-  closeSettingsAndResume,
-  openGame,
-  openMainMenu,
-  openSettingsWhileDriving,
-  sceneScreenshot,
-  waitForFrames,
-  watchForProblems,
-} from './support';
+import { closeSettingsAndResume, continueGame, openGame, openMainMenu, openSettingsWhileDriving, sceneScreenshot, waitForFrames, watchForProblems } from './support';
 
 interface SceneColor {
   readonly r: number;
@@ -55,7 +47,7 @@ function brightness(color: SceneColor): number {
 /** Drives the same company's truck from the main menu, opened in the `weather` given (or dawn, dusk, night). */
 async function driveIn(page: Page, weather: string): Promise<void> {
   await openMainMenu(page, `?weather=${weather}`);
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
   await waitForFrames(page, 10);
 }
@@ -125,8 +117,9 @@ test('lays a morning mist at sunrise, and none when the address clears it', asyn
   const clear = await sceneColor(page, 0.2, 0.5);
 
   // The mist's light veils the hills and the horizon: the band across them is lighter. Drawn in software, only the
-  // sky and its hills take the mist (the land's costs too much there), so the band shows less of it than a GPU would.
-  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.04);
+  // sky and its hills take the mist (the land's costs too much there), so the band shows less of it than a GPU would;
+  // and the mountains' crests rise out of it.
+  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.03);
   expect(problems).toEqual([]);
 });
 

@@ -90,6 +90,26 @@ export async function continueSavedCompany(page: Page, save: string, query = '',
   await openMainMenu(page, query, options);
   await page.locator('[data-action="continue-game"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
+  await leaveDailyReward(page);
+}
+
+/** Continues the saved company from the main menu: into the game, the daily reward left for later. */
+export async function continueGame(page: Page): Promise<void> {
+  await page.locator('[data-action="continue-game"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-game-state', 'driving');
+  await leaveDailyReward(page);
+}
+
+/**
+ * The daily reward, offered as the day's first drive starts, left for later: the credits stay as the test set them.
+ * Call it in the game: the reward is offered as the drive starts.
+ */
+export async function leaveDailyReward(page: Page): Promise<void> {
+  const later = page.locator('[data-action="later-daily"]');
+  if (await later.isVisible()) {
+    await later.click();
+    await expect(page.locator('.daily')).toBeHidden();
+  }
 }
 
 /** The company panel's pages. */

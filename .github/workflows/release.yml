@@ -18,9 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      # The ads (docs/RELEASE.md): none until the repository's variables switch them on (ROADHAUL_ADS=live) with the
-      # game's own AdMob ids. They are not secret: they ship inside the app.
-      ROADHAUL_ADS: ${{ vars.ROADHAUL_ADS || 'off' }}
+      # The ads (docs/RELEASE.md): the repository's variable ROADHAUL_ADS says live (the game's own AdMob ids, below) or
+      # off (none), out loud: a release never falls back to none by itself. They are not secret: they ship inside the app.
+      ROADHAUL_ADS: ${{ vars.ROADHAUL_ADS }}
       ROADHAUL_ADMOB_APP_ID: ${{ vars.ROADHAUL_ADMOB_APP_ID }}
       ROADHAUL_ADMOB_REWARDED_ID: ${{ vars.ROADHAUL_ADMOB_REWARDED_ID }}
       ROADHAUL_ADMOB_INTERSTITIAL_ID: ${{ vars.ROADHAUL_ADMOB_INTERSTITIAL_ID }}
@@ -47,9 +47,24 @@ jobs:
             exit 1
           fi
 
-      # Google Play takes each upload only numbered higher than the last: main's commits only ever grow in number.
+      - name: Check the ads' variables
+        run: |
+          case "$ROADHAUL_ADS" in
+            live)
+              for name in ROADHAUL_ADMOB_APP_ID ROADHAUL_ADMOB_REWARDED_ID ROADHAUL_ADMOB_INTERSTITIAL_ID; do
+                [ -n "${!name}" ] || { echo "::error::ROADHAUL_ADS is live: add the repository variable $name (docs/RELEASE.md)."; exit 1; }
+              done ;;
+            off) echo "::warning::This release carries no ads (ROADHAUL_ADS=off)." ;;
+            *) echo "::error::Set the repository variable ROADHAUL_ADS to live or off, not \"$ROADHAUL_ADS\" (docs/RELEASE.md)."; exit 1 ;;
+          esac
+          echo "Ads in this release: **$ROADHAUL_ADS**" >> "$GITHUB_STEP_SUMMARY"
+
+      # Google Play takes each upload only numbered higher than the last: main's commits only ever grow in number. The
+      # 1000 puts them above the builds uploaded before this workflow was used, numbered by CI's runs (146 to 149).
       - name: Number the build
-        run: echo "ROADHAUL_VERSION_CODE=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
+        run: |
+          echo "ROADHAUL_VERSION_CODE=$((1000 + $(git rev-list --count HEAD)))" >> "$GITHUB_ENV"
+          echo "Build number: **$((1000 + $(git rev-list --count HEAD)))**" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-node@v5
         with:

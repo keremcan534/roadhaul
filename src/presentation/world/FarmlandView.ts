@@ -25,6 +25,7 @@ import { toTexture } from '../textures/toTexture';
 import { placeFlat } from './groundDecals';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
 import { SEASON_GLSL, type SeasonShading } from './SeasonShading';
+import { NearInstances } from './NearInstances';
 
 /** Fields lie on the grass, under everything else on the ground (see TrackView's layers). */
 const FIELD_Y = 0.006;
@@ -99,6 +100,8 @@ export class FarmlandView {
   private readonly root = new Group();
   private readonly resources: { dispose(): void }[] = [];
   private bales: InstancedMesh | null = null;
+  /** The bales near the camera, drawn in place of all of them (showAround). */
+  private nearBales: NearInstances | null = null;
   private readonly placed: readonly HayBale[];
   /** Each bale's circle in the world, and whether it lies knocked over (showKnocked). */
   private readonly circles: readonly number[];
@@ -154,7 +157,9 @@ export class FarmlandView {
     if (bales.length > 0) {
       const mesh = this.createBales(bales);
       this.bales = mesh;
-      this.root.add(mesh);
+      // Every bale is kept out of the scene: those near the camera are drawn.
+      this.nearBales = this.track(new NearInstances(mesh));
+      this.root.add(this.nearBales.mesh);
       if (this.circles.length === bales.length && (options.debrisCapacity ?? 0) > 0) {
         const { shape, centreZ } = KNOCKABLES.hayBale;
         this.fallen = new DebrisInstances(this.root, mesh.geometry, mesh.material as MeshLambertMaterial, options.debrisCapacity!, shape.halfY, centreZ, 'hay-bales:fallen');
@@ -188,6 +193,12 @@ export class FarmlandView {
       bales.setMatrixAt(bale, down === 1 ? NOWHERE : this.matrix.makeRotationY(heading).setPosition(x, 0, z));
     }
     bales.instanceMatrix.needsUpdate = true;
+    this.nearBales?.refresh();
+  }
+
+  /** Draws the bales near (x, z), the camera, only: those far off lie in the haze. Allocation-free: call it every frame. */
+  showAround(x: number, z: number): void {
+    this.nearBales?.showAround(x, z);
   }
 
   /** Draws the bales knocked over among `debris`, `alpha` of the way through the fixed step. Allocation-free. */

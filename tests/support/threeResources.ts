@@ -1,4 +1,4 @@
-import { BufferGeometry, DoubleSide, InstancedMesh, Line, Material, Mesh, Points, Texture, type Object3D } from 'three';
+import { BatchedMesh, Box3, BufferGeometry, DoubleSide, InstancedMesh, Line, Material, Mesh, Points, Texture, type Object3D } from 'three';
 
 type GpuResource = BufferGeometry | Material | InstancedMesh | Texture;
 
@@ -53,4 +53,50 @@ export function drawCallCount(root: Object3D): number {
     }
   });
   return count;
+}
+
+/** A tile of a TileBatch (a BatchedMesh): its box in the world, whether it is drawn, and where its vertices lie. */
+export interface BatchTile {
+  readonly box: Box3;
+  readonly visible: boolean;
+  readonly vertexStart: number;
+  readonly vertexCount: number;
+  readonly triangles: number;
+}
+
+/** The tiles a TileBatch's mesh holds, an instance each. */
+export function batchTiles(mesh: BatchedMesh): BatchTile[] {
+  const tiles: BatchTile[] = [];
+  for (let instance = 0; instance < mesh.instanceCount; instance++) {
+    const geometry = mesh.getGeometryIdAt(instance);
+    const range = mesh.getGeometryRangeAt(geometry)!;
+    tiles.push({
+      box: mesh.getBoundingBoxAt(geometry, new Box3())!,
+      visible: mesh.visible && mesh.getVisibleAt(instance),
+      vertexStart: range.vertexStart,
+      vertexCount: range.vertexCount,
+      triangles: (mesh.geometry.index === null ? range.vertexCount : range.indexCount) / 3,
+    });
+  }
+  return tiles;
+}
+
+/**
+ * The materials under `root` drawn by more than one kind of object (a mesh, an instanced mesh, a batch): three.js
+ * keeps one program current per material, and one drawn by two kinds has its program looked up again twice a frame.
+ */
+export function materialsOfMixedKinds(root: Object3D): string[] {
+  const kinds = new Map<Material, Map<string, string>>();
+  root.traverse((object) => {
+    if (!(object instanceof Mesh)) {
+      return;
+    }
+    const kind = object instanceof BatchedMesh ? 'batch' : object instanceof InstancedMesh ? 'instanced' : 'mesh';
+    for (const material of [object.material].flat() as Material[]) {
+      const users = kinds.get(material) ?? new Map<string, string>();
+      users.set(kind, object.name);
+      kinds.set(material, users);
+    }
+  });
+  return [...kinds.values()].filter((users) => users.size > 1).map((users) => [...users].map(([kind, name]) => `${kind} ${name}`).join(' + '));
 }
