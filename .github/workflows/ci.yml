@@ -16,7 +16,8 @@ concurrency:
 jobs:
   verify:
     name: Typecheck, test, build, e2e
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: that moved to 26.04, where Playwright 1.56 has no Chromium to install. Raise it with Playwright.
+    runs-on: ubuntu-24.04
     # The e2e suite draws in software: about 33 minutes on a runner now that the country grows round the
     # towns (more to draw, fewer frames a second in software), and past 40 on a slow one (a runner a
     # fifth slower, its unit tests too, ran out at 40 with every test passed but two left).
