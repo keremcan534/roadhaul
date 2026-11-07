@@ -85,6 +85,20 @@ function openSourceLicenses(): Plugin {
   };
 }
 
+/**
+ * `build-info.json` beside the page: the version, the build and the ads the game was built with. The Android release
+ * build reads it (android/app/build.gradle) and refuses a bundle for Google Play without the ads it was meant to carry.
+ */
+function buildInfo(): Plugin {
+  return {
+    name: 'roadhaul-build-info',
+    generateBundle() {
+      const info = { version: packageJson.version, build: process.env.ROADHAUL_VERSION_CODE ?? 'dev', ads: ADS.mode };
+      this.emitFile({ type: 'asset', fileName: 'build-info.json', source: `${JSON.stringify(info)}\n` });
+    },
+  };
+}
+
 export default defineConfig({
   // Relative asset URLs so the same build works from a sub-path (static hosting)
   // and from the local file system (a future Capacitor Android wrapper).
@@ -96,7 +110,7 @@ export default defineConfig({
     __APP_BUILD__: JSON.stringify(process.env.ROADHAUL_VERSION_CODE ?? 'dev'),
     __ADS__: JSON.stringify(ADS),
   },
-  plugins: [openSourceLicenses()],
+  plugins: [openSourceLicenses(), buildInfo()],
   // android/ holds copies of the build and Gradle's output: the dev server neither scans nor watches them.
   optimizeDeps: { entries: ['index.html'] },
   server: { watch: { ignored: ['**/android/**'] } },

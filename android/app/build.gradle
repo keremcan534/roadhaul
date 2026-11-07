@@ -67,6 +67,31 @@ android {
     }
 }
 
+// A bundle for Google Play carries the ads it was meant to (docs/RELEASE.md). ROADHAUL_ADS is said out loud, live or
+// off, and the game inside was built the same way: build-info.json, written by the web build (vite.config.ts). Google's
+// test ads never pay, so a release refuses them, and a release built in a shell that forgot the ads' variables (the
+// web build then has none) is refused too.
+gradle.taskGraph.whenReady { graph ->
+    if (!graph.allTasks.any { it.project == project && it.name ==~ /(bundle|assemble)Release/ }) {
+        return
+    }
+    def wanted = System.getenv('ROADHAUL_ADS') ?: ''
+    if (!(wanted in ['live', 'off'])) {
+        throw new GradleException("A release needs ROADHAUL_ADS=live (the game's own ads) or ROADHAUL_ADS=off (none), not \"${wanted}\": Google's test ads never pay (docs/RELEASE.md).")
+    }
+    def infoFile = file('src/main/assets/public/build-info.json')
+    if (!infoFile.exists()) {
+        throw new GradleException('The game is not in the Android project yet: run npm run android first (docs/RELEASE.md).')
+    }
+    def built = new groovy.json.JsonSlurper().parse(infoFile).ads
+    if (built != wanted) {
+        throw new GradleException("The game inside was built with ROADHAUL_ADS=${built}, not ${wanted}: run npm run android again in this shell (docs/RELEASE.md).")
+    }
+    if (!System.getenv('ROADHAUL_VERSION_CODE')) {
+        throw new GradleException('A release needs ROADHAUL_VERSION_CODE, higher than the last upload\'s (docs/RELEASE.md).')
+    }
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'

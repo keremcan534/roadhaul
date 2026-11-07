@@ -19,7 +19,7 @@ Console's screens and rules from time to time. When a screen here looks differen
 | Privacy policy | `public/privacy.html` → https://keremcan534.github.io/roadhaul/privacy.html | English and Turkish. Deployed with the game by `deploy-pages.yml` on every push to `main`. Settings → About links to it. |
 | Open-source licences | Settings → About | `licenses.txt`, built from the packages the game ships. |
 | In-app purchases | `src/data/config/products.ts`, Google Play Billing (`@capgo/native-purchases`) | "Remove ads" (`remove_ads`), "Premium paints" (`premium_paints`), the "Street" and "Neon" design packs (`designs_street`, `designs_neon`, three truck designs each) the "Supporter pack" (`supporter_pack`: all four in one) and "Road Pass Plus" (`road_pass`: the Road Pass's second track of the season's colours, every season), one-time products, looks and comfort only. The shop shows what the Play Console sells: nothing until the products are set up (step 6). |
-| Ads (off) | `ROADHAUL_ADS`, AdMob (`@capacitor-community/admob`) | Off in releases until you switch them on (step 7): a release without ads carries no ads code at all. CI's debug APK shows Google's test ads, to try them on a phone. |
+| Ads (off) | `ROADHAUL_ADS`, AdMob (`@capacitor-community/admob`) | Off in releases until you switch them on (step 7): a release without ads carries no ads code at all. CI's debug APK shows Google's test ads, to try them on a phone. A release says `live` or `off` out loud and is refused with test ads ("Each release", step 2). |
 
 ## One-time setup
 
@@ -194,7 +194,8 @@ The numbers are in `GameConfig.monetization` (`src/data/config/GameConfig.ts`).
 5. GitHub → the repository → Settings → Secrets and variables → Actions → **Variables** (not secrets: the ids ship
    inside the app): `ROADHAUL_ADS` = `live`, `ROADHAUL_ADMOB_APP_ID`, `ROADHAUL_ADMOB_REWARDED_ID` and
    `ROADHAUL_ADMOB_INTERSTITIAL_ID`. The next "Release bundle" builds with the ads. A build on a desktop takes the
-   same environment variables; `ROADHAUL_ADS=test` builds Google's test ads.
+   same environment variables; `ROADHAUL_ADS=test` builds Google's test ads, which never pay, so a release refuses
+   them.
 6. Play Console → App content: **Ads: Yes**; **Advertising ID: Yes**, for advertising or marketing; **Data safety**:
    declare what the Google Mobile Ads SDK collects and shares, as Google lists it at
    https://developers.google.com/admob/android/privacy/play-data-disclosure (device or other IDs, app interactions,
@@ -246,13 +247,24 @@ git tag v1.0.0 && git push origin v1.0.0
 When the run finishes, download its artifact, `roadhaul-<ref>-<build>`: a zip with `app-release.aab` inside.
 
 To build it on a desktop instead (JDK 21 and the Android SDK), set the same four values as environment variables and
-run the Gradle task. `ROADHAUL_KEYSTORE_FILE` is the path to the `.jks` file, not its base64:
+run the Gradle task. `ROADHAUL_KEYSTORE_FILE` is the path to the `.jks` file, not its base64. The ads' variables
+(step 7 of the setup) go in the same shell:
 
 ```sh
 export ROADHAUL_KEYSTORE_FILE=/path/to/roadhaul-upload.jks ROADHAUL_KEYSTORE_PASSWORD=... ROADHAUL_KEY_ALIAS=upload ROADHAUL_KEY_PASSWORD=...
-export ROADHAUL_VERSION_CODE=$(git rev-list --count HEAD)
+export ROADHAUL_ADS=live ROADHAUL_ADMOB_APP_ID=... ROADHAUL_ADMOB_REWARDED_ID=... ROADHAUL_ADMOB_INTERSTITIAL_ID=...   # or ROADHAUL_ADS=off
+export ROADHAUL_VERSION_CODE=$((1000 + $(git rev-list --count HEAD)))
 npm run android && (cd android && ./gradlew bundleRelease)   # android/app/build/outputs/bundle/release/app-release.aab
 ```
+
+The build number is 1000 more than `main`'s commits, the same as the workflow's: the builds uploaded before the
+workflow was used were numbered by CI's runs (146 to 149), and Google Play takes only higher numbers.
+
+A release build checks its ads before it starts (`android/app/build.gradle`). `ROADHAUL_ADS` must be `live` or `off`,
+said out loud; test ads are refused, because they never pay. The game inside must have been built the same way: its
+`build-info.json` is written by `npm run android`, so a shell that forgot the variables there is caught. On a phone,
+Settings → About shows the build: `1049` carries the game's own ads, `1049-noads` none and `1049-testads` Google's
+test ads.
 
 A release build is shrunk and optimized by R8 (`android/app/build.gradle`). The bundle carries R8's mapping file, so
 Google Play shows crash reports with the code's real names; nothing to upload by hand. A new native plugin that finds

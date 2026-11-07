@@ -1676,7 +1676,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       cloudSave: mirrored !== null,
       about: {
         version: __APP_VERSION__,
-        build: __APP_BUILD__,
+        // In the app, the build says which ads it carries (docs/RELEASE.md): "149" has the game's own, "149-testads"
+        // Google's test ads (they never pay), "149-noads" none. A phone shows at a glance what went to Google Play.
+        build: isNativeApp(window) && __ADS__.mode !== 'live' ? `${__APP_BUILD__}-${__ADS__.mode === 'test' ? 'testads' : 'noads'}` : __APP_BUILD__,
         privacyUrl: PRIVACY_POLICY_URL,
         // The Android app hands a link it is sent to to the phone's browser; a browser opens it in a new tab.
         linksInPlace: isNativeApp(window),
