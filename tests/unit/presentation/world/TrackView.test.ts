@@ -1,4 +1,5 @@
 import {
+  BatchedMesh,
   Box3,
   Color,
   Frustum,
@@ -19,9 +20,10 @@ import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { SeasonShading } from '../../../../src/presentation/world/SeasonShading';
+import { TREE_FAR } from '../../../../src/presentation/world/ForestBatch';
 import { TrackView } from '../../../../src/presentation/world/TrackView';
 import { FAR_CULL_METERS } from '../../../../src/presentation/world/worldTiles';
-import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
+import { batchTiles, drawCallCount, gpuResources, materialsOfMixedKinds, watchDisposal } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
 
@@ -36,34 +38,52 @@ function isFacade(object: Object3D): object is Mesh {
 }
 
 describe('TrackView', () => {
-  it('draws the ground and the towns in a handful of draw calls, and the forest and the country in a few per tile', () => {
+  it('draws the ground and the towns in a handful of draw calls, the forest in a few per tile, and the country and the towns\' details in one a layer', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     const forest = scene.getObjectByName('forest')!;
     const country = scene.getObjectByName('country')!;
+    const town = scene.getObjectByName('town')!;
+    const batches = scene.getObjectByName('forest:batches')!;
     const treeTiles = new Set(world.trees.map((tree) => `${Math.floor(tree.x / 500)},${Math.floor(tree.z / 500)}`));
 
     // The ground, the map's own roads and the towns' buildings.
-    expect(drawCallCount(scene) - drawCallCount(forest) - drawCallCount(country)).toBeLessThanOrEqual(12);
-    // A tile of the country: its roads' shoulders and asphalt, and its houses' plinths and the rest of their roofs.
-    expect(country.children.length).toBeGreaterThan(4);
-    for (const tile of country.children) {
-      expect(drawCallCount(tile), tile.name).toBeLessThanOrEqual(3);
+    expect(
+      drawCallCount(scene) - drawCallCount(forest) - drawCallCount(batches) - drawCallCount(country) - drawCallCount(town),
+    ).toBeLessThanOrEqual(12);
+    // The forest's tiles in view are drawn a kind at a time (ForestBatch): trunks, inner trunks, shadows and each crown,
+    // and the pines' and broadleaves' far crowns.
+    expect(drawCallCount(batches)).toBeLessThanOrEqual(12);
+    forest.traverse((object) => {
+      if (object instanceof Mesh) {
+        expect(object.layers.mask, object.name).toBe(0); // The tiles' own meshes: culled, not drawn.
+      }
+    });
+    // The towns' districts' tiles: their buildings' details, all the tiles in one draw (TileBatch).
+    expect(town.children.map((batch) => batch.name)).toEqual(['town:buildings:details']);
+    expect(batchTiles(town.children[0] as BatchedMesh).length).toBeGreaterThan(1);
+    expect(drawCallCount(town)).toBe(1);
+    // The country's tiles: their roads' shoulders and asphalt, and their houses' plinths and the rest of their roofs, a
+    // draw a layer for all the tiles.
+    expect(country.children.length).toBeGreaterThanOrEqual(3);
+    expect(drawCallCount(country)).toBe(country.children.length);
+    for (const batch of country.children) {
+      expect(batch, batch.name).toBeInstanceOf(BatchedMesh);
     }
-    // Trunks and shadows per tile, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
+    expect(Math.max(...country.children.map((batch) => batchTiles(batch as BatchedMesh).length))).toBeGreaterThan(4);
+    // The tiles hold trunks and shadows each, and a crown for each kind of tree in it: the pines and broadleaves everywhere,
     // the planted poplars, olives and cypresses where people planted them, and in the forests their inner trees'
-    // simpler crowns and trunks.
-    expect(drawCallCount(forest)).toBeLessThanOrEqual(6 * treeTiles.size);
+    // simpler crowns and trunks, and the pines' and broadleaves' far crowns.
+    expect(drawCallCount(forest)).toBeLessThanOrEqual(8 * treeTiles.size);
   });
 
   it('draws the forest and the country only near the camera', () => {
     const scene = new Scene();
     const view = new TrackView(scene, world);
-    const tiles = [...scene.getObjectByName('forest')!.children, ...scene.getObjectByName('country')!.children];
-    const distanceTo = (tile: Object3D, x: number, z: number): number => {
-      const box = new Box3().setFromObject(tile);
-      return Math.hypot(Math.max(box.min.x - x, 0, x - box.max.x), Math.max(box.min.z - z, 0, z - box.max.z));
-    };
+    const forestTiles = scene.getObjectByName('forest')!.children;
+    const countryBatches = scene.getObjectByName('country')!.children as BatchedMesh[];
+    const distanceTo = (box: Box3, x: number, z: number): number =>
+      Math.hypot(Math.max(box.min.x - x, 0, x - box.max.x), Math.max(box.min.z - z, 0, z - box.max.z));
 
     for (const [x, z] of [
       [world.spawn.x, world.spawn.z],
@@ -71,11 +91,15 @@ describe('TrackView', () => {
       [world.villages[0]!.x, world.villages[0]!.z],
     ] as const) {
       view.showAround(x, z);
+      const tiles = [
+        ...forestTiles.map((tile) => ({ name: tile.name, box: new Box3().setFromObject(tile), visible: tile.visible })),
+        ...countryBatches.flatMap((batch) => batchTiles(batch).map((tile) => ({ name: batch.name, ...tile }))),
+      ];
       const shown = tiles.filter((tile) => tile.visible);
       expect(shown.length).toBeGreaterThan(0);
       expect(shown.length).toBeLessThan(tiles.length / 3);
       for (const tile of tiles) {
-        expect(tile.visible, tile.name).toBe(distanceTo(tile, x, z) <= FAR_CULL_METERS);
+        expect(tile.visible, tile.name).toBe(distanceTo(tile.box, x, z) <= FAR_CULL_METERS);
       }
     }
   });
@@ -89,14 +113,27 @@ describe('TrackView', () => {
     camera.position.set(x - Math.sin(heading) * 8, 5, z - Math.cos(heading) * 8);
     camera.lookAt(x + Math.sin(heading) * 30, 2, z + Math.cos(heading) * 30);
     camera.updateMatrixWorld(true);
-    view.showAround(camera.position.x, camera.position.z);
     const frustum = new Frustum().setFromProjectionMatrix(
       new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
     );
+    // As the game does: the forest's tiles left out of view by the camera's view, the rest by the shadow-map preset's
+    // rule (none given).
+    view.showAround(camera.position.x, camera.position.z, null, frustum);
     let drawCalls = 0;
     let triangles = 0;
     scene.traverseVisible((object) => {
-      if (object instanceof Mesh && frustum.intersectsObject(object)) {
+      // What the renderer draws: in the camera's layer (the forest tiles' own meshes are not: their batches draw them),
+      // and in view (the batches, culled by their tiles, always are).
+      if (object instanceof BatchedMesh) {
+        // A batch of tiles (TileBatch): one draw, of the tiles it shows that are in view.
+        const tiles = batchTiles(object).filter((tile) => tile.visible && frustum.intersectsBox(tile.box));
+        if (tiles.length > 0) {
+          drawCalls++;
+          triangles += tiles.reduce((sum, tile) => sum + tile.triangles, 0);
+        }
+        return;
+      }
+      if (object instanceof Mesh && object.layers.test(camera.layers) && (!object.frustumCulled || frustum.intersectsObject(object))) {
         const geometry = object.geometry;
         const perCopy = (geometry.index?.count ?? geometry.getAttribute('position').count) / 3;
         drawCalls++;
@@ -276,7 +313,8 @@ describe('TrackView', () => {
     let trunks = 0;
     let shadows = 0;
     scene.getObjectByName('forest')!.traverse((object) => {
-      if (!(object instanceof InstancedMesh)) {
+      // The far crowns are the same trees' again (TREE_FAR), drawn in place of the near ones past their detail distance.
+      if (!(object instanceof InstancedMesh) || object.userData[TREE_FAR] === true) {
         return;
       }
       const material = object.material as { flatShading?: boolean; transparent?: boolean };
@@ -298,13 +336,40 @@ describe('TrackView', () => {
     expect(shadows).toBe(world.trees.length - inner);
   });
 
+  it('draws the forests\' pines and broadleaves with simpler crowns far off, on the same trees', () => {
+    const scene = new Scene();
+    const view = new TrackView(scene, world);
+    const tree = world.trees.find((candidate) => candidate.inner === true)!;
+    view.showAround(tree.x, tree.z);
+    const triangles = (mesh: InstancedMesh): number => (mesh.geometry.index?.count ?? mesh.geometry.getAttribute('position').count) / 3;
+    let near = 0;
+    let far = 0;
+    for (const tile of scene.getObjectByName('forest')!.children) {
+      const crowns = tile.children.filter((mesh): mesh is InstancedMesh => mesh instanceof InstancedMesh && mesh.name.startsWith('forest:crowns:'));
+      for (const lod of crowns.filter((mesh) => mesh.userData[TREE_FAR] === true)) {
+        const kind = lod.name.split(':')[2]!;
+        const fulls = crowns.filter((mesh) => mesh.userData[TREE_FAR] !== true && mesh.name.split(':')[2] === kind && mesh.instanceMatrix === lod.instanceMatrix);
+        expect(fulls, lod.name).toHaveLength(1);
+        const full = fulls[0]!;
+        expect(triangles(lod)).toBeLessThan(triangles(full));
+        expect(lod.count).toBe(full.count);
+        // One or the other, by the tile's distance from the camera.
+        expect(lod.visible).toBe(!full.visible);
+        near += full.visible ? 1 : 0;
+        far += lod.visible ? 1 : 0;
+      }
+    }
+    expect(near).toBeGreaterThan(0);
+    expect(far).toBeGreaterThan(0);
+  });
+
   it('grows each planted tree as its species, and the wild ones as pines and broadleaves', () => {
     const scene = new Scene();
     new TrackView(scene, world);
     const counts = new Map<string, number>();
     const heights = new Map<string, number>();
     scene.traverse((object) => {
-      if (object instanceof InstancedMesh && object.name.startsWith('forest:crowns:')) {
+      if (object instanceof InstancedMesh && object.name.startsWith('forest:crowns:') && object.userData[TREE_FAR] !== true) {
         const kind = object.name.split(':')[2]!;
         counts.set(kind, (counts.get(kind) ?? 0) + object.count);
         object.geometry.computeBoundingBox();
@@ -533,24 +598,28 @@ describe('TrackView', () => {
     const view = new TrackView(scene, world, {
       sky: { zenith, horizon, sunColor: { value: new Color() }, sunDirection: { value: new Vector3() } },
     });
-    const wettable = new Set<MeshBasicMaterial>();
+    const wettable = new Map<MeshBasicMaterial, string>();
+    const wetnessOf = new Map<MeshBasicMaterial, unknown>();
     scene.traverse((object) => {
       if (object instanceof Mesh && object.material instanceof MeshBasicMaterial && object.material.onBeforeCompile.length > 0) {
         const probe = { uniforms: {} as Record<string, unknown>, vertexShader: '', fragmentShader: '' };
         object.material.onBeforeCompile(probe as never, undefined as never);
         if ('wetness' in probe.uniforms) {
-          wettable.add(object.material);
+          wettable.set(object.material, object.name);
+          wetnessOf.set(object.material, probe.uniforms['wetness']);
         }
       }
     });
-    // Only the asphalt, every tile of it: the shoulders, markings and ground stay as they are.
-    expect(wettable.size).toBe(1);
+    // Only the asphalt, every tile of it: the shoulders, markings and ground stay as they are. The map's roads and the
+    // country's tiles (a batch) have a material each, made alike: the same wetness.
+    expect([...wettable.values()].sort()).toEqual(['country:roads:asphalt', 'roads:asphalt']);
+    expect(new Set(wetnessOf.values()).size).toBe(1);
     const shader = {
       uniforms: UniformsUtils.clone(ShaderLib.basic.uniforms),
       vertexShader: ShaderLib.basic.vertexShader,
       fragmentShader: ShaderLib.basic.fragmentShader,
     };
-    [...wettable][0]!.onBeforeCompile(shader as never, undefined as never);
+    [...wettable.keys()][0]!.onBeforeCompile(shader as never, undefined as never);
 
     expect(shader.uniforms['wetSky']).toBe(horizon);
     expect(shader.uniforms['wetZenith']).toBe(zenith);
@@ -579,5 +648,11 @@ describe('TrackView', () => {
 
     expect([...resources].filter((resource) => !disposed.has(resource))).toEqual([]);
     expect(scene.children).toEqual([]);
+  });
+
+  it('draws each material by one kind of object only (a mesh, an instanced mesh or a batch), so its program never switches', () => {
+    const scene = new Scene();
+    new TrackView(scene, world);
+    expect(materialsOfMixedKinds(scene)).toEqual([]);
   });
 });

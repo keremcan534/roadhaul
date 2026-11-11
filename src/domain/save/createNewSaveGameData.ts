@@ -1,5 +1,6 @@
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits } from '../../data/units';
+import { emptyCareer } from '../career/careerRecords';
 import { validateCompanyName } from '../company/companyName';
 import { CURRENT_SAVE_VERSION, type RivalsSaveData, type SaveGameData } from './SaveGameData';
 
@@ -60,6 +61,19 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     fleet: { drivers: [], jobsPlanned: 0 },
     rivals: newRivalsSaveData(),
     facilities: { levels: {} },
+    daily: { lastClaimDay: null, streak: 0 },
+    achievements: { counters: {}, claimed: [] },
+    crates: { held: {}, opened: 0, paints: [], liveries: [], perfectStreak: 0, bestPerfectStreak: 0, freeCrateAtMs: 0 },
+    levelRewards: { rewardedLevel: 1 },
+    supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
+    quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
+    liveries: { bought: [], worn: {}, text: null },
+    research: { points: 0, researched: [] },
+    career: emptyCareer(),
+    roadEvents: { warned: false, redLightWarned: false, fined: false, knocked: false },
+    usedTrucks: { period: null, sold: [] },
+    weeklyCup: { week: null, points: 0, last: null },
+    roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
   };
 }
 

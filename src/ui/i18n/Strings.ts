@@ -6,6 +6,7 @@ import {
   type LanguageChoice,
 } from '../../data/config/languages';
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 
 export { LANGUAGES, type Language } from '../../data/config/languages';
@@ -35,15 +36,24 @@ export class Strings {
     this.percentFormat = new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 });
   }
 
-  /** The text for `key`, with `{name}` placeholders filled from `parameters`. A missing key shows as itself, so it stands out. */
+  /**
+   * The text for `key`, with `{name}` placeholders filled from `parameters`.
+   * A missing key shows as itself, so it stands out. A sentence's full stop
+   * right after a value that ends in one (an abbreviation: German "6 Std.
+   * 0 Min.", Polish "kr.") is left out, as it is in writing.
+   */
   t(key: string, parameters?: TextParameters): string {
     const template = this.table[key] ?? key;
     if (parameters === undefined) {
       return template;
     }
-    return template.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
-      name in parameters ? String(parameters[name]) : placeholder,
-    );
+    return template.replace(/\{(\w+)\}(\.?)/g, (placeholder, name: string, stop: string) => {
+      if (!(name in parameters)) {
+        return placeholder;
+      }
+      const value = String(parameters[name]);
+      return stop !== '' && value.endsWith('.') ? value : value + stop;
+    });
   }
 
   has(key: string): boolean {
@@ -73,6 +83,12 @@ export class Strings {
     return this.t(`vehicle.${vehicleId}.name`);
   }
 
+  /** What a truck carries its load in: its body, or a tractor unit's semi-trailer of that body. */
+  bodyName(vehicle: Pick<VehicleDefinition, 'bodyType' | 'trailer'>): string {
+    const body = this.t(`body.${vehicle.bodyType}`);
+    return vehicle.trailer === undefined ? body : this.t('body.semi', { body });
+  }
+
   upgradeName(upgradeId: string): string {
     return this.t(`upgrade.${upgradeId}.name`);
   }
@@ -87,6 +103,10 @@ export class Strings {
 
   facilityName(facilityId: string): string {
     return this.t(`facility.${facilityId}.name`);
+  }
+
+  researchName(researchId: string): string {
+    return this.t(`research.${researchId}.name`);
   }
 
   /** A whole number with the language's grouping: "12.000", "12,000". */
@@ -133,6 +153,11 @@ export class Strings {
   /** "%92" in Turkish, "92%" in English. */
   percent(fraction: Fraction): string {
     return this.percentFormat.format(fraction);
+  }
+
+  /** A multiplier, with one decimal when needed: "×5", "×1,5". */
+  times(value: number): string {
+    return `×${Number.isInteger(value) ? this.integer.format(value) : this.decimal.format(value)}`;
   }
 
   /** Tonnes with one decimal when needed: "4,5 t". */

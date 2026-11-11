@@ -510,3 +510,60 @@ describe('VehicleDynamics', () => {
     expect(state.steerAngle).toBe(0);
   });
 });
+
+describe('VehicleDynamics on a slope', () => {
+  /** A truck on a road rising `grade` per meter, from rest. */
+  function onSlope(grade: number, cargoMassKg = 0) {
+    const dynamics = new VehicleDynamics(truck, cargoMassKg);
+    const state = dynamics.createState(0, 0, 0);
+    state.grade = grade;
+    return { dynamics, state };
+  }
+
+  it('climbs slower than it drives on the flat, and runs faster downhill', () => {
+    const speedAfter = (grade: number): number => {
+      const { dynamics, state } = onSlope(grade);
+      drive(dynamics, state, input({ throttle: 1 }), 15);
+      return kmh(state);
+    };
+    const flat = speedAfter(0);
+
+    expect(speedAfter(0.06)).toBeLessThan(flat - 5);
+    expect(speedAfter(-0.06)).toBeGreaterThan(flat);
+  });
+
+  it('holds itself on a hill at a standstill (the hill-start aid); moving up it with the gas off, it slows to a stop and holds', () => {
+    const standing = onSlope(0.08);
+    drive(standing.dynamics, standing.state, input(), 3);
+    expect(standing.state.speed).toBe(0);
+    expect(standing.state.z).toBe(0);
+
+    const rolling = onSlope(0.08);
+    rolling.state.speed = 8;
+    drive(rolling.dynamics, rolling.state, input(), 1);
+    expect(rolling.state.speed).toBeLessThan(8 - 0.5);
+    drive(rolling.dynamics, rolling.state, input(), 20);
+    expect(Math.abs(rolling.state.speed)).toBeLessThan(0.5);
+    const z = rolling.state.z;
+    drive(rolling.dynamics, rolling.state, input(), 3);
+    expect(Math.abs(rolling.state.z - z)).toBeLessThan(0.2);
+  });
+
+  it('pulls away up an 8% hill fully loaded', () => {
+    const { dynamics, state } = onSlope(0.08, truck.maxPayloadTons * 1000);
+
+    drive(dynamics, state, input({ throttle: 1 }), 20);
+
+    expect(state.speed).toBeGreaterThan(3);
+    expect(state.z).toBeGreaterThan(20);
+  });
+
+  it('coasts down a long slope with the gas off, held back only by the engine and the air', () => {
+    const { dynamics, state } = onSlope(-0.07);
+    state.speed = 15;
+
+    drive(dynamics, state, input(), 10);
+
+    expect(state.speed).toBeGreaterThan(15);
+  });
+});

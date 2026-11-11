@@ -1,11 +1,11 @@
-// Draws the Google Play listing's art from the game itself: six screenshots with a caption in each listing's
+// Draws the Google Play listing's art from the game itself: seven screenshots with a caption in each listing's
 // language, and the feature graphic. Original art (spec §85): the game's own world, panels and brand, and Oswald
 // (src/ui/fonts, the game's own type, SIL Open Font License) for the captions. The 512 px store icon comes from scripts/androidIcons.mjs.
 //
 //   npm run build && node scripts/storeArt.mjs
 //
 // writes into fastlane/metadata/android:
-//   <locale>/images/phoneScreenshots/01.jpg … 06.jpg  1920 × 1080, captioned in that language
+//   <locale>/images/phoneScreenshots/01.jpg … 07.jpg  1920 × 1080, captioned in that language
 //   en-US/images/featureGraphic.jpg                   1024 × 500, the brand on a scene (no words, so every listing shares it)
 //
 // The pictures are shot as the store video's are (scripts/video/shoot.mjs): the production build in headless
@@ -42,6 +42,19 @@ const clip = (id) => CLIPS.find((entry) => entry.id === id);
 
 /** The scenes of the road: short clips whose last frame is the picture. */
 const SCENES = {
+  // Metropol's towers at dusk, their windows lit, the truck parked on the boulevard and the camera at its front quarter.
+  metropol: {
+    id: 'metropol',
+    query: 'map=metropol&weather=clear&date=2026-09-20&time=18:20&traffic=0',
+    spawn: '-876.5,300,180',
+    runUp: 0,
+    parked: true,
+    seconds: 0.5,
+    turn: [
+      [0.8, -0.08],
+      [0.8, -0.08],
+    ],
+  },
   // A village street at dusk, the truck parked facing the low sun, the camera round at its front quarter.
   village: {
     id: 'village',
@@ -66,12 +79,13 @@ const SCENES = {
  * scene or one of the panels (`phone`: a still from shootStills, or the cabin's clip), and the caption's key.
  */
 const SCREENS = [
-  { file: '01.jpg', scene: 'village', caption: 'drive' },
-  { file: '02.jpg', phone: 'cabin', caption: 'wheel' },
-  { file: '03.jpg', scene: 'night', caption: 'weather' },
-  { file: '04.jpg', phone: 'jobs', caption: 'jobs' },
-  { file: '05.jpg', phone: 'painted', caption: 'garage' },
-  { file: '06.jpg', phone: 'map', caption: 'rivals' },
+  { file: '01.jpg', scene: 'metropol', caption: 'metropol' },
+  { file: '02.jpg', scene: 'village', caption: 'drive' },
+  { file: '03.jpg', phone: 'cabin', caption: 'wheel' },
+  { file: '04.jpg', scene: 'night', caption: 'weather' },
+  { file: '05.jpg', phone: 'jobs', caption: 'jobs' },
+  { file: '06.jpg', phone: 'painted', caption: 'garage' },
+  { file: '07.jpg', phone: 'map', caption: 'rivals' },
 ];
 
 /**
@@ -79,6 +93,18 @@ const SCREENS = [
  * English and Turkish ones are written here; the others are machine-written, like the listing's texts (docs/RELEASE.md).
  */
 const CAPTIONS = {
+  metropol: {
+    'en-US': { words: ['Cross', 'to', 'Metropol.'], line: 'Towers, motorways and a bridge over the strait' },
+    'tr-TR': { words: ['Metropol’e', 'geç.'], line: 'Gökdelenler, otoyollar ve boğaz köprüsü' },
+    'de-DE': { words: ['Auf', 'nach', 'Metropol.'], line: 'Hochhäuser, Autobahnen und eine Brücke über die Meerenge' },
+    'es-ES': { words: ['Rumbo', 'a', 'Metropol.'], line: 'Rascacielos, autopistas y un puente sobre el estrecho' },
+    'fr-FR': { words: ['Cap', 'sur', 'Metropol.'], line: 'Gratte-ciel, autoroutes et un pont sur le détroit' },
+    'it-IT': { words: ['Rotta', 'su', 'Metropol.'], line: 'Grattacieli, autostrade e un ponte sullo stretto' },
+    'pl-PL': { words: ['Ruszaj', 'do', 'Metropolu.'], line: 'Wieżowce, autostrady i most nad cieśniną' },
+    'pt-BR': { words: ['Rumo', 'a', 'Metropol.'], line: 'Arranha-céus, rodovias e uma ponte sobre o estreito' },
+    'ru-RU': { words: ['Вперёд', 'в', 'Метрополь.'], line: 'Небоскрёбы, автострады и мост через пролив' },
+    id: { words: ['Menuju', 'Metropol.'], line: 'Gedung pencakar langit, jalan tol, dan jembatan di atas selat' },
+  },
   drive: {
     'en-US': { words: ['Drive.', 'Deliver.', 'Grow.'], line: 'Build your own trucking company' },
     'tr-TR': { words: ['Sür.', 'Teslim et.', 'Büyü.'], line: 'Kendi nakliye şirketini kur' },
@@ -116,16 +142,16 @@ const CAPTIONS = {
     id: { words: ['Hujan', 'atau', 'cerah.'], line: 'Siang dan malam, empat musim, dunia yang hidup' },
   },
   jobs: {
-    'en-US': { words: ['Take', 'the', 'job.'], line: 'New contracts every day across four cities' },
-    'tr-TR': { words: ['İşi', 'kap.'], line: 'Dört şehirde her gün yeni sözleşmeler' },
-    'de-DE': { words: ['Nimm', 'den', 'Auftrag.'], line: 'Jeden Tag neue Aufträge in vier Städten' },
-    'es-ES': { words: ['Acepta', 'el', 'encargo.'], line: 'Nuevos contratos cada día en cuatro ciudades' },
-    'fr-FR': { words: ['Prends', 'la', 'mission.'], line: 'De nouveaux contrats chaque jour dans quatre villes' },
-    'it-IT': { words: ['Accetta', 'il', 'lavoro.'], line: 'Nuovi contratti ogni giorno in quattro città' },
-    'pl-PL': { words: ['Bierz', 'zlecenie.'], line: 'Nowe zlecenia każdego dnia w czterech miastach' },
-    'pt-BR': { words: ['Pegue', 'o', 'frete.'], line: 'Novos contratos todos os dias em quatro cidades' },
-    'ru-RU': { words: ['Бери', 'заказ.'], line: 'Новые контракты каждый день в четырёх городах' },
-    id: { words: ['Ambil', 'pekerjaan.'], line: 'Kontrak baru setiap hari di empat kota' },
+    'en-US': { words: ['Take', 'the', 'job.'], line: 'New contracts every day' },
+    'tr-TR': { words: ['İşi', 'kap.'], line: 'Her gün yeni sözleşmeler' },
+    'de-DE': { words: ['Nimm', 'den', 'Auftrag.'], line: 'Jeden Tag neue Aufträge' },
+    'es-ES': { words: ['Acepta', 'el', 'encargo.'], line: 'Nuevos contratos cada día' },
+    'fr-FR': { words: ['Prends', 'la', 'mission.'], line: 'De nouveaux contrats chaque jour' },
+    'it-IT': { words: ['Accetta', 'il', 'lavoro.'], line: 'Nuovi contratti ogni giorno' },
+    'pl-PL': { words: ['Bierz', 'zlecenie.'], line: 'Nowe zlecenia każdego dnia' },
+    'pt-BR': { words: ['Pegue', 'o', 'frete.'], line: 'Novos contratos todos os dias' },
+    'ru-RU': { words: ['Бери', 'заказ.'], line: 'Новые контракты каждый день' },
+    id: { words: ['Ambil', 'pekerjaan.'], line: 'Kontrak baru setiap hari' },
   },
   garage: {
     'en-US': { words: ['Make', 'it', 'yours.'], line: 'Paint and upgrade every truck' },
@@ -181,7 +207,7 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:${ASPHA
 .frame{position:relative;width:1920px;height:1080px;overflow:hidden}
 .shot{position:absolute;inset:0;width:1920px;height:1080px}
 .shade{position:absolute;inset:0;background:
-  linear-gradient(180deg,rgba(18,12,22,.58) 0%,rgba(18,12,22,.34) 18%,rgba(18,12,22,0) 36%),
+  linear-gradient(180deg,rgba(18,12,22,.86) 0%,rgba(18,12,22,.72) 20%,rgba(18,12,22,0) 40%),
   linear-gradient(0deg,rgba(10,10,12,.55) 0%,rgba(10,10,12,0) 22%),
   radial-gradient(130% 100% at 50% 50%,rgba(0,0,0,0) 62%,rgba(0,0,0,.28) 100%)}
 .copy{position:absolute;left:96px;top:50px;width:1728px}
@@ -235,9 +261,9 @@ html,body{margin:0;width:1024px;height:500px;overflow:hidden;background:${DUSK}}
 .shade{position:absolute;inset:0;background:
   linear-gradient(90deg,${DUSK} 0px,${DUSK} 180px,rgba(26,19,32,.88) 260px,rgba(26,19,32,.45) 380px,rgba(26,19,32,0) 500px),
   radial-gradient(120% 110% at 70% 50%,rgba(0,0,0,0) 60%,rgba(0,0,0,.28) 100%)}
-.frame>.brand{position:absolute;left:210px;top:50%;transform:translate(-50%,-50%);flex-direction:column;gap:22px}
+.frame>.brand{position:absolute;left:0;width:400px;top:50%;transform:translateY(-50%);flex-direction:column;gap:22px}
 .frame>.brand .tile{width:124px;height:124px}
-.frame>.brand .wordmark{width:320px}
+.frame>.brand .wordmark{width:300px}
 ${BRAND_CSS}
 </style></head><body><div class="frame">
 <img class="shot" src="${picture}">
@@ -284,7 +310,7 @@ function lastFrame(folder) {
 async function shoot(baseUrl) {
   const langs = [...new Set(Object.values(LOCALES))];
   const jobs = [
-    ...['village', 'night'].map((scene) => (browser) => shootClip(browser, baseUrl, SCENES[scene], join(FOOTAGE, 'scenes'))),
+    ...['metropol', 'village', 'night'].map((scene) => (browser) => shootClip(browser, baseUrl, SCENES[scene], join(FOOTAGE, 'scenes'))),
     ...langs.flatMap((lang) => [
       (browser) => shootClip(browser, baseUrl, SCENES.cabin, join(FOOTAGE, lang), lang),
       (browser) => {
@@ -315,6 +341,7 @@ try {
 const browser = await chromium.launch();
 try {
   const scenes = {
+    metropol: lastFrame(join(FOOTAGE, 'scenes', SCENES.metropol.id)),
     village: lastFrame(join(FOOTAGE, 'scenes', SCENES.village.id)),
     night: lastFrame(join(FOOTAGE, 'scenes', SCENES.night.id)),
   };
@@ -337,7 +364,7 @@ try {
     console.log(`Screenshots: ${locale}`);
   }
   const feature = join(LISTINGS, 'en-US/images/featureGraphic.jpg');
-  await render(browser, featureGraphicPage(scenes.village, drawings), 1024, 500, feature);
+  await render(browser, featureGraphicPage(scenes.metropol, drawings), 1024, 500, feature);
   console.log(`Feature graphic: ${feature}`);
 } finally {
   await browser.close();

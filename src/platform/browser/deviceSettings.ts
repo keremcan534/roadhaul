@@ -3,6 +3,7 @@ import { MINUTES_PER_DAY } from '../../core/time/dayTime';
 import {
   isCameraMode,
   isControlSize,
+  isFrameRateChoice,
   isSteeringMode,
   isTiltSensitivity,
   isSeasonChoice,
@@ -10,6 +11,7 @@ import {
   isWeatherChoice,
   type CameraMode,
   type ControlSize,
+  type FrameRateChoice,
   type SeasonChoice,
   type SteeringMode,
   type TiltSensitivity,
@@ -18,12 +20,15 @@ import {
 } from '../../data/config/controls';
 import { isQualityChoice, type QualityChoice } from '../../data/config/GameConfig';
 import { isLanguageChoice, type LanguageChoice } from '../../data/config/languages';
+import { isRadioChoice, type RadioChoice } from '../../data/config/radio';
 
 /** Settings of this device, kept apart from the company's save: they belong to the phone, not the game. */
 export interface DeviceSettings {
   /** The language: the device's, or one the player picked. */
   readonly language: LanguageChoice;
   readonly quality: QualityChoice;
+  /** At most 30 or 60 frames a second, or as many as the screen shows (90, 120…). */
+  readonly frameRate: FrameRateChoice;
   readonly sound: boolean;
   /** The phone buzzes when the truck hits something (on touch screens). */
   readonly vibration: boolean;
@@ -44,12 +49,15 @@ export interface DeviceSettings {
   readonly weather: WeatherChoice;
   /** The season: the calendar's, or held as one. */
   readonly season: SeasonChoice;
+  /** The cab radio: off, or the station last tuned to. */
+  readonly radio: RadioChoice;
 }
 
 export const SETTINGS_KEY = 'roadhaul.settings';
 export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   language: 'auto',
   quality: 'auto',
+  frameRate: 'max',
   sound: true,
   vibration: true,
   stats: false,
@@ -61,6 +69,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   clockMinutes: 10 * 60,
   weather: 'auto',
   season: 'auto',
+  radio: 'off',
 });
 
 /** The saved settings; each one that is missing, does not read, or storage fails on, is its default. */
@@ -70,11 +79,27 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
     if (typeof parsed !== 'object' || parsed === null) {
       return DEFAULT_SETTINGS;
     }
-    const { language, quality, sound, vibration, stats, steering, tiltSensitivity, controlSize, camera, timeFlow, clockMinutes, weather, season } =
-      parsed as Record<string, unknown>;
+    const {
+      language,
+      quality,
+      frameRate,
+      sound,
+      vibration,
+      stats,
+      steering,
+      tiltSensitivity,
+      controlSize,
+      camera,
+      timeFlow,
+      clockMinutes,
+      weather,
+      season,
+      radio,
+    } = parsed as Record<string, unknown>;
     return {
       language: isLanguageChoice(language) ? language : DEFAULT_SETTINGS.language,
       quality: isQualityChoice(quality) ? quality : DEFAULT_SETTINGS.quality,
+      frameRate: isFrameRateChoice(frameRate) ? frameRate : DEFAULT_SETTINGS.frameRate,
       sound: typeof sound === 'boolean' ? sound : DEFAULT_SETTINGS.sound,
       vibration: typeof vibration === 'boolean' ? vibration : DEFAULT_SETTINGS.vibration,
       stats: typeof stats === 'boolean' ? stats : DEFAULT_SETTINGS.stats,
@@ -89,6 +114,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
           : DEFAULT_SETTINGS.clockMinutes,
       weather: isWeatherChoice(weather) ? weather : DEFAULT_SETTINGS.weather,
       season: isSeasonChoice(season) ? season : DEFAULT_SETTINGS.season,
+      radio: isRadioChoice(radio) ? radio : DEFAULT_SETTINGS.radio,
     };
   } catch {
     return DEFAULT_SETTINGS;

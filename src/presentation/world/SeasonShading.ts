@@ -105,7 +105,8 @@ export class SeasonShading {
     seasonLeaves: { value: new Vector3() },
     seasonFlowers: { value: 1 },
     snowCover: { value: 0 },
-    snowUp: { value: new Vector3(0, 1, 0) },
+    /** Read only under snow (SNOW_ON_TOP): without it, left out of the uploads (`needsUpdate`). */
+    snowUp: { value: new Vector3(0, 1, 0), needsUpdate: false },
   };
   /** Each season's share of the look now, in SEASONS' order. */
   private readonly weights = [0, 1, 0, 0];
@@ -157,9 +158,11 @@ export class SeasonShading {
     if (moved) {
       this.apply();
     }
-    this.uniforms.snowCover.value = Math.min(1, Math.max(0, snowCover));
+    const cover = Math.min(1, Math.max(0, snowCover));
+    this.uniforms.snowCover.value = cover;
     camera.updateMatrixWorld();
     this.uniforms.snowUp.value.set(0, 1, 0).transformDirection(camera.matrixWorldInverse);
+    this.uniforms.snowUp.needsUpdate = cover > 0;
   }
 
   /** Gives `shader` the seasons' uniforms (its code declares them with SEASON_GLSL). */

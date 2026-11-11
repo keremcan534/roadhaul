@@ -1,8 +1,10 @@
 import { formatClock, MINUTES_PER_DAY } from '../../core/time/dayTime';
 import {
+  FRAME_RATE_CHOICES,
   SEASON_CHOICES,
   TIME_FLOWS,
   WEATHER_CHOICES,
+  type FrameRateChoice,
   type SeasonChoice,
   type TimeFlow,
   type WeatherChoice,
@@ -22,6 +24,8 @@ export interface SettingsShown {
   /** The player's graphics setting, and the preset it gave (the device's when `auto`, or `?quality=`). */
   readonly quality: QualityChoice;
   readonly qualityInUse: QualityLevel;
+  /** The frame rate: at most 30 or 60 frames a second, or as many as the screen shows. */
+  readonly frameRate: FrameRateChoice;
   readonly sound: boolean;
   /** Buzzing on crashes, where the device can (a touch screen); null where it is not offered. */
   readonly vibration: boolean | null;
@@ -36,6 +40,8 @@ export interface SettingsShown {
   readonly weather: WeatherChoice;
   /** The season: the calendar's, or the one held. */
   readonly season: SeasonChoice;
+  /** The company is kept in the player's Google account's backup too (the Android app's cloud save). */
+  readonly cloudSave: boolean;
   /** About the game: its version and build, and where its privacy policy is published. */
   readonly about: {
     readonly version: string;
@@ -52,6 +58,7 @@ export interface SettingsActions {
   /** The player picked another graphics setting; the game restarts with it. */
   readonly onQuality: (choice: QualityChoice) => void;
   /** The rest apply at once. */
+  readonly onFrameRate: (choice: FrameRateChoice) => void;
   readonly onSound: (on: boolean) => void;
   readonly onVibration: (on: boolean) => void;
   readonly onStats: (on: boolean) => void;
@@ -66,6 +73,12 @@ export interface SettingsActions {
   readonly onRestorePurchases: () => void;
   /** The ad privacy choices (consent), where the law wants them offered. */
   readonly onAdPrivacy: () => void;
+  /** Makes a backup of the company and hands it on: a file for the player to keep. */
+  readonly onBackup: () => void;
+  /** The player picked a backup file: its text, to be read and the player asked (`confirmRestore`). */
+  readonly onBackupFile: (text: string) => void;
+  /** The player said yes to the question: the backup's company replaces theirs. */
+  readonly onRestoreBackup: () => void;
   readonly onClose: () => void;
 }
 
@@ -83,8 +96,11 @@ const CLOCK_STEP_MINUTES = 5;
  * setting restarts the game, which picks it up at boot; everything else
  * applies at once. Below them, about the game: its version, the
  * open-source licences (a page of their own within the dialog) and the
- * privacy policy. It opens from the main menu and from the pause menu; the
- * controls have a page of their own (ControlsDialog).
+ * privacy policy. Above those, the company: a backup made into a file to
+ * keep, and one restored from a file (from the main menu only, after a
+ * question naming the company it holds). It opens from the main menu and
+ * from the pause menu; the controls have a page of their own
+ * (ControlsDialog).
  */
 export class SettingsDialog {
   private readonly overlay: HTMLDivElement;
@@ -95,6 +111,10 @@ export class SettingsDialog {
   private readonly purchases: HTMLDivElement;
   private readonly restoreButton: HTMLButtonElement;
   private readonly adPrivacyButton: HTMLButtonElement;
+  private readonly restoreBackupButton: HTMLButtonElement;
+  private readonly restoreNote: HTMLParagraphElement;
+  private readonly restoreConfirm: HTMLDivElement;
+  private readonly restoreQuestion: HTMLParagraphElement;
   private licensesLoaded = false;
   private readonly clockRow: HTMLDivElement;
   private readonly clockTime: HTMLOutputElement;
@@ -155,6 +175,13 @@ export class SettingsDialog {
         actions.onQuality(choice);
       }
     });
+
+    const frameRate = choiceRow(document, strings.t('settings.frameRate'), 'frame-rate', FRAME_RATE_CHOICES, shown.frameRate, (choice) =>
+      strings.t(`settings.frameRate.${choice}`),
+    );
+    frameRate.row.dataset.setting = 'frame-rate';
+    frameRate.row.append(element(document, 'p', 'settings__note', strings.t('settings.frameRateNote')));
+    frameRate.onPick((choice) => actions.onFrameRate(choice));
 
     // The time of day: a preset, or any time on the slider; the readout shows it.
     this.presetMinutes = shown.clockPresets;
@@ -259,10 +286,61 @@ export class SettingsDialog {
     purchaseLinks.append(this.restoreButton, this.adPrivacyButton);
     this.purchases.append(element(document, 'h3', 'settings__label', strings.t('settings.purchases')), purchaseLinks);
 
+    // The company: a backup to keep, and one restored (a file picked, then a question naming what it holds).
+    const company = element(document, 'div', 'settings__row settings__company');
+    company.dataset.setting = 'company';
+    const file = element(document, 'input', 'settings__file');
+    file.type = 'file';
+    file.accept = '.json,application/json';
+    file.hidden = true;
+    file.dataset.input = 'backup-file';
+    file.addEventListener('change', () => {
+      const picked = file.files?.[0];
+      file.value = '';
+      if (picked !== undefined) {
+        void picked.text().then(actions.onBackupFile, () => actions.onBackupFile(''));
+      }
+    });
+    this.restoreBackupButton = button(document, 'button--secondary settings__link', strings.t('settings.restoreBackup'), 'restore-backup', () => {
+      this.restoreConfirm.hidden = true;
+      file.click();
+    });
+    const companyLinks = element(document, 'div', 'settings__links');
+    companyLinks.append(
+      button(document, 'button--secondary settings__link', strings.t('settings.backup'), 'backup-company', actions.onBackup),
+      this.restoreBackupButton,
+    );
+    this.restoreNote = element(document, 'p', 'settings__note settings__restore-note', strings.t('settings.restoreFromMenu'));
+    this.restoreNote.hidden = true;
+    this.restoreConfirm = element(document, 'div', 'settings__confirm');
+    this.restoreConfirm.hidden = true;
+    this.restoreQuestion = element(document, 'p', 'settings__confirm-question');
+    const confirmLinks = element(document, 'div', 'settings__links');
+    confirmLinks.append(
+      button(document, 'button--danger settings__link', strings.t('settings.restoreReplace'), 'confirm-restore', () => {
+        this.restoreConfirm.hidden = true;
+        actions.onRestoreBackup();
+      }),
+      button(document, 'button--secondary settings__link', strings.t('settings.restoreCancel'), 'cancel-restore', () => {
+        this.restoreConfirm.hidden = true;
+      }),
+    );
+    this.restoreConfirm.append(this.restoreQuestion, confirmLinks);
+    company.append(
+      element(document, 'h3', 'settings__label', strings.t('settings.company')),
+      element(document, 'p', 'settings__note', strings.t('settings.companyNote')),
+      ...(shown.cloudSave ? [element(document, 'p', 'settings__note settings__cloud-note', strings.t('settings.cloudNote'))] : []),
+      companyLinks,
+      this.restoreNote,
+      this.restoreConfirm,
+      file,
+    );
+
     panel.append(
       element(document, 'h2', 'panel__title', strings.t('settings.title')),
       language,
       quality.row,
+      frameRate.row,
       this.clockRow,
       flow.row,
       weather.row,
@@ -270,6 +348,7 @@ export class SettingsDialog {
       sound.row,
       ...(vibration === null ? [] : [vibration.row]),
       stats.row,
+      company,
       this.purchases,
       about,
       button(document, 'button--ghost settings__close', strings.t('settings.close'), 'close-settings', actions.onClose),
@@ -301,12 +380,29 @@ export class SettingsDialog {
     this.purchases.hidden = !restore && !adPrivacy;
   }
 
+  /** A backup is restored from the main menu only (in a drive, the company loaded would have to be left first). */
+  set restoreAllowed(allowed: boolean) {
+    this.restoreBackupButton.disabled = !allowed;
+    this.restoreNote.hidden = allowed;
+    if (!allowed) {
+      this.restoreConfirm.hidden = true;
+    }
+  }
+
+  /** Asks whether to replace the company with the backup's (`question` names it), under the company's buttons. */
+  confirmRestore(question: string): void {
+    this.restoreQuestion.textContent = question;
+    this.restoreConfirm.hidden = false;
+    this.restoreConfirm.scrollIntoView({ block: 'nearest' });
+  }
+
   open(): void {
     this.overlay.hidden = false;
   }
 
   close(): void {
     this.overlay.hidden = true;
+    this.restoreConfirm.hidden = true;
     this.panel.hidden = false;
     this.licensesPanel.hidden = true;
   }

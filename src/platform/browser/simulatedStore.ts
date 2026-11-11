@@ -6,7 +6,14 @@ import { simulatedSheet } from './simulatedSheet';
 /** What the simulated store has sold on this browser: its own record, as Google Play keeps the player's. */
 const RECEIPTS_KEY = 'roadhaul.simulatedStore';
 
-const PRICES: Readonly<Record<ProductId, string>> = { remove_ads: '€2.99', premium_paints: '€1.99' };
+const PRICES: Readonly<Record<ProductId, string>> = {
+  remove_ads: '€1.99',
+  premium_paints: '€0.99',
+  designs_street: '€0.99',
+  designs_neon: '€0.99',
+  supporter_pack: '€2.99',
+  road_pass: '€1.49',
+};
 
 /**
  * A simulated store, for development and the end-to-end tests (`?store=simulated`): each purchase asks on a sheet,

@@ -1,4 +1,4 @@
-import type { ProductId } from '../../data/config/products';
+import { PRODUCT_BUNDLES, type ProductId } from '../../data/config/products';
 import type { StoreProduct } from '../../systems/monetization/PurchaseStore';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
@@ -10,7 +10,14 @@ export interface ShopActions {
   readonly onClose: () => void;
 }
 
-const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = { remove_ads: 'close', premium_paints: 'garage' };
+const PRODUCT_ICONS: Readonly<Record<ProductId, IconName>> = {
+  remove_ads: 'close',
+  premium_paints: 'garage',
+  designs_street: 'truck',
+  designs_neon: 'truck',
+  supporter_pack: 'star',
+  road_pass: 'route',
+};
 
 /**
  * The shop (spec §35): what the game sells on Google Play, each with its price in the player's currency, bought once
@@ -63,23 +70,27 @@ export class ShopDialog {
     this.overlay.hidden = false;
   }
 
-  /** Shows what is on sale, and what the player owns already. */
-  show(products: readonly StoreProduct[], owned: readonly ProductId[]): void {
+  /** Shows what is on sale, and as owned what would bring the player nothing new (`owned`: a bundle's parts too). */
+  show(products: readonly StoreProduct[], owned: (id: ProductId) => boolean): void {
     const { strings } = this;
     const document = this.overlay.ownerDocument;
     this.note.textContent = products.length === 0 ? strings.t('shop.unavailable') : '';
     this.buyButtons = [];
+    // A bundle first, marked as the best value: it holds the others for much less.
+    const ordered = [...products.filter(({ id }) => PRODUCT_BUNDLES[id] !== undefined), ...products.filter(({ id }) => PRODUCT_BUNDLES[id] === undefined)];
     this.list.replaceChildren(
-      ...products.map(({ id, price }) => {
-        const card = element(document, 'article', 'shop__product');
+      ...ordered.map(({ id, price }) => {
+        const bundle = PRODUCT_BUNDLES[id] !== undefined;
+        const card = element(document, 'article', bundle ? 'shop__product shop__product--bundle' : 'shop__product');
         card.dataset.product = id;
         const text = element(document, 'div', 'shop__product-text');
-        text.append(
-          element(document, 'h3', 'shop__product-name', strings.t(`product.${id}.name`)),
-          element(document, 'p', 'shop__product-description', strings.t(`product.${id}.description`)),
-        );
+        const name = element(document, 'h3', 'shop__product-name', strings.t(`product.${id}.name`));
+        text.append(name, element(document, 'p', 'shop__product-description', strings.t(`product.${id}.description`)));
+        if (bundle && !owned(id)) {
+          text.prepend(element(document, 'span', 'shop__badge', strings.t('shop.bestValue')));
+        }
         card.append(icon(document, PRODUCT_ICONS[id], 'shop__product-icon'), text);
-        if (owned.includes(id)) {
+        if (owned(id)) {
           card.classList.add('is-owned');
           card.append(element(document, 'span', 'shop__owned', strings.t('shop.owned')));
         } else {

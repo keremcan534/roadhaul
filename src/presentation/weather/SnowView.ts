@@ -48,6 +48,8 @@ export class SnowView {
     readonly fall: { value: number };
     readonly drift: { value: Vector2 };
     readonly center: { value: Vector2 };
+    /** The ground's height under the camera: the box of falling drops stands on it (a map's hills). */
+    readonly floorY: { value: number };
     readonly swayTime: { value: number };
     readonly resolution: { value: Vector2 };
     readonly color: { value: Color };
@@ -94,6 +96,7 @@ export class SnowView {
       fall: { value: 0 },
       drift: { value: new Vector2() },
       center: { value: new Vector2() },
+      floorY: { value: 0 },
       swayTime: { value: 0 },
       resolution: { value: new Vector2(1, 1) },
       color: { value: new Color(COLOR) },
@@ -111,6 +114,7 @@ export class SnowView {
         uniform float fall;
         uniform vec2 drift;
         uniform vec2 center;
+        uniform float floorY;
         uniform float swayTime;
         uniform vec2 resolution;
         uniform float clearance;
@@ -124,7 +128,7 @@ export class SnowView {
           vec2 around = mod(position.xz * BOX_WIDTH + drift - center + BOX_WIDTH * 0.5, BOX_WIDTH) - BOX_WIDTH * 0.5;
           float phase = position.x * 71.0 + position.z * 37.0;
           vec2 sway = vec2(sin(swayTime * 1.1 + phase), cos(swayTime * 0.9 + phase * 1.3)) * ${SWAY_METERS.toFixed(2)};
-          vec3 flake = vec3(center.x + around.x + sway.x, fract(position.y - fall) * BOX_HEIGHT, center.y + around.y + sway.y);
+          vec3 flake = vec3(center.x + around.x + sway.x, floorY + fract(position.y - fall) * BOX_HEIGHT, center.y + around.y + sway.y);
           vec4 view = viewMatrix * vec4(flake, 1.0);
           float depth = -view.z;
           if (depth < clearance) {
@@ -193,7 +197,7 @@ export class SnowView {
    * (cameraX, cameraZ), `deltaSeconds` on from the last frame (0 freezes
    * it). Allocation-free.
    */
-  update(deltaSeconds: number, cameraX: number, cameraZ: number, snow: number): void {
+  update(deltaSeconds: number, cameraX: number, cameraZ: number, snow: number, groundY = 0): void {
     const flakes = Math.round(this.maxFlakes * Math.min(1, Math.max(0, snow)));
     this.mesh.visible = flakes > 0;
     if (flakes === 0) {
@@ -208,6 +212,7 @@ export class SnowView {
     this.uniforms.fall.value = this.fall;
     this.uniforms.drift.value.set(this.driftX, this.driftZ);
     this.uniforms.center.value.set(cameraX, cameraZ);
+    this.uniforms.floorY.value = groundY;
     this.uniforms.swayTime.value = this.swayTime;
   }
 

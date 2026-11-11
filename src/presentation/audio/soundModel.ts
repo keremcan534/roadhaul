@@ -108,7 +108,7 @@ export function crashLevel(impactSpeed: number): number {
 }
 
 /** Sound travels this fast, m/s: thunder follows its flash by the strike's distance over this. */
-const SPEED_OF_SOUND = 343;
+export const SPEED_OF_SOUND = 343;
 /** Thunder from nearer than this cracks before it rumbles. */
 const CRACK_WITHIN_METERS = 1500;
 /** Thunder is loudest from nearer than this, and fades to a fifth of that by FAINT_THUNDER_METERS. */

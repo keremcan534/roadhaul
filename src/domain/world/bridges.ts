@@ -40,7 +40,8 @@ export interface WallPiece {
 /**
  * Where the roads cross the rivers: a bridge for every stretch of a road
  * whose deck (its paved width and kerbs) reaches over a channel's opening,
- * running at least BRIDGE_ABUTMENT_METERS onto the land at each end. (A closed
+ * running at least BRIDGE_ABUTMENT_METERS onto the land at each end, except
+ * where the road is carried on a deck high above (DeckView). (A closed
  * road's stretch across its first sample would count as two; no ring road
  * crosses a river.)
  */
@@ -65,7 +66,8 @@ export function findBridges(roads: readonly RoadPath[], rivers: readonly RiverPa
       };
       let first = -1;
       for (let i = 0; i <= road.pointCount; i++) {
-        const over = i < road.pointCount && reaches(i);
+        // A stretch carried on a deck (RoadDefinition.elevated) crosses high over the water: no low bridge there.
+        const over = i < road.pointCount && road.elevated[i] === 0 && reaches(i);
         if (over && first < 0) {
           first = i;
         } else if (!over && first >= 0) {

@@ -38,17 +38,22 @@ function shownDrawCalls(scene: Scene): number {
 }
 
 describe('StreetLampView', () => {
-  it('draws every lamp in two draw calls by day', () => {
+  it('draws every lamp near the camera in two draw calls by day, and none far off', () => {
     const scene = new Scene();
-    new StreetLampView(scene, LAMPS);
+    const view = new StreetLampView(scene, LAMPS);
+    view.showAround(0, 0);
 
     expect(shownDrawCalls(scene)).toBe(2);
     expect(meshes(scene).every((mesh) => mesh.count === LAMPS.length)).toBe(true);
+    view.showAround(5000, 0);
+    expect(meshes(scene).every((mesh) => mesh.count === 0)).toBe(true);
+    // Not even an empty draw.
+    expect(shownDrawCalls(scene)).toBe(0);
   });
 
   it('stands each post at its lamp, the head hanging over the road', () => {
     const scene = new Scene();
-    new StreetLampView(scene, LAMPS);
+    new StreetLampView(scene, LAMPS).showAround(0, 0);
     const [posts] = meshes(scene);
     const matrix = new Matrix4();
     const foot = new Vector3();
@@ -69,6 +74,7 @@ describe('StreetLampView', () => {
   it('lights the lenses at night, with glows', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, LAMPS);
+    view.showAround(0, 0);
     const lens = meshes(scene)[1]!.material as MeshBasicMaterial;
     const dayLens = lens.color.clone();
 
@@ -110,6 +116,7 @@ describe('StreetLampView', () => {
   it('leaves the glows out when the quality preset does', () => {
     const scene = new Scene();
     const view = new StreetLampView(scene, LAMPS, { lampGlows: false });
+    view.showAround(0, 0);
 
     view.setLamps(1);
 
@@ -173,6 +180,7 @@ describe('StreetLampView', () => {
     const scene = new Scene();
     // The lamps' circles in the world: 5 and 9.
     const view = new StreetLampView(scene, LAMPS, { circles: [5, 9], debrisCapacity: 4 });
+    view.showAround(0, 0);
     view.setLamps(1);
     const [posts] = meshes(scene).filter((mesh) => mesh.name !== 'street-lamps:fallen');
     const knocked = new Uint8Array(12);

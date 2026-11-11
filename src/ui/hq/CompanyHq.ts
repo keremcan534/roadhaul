@@ -1,8 +1,13 @@
+import type { CrateTier } from '../../data/definitions/CrateTier';
+import type { Credits } from '../../data/units';
+import type { WeeklyCupService } from '../../systems/rivals/WeeklyCupService';
 import type { Clock } from '../../core/time/Clock';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { FacilityService } from '../../systems/company/FacilityService';
+import type { ResearchService } from '../../systems/company/ResearchService';
+import type { NewsService } from '../../systems/world/NewsService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { EconomyService } from '../../systems/economy/EconomyService';
 import type { EventService } from '../../systems/events/EventService';
@@ -13,17 +18,20 @@ import type { MonetizationService } from '../../systems/monetization/Monetizatio
 import type { RivalService } from '../../systems/rivals/RivalService';
 import type { DamageService } from '../../systems/vehicles/DamageService';
 import type { FuelService } from '../../systems/vehicles/FuelService';
+import type { UsedTruckMarket } from '../../systems/vehicles/UsedTruckMarket';
 import type { GarageService, OwnedTruck } from '../../systems/vehicles/GarageService';
 import type { UpgradeService } from '../../systems/vehicles/UpgradeService';
-import { element, setText } from '../dom';
+import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
 import { LabelFitter } from '../LabelFitter';
+import { newsTicker } from './newsFeed';
 import { companyPage } from './companyPage';
 import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
 import { FleetPage } from './fleetPage';
 import { truckCard } from './garageCards';
+import { ownedTruckRows, usedTruckCards } from './usedTrucks';
 import { HQ_TABS, type HqTab } from './hqTabs';
 import { jobCard, routeText, type JobRivalry } from './jobCards';
 import { sortJobOffers } from './jobOrder';
@@ -31,6 +39,10 @@ import { paintPicker } from './paintPicker';
 import { cssColor, RivalsPage } from './rivalsPage';
 import { truckPage } from './truckPage';
 import { upgradeCard } from './upgradeCards';
+import type { SupplyService } from '../../systems/rewards/SupplyService';
+import type { LiveryPattern } from '../../data/definitions/LiveryDefinition';
+import type { LiveryService } from '../../systems/vehicles/LiveryService';
+import { liveryPicker } from './liveryPicker';
 
 /** What the panel shows. It only reads them; changes go through the actions. */
 export interface CompanyHqServices {
@@ -42,31 +54,60 @@ export interface CompanyHqServices {
   readonly fuel: FuelService;
   readonly damage: DamageService;
   readonly garage: GarageService;
+  readonly usedTrucks: UsedTruckMarket;
+  /** The weekly cup, and what its top three win. */
+  readonly weeklyCup: WeeklyCupService;
+  readonly cupRewards: readonly { readonly credits: Credits; readonly crate: CrateTier | null }[];
   readonly upgrades: UpgradeService;
   readonly specialEvents: EventService;
   readonly dailyContracts: DailyContracts;
   readonly fleet: FleetService;
   readonly rivals: RivalService;
   readonly facilities: FacilityService;
+  readonly research: ResearchService;
+  /** The region's Gazette: its newest headline over the job board, all of it on the rivals page. */
+  readonly news: NewsService;
+  /** Research points a delivery earns, and a perfect one (GameConfig.research). */
+  readonly researchPoints: { readonly perDelivery: number; readonly perPerfectDelivery: number };
   readonly clock: Clock;
   /** Ads and purchases: the half-price services, and the premium paints. */
   readonly monetization: MonetizationService;
+  /** The crates' parts and boosters: the free fill-up and repair tokens. */
+  readonly supplies: SupplyService;
+  /** The trucks' designs and the trailer text. */
+  readonly liveries: LiveryService;
+  /** A design's small picture in a colour (0xRRGGBB), as an image URL (the presentation draws it). */
+  readonly liveryPicture: (pattern: LiveryPattern, color: number) => string;
 }
 
 /** Something shown on the truck in the showroom before it is bought: a paint, an upgrade's next level, another model. */
 export type TruckPreview =
   | { readonly kind: 'paint'; readonly paintId: string | null }
+  | { readonly kind: 'livery'; readonly liveryId: string }
   | { readonly kind: 'upgrade'; readonly upgradeId: string }
   | { readonly kind: 'truck'; readonly definitionId: string };
 
 export interface CompanyHqActions {
   readonly onAccept: (missionId: string) => void;
+  /** Gives up the contract under way (asked twice: it fails, the cargo is lost). */
+  readonly onAbandon: () => void;
   readonly onRefuel: () => void;
   readonly onRepair: () => void;
   /** The same at half price, after a rewarded ad. */
   readonly onRefuelDiscounted: () => void;
+  /** Buys a design for credits, puts one on the truck being driven, sets the trailer text. */
+  readonly onBuyLivery: (liveryId: string) => void;
+  readonly onApplyLivery: (liveryId: string) => void;
+  readonly onSetTrailerText: (text: string) => void;
+  /** Fills up or repairs for free, with a crate's token. */
+  readonly onRefuelToken: () => void;
+  readonly onRepairToken: () => void;
   readonly onRepairDiscounted: () => void;
   readonly onBuyTruck: (definitionId: string) => void;
+  /** Buys truck `index` of the used-truck market's list. */
+  readonly onBuyUsedTruck: (index: number) => void;
+  /** Sells truck `instanceId` (the garage refuses the one driven and those out). */
+  readonly onSellTruck: (instanceId: string) => void;
   readonly onSwitchTruck: (instanceId: string) => void;
   readonly onPaintTruck: (instanceId: string, paintId: string | null) => void;
   /** Opens the shop, from a premium colour not bought yet. */
@@ -86,9 +127,14 @@ export interface CompanyHqActions {
   readonly onBuyOut: (rivalId: string) => void;
   /** Builds a facility's next level at the head office. */
   readonly onBuildFacility: (facilityId: string) => void;
+  readonly onResearch: (researchId: string) => void;
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
   readonly onOpenMap: () => void;
+  /** Opens the company's goals over the panel. */
+  readonly onOpenGoals: () => void;
+  /** Opens the company's crates over the panel. */
+  readonly onOpenCrates: () => void;
   readonly onClose: () => void;
 }
 
@@ -125,6 +171,10 @@ export class CompanyHq {
   private readonly xpLabel: HTMLSpanElement;
   private readonly reputation: HTMLSpanElement;
   private readonly credits: HTMLSpanElement;
+  /** How many goals' rewards wait, on the goals button. */
+  private readonly goalsBadge: HTMLSpanElement;
+  /** How many crates wait to be opened, on the crates button. */
+  private readonly cratesBadge: HTMLSpanElement;
   private readonly tabs: ReadonlyMap<HqTab, HTMLButtonElement>;
   /** Keeps the tabs' names whole: a name too long for its tab is made smaller. */
   private readonly tabNames: LabelFitter;
@@ -152,7 +202,7 @@ export class CompanyHq {
     this.sheet.setAttribute('role', 'dialog');
     this.sheet.setAttribute('aria-label', strings.t('hq.title'));
 
-    // The company, its money, the map and the way back to the road.
+    // The company, its money, its goals, its crates, the map and the way back to the road.
     const header = el('header', 'hq__header');
     const company = el('div', 'hq__company');
     this.companyName = el('h2', 'hq__company-name');
@@ -179,9 +229,21 @@ export class CompanyHq {
       node.addEventListener('click', onClick);
       return node;
     };
+    const goalsButton = iconButton('trophy', strings.t('achievements.open'), 'open-goals', actions.onOpenGoals);
+    this.goalsBadge = el('span', 'hq__badge');
+    this.goalsBadge.dataset.value = 'goals-waiting';
+    this.goalsBadge.hidden = true;
+    goalsButton.append(this.goalsBadge);
+    const cratesButton = iconButton('crate', strings.t('crates.open'), 'open-crates', actions.onOpenCrates);
+    this.cratesBadge = el('span', 'hq__badge');
+    this.cratesBadge.dataset.value = 'crates-waiting';
+    this.cratesBadge.hidden = true;
+    cratesButton.append(this.cratesBadge);
     header.append(
       company,
       money,
+      goalsButton,
+      cratesButton,
       iconButton('map', strings.t('hq.map'), 'hq-map', actions.onOpenMap),
       iconButton('close', strings.t('hq.close'), 'close-hq', actions.onClose),
     );
@@ -224,9 +286,34 @@ export class CompanyHq {
     this.rivalsPage = new RivalsPage(
       document,
       strings,
-      { rivals: services.rivals, economy: services.economy, company: services.company, now: () => services.clock.now() },
+      {
+        rivals: services.rivals,
+        economy: services.economy,
+        company: services.company,
+        now: () => services.clock.now(),
+        news: services.news,
+        cup: services.weeklyCup,
+        cupRewards: services.cupRewards,
+      },
       { onCampaign: actions.onCampaign, onBuyOut: actions.onBuyOut },
     );
+  }
+
+  /** How many goals' rewards wait to be collected: shown on the goals button, hidden at 0. */
+  set goalsWaiting(count: number) {
+    this.goalsBadge.hidden = count === 0;
+    setText(this.goalsBadge, String(count));
+  }
+
+  /** A step of the research tree can be researched now: a dot on the company page's tab. */
+  set researchReady(ready: boolean) {
+    this.tabs.get('company')?.classList.toggle('has-dot', ready);
+  }
+
+  /** How many crates wait to be opened: shown on the crates button, hidden at 0. */
+  set cratesWaiting(count: number) {
+    this.cratesBadge.hidden = count === 0;
+    setText(this.cratesBadge, String(count));
   }
 
   get isOpen(): boolean {
@@ -292,8 +379,24 @@ export class CompanyHq {
     this.list.dataset.tab = this.tab;
     this.showPreview(null);
     const scrolled = this.list.scrollTop;
+    // A field being typed in (the trailer text) keeps what was typed and the caret: money coming in from the fleet
+    // redraws the page meanwhile.
+    const active = this.list.ownerDocument.activeElement;
+    const typing = active?.tagName === 'INPUT' && this.list.contains(active) ? (active as HTMLInputElement) : null;
+    const field =
+      typing !== null && typing.dataset.value !== undefined
+        ? { name: typing.dataset.value, value: typing.value, start: typing.selectionStart, end: typing.selectionEnd }
+        : null;
     this.list.replaceChildren(...this.tabContent());
     this.list.scrollTop = scrolled;
+    if (field !== null) {
+      const again = this.list.querySelector<HTMLInputElement>(`input[data-value="${field.name}"]`);
+      if (again !== null) {
+        again.value = field.value;
+        again.focus({ preventScroll: true });
+        again.setSelectionRange(field.start, field.end);
+      }
+    }
   }
 
   /**
@@ -366,6 +469,8 @@ export class CompanyHq {
           onRepair: this.actions.onRepair,
           onRefuelDiscounted: this.actions.onRefuelDiscounted,
           onRepairDiscounted: this.actions.onRepairDiscounted,
+          onRefuelToken: this.actions.onRefuelToken,
+          onRepairToken: this.actions.onRepairToken,
         });
       case 'garage':
         return this.garagePage();
@@ -379,8 +484,16 @@ export class CompanyHq {
             offers: this.services.facilities.offers(),
             perks: this.services.facilities.perks,
             canAfford: (price) => this.services.economy.canAfford(price),
+            research: {
+              offers: this.services.research.offers(),
+              points: this.services.research.points,
+              pointsPerDelivery: this.services.researchPoints.perDelivery,
+              pointsPerPerfectDelivery: this.services.researchPoints.perPerfectDelivery,
+              canAfford: (price) => this.services.economy.canAfford(price),
+            },
           },
           this.actions.onBuildFacility,
+          this.actions.onResearch,
         );
       case 'rivals':
         return this.rivalsPage.render();
@@ -417,12 +530,27 @@ export class CompanyHq {
       return card;
     });
     const page: HTMLElement[] = [];
+    // What the region is talking about: the Gazette's newest headline.
+    const headline = this.services.news.latest;
+    if (headline !== null) {
+      page.push(newsTicker(document, strings, headline, this.services.company.companyName, () => this.selectTab('rivals')));
+    }
     const current = missions.activeDefinition;
     if (current !== null) {
-      const note = element(document, 'p', 'hq__note hq__current-job');
+      const note = element(document, 'div', 'hq__note hq__current-job');
+      // Giving it up, asked twice: the first tap says what it costs, the second gives it up.
+      const abandon = button(document, 'button--ghost hq__abandon', strings.t('pause.abandon'), 'hq-abandon', () => {
+        if (abandon.dataset.confirm === 'yes') {
+          actions.onAbandon();
+          return;
+        }
+        abandon.dataset.confirm = 'yes';
+        setText(abandon, strings.t('hq.jobs.abandonConfirm'));
+      });
       note.append(
         icon(document, 'route'),
-        element(document, 'span', '', strings.t('hq.jobs.current', { title: strings.missionTitle(current), route: routeText(strings, current) })),
+        element(document, 'span', 'hq__current-job-text', strings.t('hq.jobs.current', { title: strings.missionTitle(current), route: routeText(strings, current) })),
+        abandon,
       );
       page.push(note);
     }
@@ -479,6 +607,30 @@ export class CompanyHq {
       ),
     );
 
+    const color = truck.paint?.color ?? truck.definition.factoryColor;
+    const designs = section(
+      'liveries',
+      strings.t('hq.garage.liveries'),
+      liveryPicker(
+        document,
+        strings,
+        {
+          offers: this.services.liveries.offers(),
+          worn: this.services.liveries.liveryOf(truck.instanceId),
+          text: this.services.liveries.trailerText,
+          canAfford,
+          picture: (pattern) => this.services.liveryPicture(pattern, color),
+        },
+        {
+          onBuy: actions.onBuyLivery,
+          onApply: actions.onApplyLivery,
+          onPreview: (liveryId) => this.togglePreview({ kind: 'livery', liveryId }),
+          onSetText: actions.onSetTrailerText,
+          onOpenShop: actions.onOpenShop,
+        },
+      ),
+    );
+
     const upgradeCards = element(document, 'div', 'hq__cards');
     upgradeCards.append(
       ...upgrades.offers().map((offer) =>
@@ -486,7 +638,7 @@ export class CompanyHq {
           document,
           strings,
           offer,
-          offer.next !== null && economy.canAfford(offer.next.cost),
+          offer.next !== null && economy.canAfford(offer.next.price),
           actions.onBuyUpgrade,
           {
             previewing: false,
@@ -527,7 +679,37 @@ export class CompanyHq {
       ),
     );
     const trucksSection = section('trucks', strings.t('hq.garage.trucks'), truckCards);
-    return [paint, upgradesSection, trucksSection];
+    const usedSection = section(
+      'used',
+      strings.t('hq.used.title'),
+      ...usedTruckCards(
+        document,
+        strings,
+        {
+          offers: this.services.usedTrucks.offers(),
+          nextListInMs: this.services.usedTrucks.nextListInMs,
+          canAfford,
+          hasRoom: garage.hasRoom,
+          colorOf: (paintId, factoryColor) => (paintId === null ? factoryColor : this.services.content.paints.get(paintId).color),
+        },
+        actions.onBuyUsedTruck,
+      ),
+    );
+    const ownedSection = section(
+      'owned',
+      strings.t('hq.used.owned', { count: owned.length, capacity: garage.capacity }),
+      ownedTruckRows(
+        document,
+        strings,
+        {
+          trucks: owned,
+          saleValue: (instanceId) => garage.saleValue(instanceId),
+          driverName: (driverId) => strings.t(`driver.${driverId}.name`),
+        },
+        actions.onSellTruck,
+      ),
+    );
+    return [paint, designs, upgradesSection, trucksSection, usedSection, ownedSection];
   }
 }
 
@@ -544,6 +726,8 @@ function previewKey(preview: TruckPreview | null): string {
   switch (preview.kind) {
     case 'paint':
       return `paint:${preview.paintId ?? 'factory'}`;
+    case 'livery':
+      return `livery:${preview.liveryId}`;
     case 'upgrade':
       return `upgrade:${preview.upgradeId}`;
     case 'truck':

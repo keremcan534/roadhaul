@@ -1,10 +1,10 @@
-import { Box3, Color, InstancedMesh, Matrix4, Mesh, Scene, Vector3, type BufferAttribute } from 'three';
+import { BatchedMesh, Color, InstancedMesh, Matrix4, Mesh, Scene, Vector3, type BufferAttribute } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MAPS } from '../../../../src/data/content/maps';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { createRoadPoint } from '../../../../src/domain/world/RoadPath';
 import { RoadFurnitureView } from '../../../../src/presentation/world/RoadFurnitureView';
-import { drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
+import { batchTiles, drawCallCount, gpuResources, watchDisposal } from '../../../support/threeResources';
 
 const world = new DrivingWorld(MAPS[0]!);
 
@@ -46,14 +46,8 @@ function nearestJunction(x: number, z: number): number {
   return Math.min(...world.network.junctions.map((junction) => Math.hypot(junction.x - x, junction.z - z)));
 }
 
-function railsOf(scene: Scene): Mesh[] {
-  const rails: Mesh[] = [];
-  scene.traverse((object) => {
-    if (object instanceof Mesh && object.name.startsWith('road-furniture:rails:')) {
-      rails.push(object);
-    }
-  });
-  return rails;
+function railsOf(scene: Scene): BatchedMesh {
+  return scene.getObjectByName('road-furniture:rails') as BatchedMesh;
 }
 
 describe('RoadFurnitureView', () => {
@@ -68,7 +62,8 @@ describe('RoadFurnitureView', () => {
     for (const post of posts) {
       const edge = nearestEdge(post.x, post.z);
       expect(['rural', 'highway']).toContain(edge.kind);
-      expect(edge.meters).toBeCloseTo(1.9, 1);
+      // Measured from the road's sample points: a little short on the inside of a bend.
+      expect(Math.abs(edge.meters - 1.9)).toBeLessThan(0.1);
       expect(world.surfaceAt(post.x, post.z).name).toBe('grass');
       expect(world.isWater(post.x, post.z)).toBe(false);
       expect(nearestJunction(post.x, post.z)).toBeGreaterThan(18);
@@ -175,23 +170,23 @@ describe('RoadFurnitureView', () => {
     const view = new RoadFurnitureView(scene, world, { postDrawMeters: Infinity });
     view.update(0, 0, 0);
     const rails = railsOf(scene);
+    const tiles = batchTiles(rails);
+    const position = rails.geometry.getAttribute('position') as BufferAttribute;
     const railPosts = world.guardRails.flatMap((rail) => rail.points);
 
     expect(railPosts.length).toBeGreaterThan(0);
-    expect(rails.length).toBe(view.counts.railTiles);
-    expect(rails.length).toBeGreaterThan(0);
+    expect(tiles.length).toBe(view.counts.railTiles);
+    expect(tiles.length).toBeGreaterThan(0);
     let vertices = 0;
-    for (const rail of rails) {
-      const position = rail.geometry.getAttribute('position') as BufferAttribute;
-      vertices += position.count;
-      // Every tile is one mesh, within its 600 m square (and the few meters its last piece reaches out).
-      const box = new Box3().setFromBufferAttribute(position);
+    for (const { box, vertexStart, vertexCount } of tiles) {
+      vertices += vertexCount;
+      // Every tile is within its 600 m square (and the few meters its last piece reaches out); all in one draw.
       expect(box.max.x - box.min.x).toBeLessThan(610);
       expect(box.max.z - box.min.z).toBeLessThan(610);
       expect(box.min.y).toBeGreaterThanOrEqual(0);
       expect(box.max.y).toBeLessThan(0.9);
       // Beams, posts and the bent ends: all along the rails.
-      for (let index = 0; index < position.count; index += 7) {
+      for (let index = vertexStart; index < vertexStart + vertexCount; index += 7) {
         const x = position.getX(index);
         const z = position.getZ(index);
         const nearest = Math.min(...railPosts.map(([railX, railZ]) => Math.hypot(railX - x, railZ - z)));
@@ -246,20 +241,19 @@ describe('RoadFurnitureView', () => {
     expect(shader.uniforms['lamps']).toBeDefined();
   });
 
-  it('costs three draw calls and one per rail tile, casts shadows only when asked, and frees what it made', () => {
+  it('costs three draw calls and one for all the rail tiles, casts shadows only when asked, and frees what it made', () => {
     const plainScene = new Scene();
     new RoadFurnitureView(plainScene, world);
     expect((plainScene.getObjectByName('road-furniture:posts') as InstancedMesh).castShadow).toBe(false);
 
     const scene = new Scene();
     const view = new RoadFurnitureView(scene, world, { castShadows: true });
-    expect(drawCallCount(scene)).toBe(3 + view.counts.railTiles);
+    expect(view.counts.railTiles).toBeGreaterThan(1);
+    expect(drawCallCount(scene)).toBe(3 + 1);
     expect((scene.getObjectByName('road-furniture:studs') as InstancedMesh).castShadow).toBe(false);
     expect((scene.getObjectByName('road-furniture:posts') as InstancedMesh).castShadow).toBe(true);
     expect((scene.getObjectByName('road-furniture:reflectors') as InstancedMesh).castShadow).toBe(false);
-    for (const rail of railsOf(scene)) {
-      expect(rail.castShadow).toBe(true);
-    }
+    expect(railsOf(scene).castShadow).toBe(true);
 
     const resources = gpuResources(scene);
     const disposed = watchDisposal(resources);

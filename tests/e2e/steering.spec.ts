@@ -89,10 +89,13 @@ test('steers from level, and takes the phone as it is held as straight ahead whe
   expect(await drift()).toBeLessThan(3);
   expect(await shownSpeed(page), 'still rolling, so the heading could have turned').toBeGreaterThan(3);
 
-  // Back to level, where straight ahead was before the tap: a gentle left turn now.
+  // Back to level, where straight ahead was before the tap: a gentle left turn now. A touch of throttle keeps it
+  // rolling meanwhile: under a slow software renderer it would coast to a stop, and a truck at rest does not turn.
   const straight = await shownHeading(page);
   await tiltPhone(page, 0);
+  await page.keyboard.down('ArrowUp');
   await expect.poll(async () => headingChange(straight, await shownHeading(page)), { timeout: 10_000 }).toBeGreaterThan(3);
+  await page.keyboard.up('ArrowUp');
   expect(problems).toEqual([]);
 });
 

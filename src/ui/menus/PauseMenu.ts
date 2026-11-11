@@ -17,6 +17,8 @@ export interface PauseMenuActions {
   readonly onSettings: () => void;
   /** Opens the map over the menu, the same way. */
   readonly onMap: () => void;
+  /** Photo mode, in place of the menu: the entry point opens it, and the menu again when it closes. */
+  readonly onPhoto: () => void;
 }
 
 /** The roadside fuel offer: its price, or free emergency fuel for a stranded, broke company. */
@@ -25,7 +27,7 @@ export type RoadsideFuelOffer = { readonly cost: string } | 'emergency' | null;
 /**
  * The pause button shown on the road, and the menu it opens: resume, put a
  * stuck truck back on the road, call a fuel truck, abandon the contract, the
- * map, the controls and the settings side by side, and the main menu (the
+ * map, photo mode, the controls and the settings side by side, and the main menu (the
  * game is saved, so a contract waits there for Continue).
  */
 export class PauseMenu {
@@ -63,6 +65,7 @@ export class PauseMenu {
     const tools = element(document, 'div', 'pause-menu__tools');
     tools.append(
       withIcon(button(document, 'button--secondary', strings.t('pause.map'), 'pause-map', actions.onMap), 'map'),
+      withIcon(button(document, 'button--secondary', strings.t('pause.photo'), 'pause-photo', closeThen(actions.onPhoto)), 'photo'),
       withIcon(button(document, 'button--secondary', strings.t('pause.controls'), 'pause-controls', actions.onControls), 'controls'),
       withIcon(button(document, 'button--secondary', strings.t('pause.settings'), 'pause-settings', actions.onSettings), 'settings'),
     );

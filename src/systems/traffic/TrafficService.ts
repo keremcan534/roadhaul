@@ -4,6 +4,7 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import { ROAD_KINDS, type RoadKind } from '../../data/definitions/MapDefinition';
 import { LaneGraph } from '../../domain/traffic/LaneGraph';
 import { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
+import { placeTrafficSignals, type TrafficSignals } from '../../domain/traffic/trafficSignals';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import type { DrivingService } from '../driving/DrivingService';
 
@@ -22,6 +23,7 @@ export class TrafficService {
   /** The drive the traffic belongs to (DrivingService.drive). */
   private drive = -1;
   private readonly graphs = new Map<string, LaneGraph>();
+  private readonly signals = new Map<string, TrafficSignals | null>();
   private readonly speedLimits: Readonly<Record<RoadKind, number>>;
   private drives = 0;
   private speedFactor = 1;
@@ -55,7 +57,7 @@ export class TrafficService {
     if (this.driving.drive !== this.drive) {
       this.startDrive(world);
     }
-    this.current!.update(dt, this.driving.vehicle, this.driving.footprint);
+    this.current!.update(dt, this.driving.vehicle, this.driving.footprint, this.driving.trailer, this.driving.trailerFootprint);
   }
 
   /** Slows all traffic to `factor` of its usual speed, in this drive and later ones (WeatherService). */
@@ -70,8 +72,26 @@ export class TrafficService {
     this.drive = -1;
   }
 
-  /** A new drive: its world's lanes, and fresh traffic that fills the roads on the first step. */
-  private startDrive(world: DrivingWorld): void {
+  /** The traffic's time its lights keep, seconds (TrafficSimulation.signalSeconds); null while no traffic is simulated. */
+  get signalSeconds(): number | null {
+    return this.current?.signalSeconds ?? null;
+  }
+
+  /** `world`'s traffic lights (worked out once a map, with its lanes); null where it has none. */
+  signalsOf(world: DrivingWorld): TrafficSignals | null {
+    let signals = this.signals.get(world.id);
+    if (signals === undefined) {
+      signals = placeTrafficSignals(this.graphOf(world), world);
+      this.signals.set(world.id, signals);
+      if (signals !== null) {
+        this.logger.info(`Traffic lights for ${world.id}: ${signals.junctionCount} junctions, ${signals.heads.length} heads.`);
+      }
+    }
+    return signals;
+  }
+
+  /** `world`'s lanes, built the first time. */
+  private graphOf(world: DrivingWorld): LaneGraph {
     let graph = this.graphs.get(world.id);
     if (graph === undefined) {
       graph = new LaneGraph(world, this.speedLimits);
@@ -80,6 +100,13 @@ export class TrafficService {
         `Traffic lanes for ${world.id}: ${graph.linkCount} links, ${graph.nodeCount} junctions and turning circles.`,
       );
     }
+    return graph;
+  }
+
+  /** A new drive: its world's lanes, and fresh traffic that fills the roads on the first step. */
+  private startDrive(world: DrivingWorld): void {
+    const graph = this.graphOf(world);
+    const signals = this.signalsOf(world);
     this.drive = this.driving.drive;
     this.current = new TrafficSimulation(
       graph,
@@ -89,6 +116,7 @@ export class TrafficService {
         radiusMeters: this.config.radiusMeters,
         minSpawnDistanceMeters: this.config.minSpawnDistanceMeters,
         wrecks: this.wrecks,
+        signals,
       },
       FIRST_SEED + this.drives++,
     );

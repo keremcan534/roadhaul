@@ -179,7 +179,8 @@ describe('RivalService', () => {
     const pay = completed[1]!.reward.total;
     const bonus = Math.round(pay * RIVALS.leaderBonus);
     expect(bonuses).toEqual([{ missionId: 'first_package', cityId: 'city_a', bonus }]);
-    expect(game.economy.credits).toBe(before + pay + bonus);
+    // The safe-driving bonus too: delivered without a fine or a knock.
+    expect(game.economy.credits).toBe(before + pay + bonus + game.roadEvents.lastDelivery.pay);
   });
 
   it('puts a tender up on the job board, raced by a rival; delivered first, it pays the prize and wins standing', async () => {
@@ -204,7 +205,7 @@ describe('RivalService', () => {
     deliver(game, tender.contract.id);
 
     expect(decided).toEqual([{ missionId: tender.contract.id, rivalId: tender.rivalId, won: true, prize: tender.prize }]);
-    expect(game.economy.credits).toBe(before + completed[0]!.reward.total + tender.prize);
+    expect(game.economy.credits).toBe(before + completed[0]!.reward.total + tender.prize + game.roadEvents.lastDelivery.pay);
     expect(standingIn(game, originCityId)['player']).toBeCloseTo(RIVALS.deliveryPoints + RIVALS.tenderPoints, 0);
     expect(standingIn(game, destinationCityId)['player']).toBeCloseTo(RIVALS.deliveryPoints + RIVALS.tenderPoints, 0);
     expect(standingIn(game, originCityId)[tender.rivalId] ?? 0).toBeLessThanOrEqual(rivalBefore + 2 * RIVALS.fleetJobPoints);

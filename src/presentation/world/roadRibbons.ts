@@ -13,7 +13,8 @@ export const RIBBON_MAX_SPAN_METERS = 48;
  * The rows of a road's samples a ribbon along it keeps: its ends, both sides
  * of every change in `keep` (where a painted line stops short of a junction),
  * and enough between for the ribbon to stay within `toleranceMeters` of the
- * centreline (Douglas–Peucker), at most `maxSpanMeters` apart along it. Rows
+ * centreline (Douglas–Peucker), across and in height (a road graded over
+ * hills), at most `maxSpanMeters` apart along it. Rows
  * count samples from 0; a closed road has one row more than samples, its
  * first again, so the ribbon closes its loop. Ascending.
  */
@@ -30,6 +31,7 @@ export function ribbonRows(
   }
   const x = (row: number): number => road.x(row % count);
   const z = (row: number): number => road.z(row % count);
+  const y = (row: number): number => road.heights[row % count] ?? 0;
   const along = (row: number): number => (row === count ? road.lengthMeters : (road.distances[row] ?? 0));
   const kept = new Uint8Array(last + 1);
   kept[0] = 1;
@@ -59,13 +61,19 @@ export function ribbonRows(
     const dx = x(to) - ax;
     const dz = z(to) - az;
     const lengthSquared = dx * dx + dz * dz;
+    const ay = y(from);
+    const dy = y(to) - ay;
+    const fromAlong = along(from);
+    const span = along(to) - fromAlong;
     let furthest = -1;
     let furthestDistance = toleranceMeters;
     for (let row = from + 1; row < to; row++) {
       const px = x(row) - ax;
       const pz = z(row) - az;
       const t = lengthSquared > 0 ? Math.max(0, Math.min(1, (px * dx + pz * dz) / lengthSquared)) : 0;
-      const distance = Math.hypot(px - dx * t, pz - dz * t);
+      // How far off the chord it lies: across it, and above or below it (by the share of the way along it).
+      const rise = y(row) - (ay + (span > 0 ? (dy * (along(row) - fromAlong)) / span : 0));
+      const distance = Math.hypot(px - dx * t, pz - dz * t, rise);
       if (distance > furthestDistance) {
         furthest = row;
         furthestDistance = distance;

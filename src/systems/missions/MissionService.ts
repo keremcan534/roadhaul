@@ -7,10 +7,11 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { CargoDefinition } from '../../data/definitions/CargoDefinition';
 import type { DepotDefinition } from '../../data/definitions/MapDefinition';
 import { vehicleCanHaul, type MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { RectangleDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import { addCargoDamage, cargoDamageFromImpact, isWithinTolerance } from '../../domain/missions/cargoDamage';
-import { isParkedInBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
+import { isParkedInBay, isTrailerInsideBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
 import {
   createMissionInstance,
   failMission,
@@ -99,7 +100,10 @@ export class MissionService {
     private readonly logger: Logger,
     /** The contracts of the day, besides the game's own; none without it. */
     private readonly daily: ContractSource | null = null,
-    /** The company's facilities: a training centre brings more experience from a delivery. */
+    /**
+     * The company's perks: a training centre brings more experience from a delivery; research loads faster and
+     * keeps the cargo whole.
+     */
     private readonly perks: PerkSource = NO_PERK_SOURCE,
   ) {
     this.unsubscribeCollisions = events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) =>
@@ -124,7 +128,7 @@ export class MissionService {
 
   /** How far loading or unloading has got, 0..1: it runs while the truck stands in the target bay. */
   get handlingProgress(): number {
-    return this.mission === null ? 0 : Math.min(1, this.mission.handlingSeconds / this.config.loadingSeconds);
+    return this.mission === null ? 0 : Math.min(1, this.mission.handlingSeconds / this.loadingSeconds);
   }
 
   /**
@@ -308,15 +312,31 @@ export class MissionService {
    */
   private standsInTargetBay(mission: MissionInstance, dt: number): boolean {
     const target = this.currentTarget;
-    const parked =
-      target !== null && isParkedInBay(target.depot.bay, this.driving.vehicle, this.driving.definition.body);
+    const parked = target !== null && this.parkedIn(target.depot.bay);
     this.holdInBay(parked);
     if (!parked) {
       mission.handlingSeconds = 0;
       return false;
     }
     mission.handlingSeconds += dt;
-    return mission.handlingSeconds >= this.config.loadingSeconds;
+    return mission.handlingSeconds >= this.loadingSeconds;
+  }
+
+  /**
+   * Whether the truck stands still in `bay`: all of it, or a tractor unit's
+   * semi-trailer, which carries the load (the tractor may stand out of it).
+   */
+  private parkedIn(bay: RectangleDefinition): boolean {
+    const { vehicle, definition, trailer } = this.driving;
+    if (definition.trailer === undefined || trailer === null) {
+      return isParkedInBay(bay, vehicle, definition.body);
+    }
+    return Math.abs(vehicle.speed) < STOPPED_SPEED_METERS_PER_SECOND && isTrailerInsideBay(bay, trailer, definition.trailer, definition.body.widthMeters);
+  }
+
+  /** How long loading or unloading takes: research takes a share off. */
+  private get loadingSeconds(): number {
+    return this.config.loadingSeconds * (1 - this.perks.perks.loadingTimeReduction);
   }
 
   private holdInBay(hold: boolean): void {
@@ -336,7 +356,9 @@ export class MissionService {
     }
     const cargo = this.content.cargo.get(definition.cargoId);
     const addedDamage =
-      cargoDamageFromImpact(impactSpeedMetersPerSecond, cargo.damageSensitivity) * (1 - this.cargoProtection);
+      cargoDamageFromImpact(impactSpeedMetersPerSecond, cargo.damageSensitivity) *
+      (1 - this.cargoProtection) *
+      (1 - this.perks.perks.cargoDamageReduction);
     if (addedDamage <= 0) {
       return;
     }

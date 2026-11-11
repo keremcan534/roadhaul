@@ -3,6 +3,7 @@ import { MAPS } from '../../../../src/data/content/maps';
 import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import {
+  insideArea,
   MAX_RUN_POINTS,
   rectangleCorners,
   simplifyPolyline,
@@ -101,9 +102,10 @@ describe('sketchWorld', () => {
     expect(drawn).toBeLessThan(sampled / 3);
   });
 
-  it('has the depots, the rest area and a name for each city near its depot', () => {
+  it('has the depots, the rest area, the ferry and a name for each city near its depot', () => {
     expect(sketch.depots.map((depot) => depot.id)).toEqual(world.depots.map((depot) => depot.id));
     expect(sketch.restAreas.map((restArea) => restArea.id)).toEqual(world.restAreas.map((restArea) => restArea.id));
+    expect(sketch.ferries).toEqual(world.gates.map((gate) => ({ x: gate.area.x, z: gate.area.z, toMapId: 'metropol', requiredLevel: 2 })));
     expect(sketch.cities.map((city) => city.cityId)).toEqual(world.depots.map((depot) => depot.cityId));
     sketch.cities.forEach((city, index) => {
       const depot = sketch.depots[index]!;
@@ -126,20 +128,39 @@ describe('sketchWorld', () => {
     });
   });
 
-  it('draws the sea west of the shore, reaching past the map, and the quay in the drawn area', () => {
-    const sea = sketch.sea!;
+  it('draws the land east of the shore, and past the square the mountains out to a natural coast, every road on it', () => {
+    const land = sketch.land;
     const shoreline = world.sea!.shoreline;
-    // Along the shore, then round by the far west.
-    expect(sea.corners.length / 2).toBe(shoreline.length + 4);
-    expect([sea.corners[2], sea.corners[3]]).toEqual([...shoreline[0]!]);
-    expect(sea.minX).toBeLessThan(-world.halfSizeMeters - 1000);
-    expect(sea.maxX).toBe(Math.max(...shoreline.map(([x]) => x)));
-    expect(sea.minZ).toBeLessThan(-world.halfSizeMeters);
-    expect(sea.maxZ).toBeGreaterThan(world.halfSizeMeters);
-    const quay = sketch.pavedAreas[sketch.pavedAreas.length - 1]!;
-    expect(quay.minX).toBeCloseTo(-2150, 6);
-    expect(quay.maxX - quay.minX).toBeCloseTo(world.sea!.quays[0]!.widthMeters, 6);
-    expect(sketch.bounds.minX).toBeLessThan(quay.minX);
+    const half = world.halfSizeMeters;
+    // Its west is the shore itself, from south to north.
+    const corners = Array.from({ length: land.corners.length / 2 }, (_, i) => [land.corners[i * 2]!, land.corners[i * 2 + 1]!]);
+    const start = corners.findIndex(([x, z]) => x === shoreline[shoreline.length - 1]![0] && z === shoreline[shoreline.length - 1]![1]);
+    expect(start).toBeGreaterThan(0);
+    expect(corners.slice(start, start + shoreline.length - 1)).toEqual([...shoreline].reverse().slice(0, -1).map(([x, z]) => [x, z]));
+    // Past the square north, east and south: the mountains, then the coast, never nearer than 450 m.
+    expect(land.minZ).toBeLessThan(-half - 450);
+    expect(land.maxZ).toBeGreaterThan(half + 450);
+    expect(land.maxX).toBeGreaterThan(half + 450);
+    expect(land.maxX).toBeLessThan(half + 2600 + 1100 + 300);
+    expect(land.minX).toBeGreaterThan(Math.min(...shoreline.map(([x]) => x)) - 1000);
+    // In bays and headlands, not a smooth ring: the coast's distance from the middle swings by hundreds of meters.
+    const reach = corners.filter(([x]) => x! > half).map(([x, z]) => Math.hypot(x!, z!));
+    expect(Math.max(...reach) - Math.min(...reach)).toBeGreaterThan(800);
+    // Every road is on the land.
+    for (const run of sketch.runs) {
+      for (let i = 0; i < run.points.length; i += 2) {
+        expect(insideArea(land, run.points[i]!, run.points[i + 1]!)).toBe(true);
+      }
+    }
+    // The relief: the region's square and the map's hills.
+    expect(sketch.relief).toEqual(expect.objectContaining({ x: 0, z: 0, halfSizeMeters: half }));
+    // The quays, last: Havenport's and Saltcove's, each from the water's edge inland.
+    const [havenport, saltcove] = sketch.pavedAreas.slice(-2);
+    expect(havenport!.minX).toBeCloseTo(-2150, 6);
+    expect(havenport!.maxX - havenport!.minX).toBeCloseTo(world.sea!.quays[0]!.widthMeters, 6);
+    expect(saltcove!.minX).toBeCloseTo(-1665, 6);
+    expect(saltcove!.maxX - saltcove!.minX).toBeCloseTo(world.sea!.quays[1]!.widthMeters, 6);
+    expect(sketch.bounds.minX).toBeLessThan(havenport!.minX);
   });
 
   it('draws each river\'s water from its source to its mouth, a little wider than it is so it shows', () => {
@@ -196,5 +217,80 @@ describe('sketchWorld', () => {
     for (const place of [...sketch.depots, ...sketch.restAreas, world.spawn]) {
       expect(inside(place.x, place.z)).toBe(true);
     }
+  });
+});
+
+describe('sketchWorld with the other regions', () => {
+  const valley = MAPS.find((map) => map.id === 'north_valley')!;
+  const metropol = MAPS.find((map) => map.id === 'metropol')!;
+  const near = (x: number, z: number, point: readonly [number, number], meters: number): boolean =>
+    Math.hypot(x - point[0], z - point[1]) < meters;
+
+  it('draws Metropol across the sea from North Valley, as an island, with the ferry crossing from terminal to terminal', () => {
+    const sketch = sketchWorld(world, MAPS);
+    expect(sketch.regions.map((region) => region.mapId)).toEqual(['metropol']);
+    const region = sketch.regions[0]!;
+    // Where it lies in the one world, relative to North Valley; all of it off North Valley's square.
+    expect(region.x).toBe(metropol.world!.x - (valley.world?.x ?? 0));
+    expect(region.z).toBe(metropol.world!.z - (valley.world?.z ?? 0));
+    expect(region.maxZ < -valley.halfSizeMeters || region.maxX < -valley.halfSizeMeters).toBe(true);
+    expect(region.runs.length).toBeGreaterThan(20);
+    // On its own land, its square and the mountains round it out to a natural coast.
+    for (const run of region.runs) {
+      for (let i = 0; i < run.points.length; i += 2) {
+        expect(insideArea(region.land, run.points[i]!, run.points[i + 1]!)).toBe(true);
+      }
+    }
+    expect(region.land.maxX).toBeGreaterThan(region.x + metropol.halfSizeMeters + 450);
+    // Its strait runs on through the mountains to the sea at both ends.
+    expect(region.rivers).toHaveLength(1);
+    const strait = region.rivers[0]!;
+    expect(strait.minZ).toBeLessThan(region.land.minZ);
+    expect(strait.maxZ).toBeGreaterThan(region.land.maxZ);
+    // Its hills, where it lies.
+    expect(region.relief.hills).toHaveLength(metropol.terrain!.hills.length);
+    expect(region.relief.hills[0]!.x).toBe(metropol.terrain!.hills[0]!.x + region.x);
+    expect(region.depots.map((depot) => depot.cityId).sort()).toEqual(['city_h', 'city_i', 'city_j', 'city_k', 'city_l']);
+    expect(region.ferries).toEqual([expect.objectContaining({ toMapId: 'north_valley', requiredLevel: 1 })]);
+    // The map moves as far as both lands and a strip of sea round them, and opens on North Valley.
+    expect(sketch.worldBounds.minX).toBeCloseTo(Math.min(region.land.minX, sketch.land.minX) - 1500, 6);
+    expect(sketch.worldBounds.maxX).toBeCloseTo(Math.max(region.land.maxX, sketch.land.maxX) - 0 + 1500, 6);
+    expect(sketch.worldBounds.minZ).toBeCloseTo(Math.min(region.land.minZ, sketch.land.minZ) - 1500, 6);
+    expect(sketch.bounds.minX).toBeGreaterThan(region.minX);
+    // From Gull Point's terminal out to sea, over to the strait and up it to Metropol's terminal.
+    expect(sketch.crossings).toHaveLength(1);
+    const crossing = sketch.crossings[0]!;
+    const gull = valley.gates!.find((gate) => gate.id === 'gull_point_ferry')!;
+    const there = metropol.gates!.find((gate) => gate.id === 'metropol_ferry')!;
+    expect(near(crossing[0]!, crossing[1]!, [gull.area.x, gull.area.z], 100)).toBe(true);
+    const last = crossing.length - 2;
+    expect(near(crossing[last]!, crossing[last + 1]!, [there.area.x + region.x, there.area.z + region.z], 100)).toBe(true);
+    // Over open water between the two lands: some of its way is off both.
+    const offLand = Array.from({ length: crossing.length / 2 }, (_, i) => [crossing[i * 2]!, crossing[i * 2 + 1]!] as const).filter(
+      ([x, z]) => !insideArea(sketch.land, x, z) && !insideArea(region.land, x, z),
+    );
+    expect(offLand.length).toBeGreaterThanOrEqual(2);
+    // Its terminal shows closed until the company's fourth level.
+    expect(sketch.ferries).toEqual([expect.objectContaining({ toMapId: 'metropol', requiredLevel: 2 })]);
+  });
+
+  it('draws North Valley across the sea from Metropol, and Metropol itself as an island', () => {
+    const city = new DrivingWorld(metropol);
+    const sketch = sketchWorld(city, MAPS);
+    expect(sketch.regions.map((region) => region.mapId)).toEqual(['north_valley']);
+    const region = sketch.regions[0]!;
+    // North Valley's land runs from its shore east, round its mountains; Metropol's is all round.
+    expect(region.land.minX).toBeGreaterThan(region.x - valley.halfSizeMeters - 1000);
+    expect(sketch.land.minX).toBeLessThan(-metropol.halfSizeMeters - 450);
+    expect(region.villages.length).toBeGreaterThan(5);
+    expect(sketch.crossings).toHaveLength(1);
+  });
+
+  it('draws one region alone without the game\'s maps', () => {
+    const sketch = sketchWorld(world);
+    expect(sketch.regions).toEqual([]);
+    expect(sketch.crossings).toEqual([]);
+    expect(sketch.worldBounds.minX).toBeCloseTo(Math.min(sketch.bounds.minX, sketch.land.minX - 1500), 6);
+    expect(sketch.worldBounds.maxZ).toBeCloseTo(Math.max(sketch.bounds.maxZ, sketch.land.maxZ + 1500), 6);
   });
 });

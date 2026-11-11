@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openGame, openMainMenu, takeContract, watchForProblems } from './support';
+import { continueGame, openGame, openMainMenu, takeContract, watchForProblems } from './support';
 
 function hint(page: Page) {
   return page.locator('.tutorial-hint');
@@ -69,7 +69,7 @@ test('lets the player skip the tutorial, for good', async ({ page }) => {
   await expect(html).toHaveAttribute('data-tutorial-step', 'done');
   await expect(page.locator('[data-action="dock-jobs"]')).not.toHaveCSS('animation-name', 'tutorial-glow');
   await openMainMenu(page, '?lang=en');
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html).toHaveAttribute('data-game-state', 'driving');
   await expect(html).toHaveAttribute('data-tutorial-step', 'done');
   await expect(hint(page)).toBeHidden();

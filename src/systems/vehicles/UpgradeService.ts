@@ -9,6 +9,7 @@ import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
 import type { CompanyLevelSource } from '../missions/MissionService';
 import type { GarageService } from './GarageService';
+import type { PartsSource } from '../rewards/SupplyService';
 
 export type BuyUpgradeError = 'unknownUpgrade' | 'maxLevel' | 'locked' | SpendError;
 
@@ -16,7 +17,13 @@ export type BuyUpgradeError = 'unknownUpgrade' | 'maxLevel' | 'locked' | SpendEr
 export interface NextUpgradeLevel {
   /** 1 for the first level. */
   readonly level: number;
+  /** Its price. */
   readonly cost: Credits;
+  /** What the company's upgrade parts take off it, and how many of them that uses (SupplyService). */
+  readonly partsCredit: Credits;
+  readonly partsUsed: number;
+  /** What it costs in credits, the parts used. */
+  readonly price: Credits;
   /** The company level that lets the garage fit it (spec §16 RequiredCompanyLevel). */
   readonly requiredCompanyLevel: number;
   /** Below that level: shown, but it cannot be bought yet. */
@@ -36,10 +43,15 @@ export interface UpgradeOffer {
   readonly next: NextUpgradeLevel | null;
 }
 
+/** No parts: a shop without crates (tests). */
+const NO_PARTS: PartsSource = { parts: 0, useParts: () => undefined };
+
 /**
  * The upgrade shop (spec §16; roadmap step 20): sells the next level of each
  * upgrade for the active truck, one level at a time, from the company level
- * each needs. GarageService keeps what each truck has fitted and applies it.
+ * each needs. The upgrade parts crates give each take `partCredits` off a
+ * level's price, as many as it takes. GarageService keeps what each truck
+ * has fitted and applies it.
  */
 export class UpgradeService {
   constructor(
@@ -49,6 +61,9 @@ export class UpgradeService {
     private readonly company: CompanyLevelSource,
     private readonly events: EventBus<GameEvents>,
     private readonly logger: Logger,
+    private readonly parts: PartsSource = NO_PARTS,
+    /** What one part takes off a price (GameConfig.crates.partCredits). */
+    private readonly partCredits: Credits = 1,
   ) {}
 
   /** Every upgrade, in content order, with what the active truck has and could get next. */
@@ -69,15 +84,25 @@ export class UpgradeService {
     if (next.locked) {
       return err('locked');
     }
-    const paid = this.economy.spend(next.cost, 'upgrade');
+    const paid = this.economy.spend(next.price, 'upgrade');
     if (!paid.ok) {
       return err(paid.error);
     }
+    if (next.partsUsed > 0) {
+      this.parts.useParts(next.partsUsed);
+    }
     this.garage.fitUpgrade(upgradeId, next.level);
     const { instanceId } = this.garage.activeTruck;
-    this.logger.info(`Fitted ${upgradeId} level ${next.level} to ${instanceId} for ${next.cost}.`);
-    this.events.emit('UpgradePurchased', { instanceId, upgradeId, level: next.level, cost: next.cost });
+    this.logger.info(`Fitted ${upgradeId} level ${next.level} to ${instanceId} for ${next.price} and ${next.partsUsed} parts.`);
+    this.events.emit('UpgradePurchased', { instanceId, upgradeId, level: next.level, cost: next.price });
     return ok(next.level);
+  }
+
+  /** The parts a price of `cost` would use (no more than it takes), what they take off, and what is left to pay. */
+  private withParts(cost: Credits): { partsUsed: number; partsCredit: Credits; price: Credits } {
+    const partsUsed = Math.min(this.parts.parts, Math.ceil(cost / this.partCredits));
+    const partsCredit = Math.min(cost, partsUsed * this.partCredits);
+    return { partsUsed, partsCredit, price: cost - partsCredit };
   }
 
   private offerFor(upgrade: UpgradeDefinition): UpgradeOffer {
@@ -94,6 +119,7 @@ export class UpgradeService {
           : {
               level: fittedLevel + 1,
               cost: nextLevel.cost,
+              ...this.withParts(nextLevel.cost),
               requiredCompanyLevel,
               locked: this.company.level < requiredCompanyLevel,
               modifiers: nextLevel.modifiers,

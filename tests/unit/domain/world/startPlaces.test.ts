@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { DepotDefinition, RestAreaDefinition } from '../../../../src/data/definitions/MapDefinition';
-import { isInsideBay } from '../../../../src/domain/missions/loadingBay';
+import type { TrailerBody } from '../../../../src/data/definitions/VehicleDefinition';
+import { isInsideBay, isTrailerInsideBay } from '../../../../src/domain/missions/loadingBay';
+import { createTrailerPose, straightenTrailer } from '../../../../src/domain/vehicles/semiTrailer';
 import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, startPlaces } from '../../../../src/domain/world/startPlaces';
 import { vehicleFixture } from '../../../support/contentFixtures';
 
 const body = vehicleFixture().body;
+const truck = { body };
 
 function depot(id: string, cityId: string, x: number, z: number, headingDegrees: number): DepotDefinition {
   return {
@@ -25,7 +28,7 @@ const world = {
 
 describe('startPlaces', () => {
   it('starts a new company at the map’s own start, near its home city, then offers each depot and rest area', () => {
-    const places = startPlaces(world, body, null);
+    const places = startPlaces(world, truck, null);
 
     expect(places.map((place) => [place.id, place.kind, place.cityId])).toEqual([
       [HOME_START_ID, 'home', 'city_a'],
@@ -39,14 +42,14 @@ describe('startPlaces', () => {
   it('continues where the truck was left, first', () => {
     const left = { x: 1900, z: 50, heading: 7.5 };
 
-    const places = startPlaces(world, body, left);
+    const places = startPlaces(world, truck, left);
 
     expect(places[0]).toEqual({ id: LEFT_START_ID, kind: 'left', cityId: 'city_b', ...left });
     expect(places.slice(1).map((place) => place.id)).toEqual(['depot_a', 'depot_b', 'rest_area']);
   });
 
   it('parks the truck squarely in each depot’s bay and each rest area’s lot, facing along it', () => {
-    const [, first, second, rest] = startPlaces(world, body, null);
+    const [, first, second, rest] = startPlaces(world, truck, null);
 
     expect(isInsideBay(world.depots[0]!.bay, first!, body)).toBe(true);
     expect(isInsideBay(world.depots[1]!.bay, second!, body)).toBe(true);
@@ -55,10 +58,32 @@ describe('startPlaces', () => {
     expect(second!.heading).toBeCloseTo(Math.PI / 2, 12);
   });
 
+  it('parks a tractor unit with its semi-trailer in each bay, straight behind it, the tractor out ahead', () => {
+    const trailer: TrailerBody = {
+      lengthMeters: 12.5,
+      heightMeters: 4,
+      couplingAheadMeters: 0.35,
+      kingpinMeters: 1.2,
+      axleBehindKingpinMeters: 7,
+      axles: 3,
+    };
+    const [, first, second] = startPlaces(world, { body, trailer }, null);
+
+    for (const [place, bay] of [
+      [first!, world.depots[0]!.bay],
+      [second!, world.depots[1]!.bay],
+    ] as const) {
+      const pose = createTrailerPose();
+      straightenTrailer(pose, place.x, place.z, place.heading, trailer);
+      expect(isTrailerInsideBay(bay, pose, trailer, body.widthMeters)).toBe(true);
+      expect(isInsideBay(bay, place, body)).toBe(false);
+    }
+  });
+
   it('names the city of the nearest depot, and none without depots', () => {
     expect(nearestDepotCity(world.depots, 900, 0)).toBe('city_a');
     expect(nearestDepotCity(world.depots, 1100, 0)).toBe('city_b');
     expect(nearestDepotCity([], 0, 0)).toBeNull();
-    expect(startPlaces({ ...world, depots: [] }, body, null)[0]!.cityId).toBeNull();
+    expect(startPlaces({ ...world, depots: [] }, truck, null)[0]!.cityId).toBeNull();
   });
 });

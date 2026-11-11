@@ -34,6 +34,9 @@ export interface GameLoopOptions {
   readonly maxSimulationDeltaSeconds?: number;
 }
 
+/** How early a frame may come and still run under the cap, ms (a 120 Hz screen's frames are 8.3 ms apart). */
+const FRAME_CAP_SLACK_MS = 2;
+
 /**
  * Drives fixed simulation steps and per-frame updates from a FrameScheduler.
  * The per-frame path does not allocate.
@@ -45,8 +48,22 @@ export class GameLoop {
    * them run each frame, and frames pass less time.
    */
   timeScale = 1;
+  /**
+   * At most this many frames a second (0: as many as the scheduler gives):
+   * frames come too soon are skipped, nothing simulated or drawn, keeping
+   * an even cadence (a 120 Hz screen capped at 60 runs every other frame).
+   */
+  maxFramesPerSecond = 0;
+  /**
+   * The real time since the frame before, seconds, whatever the time scale
+   * (frameUpdate's delta is the game's time): 0 for the first frame after
+   * a start. What the frame rate is measured by.
+   */
+  realFrameSeconds = 0;
   private handle: number | null = null;
   private previousTimestampMs: number | null = null;
+  /** When the next frame is due under the cap, ms; NaN until a frame has run. */
+  private nextFrameDueMs = Number.NaN;
 
   constructor(
     private readonly scheduler: FrameScheduler,
@@ -64,6 +81,7 @@ export class GameLoop {
       return;
     }
     this.previousTimestampMs = null;
+    this.nextFrameDueMs = Number.NaN;
     this.timestep.reset();
     this.handle = this.scheduler.request(this.onFrame);
   }
@@ -83,7 +101,9 @@ export class GameLoop {
       return;
     }
     try {
-      this.tick(timestampMs, frameHandle);
+      if (this.due(timestampMs)) {
+        this.tick(timestampMs, frameHandle);
+      }
     } catch (error) {
       this.stop();
       this.handlers.onError(error);
@@ -95,10 +115,34 @@ export class GameLoop {
     }
   };
 
+  /**
+   * Whether the frame at `timestampMs` runs under the cap: due once a
+   * frame's interval since the last one has (nearly) passed. The next is due
+   * an interval after this one was, so the cadence keeps even; after a long
+   * pause it starts afresh.
+   */
+  private due(timestampMs: number): boolean {
+    const cap = this.maxFramesPerSecond;
+    if (!(cap > 0)) {
+      return true;
+    }
+    const interval = 1000 / cap;
+    if (Number.isNaN(this.nextFrameDueMs) || timestampMs - this.nextFrameDueMs > interval) {
+      this.nextFrameDueMs = timestampMs + interval;
+      return true;
+    }
+    // A screen's frames jitter by a millisecond or two: one that comes a little early is on time.
+    if (timestampMs < this.nextFrameDueMs - FRAME_CAP_SLACK_MS) {
+      return false;
+    }
+    this.nextFrameDueMs += interval;
+    return true;
+  }
+
   private tick(timestampMs: number, frameHandle: number): void {
     const scale = Number.isFinite(this.timeScale) ? Math.max(0, this.timeScale) : 1;
-    const elapsedSeconds =
-      this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0) * scale;
+    this.realFrameSeconds = this.previousTimestampMs === null ? 0 : Math.max((timestampMs - this.previousTimestampMs) / 1000, 0);
+    const elapsedSeconds = this.realFrameSeconds * scale;
     this.previousTimestampMs = timestampMs;
     const deltaSeconds = Math.min(elapsedSeconds, this.options.maxFrameDeltaSeconds);
 

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The cloud save (Android 12 and later): what Android's backup carries to the player's Google account, and to a new
+     phone in a phone-to-phone transfer. Only the game's mirror of its save and settings (files/roadhaul/, written by
+     src/platform/native/mirroredStorage.ts): the WebView's own storage and caches stay out. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="roadhaul" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="roadhaul" />
+    </device-transfer>
+</data-extraction-rules>

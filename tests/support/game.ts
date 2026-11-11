@@ -29,14 +29,25 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     fuel: services.resolve(ServiceKeys.fuel),
     damage: services.resolve(ServiceKeys.damage),
     garage: services.resolve(ServiceKeys.garage),
+    usedTrucks: services.resolve(ServiceKeys.usedTrucks),
     monetization: services.resolve(ServiceKeys.monetization),
     upgrades: services.resolve(ServiceKeys.upgrades),
     depotRoads: services.resolve(ServiceKeys.depotRoads),
     fleet: services.resolve(ServiceKeys.fleet),
     rivals: services.resolve(ServiceKeys.rivals),
+    weeklyCup: services.resolve(ServiceKeys.weeklyCup),
+    roadPass: services.resolve(ServiceKeys.roadPass),
     traffic: services.resolve(ServiceKeys.traffic),
     companyTraffic: services.resolve(ServiceKeys.companyTraffic),
     facilities: services.resolve(ServiceKeys.facilities),
+    research: services.resolve(ServiceKeys.research),
+    career: services.resolve(ServiceKeys.career),
+    roadEvents: services.resolve(ServiceKeys.roadEvents),
+    crates: services.resolve(ServiceKeys.crates),
+    supplies: services.resolve(ServiceKeys.supplies),
+    quests: services.resolve(ServiceKeys.quests),
+    liveries: services.resolve(ServiceKeys.liveries),
+    levelRewards: services.resolve(ServiceKeys.levelRewards),
     specialEvents: services.resolve(ServiceKeys.specialEvents),
     tutorial: services.resolve(ServiceKeys.tutorial),
     events: services.resolve(ServiceKeys.events),
@@ -54,12 +65,13 @@ export function play(game: Game, seconds: number, throttle = 0): void {
     game.fleet.update(STEP_SECONDS);
     game.rivals.update(STEP_SECONDS);
     game.session.update(STEP_SECONDS);
+    game.career.update(STEP_SECONDS);
   }
 }
 
 /** Puts the truck, at rest, squarely in the bay the contract needs next. */
 export function parkInTargetBay(game: Game): void {
-  const pose = bayParkingPose(game.missions.target!.depot.bay, game.driving.definition.body);
+  const pose = bayParkingPose(game.missions.target!.depot.bay, game.driving.definition.body, game.driving.definition.trailer);
   game.driving.placeTruck(pose.x, pose.z, pose.heading);
 }
 
@@ -69,7 +81,7 @@ export function parkAtDepot(game: Game, cityId = 'city_a'): void {
   if (depot === undefined) {
     throw new Error(`No depot for ${cityId} on this map.`);
   }
-  const pose = bayParkingPose(depot.bay, game.driving.definition.body);
+  const pose = bayParkingPose(depot.bay, game.driving.definition.body, game.driving.definition.trailer);
   game.driving.placeTruck(pose.x, pose.z, pose.heading);
 }
 

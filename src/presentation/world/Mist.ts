@@ -66,25 +66,34 @@ export class Mist {
     /** The share of the light a meter of air at the ground takes: 0, no mist. */
     mistDensity: { value: 0 },
     /** The mist's light away from the sun… */
-    mistColor: { value: new Color() },
+    mistColor: { value: new Color(), needsUpdate: false },
     /** …and how much more toward it. */
-    mistGlow: { value: new Color() },
+    mistGlow: { value: new Color(), needsUpdate: false },
     /** Toward the sun (unit). */
-    mistSun: { value: new Vector3(0, 1, 0) },
+    mistSun: { value: new Vector3(0, 1, 0), needsUpdate: false },
   };
   private readonly misted = new WeakSet<Material>();
 
   /**
    * The mist lies `amount` thick (0..1: none … a morning's full mist), its
    * light `color`, glowing `glow` more toward the sun, which lies toward
-   * `towardSun` (unit). Cheap: it writes the shared uniforms.
+   * `towardSun` (unit). Cheap: it writes the shared uniforms. Without mist
+   * no shader reads the other three (they are all behind `mistDensity >
+   * 0.0`), so three.js leaves them out of every material's upload
+   * (`needsUpdate: false`): the same picture, a few hundred GL calls a
+   * second fewer.
    */
   set(amount: number, color: Readonly<Color>, glow: Readonly<Color>, towardSun: Readonly<Vector3>): void {
     const uniforms = this.uniforms;
-    uniforms.mistDensity.value = MIST_DENSITY * Math.min(1, Math.max(0, amount));
+    const density = MIST_DENSITY * Math.min(1, Math.max(0, amount));
+    const misty = density > 0;
+    uniforms.mistDensity.value = density;
     uniforms.mistColor.value.copy(color);
     uniforms.mistGlow.value.copy(glow);
     uniforms.mistSun.value.copy(towardSun);
+    uniforms.mistColor.needsUpdate = misty;
+    uniforms.mistGlow.needsUpdate = misty;
+    uniforms.mistSun.needsUpdate = misty;
   }
 
   /**

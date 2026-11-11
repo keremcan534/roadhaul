@@ -1,3 +1,8 @@
+import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinition';
+import { isCrateTier } from '../../data/config/GameConfig';
+import { isBoosterKind } from '../../data/definitions/BoosterKind';
+import { TRAILER_TEXT_MAX } from '../vehicles/trailerText';
+import { QUEST_METRICS } from '../../data/definitions/QuestDefinition';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { validateMissionDefinition, type MissionDefinition } from '../../data/definitions/MissionDefinition';
@@ -28,6 +33,9 @@ function isFiniteNumber(value: unknown): value is number {
  * game trusts it: every field, range and reference to content. A save that
  * fails is treated as corrupted, never half-loaded.
  */
+/** What an older build counted and this one does not: dropped on loading (AchievementService.restore), not refused. */
+const RETIRED_METRICS: readonly string[] = ['bigWins'];
+
 export function validateSaveGameData(
   data: unknown,
   content: ContentCatalog,
@@ -142,6 +150,196 @@ export function validateSaveGameData(
   section('fleet', (fleet) => validateFleet(fleet, data['garage'], content, validator));
   section('rivals', (rivals) => validateRivals(rivals, content, validator));
   section('facilities', (facilities) => validateFacilities(facilities, content, validator));
+  section('daily', (daily) => {
+    const last = daily['lastClaimDay'];
+    validator.check(last === null || Number.isInteger(last), 'daily.lastClaimDay', 'must be null or a whole number');
+    validator.nonNegativeInteger(daily['streak'], 'daily.streak');
+  });
+  section('achievements', (achievements) => {
+    const counters = achievements['counters'];
+    if (validator.check(isJson(counters), 'achievements.counters', 'must be an object')) {
+      for (const [metric, value] of Object.entries(counters as Json)) {
+        validator.check(
+          (ACHIEVEMENT_METRICS as readonly string[]).includes(metric) || RETIRED_METRICS.includes(metric),
+          `achievements.counters.${metric}`,
+          'unknown metric',
+        );
+        validator.nonNegativeInteger(value, `achievements.counters.${metric}`);
+      }
+    }
+    const claimed = achievements['claimed'];
+    if (validator.check(Array.isArray(claimed), 'achievements.claimed', 'must be a list')) {
+      // A goal the content no longer has is dropped on loading (AchievementService.restore), not refused.
+      (claimed as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `achievements.claimed[${index}]`, 'must be an id'),
+      );
+    }
+  });
+  section('crates', (crates) => {
+    const held = crates['held'];
+    if (validator.check(isJson(held), 'crates.held', 'must be an object')) {
+      for (const [tier, count] of Object.entries(held as Json)) {
+        validator.check(isCrateTier(tier), `crates.held.${tier}`, 'unknown crate');
+        validator.nonNegativeInteger(count, `crates.held.${tier}`);
+      }
+    }
+    validator.nonNegativeInteger(crates['opened'], 'crates.opened');
+    const paints = crates['paints'];
+    if (validator.check(Array.isArray(paints), 'crates.paints', 'must be a list')) {
+      (paints as unknown[]).forEach((id, index) =>
+        validator.check(
+          typeof id === 'string' && content.paints.find(id)?.crate !== undefined,
+          `crates.paints[${index}]`,
+          'must be a crate colour',
+        ),
+      );
+    }
+    const liveries = crates['liveries'];
+    if (validator.check(Array.isArray(liveries), 'crates.liveries', 'must be a list')) {
+      // A design the content no longer has is dropped on loading (CrateService.restore), not refused.
+      (liveries as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `crates.liveries[${index}]`, 'must be an id'),
+      );
+    }
+    validator.nonNegativeInteger(crates['perfectStreak'], 'crates.perfectStreak');
+    validator.nonNegativeInteger(crates['bestPerfectStreak'], 'crates.bestPerfectStreak');
+    validator.check(
+      isFiniteNumber(crates['freeCrateAtMs']) && (crates['freeCrateAtMs'] as number) >= 0,
+      'crates.freeCrateAtMs',
+      'must be 0 or more',
+    );
+  });
+  section('levelRewards', (levelRewards) => {
+    const level = levelRewards['rewardedLevel'];
+    validator.check(
+      Number.isInteger(level) && (level as number) >= 1 && (level as number) <= maxCompanyLevel,
+      'levelRewards.rewardedLevel',
+      `must be a whole number from 1 to ${maxCompanyLevel}`,
+    );
+  });
+  section('supplies', (supplies) => {
+    validator.nonNegativeInteger(supplies['parts'], 'supplies.parts');
+    const boosters = supplies['boosters'];
+    if (validator.check(isJson(boosters), 'supplies.boosters', 'must be an object')) {
+      for (const [kind, count] of Object.entries(boosters as Json)) {
+        validator.check(isBoosterKind(kind), `supplies.boosters.${kind}`, 'unknown booster');
+        validator.nonNegativeInteger(count, `supplies.boosters.${kind}`);
+      }
+    }
+    validator.nonNegativeInteger(supplies['payBoostLeft'], 'supplies.payBoostLeft');
+    validator.nonNegativeInteger(supplies['xpBoostLeft'], 'supplies.xpBoostLeft');
+  });
+  section('quests', (quests) => {
+    const day = quests['day'];
+    validator.check(day === null || Number.isInteger(day), 'quests.day', 'must be null or a whole number');
+    const counts = quests['counts'];
+    if (validator.check(isJson(counts), 'quests.counts', 'must be an object')) {
+      for (const [metric, value] of Object.entries(counts as Json)) {
+        validator.check((QUEST_METRICS as readonly string[]).includes(metric), `quests.counts.${metric}`, 'unknown metric');
+        validator.nonNegativeInteger(value, `quests.counts.${metric}`);
+      }
+    }
+    validator.check(
+      isFiniteNumber(quests['distanceStartMeters']) && (quests['distanceStartMeters'] as number) >= 0,
+      'quests.distanceStartMeters',
+      'must be 0 or more',
+    );
+    const claimed = quests['claimed'];
+    if (validator.check(Array.isArray(claimed), 'quests.claimed', 'must be a list')) {
+      // A quest the content no longer has is dropped on loading (QuestService.restore), not refused.
+      (claimed as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `quests.claimed[${index}]`, 'must be an id'),
+      );
+    }
+    validator.boolean(quests['bonusClaimed'], 'quests.bonusClaimed');
+  });
+  section('liveries', (liveries) => {
+    const bought = liveries['bought'];
+    if (validator.check(Array.isArray(bought), 'liveries.bought', 'must be a list')) {
+      (bought as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `liveries.bought[${index}]`, 'must be an id'),
+      );
+    }
+    const worn = liveries['worn'];
+    if (validator.check(isJson(worn), 'liveries.worn', 'must be an object')) {
+      for (const [instanceId, id] of Object.entries(worn as Json)) {
+        validator.check(typeof id === 'string', `liveries.worn.${instanceId}`, 'must be an id');
+      }
+    }
+    const text = liveries['text'];
+    validator.check(
+      text === null || (typeof text === 'string' && text.length > 0 && text.length <= TRAILER_TEXT_MAX),
+      'liveries.text',
+      `must be null or up to ${TRAILER_TEXT_MAX} letters`,
+    );
+  });
+  section('research', (research) => {
+    validator.nonNegativeInteger(research['points'], 'research.points');
+    const researched = research['researched'];
+    if (validator.check(Array.isArray(researched), 'research.researched', 'must be a list')) {
+      // A step the content no longer has is dropped on loading (ResearchService.restore), not refused.
+      (researched as unknown[]).forEach((id, index) =>
+        validator.check(typeof id === 'string', `research.researched[${index}]`, 'must be an id'),
+      );
+    }
+  });
+  section('career', (career) => {
+    for (const key of ['tonsDelivered', 'longestHaulMeters', 'haulMeters', 'topSpeedKmh', 'drivingSeconds', 'fuelLiters'] as const) {
+      validator.check(isFiniteNumber(career[key]) && (career[key] as number) >= 0, `career.${key}`, 'must be a number, 0 or more');
+    }
+    for (const key of ['bestPay', 'fuelSpent', 'repairsSpent', 'knocks', 'overturns', 'carsWrecked', 'propsKnocked', 'fleetDeliveries', 'fines', 'finesPaid', 'roadsideHelps'] as const) {
+      validator.nonNegativeInteger(career[key], `career.${key}`);
+    }
+    for (const key of ['cargo', 'destinations'] as const) {
+      const counts = career[key];
+      // An id the content no longer has is shown no more (CareerService), not refused.
+      if (validator.check(isJson(counts), `career.${key}`, 'must be an object')) {
+        for (const [id, count] of Object.entries(counts as Json)) {
+          validator.nonNegativeInteger(count, `career.${key}.${id}`);
+        }
+      }
+    }
+  });
+  section('roadEvents', (roadEvents) => {
+    for (const key of ['warned', 'redLightWarned', 'fined', 'knocked'] as const) {
+      validator.boolean(roadEvents[key], `roadEvents.${key}`);
+    }
+  });
+  section('usedTrucks', (usedTrucks) => {
+    const period = usedTrucks['period'];
+    validator.check(period === null || Number.isInteger(period), 'usedTrucks.period', 'must be null or a whole number');
+    const sold = usedTrucks['sold'];
+    if (validator.check(Array.isArray(sold), 'usedTrucks.sold', 'must be a list')) {
+      (sold as unknown[]).forEach((index, i) => validator.nonNegativeInteger(index, `usedTrucks.sold[${i}]`));
+    }
+  });
+  section('weeklyCup', (cup) => {
+    validator.check(cup['week'] === null || Number.isInteger(cup['week']), 'weeklyCup.week', 'must be null or a whole number');
+    validator.nonNegativeInteger(cup['points'], 'weeklyCup.points');
+    const last = cup['last'];
+    if (last !== null && validator.check(isJson(last), 'weeklyCup.last', 'must be null or an object')) {
+      const result = last as Json;
+      validator.check(Number.isInteger(result['week']), 'weeklyCup.last.week', 'must be a whole number');
+      validator.positiveInteger(result['rank'], 'weeklyCup.last.rank');
+      validator.nonNegativeInteger(result['credits'], 'weeklyCup.last.credits');
+      validator.check(result['crate'] === null || isCrateTier(result['crate']), 'weeklyCup.last.crate', 'must be a crate tier or null');
+    }
+  });
+  section('roadPass', (pass) => {
+    validator.check(pass['season'] === null || Number.isInteger(pass['season']), 'roadPass.season', 'must be null or a whole number');
+    validator.nonNegativeInteger(pass['points'], 'roadPass.points');
+    for (const key of ['freeClaimed', 'premiumClaimed'] as const) {
+      const tiers = pass[key];
+      if (validator.check(Array.isArray(tiers), `roadPass.${key}`, 'must be a list')) {
+        (tiers as unknown[]).forEach((tier, index) => validator.positiveInteger(tier, `roadPass.${key}[${index}]`));
+      }
+    }
+    const paints = pass['paints'];
+    if (validator.check(Array.isArray(paints), 'roadPass.paints', 'must be a list')) {
+      // A colour the content no longer has is dropped on loading (RoadPassService.restore), not refused.
+      (paints as unknown[]).forEach((id, index) => validator.check(typeof id === 'string', `roadPass.paints[${index}]`, 'must be an id'));
+    }
+  });
   return validator.issues;
 }
 

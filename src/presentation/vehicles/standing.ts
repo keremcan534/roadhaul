@@ -2,7 +2,7 @@ import type { Vector3 } from 'three';
 import type { BodyPose } from '../../systems/driving/DrivingService';
 
 /** A truck standing level on its wheels. */
-export const LEVEL: Readonly<BodyPose> = Object.freeze({ bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0 });
+export const LEVEL: Readonly<BodyPose> = Object.freeze({ bank: 0, tilt: 0, rise: 0, lean: 0, dip: 0, y: 0, grade: 0 });
 
 /**
  * Where the point (x left, y up, z ahead: the truck's model, its origin the

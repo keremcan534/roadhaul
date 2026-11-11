@@ -1,6 +1,14 @@
 import type { Validator } from '../../core/validation/Validator';
 import type { Credits } from '../units';
 
+/** How rare a colour that only crates hold is: the rarer, the less often a crate gives it (GameConfig.crates). */
+export const PAINT_RARITIES = ['rare', 'epic', 'legendary'] as const;
+export type PaintRarity = (typeof PAINT_RARITIES)[number];
+
+export function isPaintRarity(value: unknown): value is PaintRarity {
+  return typeof value === 'string' && (PAINT_RARITIES as readonly string[]).includes(value);
+}
+
 /**
  * A colour the garage paints a truck in: the cab, and the stripe and doors
  * of its livery (player feedback: customisation; the spec leaves cosmetics
@@ -23,6 +31,17 @@ export interface PaintDefinition {
    * garage shows them only where it is sold.
    */
   readonly premium?: boolean;
+  /**
+   * One of the colours only crates hold (CrateService), this rare: never sold, for credits or money; the garage
+   * shows it locked until a crate has given it, then paints it for free.
+   */
+  readonly crate?: PaintRarity;
+  /**
+   * One of the Road Pass's colours (RoadPassService), of this group (the
+   * groups take turns, a season each): given on Road Pass Plus's track, never
+   * sold for credits; the garage shows it locked until collected.
+   */
+  readonly pass?: number;
 }
 
 export function validatePaintDefinition(paint: PaintDefinition, path: string, validator: Validator): void {
@@ -35,8 +54,16 @@ export function validatePaintDefinition(paint: PaintDefinition, path: string, va
   if (paint.premium !== undefined) {
     validator.boolean(paint.premium, `${path}.premium`);
   }
-  if (paint.premium === true) {
-    validator.check(paint.price === 0, `${path}.price`, 'must be 0 for a premium colour: the purchase pays for it');
+  if (paint.crate !== undefined) {
+    validator.check(isPaintRarity(paint.crate), `${path}.crate`, `unknown rarity "${String(paint.crate)}"`);
+    validator.check(paint.premium !== true, `${path}.premium`, 'a crate colour is never a premium one');
+  }
+  if (paint.pass !== undefined) {
+    validator.nonNegativeInteger(paint.pass, `${path}.pass`);
+    validator.check(paint.premium !== true && paint.crate === undefined, `${path}.pass`, 'a pass colour is neither premium nor a crate one');
+  }
+  if (paint.premium === true || paint.crate !== undefined || paint.pass !== undefined) {
+    validator.check(paint.price === 0, `${path}.price`, 'must be 0 for a premium, crate or pass colour: never sold for credits');
   } else {
     validator.positiveInteger(paint.price, `${path}.price`);
   }

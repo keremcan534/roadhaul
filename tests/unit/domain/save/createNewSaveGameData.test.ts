@@ -4,6 +4,7 @@ import {
   formatVehicleInstanceId,
   type NewGameParams,
 } from '../../../../src/domain/save/createNewSaveGameData';
+import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { CURRENT_SAVE_VERSION } from '../../../../src/domain/save/SaveGameData';
 import { vehicleFixture } from '../../../support/contentFixtures';
 
@@ -51,6 +52,19 @@ describe('createNewSaveGameData', () => {
         jobsPlanned: 0,
       },
       facilities: { levels: {} },
+      daily: { lastClaimDay: null, streak: 0 },
+      achievements: { counters: {}, claimed: [] },
+      crates: { held: {}, opened: 0, paints: [], liveries: [], perfectStreak: 0, bestPerfectStreak: 0, freeCrateAtMs: 0 },
+      levelRewards: { rewardedLevel: 1 },
+      supplies: { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 },
+      quests: { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false },
+      liveries: { bought: [], worn: {}, text: null },
+      research: { points: 0, researched: [] },
+      career: emptyCareer(),
+      roadEvents: { warned: false, redLightWarned: false, fined: false, knocked: false },
+      usedTrucks: { period: null, sold: [] },
+      weeklyCup: { week: null, points: 0, last: null },
+      roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
     });
   });
 

@@ -1,3 +1,4 @@
+import type { CityIncidentKind } from '../../data/definitions/CityIncident';
 import { isLogLevel } from '../../core/logging/Logger';
 import { isSeason, type Season } from '../../data/definitions/Season';
 import { MAX_TRAFFIC_VEHICLES, type GameConfig } from '../../data/config/GameConfig';
@@ -57,7 +58,46 @@ export function requestedMist(query: QueryParameters): number | null {
 }
 
 /**
- * `?spawn=-1600,700,40` starts a new game's truck there on every map: its
+ * `?sky=aurora` brings the northern lights out every night, `?sky=meteors`
+ * a shooting star every few seconds, for a look at them. Null when the URL
+ * does not say, or says something else.
+ */
+export function requestedSkyWonder(query: QueryParameters): 'aurora' | 'meteors' | null {
+  const text = query.get('sky')?.trim() ?? '';
+  return text === 'aurora' || text === 'meteors' ? text : null;
+}
+
+/**
+ * `?city=fire|chase|fireworks` starts one of the region's rare happenings
+ * near the truck as soon as it drives (CityIncidentService), for a look;
+ * fireworks whatever the time. Null when the URL does not say, or says
+ * something else.
+ */
+export function requestedCityIncident(query: QueryParameters): CityIncidentKind | null {
+  switch (query.get('city')?.trim()) {
+    case 'fire':
+      return 'building_fire';
+    case 'chase':
+      return 'police_chase';
+    case 'fireworks':
+      return 'fireworks';
+    default:
+      return null;
+  }
+}
+
+/**
+ * `?road=stranded` sends a stranded driver ahead of the truck as soon as it
+ * drives (RoadEventService), `?road=convoy` a convoy (ConvoyService), for a
+ * look. Null when the URL does not say.
+ */
+export function requestedRoadEvent(query: QueryParameters): 'stranded' | 'convoy' | null {
+  const text = query.get('road')?.trim();
+  return text === 'stranded' || text === 'convoy' ? text : null;
+}
+
+/**
+ * `?spawn=-1600,700,40` starts a new game's truck there, on the map new companies start on (`?map=`): its
  * rear axle at x, z (meters) heading that many degrees (0 along +z, 90
  * along +x; 0 if left out), to look round a place without driving to it.
  * Null when the URL does not say, or says something else.
@@ -76,6 +116,25 @@ export function requestedSpawn(query: QueryParameters): { readonly x: number; re
  * simulatedStore), to try the rewarded boosts, the ads between contracts and the shop without a phone: development
  * and the end-to-end tests.
  */
+/**
+ * `?hills=x,z,radius,height;x,z,radius,height` raises those hills on every
+ * map (a debug switch: to look at the ground and the roads on slopes);
+ * null without it or when unreadable.
+ */
+export function requestedHills(
+  query: QueryParameters,
+): readonly { readonly x: number; readonly z: number; readonly radiusMeters: number; readonly heightMeters: number }[] | null {
+  const text = query.get('hills');
+  if (text === null || text === '') {
+    return null;
+  }
+  const hills = text.split(';').map((part) => part.split(',').map((value) => Number(value.trim())));
+  if (hills.some((hill) => hill.length !== 4 || hill.some((value) => !Number.isFinite(value)) || !(hill[2]! > 0))) {
+    return null;
+  }
+  return hills.map(([x, z, radiusMeters, heightMeters]) => ({ x: x!, z: z!, radiusMeters: radiusMeters!, heightMeters: heightMeters! }));
+}
+
 export function requestedSimulations(query: QueryParameters): { readonly ads: boolean; readonly store: boolean } {
   return { ads: query.get('ads') === 'simulated', store: query.get('store') === 'simulated' };
 }

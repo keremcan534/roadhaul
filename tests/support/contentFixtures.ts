@@ -180,6 +180,25 @@ export function contentFixture(overrides: Partial<GameContent> = {}): GameConten
     drivers: [driverFixture(), driverFixture({ id: 'test_veteran', skill: 4, speedFactor: 1.1, incidentChance: 0.05, payShare: 0.3, hiringFee: 5000, requiredCompanyLevel: 2 })],
     rivals: [rivalFixture()],
     facilities: [facilityFixture()],
+    achievements: [{ id: 'test_goal', metric: 'deliveries', target: 2, reward: 400 }],
+    quests: [
+      { id: 'test_deliver', metric: 'deliveries', target: 2, crate: 'bronze' },
+      { id: 'test_drive', metric: 'distanceKm', target: 5, crate: 'silver' },
+      { id: 'test_earn', metric: 'creditsEarned', target: 1000, crate: 'bronze' },
+    ],
+    liveries: [
+      { id: 'test_classic', pattern: 'classic', price: 0 },
+      { id: 'test_speed', pattern: 'speed', price: 1500, requiredCompanyLevel: 2 },
+      { id: 'test_galaxy', pattern: 'galaxy', price: 0, crate: 'legendary' },
+      { id: 'test_neon', pattern: 'neon', price: 0, pack: 'designs_neon' },
+    ],
+    research: [
+      { id: 'test_loading', branch: 'logistics', tier: 1, effect: 'loadingTimeReduction', value: 0.5, points: 2, cost: 1000 },
+      { id: 'test_contracts', branch: 'logistics', tier: 2, effect: 'extraContracts', value: 1, points: 3, cost: 2000, requiredCompanyLevel: 2 },
+      { id: 'test_pay', branch: 'business', tier: 1, effect: 'deliveryPayBonus', value: 0.1, points: 1, cost: 500 },
+      { id: 'test_care', branch: 'engineering', tier: 1, effect: 'cargoDamageReduction', value: 0.5, points: 1, cost: 0 },
+      { id: 'test_eco', branch: 'engineering', tier: 2, effect: 'fuelUseReduction', value: 0.5, points: 1, cost: 0 },
+    ],
     ...overrides,
   };
 }
@@ -229,6 +248,7 @@ export function rivalFixture(overrides: Partial<RivalCompanyDefinition> = {}): R
     startingCredits: 1000,
     speedFactor: 1,
     aggression: 0.5,
+    personality: 'steady',
     ...overrides,
   };
 }

@@ -1,70 +1,63 @@
-// The Google Play listing's promo video: 32 seconds, 1920 × 1080 at 30 FPS, in English. The footage is the game
-// itself (scripts/video/shoot.mjs): clips of the truck on the road, shot frame by frame from the production build
-// in headless Chromium, and stills of its panels at a phone's size. A page draws the cut over them, the words and
-// the brand moving on a 120 BPM beat (scripts/video/promo.js, timeline.mjs), and the soundtrack is synthesised to
-// the same beat (scripts/video/soundtrack.mjs). Original throughout (spec §85): the game's own world and brand,
-// Oswald (SIL OFL) for the words, no samples.
+// The Google Play listing's trailer: 30 seconds at 3840 × 2160 and 30 FPS, one in each of the game's languages
+// (and a 1080p copy of each). Everything in it is the game itself (scripts/trailer/shoot.mjs): the production build
+// in headless Google Chrome on the machine's GPU, its camera moved through the scenes (cameras.mjs), each frame the
+// average of sub-frames, the HUD and the panels as a phone shows them, and the game's own sound under the shots. The
+// cut follows a 128 BPM beat (timeline.mjs, edit.mjs), the words are in each language (captions.mjs), and the music
+// is synthesised to the same beat (music.mjs). Original throughout (spec §85): the game's own world and brand,
+// Oswald (SIL OFL) for the words, no samples. Nothing in it sells: Google Play's rules for a listing's video.
 //
-//   npm run build && node scripts/storeVideo.mjs [--fresh]
+//   npm run build && node scripts/storeVideo.mjs [--lang=en,tr] [--fresh]
 //
-// writes store-video/roadhaul-promo.mp4 (H.264 and AAC, streaming loudness), with the footage kept in store-video/
-// for the next cut: a clip is shot again only when its entry in CLIPS changes, the stills with --fresh. Needs
-// ffmpeg (with libx264) on the PATH, or its path in FFMPEG. Drawn in software, shooting takes an hour or so on
-// four cores and the cut a few minutes. Google Play takes the video as a YouTube link: docs/RELEASE.md.
+// writes store-video/trailer/roadhaul-trailer-<lang>.mp4 (4K, H.264 and AAC, BT.709, streaming loudness) and
+// roadhaul-trailer-<lang>-1080p.mp4, keeping the footage in store-video/trailer/shots for the next cut: a shot is
+// taken again only when its entry in edit.mjs changes (or with --fresh). Needs Google Chrome and ffmpeg (with libx264)
+// on the PATH, or ffmpeg's path in FFMPEG. On a desktop GPU the shoot takes a few minutes, and each language's cut a
+// few more. Google Play takes the video as a YouTube link: docs/RELEASE.md.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
-import { ROOT, serveBuild } from './storeKit.mjs';
-import { cut } from './video/cut.mjs';
-import { CLIPS, STILLS, shootClip, shootStills } from './video/shoot.mjs';
-import { soundtrack, wav } from './video/soundtrack.mjs';
+import { ROOT, brandDrawings, serveBuild } from './storeKit.mjs';
+import { wavFile } from './trailer/audio.mjs';
+import { LANGUAGES } from './trailer/captions.mjs';
+import { cut } from './trailer/cut.mjs';
+import { SHOTS, plan, shotFolder } from './trailer/edit.mjs';
+import { mix } from './trailer/mix.mjs';
+import { music } from './trailer/music.mjs';
+import { shootShot } from './trailer/shoot.mjs';
 
-const OUT = join(ROOT, 'store-video');
+const OUT = join(ROOT, 'store-video/trailer');
+const SHOTS_DIR = join(OUT, 'shots');
 const PORT = 4181;
 const FFMPEG = process.env.FFMPEG ?? 'ffmpeg';
-/** Browsers shooting at once: each draws in software on several threads. */
-const WORKERS = 2;
 const fresh = process.argv.includes('--fresh');
+const langArg = process.argv.find((arg) => arg.startsWith('--lang='));
+const languages = langArg ? langArg.slice(7).split(',') : Object.keys(LANGUAGES);
 
-function ffmpeg(args, input) {
-  const result = spawnSync(FFMPEG, ['-hide_banner', '-y', ...args], { input, encoding: 'utf8', maxBuffer: 1 << 26 });
+function ffmpeg(args) {
+  const result = spawnSync(FFMPEG, ['-hide_banner', '-y', ...args], { encoding: 'utf8', maxBuffer: 1 << 26 });
   if (result.error !== undefined || result.status !== 0) {
     throw new Error(`ffmpeg failed: ${result.error?.message ?? result.stderr.slice(-2000)}`);
   }
   return result.stderr;
 }
 
-/** The clips and the stills, shot by WORKERS browsers at once; what is already shot is kept. */
-async function shoot(baseUrl) {
-  const stillsDir = join(OUT, 'stills');
-  const record = join(stillsDir, 'stills.json');
-  const haveStills = !fresh && existsSync(record) && STILLS.every((name) => existsSync(join(stillsDir, `${name}.png`)));
-  const jobs = [
-    ...(haveStills ? [] : [{ name: 'stills', run: (browser) => shootStills(browser, baseUrl, stillsDir) }]),
-    ...CLIPS.map((clip) => ({ name: `clip ${clip.id}`, run: (browser) => shootClip(browser, baseUrl, clip, join(OUT, 'clips')) })),
-  ];
-  const worker = async () => {
-    const browser = await chromium.launch();
-    try {
-      for (let job = jobs.shift(); job !== undefined; job = jobs.shift()) {
-        const started = Date.now();
-        const shot = await job.run(browser);
-        console.log(`${job.name}: ${shot === false ? 'kept' : `shot in ${Math.round((Date.now() - started) / 1000)} s`}`);
-      }
-    } finally {
-      await browser.close();
-    }
+/** A float mix as a 16-bit WAV (dithered), then at streaming loudness (-14 LUFS, true peak under -1.5 dBTP). */
+function master(sound, file) {
+  const raw = file.replace(/\.wav$/, '-raw.wav');
+  const pcm = Buffer.alloc(sound.left.length * 4);
+  let seed = 0x52484c;
+  const dither = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296 - 0.5;
   };
-  await Promise.all(Array.from({ length: WORKERS }, worker));
-  return JSON.parse(readFileSync(record, 'utf8'));
-}
-
-/** The soundtrack at streaming loudness (-14 LUFS, peaks under -1.5 dBTP): ffmpeg's loudnorm, measured first. */
-function score() {
-  const raw = join(OUT, 'soundtrack-raw.wav');
-  const file = join(OUT, 'soundtrack.wav');
-  writeFileSync(raw, wav(soundtrack()));
+  for (let i = 0; i < sound.left.length; i++) {
+    for (const [channel, value] of [sound.left[i], sound.right[i]].entries()) {
+      const sample = Math.round(Math.max(-1, Math.min(1, value)) * 32767 + dither() + dither());
+      pcm.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), i * 4 + channel * 2);
+    }
+  }
+  writeFileSync(raw, wavFile(pcm));
   const target = 'I=-14:TP=-1.5:LRA=11';
   const report = ffmpeg(['-i', raw, '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-']);
   const measured = JSON.parse(report.slice(report.lastIndexOf('{'), report.lastIndexOf('}') + 1));
@@ -73,24 +66,73 @@ function score() {
   return file;
 }
 
+/** The shots each language needs (a shot with the HUD or a panel is taken in each), WORKERS browsers at once. */
+async function shoot(baseUrl) {
+  const jobs = [];
+  for (const shot of SHOTS) {
+    for (const lang of shot.localized ? languages : ['en']) {
+      const dir = join(SHOTS_DIR, shotFolder(shot.id, shot.localized ? lang : null));
+      if (fresh) rmSync(dir, { recursive: true, force: true });
+      jobs.push({ shot: { ...shot, id: shotFolder(shot.id, shot.localized ? lang : null) }, lang });
+    }
+  }
+  const browser = await chromium.launch({ channel: 'chrome' });
+  try {
+    for (const job of jobs) {
+      const started = Date.now();
+      const taken = await shootShot(browser, baseUrl, job.shot, SHOTS_DIR, { lang: job.lang });
+      console.log(`${job.shot.id}: ${taken ? `shot in ${Math.round((Date.now() - started) / 1000)} s` : 'kept'}`);
+    }
+    const brandFile = join(OUT, 'brand.json');
+    if (!existsSync(brandFile)) {
+      const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+      await page.goto(`${baseUrl}?quality=low`);
+      await page.waitForFunction(() => document.documentElement.dataset.gameState === 'mainMenu');
+      const { markSvg, wordSvg } = await brandDrawings(page);
+      writeFileSync(brandFile, JSON.stringify({ mark: markSvg, word: wordSvg }));
+      await page.close();
+    }
+  } finally {
+    await browser.close();
+  }
+}
+
 if (spawnSync(FFMPEG, ['-version']).status !== 0) {
   console.error('No ffmpeg: install it (with libx264), or set FFMPEG to its path.');
   process.exit(1);
 }
-mkdirSync(OUT, { recursive: true });
+mkdirSync(SHOTS_DIR, { recursive: true });
 const stop = await serveBuild(PORT);
-let notes;
 try {
-  notes = await shoot(`http://127.0.0.1:${PORT}/`);
+  await shoot(`http://127.0.0.1:${PORT}/`);
 } finally {
   stop();
 }
-const sound = score();
-const browser = await chromium.launch();
+const brandSvg = JSON.parse(readFileSync(join(OUT, 'brand.json'), 'utf8'));
+const score = music();
+const browser = await chromium.launch({ channel: 'chrome' });
 try {
-  const file = join(OUT, 'roadhaul-promo.mp4');
-  await cut(browser, { ffmpeg: FFMPEG, dir: OUT, notes, sound, file });
-  console.log(`Video: ${file}`);
+  for (const lang of languages) {
+    const cutPlan = plan(lang, SHOTS_DIR);
+    const sound = master(mix(score, cutPlan, SHOTS_DIR), join(OUT, `sound-${lang}.wav`));
+    const file = join(OUT, `roadhaul-trailer-${lang}.mp4`);
+    const small = join(OUT, `roadhaul-trailer-${lang}-1080p.mp4`);
+    const started = Date.now();
+    await cut(browser, {
+      ffmpeg: FFMPEG,
+      dir: OUT,
+      plan: cutPlan,
+      brandSvg,
+      lang,
+      sound,
+      file,
+      small,
+      onProgress: (frame, frames) => {
+        if (frame % 150 === 0) console.log(`${lang}: frame ${frame} of ${frames}`);
+      },
+    });
+    console.log(`${lang}: ${file} (${Math.round((Date.now() - started) / 1000)} s)`);
+  }
 } finally {
   await browser.close();
 }

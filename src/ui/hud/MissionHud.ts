@@ -170,11 +170,14 @@ export class MissionHud {
     const definition = this.missions.activeDefinition;
     const target = this.missions.target;
     const navigation = this.navigation;
-    if (mission === null || definition === null || target === null || !navigation.hasRoute) {
-      this.root.hidden = true;
+    // Written only when it changes: setting the attribute again invalidates the HUD's style all the same.
+    const shown = mission !== null && definition !== null && target !== null && navigation.hasRoute;
+    if (this.root.hidden === shown) {
+      this.root.hidden = !shown;
+    }
+    if (!shown) {
       return;
     }
-    this.root.hidden = false;
     const strings = this.strings;
     const pickup = target.kind === 'pickup';
 

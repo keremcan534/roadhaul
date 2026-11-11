@@ -63,6 +63,37 @@ describe('GameSessionService', () => {
     expect(second.session.isActive).toBe(false);
   });
 
+  it('backs a company up with what happened since the last save, and restores it on another device, closing the company loaded there', async () => {
+    const first = await boot();
+    expect(first.session.exportBackup()).toEqual({ ok: false, error: 'missing' });
+    first.session.startNewGame('Kuzey Lojistik');
+    first.economy.earn(1234, 'delivery');
+    const backup = first.session.exportBackup();
+    expect(backup.ok).toBe(true);
+    const text = backup.ok ? backup.value : '';
+
+    const other = await boot();
+    other.session.startNewGame('Güney Nakliyat');
+    expect(other.session.readBackup('not a backup')).toEqual({ ok: false, error: 'unreadable' });
+    expect(other.session.readBackup(text)).toMatchObject({
+      ok: true,
+      value: { companyName: 'Kuzey Lojistik', credits: DEFAULT_GAME_CONFIG.newGame.startingCredits + 1234 },
+    });
+    expect(other.session.restoreBackup('{}')).toEqual({ ok: false, error: 'unreadable' });
+    expect(other.session.isActive).toBe(true);
+
+    expect(other.session.restoreBackup(text)).toEqual({ ok: true, value: undefined });
+
+    // Closed: nothing the old company does saves over the restored one.
+    expect(other.session.isActive).toBe(false);
+    other.economy.earn(50, 'delivery');
+    other.session.save();
+    const third = await boot(other.storage, 5_000);
+    expect(third.session.continueGame()).toEqual({ ok: true, value: undefined });
+    expect(third.company.companyName).toBe('Kuzey Lojistik');
+    expect(third.economy.credits).toBe(DEFAULT_GAME_CONFIG.newGame.startingCredits + 1234);
+  });
+
   it('starts a new company at the depot picked, and saves it there', async () => {
     const game = await boot();
     const places = game.session.startPlaces(null);

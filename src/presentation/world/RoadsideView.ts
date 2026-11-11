@@ -72,13 +72,14 @@ export interface RoadsideViewOptions {
 /**
  * The plants grown along the roads through one cell, by kind: where each
  * stands and how it is turned and sized (PLACE_FLOATS each: x, z, the
- * cosine and sine of its turn times its scale, and its scale: the terms of
- * its matrix, so gathering it is a copy), and its tint. Their matrices are
+ * cosine and sine of its turn times its scale, its scale, and the ground's
+ * height there: the terms of its matrix, so gathering it is a copy), and
+ * its tint. Their matrices are
  * made only for the plants drawn.
  */
 type CellPlants = Readonly<Record<RoadsideKind, { readonly places: Float32Array; readonly colors: Float32Array }>>;
 
-const PLACE_FLOATS = 5;
+const PLACE_FLOATS = 6;
 
 /** What a cell's plants must keep clear of: whether the sea is near, and the fields and buildings that reach into it. */
 interface CellSurroundings {
@@ -253,7 +254,7 @@ export class RoadsideView {
           matrices[m + 10] = cosine;
           matrices[m + 11] = 0;
           matrices[m + 12] = places[p]!;
-          matrices[m + 13] = 0;
+          matrices[m + 13] = places[p + 5]!;
           matrices[m + 14] = places[p + 1]!;
           matrices[m + 15] = 1;
           colors[(count + i) * 3] = tints[i * 3]!;
@@ -320,7 +321,7 @@ export class RoadsideView {
             const turn = random.range(0, Math.PI * 2);
             const tone = shade * random.range(0.94, 1.06);
             if (this.free(x, z)) {
-              found[kind].push(x, z, Math.cos(turn) * scale, Math.sin(turn) * scale, scale);
+              found[kind].push(x, z, Math.cos(turn) * scale, Math.sin(turn) * scale, scale, this.world.terrain.heightAt(x, z));
               // Greens that vary, some grass drier; flowers keep their colours.
               if (kind === 'flower') {
                 tint[kind].push(tone, tone, tone);

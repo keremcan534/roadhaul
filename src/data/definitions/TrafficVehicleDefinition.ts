@@ -5,7 +5,8 @@ export const TRAFFIC_VEHICLE_KINDS = ['car', 'minibus', 'truck', 'bus'] as const
 export type TrafficVehicleKind = (typeof TRAFFIC_VEHICLE_KINDS)[number];
 
 /** A car's body: a hatchback, its rear window down to the tail, or a saloon with a boot behind the rear window. */
-export const TRAFFIC_CAR_BODIES = ['hatchback', 'saloon'] as const;
+/** A car's body: a hatchback, a saloon, or a taxi (a saloon with a lit sign on its roof). */
+export const TRAFFIC_CAR_BODIES = ['hatchback', 'saloon', 'taxi'] as const;
 export type TrafficCarBody = (typeof TRAFFIC_CAR_BODIES)[number];
 
 /**

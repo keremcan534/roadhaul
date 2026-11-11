@@ -1,3 +1,6 @@
+import type { NewsItem } from './world/NewsService';
+import type { CityIncidentKind } from '../data/definitions/CityIncident';
+import type { CrateTier } from '../data/config/GameConfig';
 import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { KnockableKind } from '../domain/crash/knockables';
@@ -6,10 +9,14 @@ import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
+import type { SkyWonder } from '../domain/sky/skyWonders';
 import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
+
+/** What earned a crate. */
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -123,6 +130,38 @@ export interface GameEvents {
     readonly definitionId: string;
     readonly price: Credits;
   };
+  /** The season's points reached a new Road Pass tier (RoadPassService): the highest reached now. */
+  RoadPassTierReached: {
+    readonly tier: number;
+  };
+  /** A Road Pass reward was collected: a tier's free one, or its Plus colour. */
+  RoadPassClaimed: {
+    readonly tier: number;
+    readonly premium: boolean;
+  };
+  /** A convoy set off on a road ahead (ConvoyService). */
+  ConvoyStarted: {
+    readonly x: number;
+    readonly z: number;
+  };
+  /** The convoy reached its end: how far the truck rode with it, and what that paid (already paid; 0 for too little). */
+  ConvoyEnded: {
+    readonly riddenMeters: number;
+    readonly reward: Credits;
+  };
+  /** A week's cup ended (WeeklyCupService): where the company finished, and what it won (already paid). */
+  WeeklyCupEnded: {
+    readonly week: number;
+    readonly rank: number;
+    readonly credits: Credits;
+    readonly crate: CrateTier | null;
+  };
+  /** The company sold a truck (GarageService.sell): `price` paid. */
+  VehicleSold: {
+    readonly instanceId: string;
+    readonly definitionId: string;
+    readonly price: Credits;
+  };
   /** The player now drives another of the company's trucks, standing where the last one stood. */
   ActiveVehicleChanged: {
     readonly instanceId: string;
@@ -146,6 +185,70 @@ export interface GameEvents {
     readonly facilityId: string;
     readonly level: number;
     readonly cost: Credits;
+  };
+  /** The day's reward was paid (DailyRewardService): its day of the streak, from 1, and the days in a row. */
+  DailyRewardClaimed: {
+    readonly day: number;
+    readonly streak: number;
+    readonly credits: Credits;
+  };
+  /** A goal's target was reached (AchievementService): its reward waits to be collected. */
+  AchievementReached: {
+    readonly achievementId: string;
+  };
+  /** A goal's reward was collected. */
+  AchievementClaimed: {
+    readonly achievementId: string;
+    readonly reward: Credits;
+  };
+  /** A crate came to the company (CrateService): for a perfect streak, a company level or the daily streak. */
+  CrateEarned: {
+    readonly tier: CrateTier;
+    readonly source: CrateSource;
+  };
+  /** A crate was opened: the credits it paid, and the crate colour or design it gave (null for none). */
+  CrateOpened: {
+    readonly tier: CrateTier;
+    readonly credits: Credits;
+    readonly paintId: string | null;
+    readonly liveryId: string | null;
+  };
+  /** A design was bought (`instanceId` null) or put on a truck, or the trailer text changed (both null). */
+  LiveryChanged: {
+    readonly instanceId: string | null;
+    readonly liveryId: string | null;
+  };
+  /** A step of the research tree was researched (ResearchService): `points` are left. */
+  ResearchCompleted: {
+    readonly researchId: string;
+    readonly points: number;
+  };
+  /** A delivery earned research points (`earned`): `points` are held now. */
+  ResearchPointsChanged: {
+    readonly points: number;
+    readonly earned: number;
+  };
+  /** What crates gave besides credits changed (SupplyService): parts or boosters added, used or running out. */
+  SuppliesChanged: {
+    readonly parts: number;
+  };
+  /** One of the day's quests was done (QuestService): its crate waits to be collected. */
+  QuestCompleted: {
+    readonly questId: string;
+  };
+  /** The day's quests changed: a new day, a crate collected, a quest done. */
+  QuestsChanged: {
+    readonly day: number;
+  };
+  /** A company level's reward was collected (LevelRewardService): its credits paid, its crate given. */
+  LevelRewardCollected: {
+    readonly level: number;
+    readonly credits: Credits;
+    readonly crate: CrateTier;
+  };
+  /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow. */
+  SkyWonderSighted: {
+    readonly kind: SkyWonder;
   };
   /** XP or reputation changed. */
   CompanyProgressed: {
@@ -178,6 +281,56 @@ export interface GameEvents {
   WeatherChanged: {
     readonly weatherId: string;
     readonly previousId: string;
+  };
+  /**
+   * A speed camera caught the truck over the limit (RoadEventService): the
+   * first time ever a warning, else a fine (already paid), doubled at road
+   * works.
+   */
+  SpeedingCaught: {
+    readonly speedKmh: number;
+    readonly limitKmh: number;
+    readonly fine: Credits;
+    readonly warning: boolean;
+    readonly workZone: boolean;
+  };
+  /**
+   * The truck ran a red light (RoadEventService): the first time ever a
+   * warning, else a fine (already paid).
+   */
+  RedLightCaught: {
+    readonly fine: Credits;
+    readonly warning: boolean;
+  };
+  /** The day's road works changed (RoadEventService.workZones): a new day, or a new drive. */
+  WorkZonesChanged: {
+    readonly count: number;
+  };
+  /** A stranded driver waits ahead with their hazard lights on (RoadEventService.stranded). */
+  StrandedDriverAppeared: {
+    readonly x: number;
+    readonly z: number;
+  };
+  /** The truck stopped and helped the stranded driver: `reward` paid. */
+  RoadsideHelped: {
+    readonly reward: Credits;
+  };
+  /** Something rare began near the truck (CityIncidentService): a fire, a police chase, fireworks. */
+  CityIncidentStarted: {
+    readonly kind: CityIncidentKind;
+    readonly cityId: string | null;
+    readonly x: number;
+    readonly z: number;
+  };
+  /** It is over: the fire put out, the fireworks done, the chase ended (`caught`: at the end of its road). */
+  CityIncidentEnded: {
+    readonly kind: CityIncidentKind;
+    readonly cityId: string | null;
+    readonly caught: boolean;
+  };
+  /** A headline came out (NewsService). */
+  NewsPublished: {
+    readonly item: NewsItem;
   };
   /** The season changed: the calendar turned over, or the player picked another in Settings. */
   SeasonChanged: {

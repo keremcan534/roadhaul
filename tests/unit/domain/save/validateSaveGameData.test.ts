@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
+import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
 import { contentFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
@@ -75,7 +76,109 @@ describe('validateSaveGameData', () => {
       'fleet',
       'rivals',
       'facilities',
+      'daily',
+      'achievements',
+      'crates',
+      'levelRewards',
+      'supplies',
+      'quests',
+      'liveries',
+      'research',
+      'career',
+      'roadEvents',
+      'usedTrucks',
+      'weeklyCup',
+      'roadPass',
     ]);
+  });
+
+  it('checks the career: amounts 0 or more, whole counts, deliveries counted by id', () => {
+    const career = { ...emptyCareer(), tonsDelivered: 12.5, topSpeedKmh: 88.2, cargo: { furniture: 2 }, destinations: { city_b: 1 } };
+    expect(paths(withPart('career', career))).toEqual([]);
+    expect(paths(withPart('career', { ...career, tonsDelivered: -1, knocks: 1.5, cargo: { furniture: -2 }, destinations: [] }))).toEqual([
+      'career.tonsDelivered',
+      'career.knocks',
+      'career.cargo.furniture',
+      'career.destinations',
+    ]);
+  });
+
+  it('checks the crates: known tiers held in whole numbers, crate colours given, the streaks', () => {
+    const crates = { held: { gold: 2 }, opened: 3, paints: [], liveries: [], perfectStreak: 1, bestPerfectStreak: 4, freeCrateAtMs: 0 };
+    expect(paths(withPart('crates', crates))).toEqual([]);
+    expect(paths(withPart('crates', { ...crates, held: { diamond: 1, silver: -1 } }))).toEqual([
+      'crates.held.diamond',
+      'crates.held.silver',
+    ]);
+    // test_gold is a colour the garage sells: no crate gives it.
+    expect(paths(withPart('crates', { ...crates, paints: ['test_gold', 7] }))).toEqual(['crates.paints[0]', 'crates.paints[1]']);
+    expect(paths(withPart('crates', { ...crates, opened: 1.5, perfectStreak: -1 }))).toEqual(['crates.opened', 'crates.perfectStreak']);
+    expect(paths(withPart('crates', null))).toEqual(['crates']);
+  });
+
+  it('checks the supplies: parts, known boosters held and the boosts running, in whole numbers', () => {
+    const supplies = { parts: 3, boosters: { xp_boost: 1 }, payBoostLeft: 2, xpBoostLeft: 0 };
+    expect(paths(withPart('supplies', supplies))).toEqual([]);
+    expect(paths(withPart('supplies', { ...supplies, boosters: { nitro: 1, pay_boost: -1 } }))).toEqual([
+      'supplies.boosters.nitro',
+      'supplies.boosters.pay_boost',
+    ]);
+    expect(paths(withPart('supplies', { ...supplies, parts: 1.5, xpBoostLeft: -1 }))).toEqual(['supplies.parts', 'supplies.xpBoostLeft']);
+    expect(paths(withPart('supplies', null))).toEqual(['supplies']);
+  });
+
+  it('checks the day\'s quests: the day, known metrics counted, the ids collected', () => {
+    const quests = { day: 20_000, counts: { deliveries: 2 }, distanceStartMeters: 1500, claimed: ['retired'], bonusClaimed: false };
+    expect(paths(withPart('quests', quests))).toEqual([]);
+    expect(paths(withPart('quests', { ...quests, day: 'today', counts: { luck: 1 } }))).toEqual(['quests.day', 'quests.counts.luck']);
+    expect(paths(withPart('quests', { ...quests, claimed: [7], bonusClaimed: 'yes', distanceStartMeters: -1 }))).toEqual([
+      'quests.distanceStartMeters',
+      'quests.claimed[0]',
+      'quests.bonusClaimed',
+    ]);
+  });
+
+  it('checks the designs: ids bought and worn, and the trailer text short enough', () => {
+    const liveries = { bought: ['test_speed'], worn: { truck_001: 'retired' }, text: 'KUZEY' };
+    expect(paths(withPart('liveries', liveries))).toEqual([]);
+    expect(paths(withPart('liveries', { ...liveries, bought: [7], worn: { truck_001: 3 } }))).toEqual([
+      'liveries.bought[0]',
+      'liveries.worn.truck_001',
+    ]);
+    expect(paths(withPart('liveries', { ...liveries, text: 'X'.repeat(40) }))).toEqual(['liveries.text']);
+    expect(paths(withPart('liveries', { ...liveries, text: '' }))).toEqual(['liveries.text']);
+    expect(paths(withPart('liveries', null))).toEqual(['liveries']);
+  });
+
+  it('checks the research: whole points, the steps researched by id', () => {
+    const research = { points: 4, researched: ['retired'] };
+    expect(paths(withPart('research', research))).toEqual([]);
+    expect(paths(withPart('research', { points: -1, researched: [7] }))).toEqual(['research.points', 'research.researched[0]']);
+    expect(paths(withPart('research', { points: 1.5, researched: 'all' }))).toEqual(['research.points', 'research.researched']);
+    expect(paths(withPart('research', null))).toEqual(['research']);
+  });
+
+  it('checks the level rewards: collected up to a level the company can have', () => {
+    expect(paths(withPart('levelRewards', { rewardedLevel: 1 }))).toEqual([]);
+    expect(paths(withPart('levelRewards', { rewardedLevel: 0 }))).toEqual(['levelRewards.rewardedLevel']);
+    expect(paths(withPart('levelRewards', { rewardedLevel: MAX_LEVEL + 1 }))).toEqual(['levelRewards.rewardedLevel']);
+  });
+
+  it('checks the goals: known metrics counted in whole numbers, and the ids collected', () => {
+    expect(paths(withPart('achievements', { counters: { bigWins: 2 }, claimed: ['retired_goal'] }))).toEqual([]);
+    expect(paths(withPart('achievements.counters', { luck: 1 }))).toEqual(['achievements.counters.luck']);
+    expect(paths(withPart('achievements.counters', { bigWins: -1 }))).toEqual(['achievements.counters.bigWins']);
+    expect(paths(withPart('achievements.claimed', [7]))).toEqual(['achievements.claimed[0]']);
+    expect(paths(withPart('achievements', null))).toEqual(['achievements']);
+  });
+
+  it('checks the daily reward: the day last claimed (or none) and the days in a row', () => {
+    expect(paths(withPart('daily', { lastClaimDay: 20_000, streak: 3 }))).toEqual([]);
+    expect(paths(withPart('daily', { lastClaimDay: null, streak: 0 }))).toEqual([]);
+    expect(paths(withPart('daily.lastClaimDay', 1.5))).toEqual(['daily.lastClaimDay']);
+    expect(paths(withPart('daily.lastClaimDay', '20000'))).toEqual(['daily.lastClaimDay']);
+    expect(paths(withPart('daily.streak', -1))).toEqual(['daily.streak']);
+    expect(paths(withPart('daily', null))).toEqual(['daily']);
   });
 
   it('checks the facilities: known ones, each built to a level it has', () => {

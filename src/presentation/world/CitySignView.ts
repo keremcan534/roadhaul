@@ -35,6 +35,8 @@ const NIGHT_GLOW = 0.55;
 export interface CitySignViewOptions {
   /** Texture anisotropy for the boards' faces (renderer capability). */
   readonly anisotropy?: number;
+  /** The ground's height where something stands (a map's hills): 0 everywhere without it. */
+  readonly ground?: (x: number, z: number) => number;
 }
 
 /**
@@ -73,7 +75,7 @@ export class CitySignView {
     const rotation = new Quaternion();
     const up = new Vector3(0, 1, 0);
     for (const sign of signs) {
-      placement.compose(new Vector3(sign.x, 0, sign.z), rotation.setFromAxisAngle(up, sign.heading), new Vector3(1, 1, 1));
+      placement.compose(new Vector3(sign.x, options.ground?.(sign.x, sign.z) ?? 0, sign.z), rotation.setFromAxisAngle(up, sign.heading), new Vector3(1, 1, 1));
       frames.push(frameGeometry().applyMatrix4(placement));
       const row = names.indexOf(nameOf(sign.cityId).toLocaleUpperCase('en'));
       faces.push(faceGeometry(row, names.length).applyMatrix4(placement));

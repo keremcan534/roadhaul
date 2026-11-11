@@ -6,8 +6,12 @@ import { DRIVERS } from './drivers';
 import { MAPS } from './maps';
 import { EVENTS } from './events';
 import { FACILITIES } from './facilities';
+import { ACHIEVEMENTS } from './achievements';
+import { QUESTS } from './quests';
+import { LIVERIES } from './liveries';
 import { MISSIONS } from './missions';
 import { PAINTS } from './paints';
+import { RESEARCH } from './research';
 import { RIVALS } from './rivals';
 import { TRAFFIC_VEHICLES } from './trafficVehicles';
 import { UPGRADES } from './upgrades';
@@ -30,4 +34,8 @@ export const GAME_CONTENT: GameContent = {
   drivers: DRIVERS,
   rivals: RIVALS,
   facilities: FACILITIES,
+  achievements: ACHIEVEMENTS,
+  quests: QUESTS,
+  liveries: LIVERIES,
+  research: RESEARCH,
 };

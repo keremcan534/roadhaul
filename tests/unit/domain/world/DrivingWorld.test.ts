@@ -232,9 +232,9 @@ describe('DrivingWorld', () => {
     );
     const chimney = world.buildings.find((box) => box.form !== undefined)!;
     expect(chimney).toMatchObject({ minX: -4, maxX: 4, minZ: 36, maxZ: 44, heightMeters: 30, form: 'chimney' });
-    // The map's own: its chimney, its silo and its headframe.
+    // The map's own: its chimney, its headframe, Gull Point's lighthouse, and Amberfield's silo and Greyfell's two.
     const forms = new DrivingWorld(MAPS[0]!).buildings.filter((box) => box.country !== true).map((box) => box.form).filter(Boolean);
-    expect(forms.sort()).toEqual(['chimney', 'headframe', 'silo']);
+    expect(forms.sort()).toEqual(['chimney', 'headframe', 'lighthouse', 'silo', 'silo', 'silo']);
   });
 
   it('finds the side of a building that faces a road, within reach', () => {
@@ -878,8 +878,12 @@ describe('DrivingWorld', () => {
     it('dresses the shipped region: its towns and its countryside', () => {
       const region = new DrivingWorld(MAPS[0]!);
       expect(region.roadSigns.length).toBeGreaterThan(100);
-      for (const kind of ['bendLeft', 'bendRight', 'chevron', 'giveWay', 'stop', 'crossroads'] as const) {
+      for (const kind of ['chevron', 'giveWay', 'stop', 'crossroads'] as const) {
         expect(region.roadSigns.filter((sign) => sign.kind === kind).length, kind).toBeGreaterThan(3);
+      }
+      // Few roads bend that sharply (the grown country's, mostly): one of each at least.
+      for (const kind of ['bendLeft', 'bendRight'] as const) {
+        expect(region.roadSigns.filter((sign) => sign.kind === kind).length, kind).toBeGreaterThan(0);
       }
       expect(region.directionBoards.length).toBeGreaterThan(30);
       expect(region.directionBoards.every((board) => board.rows.length >= 1 && board.rows.length <= 3)).toBe(true);

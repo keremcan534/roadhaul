@@ -1,4 +1,5 @@
 import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import type { CrateTier } from '../../data/definitions/CrateTier';
 import type { Credits, Fraction } from '../../data/units';
 import type { MissionFailureReason, MissionState } from '../missions/MissionInstance';
 import type { TutorialStep } from '../tutorial/tutorialSteps';
@@ -26,8 +27,29 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   standing in the cities, campaigns, and tenders).
  * - v11: adds the facilities (what the company has built for itself, and
  *   how far).
+ * - v12: adds the daily reward's streak.
+ * - v13: adds the company's goals (what they count that the rest of the
+ *   save does not, and the rewards collected).
+ * - v14: adds the crates (held, opened, the colours they gave, the perfect
+ *   streak) and the company levels whose reward was collected.
+ * - v15: adds when the free crate is next ready, the supplies crates gave
+ *   (upgrade parts, boosters, those running) and the day's quests.
+ * - v16: adds the trucks' designs (bought, worn) and the trailer text, and
+ *   the designs crates gave.
+ * - v17: adds the research tree (points, steps researched).
+ * - v18: adds the career's records (CareerService): tons delivered, the
+ *   longest haul, the top speed, the time on the road, fuel and repairs,
+ *   knocks and crashes, deliveries by cargo and by town.
+ * - v19: adds the road's events (the first speeding's warning given, the
+ *   contract's fines and knocks for the safe-driving bonus), and the
+ *   career's tickets, fines paid and stranded drivers helped.
+ * - v20: adds the used-truck market's trucks sold in its period.
+ * - v21: adds the weekly cup (the week, the company's points, how the last
+ *   one it played ended).
+ * - v22: adds the Road Pass (the season, its points, the tiers collected on
+ *   each track, the pass colours the company has).
  */
-export const CURRENT_SAVE_VERSION = 11;
+export const CURRENT_SAVE_VERSION = 23;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -52,6 +74,179 @@ export interface SaveGameData {
   readonly fleet: FleetSaveData;
   readonly rivals: RivalsSaveData;
   readonly facilities: FacilitiesSaveData;
+  readonly daily: DailyRewardSaveData;
+  readonly achievements: AchievementsSaveData;
+  readonly crates: CratesSaveData;
+  readonly levelRewards: LevelRewardsSaveData;
+  readonly supplies: SuppliesSaveData;
+  readonly quests: QuestsSaveData;
+  readonly liveries: LiveriesSaveData;
+  readonly research: ResearchSaveData;
+  readonly career: CareerSaveData;
+  readonly roadEvents: RoadEventsSaveData;
+  readonly usedTrucks: UsedTrucksSaveData;
+  readonly weeklyCup: WeeklyCupSaveData;
+  readonly roadPass: RoadPassSaveData;
+}
+
+/** The Road Pass (RoadPassService): the season the points are for (null before any), tiers collected, colours kept. */
+export interface RoadPassSaveData {
+  readonly season: number | null;
+  readonly points: number;
+  readonly freeClaimed: readonly number[];
+  readonly premiumClaimed: readonly number[];
+  /** PaintDefinition ids of the pass colours collected: the company's for good. */
+  readonly paints: readonly string[];
+}
+
+/** The weekly cup (WeeklyCupService): the week the points are for (null before any), and the last cup's result. */
+export interface WeeklyCupSaveData {
+  readonly week: number | null;
+  readonly points: number;
+  readonly last: {
+    readonly week: number;
+    readonly rank: number;
+    readonly credits: Credits;
+    readonly crate: CrateTier | null;
+  } | null;
+}
+
+/** The used-truck market (UsedTruckMarket): which of a period's trucks were bought; null before the first. */
+export interface UsedTrucksSaveData {
+  readonly period: number | null;
+  readonly sold: readonly number[];
+}
+
+/** The road's events (RoadEventService). */
+export interface RoadEventsSaveData {
+  /** The first speeding was let off with a warning: from then on, fines. */
+  readonly warned: boolean;
+  /** The first red light run was let off with a warning: from then on, fines (v23). */
+  readonly redLightWarned: boolean;
+  /** The contract under way was fined, or the truck knocked: no safe-driving bonus for it. */
+  readonly fined: boolean;
+  readonly knocked: boolean;
+}
+
+/**
+ * The career's records (CareerService), beyond what `stats` and the goals'
+ * counters keep: from the company's start (or from v18 for an older one).
+ */
+export interface CareerSaveData {
+  /** Cargo the player delivered, tons. */
+  readonly tonsDelivered: number;
+  /** The longest distance driven loaded, from pickup to delivery, meters. */
+  readonly longestHaulMeters: number;
+  /** The distance driven loaded on the contract under way so far, meters (0 with none loaded). */
+  readonly haulMeters: number;
+  /** The best pay for one delivery. */
+  readonly bestPay: Credits;
+  readonly topSpeedKmh: number;
+  /** Time on the road, the truck in the player's hands. */
+  readonly drivingSeconds: number;
+  /** Diesel bought, and what it and the repairs cost. */
+  readonly fuelLiters: number;
+  readonly fuelSpent: Credits;
+  readonly repairsSpent: Credits;
+  /** Knocks that damaged the truck, times it went over, cars it wrecked, things it knocked down. */
+  readonly knocks: number;
+  readonly overturns: number;
+  readonly carsWrecked: number;
+  readonly propsKnocked: number;
+  /** The hired drivers' deliveries (a driver dismissed keeps their count here). */
+  readonly fleetDeliveries: number;
+  /** Speed cameras' tickets (warnings aside), what they cost, and stranded drivers helped. */
+  readonly fines: number;
+  readonly finesPaid: Credits;
+  readonly roadsideHelps: number;
+  /** The player's deliveries by CargoDefinition id, and by destination CityDefinition id. */
+  readonly cargo: Readonly<Record<string, number>>;
+  readonly destinations: Readonly<Record<string, number>>;
+}
+
+/** The research tree (ResearchService). */
+export interface ResearchSaveData {
+  /** Research points held. */
+  readonly points: number;
+  /** ResearchDefinition ids researched. */
+  readonly researched: readonly string[];
+}
+
+/** The trucks' designs (LiveryService). */
+export interface LiveriesSaveData {
+  /** LiveryDefinition ids bought with credits. */
+  readonly bought: readonly string[];
+  /** Truck instance id → the design it wears; a truck not listed wears the classic. */
+  readonly worn: Readonly<Record<string, string>>;
+  /** The company's trailer text, or null for the RoadHaul lettering. */
+  readonly text: string | null;
+}
+
+/** What crates gave besides credits and looks (SupplyService). */
+export interface SuppliesSaveData {
+  /** Upgrade parts. */
+  readonly parts: number;
+  /** Boosters held, by BoosterKind. One not listed is 0. */
+  readonly boosters: Readonly<Record<string, number>>;
+  /** Deliveries left on the pay boost and the experience boost running; 0 for none. */
+  readonly payBoostLeft: number;
+  readonly xpBoostLeft: number;
+}
+
+/** The day's quests (QuestService): the quests themselves follow from the day. */
+export interface QuestsSaveData {
+  /** The player's day (localDay) the counts are for, or null before the first. */
+  readonly day: number | null;
+  /** What the day has counted so far, by QuestMetric (distanceKm apart). One not listed is 0. */
+  readonly counts: Readonly<Record<string, number>>;
+  /** Metres driven, ever, as the day began: the day's kilometres are counted from it. */
+  readonly distanceStartMeters: number;
+  /** The day's quests whose crate was collected, and whether the bonus crate for all of them was. */
+  readonly claimed: readonly string[];
+  readonly bonusClaimed: boolean;
+}
+
+/** The crates (CrateService). */
+export interface CratesSaveData {
+  /** Crates waiting to be opened, by CrateTier: bronze, silver, gold. One not listed is 0. */
+  readonly held: Readonly<Record<string, number>>;
+  /** Crates opened, ever. */
+  readonly opened: number;
+  /** The crate colours (PaintDefinition ids) and designs (LiveryDefinition ids) the crates gave. */
+  readonly paints: readonly string[];
+  readonly liveries: readonly string[];
+  /** Perfect deliveries (three stars) in a row, up to the last one; and the most ever. */
+  readonly perfectStreak: number;
+  readonly bestPerfectStreak: number;
+  /** When the next free crate is ready, epoch ms (0: now). */
+  readonly freeCrateAtMs: number;
+}
+
+/** The company levels' rewards (LevelRewardService). */
+export interface LevelRewardsSaveData {
+  /** The highest level whose reward was collected (1: none yet; level 1 has none). */
+  readonly rewardedLevel: number;
+}
+
+/** The company's goals (AchievementService). */
+export interface AchievementsSaveData {
+  /**
+   * What the goals count that the rest of the save does not, by
+   * AchievementMetric: perfectDeliveries, tendersWon, rivalsBoughtOut,
+   * dailyStreak (the longest), upgradesFitted, skyWonders. One not listed is 0;
+   * one no longer counted (an older build's bigWins) is dropped on load.
+   */
+  readonly counters: Readonly<Record<string, number>>;
+  /** AchievementDefinition ids whose reward was collected. */
+  readonly claimed: readonly string[];
+}
+
+/** The daily reward's streak (DailyRewardService; src/domain/rewards/dailyReward.ts). */
+export interface DailyRewardSaveData {
+  /** The player's calendar day (localDay) the reward was last claimed on, or null if never. */
+  readonly lastClaimDay: number | null;
+  /** Days in a row claimed, the last claim's included; 0 if never. */
+  readonly streak: number;
 }
 
 /** What the company has built for itself (FacilityService). */

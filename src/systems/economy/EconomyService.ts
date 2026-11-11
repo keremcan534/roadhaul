@@ -26,6 +26,20 @@ export const MONEY_REASONS = [
   'facility',
   'adBonus',
   'adBoost',
+  'dailyReward',
+  'achievement',
+  'crate',
+  'levelReward',
+  'booster',
+  'livery',
+  'research',
+  'fine',
+  'roadside',
+  'safeDriving',
+  'vehicleSale',
+  'cup',
+  'convoy',
+  'roadPass',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 

@@ -3,6 +3,7 @@ import { bodyCanHaul } from '../../../../src/data/definitions/BodyType';
 import type { DriverDefinition } from '../../../../src/data/definitions/DriverDefinition';
 import { CARGO } from '../../../../src/data/content/cargo';
 import { CITIES } from '../../../../src/data/content/cities';
+import { MAPS } from '../../../../src/data/content/maps';
 import { VEHICLES } from '../../../../src/data/content/vehicles';
 import { fleetJobProfit, fleetJobSeed, planFleetJob, type FleetMarket } from '../../../../src/domain/fleet/fleetJobs';
 import { contractReward } from '../../../../src/domain/missions/contractGenerator';
@@ -11,7 +12,7 @@ import { cargoFixture, driverFixture } from '../../../support/contentFixtures';
 const RULES = { averageSpeedKmh: 45, handlingSeconds: 60, payFactor: 0.75, consumptionScale: 10, fuelPricePerLiter: 12 };
 /** The three cities, 3 km apart by road (4 km to and from the third). */
 const MARKET: FleetMarket = {
-  cities: CITIES,
+  cities: CITIES.filter((city) => MAPS[0]!.depots.some((depot) => depot.cityId === city.id)),
   cargo: CARGO,
   distanceMeters: (from, to) => (from === 'city_c' || to === 'city_c' ? 4000 : 3000),
 };
@@ -46,7 +47,7 @@ describe('planFleetJob', () => {
       expect(plan({ seed, fromCityId: 'city_b' })).toEqual(job);
     }
     const destinations = new Set(Array.from({ length: 40 }, (_, seed) => plan({ seed })!.destinationCityId));
-    expect(destinations).toEqual(new Set(['city_b', 'city_c', 'city_d']));
+    expect(destinations).toEqual(new Set(['city_b', 'city_c', 'city_d', 'city_e', 'city_f', 'city_g']));
   });
 
   it('pays a contract of the day\'s pay for the road and load, times the cargo\'s, less the driver\'s share and the diesel', () => {

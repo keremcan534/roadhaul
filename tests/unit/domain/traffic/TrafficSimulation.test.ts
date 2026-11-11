@@ -7,6 +7,7 @@ import {
   type TrafficBehaviour,
   type TrafficSettings,
 } from '../../../../src/domain/traffic/TrafficSimulation';
+import { createTrailerFootprint } from '../../../../src/domain/vehicles/semiTrailer';
 import { createVehicleFootprint } from '../../../../src/domain/vehicles/VehicleFootprint';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { trafficVehicleFixture, vehicleFixture } from '../../../support/contentFixtures';
@@ -201,6 +202,24 @@ describe('TrafficSimulation', () => {
     expect(sim.z[car]).toBeGreaterThan(lorryZ + 50);
     expect(sim.link[car]).toBe(right);
     expect(sim.x[car]).toBeCloseTo(-5.25, 1);
+  });
+
+  it('waits behind a semi-trailer across both lanes as behind the truck itself', () => {
+    const graph = laneGraphOf(straightStreet());
+    const sim = scene(graph);
+    const trailerBody = { lengthMeters: 12.5, heightMeters: 4, couplingAheadMeters: 0.35, kingpinMeters: 1.2, axleBehindKingpinMeters: 7, axles: 3 };
+    const trailerFootprint = createTrailerFootprint(trailerBody, 2.55);
+    // The tractor well off the road; its trailer across both lanes, from x -6.5 to 4.7.
+    const truck = parkedAway();
+    const trailer = { x: -3.5, z: 0, heading: Math.PI / 2 };
+    const car = sim.addVehicle(CAR_TYPE, laneAt(graph, 0, -100, 0), 20, 12);
+
+    for (let step = 0; step < 30 / STEP; step++) {
+      sim.update(STEP, truck, FOOTPRINT, trailer, trailerFootprint);
+    }
+
+    expect(sim.speed[car]).toBe(0);
+    expect(sim.z[car]! + CAR.lengthMeters / 2).toBeLessThan(-trailerFootprint.radius);
   });
 
   it('brakes hard when the truck pulls out right in front, and stops short of it', () => {

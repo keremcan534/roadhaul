@@ -142,7 +142,7 @@ describe('CameraRig', () => {
     const level = camera.position.clone();
 
     // Up on its right wheels (its left side up), raised as it rolls about them.
-    rig.update(pose, AT_REST, 1 / 60, { bank: 0.3, tilt: 0, rise: 0.25, lean: 0, dip: 0 });
+    rig.update(pose, AT_REST, 1 / 60, { bank: 0.3, tilt: 0, rise: 0.25, lean: 0, dip: 0, y: 0, grade: 0 });
 
     // The driver sits on the left: up and over toward the right, the horizon rolled (the view's up tips right).
     expect(camera.position.y).toBeGreaterThan(level.y + 0.3);
@@ -152,7 +152,7 @@ describe('CameraRig', () => {
 
     // Following cameras stay level.
     rig.currentMode = 'chase';
-    rig.update(pose, AT_REST, 1 / 60, { bank: 0.3, tilt: 0, rise: 0.25, lean: 0, dip: 0 });
+    rig.update(pose, AT_REST, 1 / 60, { bank: 0.3, tilt: 0, rise: 0.25, lean: 0, dip: 0, y: 0, grade: 0 });
     expect(camera.up.toArray()).toEqual([0, 1, 0]);
   });
 
@@ -165,7 +165,7 @@ describe('CameraRig', () => {
       expect(rig.shownMode).toBe('chase');
       expect(rig.currentMode).toBe(mode);
       for (let frame = 0; frame < 120; frame++) {
-        rig.update(pose, AT_REST, 1 / 60, { bank: Math.PI / 2, tilt: 0, rise: -0.7, lean: 0, dip: 0 });
+        rig.update(pose, AT_REST, 1 / 60, { bank: Math.PI / 2, tilt: 0, rise: -0.7, lean: 0, dip: 0, y: 0, grade: 0 });
       }
       // Behind and above, level, like the chase camera.
       expect(inTruckFrame(camera, pose).z).toBeLessThan(-5);

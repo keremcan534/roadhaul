@@ -22,6 +22,79 @@ export interface RoadDefinition {
   /** A closed road loops back from the last point to the first. */
   readonly closed: boolean;
   readonly controlPoints: readonly Point2[];
+  /**
+   * Heights the road is held at, meters above the flat ground, by distance
+   * along it (a bridge's deck, an overpass); between and around them it
+   * follows the ground, graded smooth (terrainGrading.ts). Absent: it
+   * follows the ground all along.
+   */
+  readonly profile?: readonly RoadHeightDefinition[];
+  /**
+   * Stretches carried on a deck, by distance along the road: the ground is
+   * not raised to meet them (it stays below, as under a bridge or an
+   * overpass). Absent: none.
+   */
+  readonly elevated?: readonly (readonly [fromMeters: number, toMeters: number])[];
+  /**
+   * A suspension bridge carrying the road (on its deck: `elevated`): its two
+   * towers stand where the road is these distances along it, rising this
+   * high over the deck; its main cables hang between them and run down to
+   * anchorages this far beyond each. Absent: none.
+   */
+  readonly suspension?: SuspensionBridgeDefinition;
+}
+
+/** A road's suspension bridge (RoadDefinition.suspension). */
+export interface SuspensionBridgeDefinition {
+  readonly towersAtMeters: readonly [number, number];
+  readonly towerHeightMeters: number;
+  readonly backSpanMeters: number;
+}
+
+/**
+ * A way to another region (MapDefinition.gates): stopping in its `area`
+ * offers the journey to map `toMapId`, where the truck arrives at that map's
+ * gate `toGateId`, standing at its `arrival`.
+ */
+export interface GateDefinition {
+  /** Stable snake_case id: its name's key. */
+  readonly id: string;
+  readonly area: RectangleDefinition;
+  readonly toMapId: string;
+  readonly toGateId: string;
+  /** Where the truck stands on arriving here: its rear axle and heading (0° faces +Z). */
+  readonly arrival: { readonly x: number; readonly z: number; readonly headingDegrees: number };
+  /** The crossing opens at this company level; absent: from the start. */
+  readonly requiredCompanyLevel?: number;
+  /**
+   * The ferry's way out from the terminal to open water, in this map's
+   * meters (it may leave the map): the 2D maps draw the crossing along it
+   * and the other side's, joined across the water. Absent: none drawn.
+   */
+  readonly route?: readonly Point2[];
+}
+
+/** A road's height held at a distance along it (RoadDefinition.profile). */
+export interface RoadHeightDefinition {
+  readonly atMeters: number;
+  readonly heightMeters: number;
+}
+
+/**
+ * A hill or mountain the ground rises into (MapDefinition.terrain): a
+ * smooth dome `heightMeters` high at its middle, falling to nothing
+ * `radiusMeters` out; overlapping ones add up.
+ */
+export interface HillDefinition {
+  readonly x: number;
+  readonly z: number;
+  readonly radiusMeters: number;
+  readonly heightMeters: number;
+}
+
+/** The ground's shape (terrain.ts); a map without one is flat. */
+export interface TerrainDefinition {
+  readonly hills: readonly HillDefinition[];
 }
 
 /** A solid, axis-aligned block (depot hall, office, warehouse). */
@@ -29,7 +102,7 @@ export interface RoadDefinition {
  * What a building is when not a block with windows: a farm's or a works' silo, a chimney, a mine's headframe, a stack
  * of shipping containers.
  */
-export const BUILDING_FORMS = ['silo', 'chimney', 'headframe', 'containers'] as const;
+export const BUILDING_FORMS = ['silo', 'chimney', 'headframe', 'containers', 'lighthouse'] as const;
 export type BuildingForm = (typeof BUILDING_FORMS)[number];
 
 export interface BuildingDefinition {
@@ -45,6 +118,8 @@ export interface BuildingDefinition {
   readonly form?: BuildingForm;
   /** Shops along its ground floor, on the side facing its street, whatever its size; absent: none. */
   readonly shops?: boolean;
+  /** The kind of district it was grown in (districts.ts): its walls, front and roof follow it; absent: none. */
+  readonly district?: DistrictKind;
 }
 
 /** A rectangle on the ground, rotated so its length runs along `headingDegrees` (0° = +Z, 90° = +X). */
@@ -193,8 +268,8 @@ export interface RiverDefinition {
   readonly points: readonly Point2[];
 }
 
-/** How wide a river's water may be, meters. */
-export const RIVER_WIDTH_RANGE_METERS = [8, 60] as const;
+/** How wide a river's water may be, meters: a brook to a strait between two shores. */
+export const RIVER_WIDTH_RANGE_METERS = [8, 800] as const;
 
 /** What grows in a forest: pines, broadleaf trees, or stands of each. */
 export const FOREST_KINDS = ['pine', 'broadleaf', 'mixed'] as const;
@@ -225,6 +300,33 @@ export const MIN_FOREST_AREA_SQUARE_METERS = 2500;
 export interface ParkDefinition {
   /** Stable snake_case id. */
   readonly id: string;
+  readonly area: RectangleDefinition;
+}
+
+/**
+ * What a town's district is built of (districts.ts):
+ *
+ * - oldTown: narrow houses of three to five floors shoulder to shoulder,
+ *   shops on the ground floor, under tiled roofs.
+ * - apartments: blocks of five to eight floors, set back a little, with
+ *   yards between them.
+ * - offices: offices of six to twelve floors and a few towers above them.
+ * - harbour: sheds and warehouses of one or two tall floors.
+ */
+export const DISTRICT_KINDS = ['oldTown', 'apartments', 'offices', 'harbour', 'towers'] as const;
+export type DistrictKind = (typeof DISTRICT_KINDS)[number];
+
+/**
+ * A district of a town: the buildings of its kind line the town's streets
+ * inside its area (those that run north-south or east-west), facing them,
+ * and fill the blocks behind them. Grown from the map's seed, before the
+ * country, round whatever the map has placed there.
+ */
+export interface DistrictDefinition {
+  /** Stable snake_case id. */
+  readonly id: string;
+  readonly kind: DistrictKind;
+  /** Square to the map (headingDegrees 0). */
   readonly area: RectangleDefinition;
 }
 
@@ -275,10 +377,22 @@ export interface MapDefinition {
   readonly rivers?: readonly RiverDefinition[];
   /** Forests; absent: none. */
   readonly forests?: readonly ForestDefinition[];
+  /** Hills and mountains the ground rises into, the roads graded through them; absent: flat. */
+  readonly terrain?: TerrainDefinition;
   /** The towns' parks; absent: none. */
   readonly parks?: readonly ParkDefinition[];
   /** Villages the map grows, with their roads; absent: none. */
   readonly villages?: readonly VillageDefinition[];
+  /** The towns' districts the map grows (before the country); absent: none. */
+  readonly districts?: readonly DistrictDefinition[];
+  /** Where the truck can travel to another region (a ferry terminal, a border); absent: none. */
+  readonly gates?: readonly GateDefinition[];
+  /**
+   * Where this map's middle lies in the one world the regions share, meters
+   * (the 2D maps draw the other regions there, across the water); absent:
+   * at the world's middle.
+   */
+  readonly world?: { readonly x: number; readonly z: number };
   /** Where the truck starts: its rear axle position and heading (0° faces +Z, 90° faces +X). */
   readonly spawn: { readonly x: number; readonly z: number; readonly headingDegrees: number };
   /** Generated decoration: the same seed always produces the same scenery. */
@@ -317,6 +431,11 @@ export interface MapDefinition {
      * along them; the longer ones have lanes of their own. Absent or 0: none.
      */
     readonly sideRoadsPerKilometer?: number;
+    /**
+     * Traffic lights where the town's streets cross (no highway among the
+     * roads): the traffic stops at red. Absent or false: none.
+     */
+    readonly trafficSignals?: boolean;
   };
 }
 
@@ -430,9 +549,61 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
     const seen = new Set<string>();
     map.rivers.forEach((river, index) => validateRiver(river, `${path}.rivers[${index}]`, validator, onMap, seen));
   }
+  if (map.terrain !== undefined && validator.check(typeof map.terrain === 'object' && map.terrain !== null && Array.isArray(map.terrain.hills), `${path}.terrain.hills`, 'must be a list')) {
+    map.terrain.hills.forEach((hill, index) => {
+      const hillPath = `${path}.terrain.hills[${index}]`;
+      validator.check(Number.isFinite(hill.x) && Number.isFinite(hill.z), hillPath, 'must have a place');
+      validator.positiveNumber(hill.radiusMeters, `${hillPath}.radiusMeters`);
+      validator.check(Number.isFinite(hill.heightMeters), `${hillPath}.heightMeters`, 'must be a number (below 0: a hollow)');
+    });
+  }
+  if (map.world !== undefined) {
+    validator.check(Number.isFinite(map.world.x) && Number.isFinite(map.world.z), `${path}.world`, 'must be a place in the world');
+  }
+  if (map.gates !== undefined && validator.check(Array.isArray(map.gates), `${path}.gates`, 'must be a list')) {
+    map.gates.forEach((gate, index) => {
+      const gatePath = `${path}.gates[${index}]`;
+      validator.id(gate.id, `${gatePath}.id`);
+      validator.id(gate.toMapId, `${gatePath}.toMapId`);
+      validator.id(gate.toGateId, `${gatePath}.toGateId`);
+      validator.check(inside(gate.area.x, gate.area.z), `${gatePath}.area`, 'must be inside the map');
+      validator.check(inside(gate.arrival.x, gate.arrival.z), `${gatePath}.arrival`, 'must be inside the map');
+      if (gate.requiredCompanyLevel !== undefined) {
+        validator.check(
+          Number.isInteger(gate.requiredCompanyLevel) && gate.requiredCompanyLevel >= 1,
+          `${gatePath}.requiredCompanyLevel`,
+          'must be a level from 1',
+        );
+      }
+      if (gate.route !== undefined) {
+        validator.check(
+          Array.isArray(gate.route) && gate.route.length >= 2 && gate.route.every((point) => Number.isFinite(point[0]) && Number.isFinite(point[1])),
+          `${gatePath}.route`,
+          'must be two or more points',
+        );
+      }
+    });
+  }
   if (map.forests !== undefined && validator.check(Array.isArray(map.forests), `${path}.forests`, 'must be a list')) {
     const seen = new Set<string>();
     map.forests.forEach((forest, index) => validateForest(forest, `${path}.forests[${index}]`, validator, inside, seen));
+  }
+  if (map.districts !== undefined && validator.check(Array.isArray(map.districts), `${path}.districts`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.districts.forEach((district, index) => {
+      const districtPath = `${path}.districts[${index}]`;
+      if (!validator.check(typeof district === 'object' && district !== null, districtPath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(district.id, `${districtPath}.id`)) {
+        validator.check(!seen.has(district.id), `${districtPath}.id`, `duplicate district id "${district.id}"`);
+        seen.add(district.id);
+      }
+      validator.oneOf(district.kind, DISTRICT_KINDS, `${districtPath}.kind`);
+      if (validateRectangle(district.area, `${districtPath}.area`, validator, inside)) {
+        validator.check(district.area.headingDegrees === 0, `${districtPath}.area.headingDegrees`, 'must be 0: square to the map');
+      }
+    });
   }
   if (map.parks !== undefined && validator.check(Array.isArray(map.parks), `${path}.parks`, 'must be a list')) {
     const seen = new Set<string>();
@@ -514,7 +685,7 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
         `must be 0 to ${MAX_SIDE_ROADS_PER_KILOMETER}`,
       );
     }
-    for (const flag of ['streetscape', 'countryside', 'roadSigns'] as const) {
+    for (const flag of ['streetscape', 'countryside', 'roadSigns', 'trafficSignals'] as const) {
       const value = scenery[flag];
       if (value !== undefined) {
         validator.check(typeof value === 'boolean', `${path}.scenery.${flag}`, 'must be true or false');
@@ -773,6 +944,31 @@ function validateRoad(
         `${path}.controlPoints[${index}]`,
         'must be an [x, z] pair inside the map',
       );
+    });
+  }
+  if (road.profile !== undefined && validator.check(Array.isArray(road.profile), `${path}.profile`, 'must be a list')) {
+    road.profile.forEach((height, index) => {
+      validator.check(
+        Number.isFinite(height.atMeters) && height.atMeters >= 0 && Number.isFinite(height.heightMeters),
+        `${path}.profile[${index}]`,
+        'must hold a height at a distance along the road',
+      );
+      validator.check(index === 0 || height.atMeters > road.profile![index - 1]!.atMeters, `${path}.profile[${index}]`, 'must come after the one before');
+    });
+  }
+  if (road.suspension !== undefined) {
+    const [first, second] = road.suspension.towersAtMeters;
+    validator.check(
+      Number.isFinite(first) && Number.isFinite(second) && first >= 0 && second > first,
+      `${path}.suspension.towersAtMeters`,
+      'must be two distances along the road, the second further',
+    );
+    validator.positiveNumber(road.suspension.towerHeightMeters, `${path}.suspension.towerHeightMeters`);
+    validator.positiveNumber(road.suspension.backSpanMeters, `${path}.suspension.backSpanMeters`);
+  }
+  if (road.elevated !== undefined && validator.check(Array.isArray(road.elevated), `${path}.elevated`, 'must be a list')) {
+    road.elevated.forEach(([from, to], index) => {
+      validator.check(Number.isFinite(from) && Number.isFinite(to) && from >= 0 && to > from, `${path}.elevated[${index}]`, 'must run from a distance to a further one');
     });
   }
 }

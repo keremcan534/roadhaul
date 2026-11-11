@@ -1,4 +1,4 @@
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, Scene, Vector3 } from 'three';
+import { BoxGeometry, Frustum, Group, Matrix4, Mesh, MeshBasicMaterial, PerspectiveCamera, Scene, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import type { RoadDefinition } from '../../../../src/data/definitions/MapDefinition';
 import { RoadPath } from '../../../../src/domain/world/RoadPath';
@@ -116,6 +116,30 @@ describe('world tiles', () => {
     expect([near.visible, edge.visible, far.visible]).toEqual([false, false, false]);
     culling.update(0, 0);
     expect(near.visible).toBe(true);
+  });
+
+  it('given the camera\'s view, also hides the objects out of it, keeping those at its edge', () => {
+    const culling = new FarCulling();
+    const ahead = box(0, 100);
+    const behind = box(0, -100);
+    const aside = box(300, 20);
+    // Just out of the view's edge, but within the margin swaying trees reach past their bounds.
+    const edge = box(108, 100, 4);
+    for (const object of [ahead, behind, aside, edge]) {
+      culling.add(object);
+    }
+    // A camera at the origin, 5 m up, looking along +z with a 90° view (45° either side).
+    const camera = new PerspectiveCamera(90, 1, 0.5, 1000);
+    camera.position.set(0, 5, 0);
+    camera.lookAt(0, 5, 1);
+    camera.updateMatrixWorld();
+    const view = new Frustum().setFromProjectionMatrix(new Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+
+    culling.update(0, 0, view);
+    expect([ahead.visible, behind.visible, aside.visible, edge.visible]).toEqual([true, false, false, true]);
+    // Without the view, by distance only, as before.
+    culling.update(0, 0);
+    expect([ahead.visible, behind.visible, aside.visible, edge.visible]).toEqual([true, true, true, true]);
   });
 
   it('takes as many objects as it is given', () => {

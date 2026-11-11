@@ -46,7 +46,10 @@ test('shows the events in the company panel, and pays a careful delivery the Saf
   const total = await credits(result.locator('.result-dialog__line.is-total dd'));
   const bonus = await credits(event.locator('.result-dialog__event-bonus'));
   expect(bonus).toBe(Math.round(total * 0.15));
-  expect(await credits(result.locator('.result-dialog__line').last().locator('dd'))).toBe(5000 + total + bonus);
+  // And the safe-driving bonus, where the drive had no fine and no knock.
+  const safeLine = result.locator('[data-value="safe-driving"] .result-dialog__rivalry-amount');
+  const safe = (await safeLine.count()) > 0 ? await credits(safeLine) : 0;
+  expect(await credits(result.locator('.result-dialog__line').last().locator('dd'))).toBe(5000 + total + bonus + safe);
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
 
   await result.locator('[data-action="continue"]').click();

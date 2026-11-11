@@ -6,6 +6,24 @@ import type { GameConfig } from '../data/config/GameConfig';
 import type { ContentCatalog } from '../data/ContentCatalog';
 import type { CompanyService } from '../systems/company/CompanyService';
 import type { FacilityService } from '../systems/company/FacilityService';
+import type { ResearchService } from '../systems/company/ResearchService';
+import type { CareerService } from '../systems/company/CareerService';
+import type { RoadEventService } from '../systems/world/RoadEventService';
+import type { ConvoyService } from '../systems/world/ConvoyService';
+import type { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
+import type { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
+import type { RoadPassService } from '../systems/rewards/RoadPassService';
+import type { CityIncidentService } from '../systems/world/CityIncidentService';
+import type { NewsService } from '../systems/world/NewsService';
+import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
+import type { ReviewService } from '../systems/review/ReviewService';
+import type { AchievementService } from '../systems/achievements/AchievementService';
+import type { CrateService } from '../systems/rewards/CrateService';
+import type { QuestService } from '../systems/rewards/QuestService';
+import type { SupplyService } from '../systems/rewards/SupplyService';
+import type { LiveryService } from '../systems/vehicles/LiveryService';
+import type { SkyWonderService } from '../systems/weather/SkyWonderService';
+import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
 import type { EconomyService } from '../systems/economy/EconomyService';
@@ -48,6 +66,8 @@ export const ServiceKeys = Object.freeze({
   /** The game's clock, and the sun, the moon and the stars it turns (spec §39). */
   timeOfDay: serviceKey<TimeOfDayService>('TimeOfDayService'),
   season: serviceKey<SeasonService>('SeasonService'),
+  /** The northern lights some nights, and the sky's wonders the player has seen. */
+  skyWonders: serviceKey<SkyWonderService>('SkyWonderService'),
   /** The timed events of spec §22 (not the event bus: that is `events`). */
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),
@@ -59,9 +79,39 @@ export const ServiceKeys = Object.freeze({
   company: serviceKey<CompanyService>('CompanyService'),
   /** What the company builds for itself: a workshop, a fuel depot, a truck yard… */
   facilities: serviceKey<FacilityService>('FacilityService'),
+  /** The daily reward: credits for each day's first claim, more for days in a row. */
+  dailyReward: serviceKey<DailyRewardService>('DailyRewardService'),
+  /** Asks for a rating on the store, seldom, after deliveries in good order. */
+  review: serviceKey<ReviewService>('ReviewService'),
+  /** The company's goals and their rewards. */
+  achievements: serviceKey<AchievementService>('AchievementService'),
+  /** Crates: earned for perfect streaks, levels and the daily streak; opened for credits and crate colours. */
+  crates: serviceKey<CrateService>('CrateService'),
+  /** What crates give besides credits and looks: upgrade parts and boosters. */
+  supplies: serviceKey<SupplyService>('SupplyService'),
+  /** The day's quests, each a crate. */
+  quests: serviceKey<QuestService>('QuestService'),
+  /** The trucks' designs and the trailer text. */
+  liveries: serviceKey<LiveryService>('LiveryService'),
+  /** The region's rare happenings near the truck: fires, police chases, fireworks. */
+  cityIncidents: serviceKey<CityIncidentService>('CityIncidentService'),
+  /** The region's news. */
+  news: serviceKey<NewsService>('NewsService'),
+  /** The research tree: points from deliveries, perks for the whole company. */
+  research: serviceKey<ResearchService>('ResearchService'),
+  /** The career's records, for the career page. */
+  career: serviceKey<CareerService>('CareerService'),
+  /** Speed cameras, road works, stranded drivers and the safe-driving bonus. */
+  roadEvents: serviceKey<RoadEventService>('RoadEventService'),
+  /** Convoys to ride with. */
+  convoy: serviceKey<ConvoyService>('ConvoyService'),
+  /** The company levels' rewards, waiting to be collected. */
+  levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),
   fuel: serviceKey<FuelService>('FuelService'),
   garage: serviceKey<GarageService>('GarageService'),
+  /** The used-truck market: a few used trucks every few hours. */
+  usedTrucks: serviceKey<UsedTruckMarket>('UsedTruckMarket'),
   /** Ads and purchases (spec §35–36), behind the platform's AdService and PurchaseStore. */
   monetization: serviceKey<MonetizationService>('MonetizationService'),
   upgrades: serviceKey<UpgradeService>('UpgradeService'),
@@ -71,6 +121,10 @@ export const ServiceKeys = Object.freeze({
   fleet: serviceKey<FleetService>('FleetService'),
   /** The rival companies, the cities' standing, campaigns and tenders (spec §65 V3). */
   rivals: serviceKey<RivalService>('RivalService'),
+  /** The weekly cup against the rivals. */
+  weeklyCup: serviceKey<WeeklyCupService>('WeeklyCupService'),
+  /** The Road Pass: seasons of tiers, and Road Pass Plus's colours. */
+  roadPass: serviceKey<RoadPassService>('RoadPassService'),
   /** The fleet's and the rivals' trucks in the traffic around the truck. */
   companyTraffic: serviceKey<CompanyTraffic>('CompanyTraffic'),
   saves: serviceKey<SaveService>('SaveService'),

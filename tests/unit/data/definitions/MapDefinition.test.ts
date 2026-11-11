@@ -164,6 +164,8 @@ describe('validateMapDefinition', () => {
     expect(issuePaths(dressed({}))).toEqual([]);
     expect(issuePaths(dressed({ streetscape: true, countryside: false }))).toEqual([]);
     expect(issuePaths(dressed({ streetscape: 'yes', countryside: 1 }))).toEqual(['map.scenery.streetscape', 'map.scenery.countryside']);
+    expect(issuePaths(dressed({ trafficSignals: true }))).toEqual([]);
+    expect(issuePaths(dressed({ trafficSignals: 'on' }))).toEqual(['map.scenery.trafficSignals']);
   });
 
   it('reports depots that are not objects or have broken rectangles', () => {
@@ -290,11 +292,11 @@ describe('rivers', () => {
     expect(issuePaths(mapFixture({ rivers: [river()] }))).toEqual([]);
   });
 
-  it('asks for an id of its own, a width from 8 to 60 m and a course of two or more points on the map', () => {
+  it('asks for an id of its own, a width from 8 to 800 m (a strait) and a course of two or more points on the map', () => {
     const map = mapFixture({
       rivers: [
         river({ widthMeters: 7 }),
-        river({ id: 'Bad River', widthMeters: 61 }),
+        river({ id: 'Bad River', widthMeters: 801 }),
         river({ id: 'test_river_2', points: [[40, 200]] }),
         river({ id: 'test_river_3', points: [[40, 200], [40, -201]] }),
         river(),

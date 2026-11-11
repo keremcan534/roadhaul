@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CURRENT_SAVE_VERSION } from '../../../../src/domain/save/SaveGameData';
+import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { migrateSave, SAVE_MIGRATIONS, type SaveMigration } from '../../../../src/domain/save/saveMigrations';
 
 const context = { defaultMapId: 'north_valley' };
@@ -19,6 +20,30 @@ const NEW_RIVALS = {
 };
 /** The facilities of a company from a build before v11: none built. */
 const NO_FACILITIES = { levels: {} };
+/** The daily reward of a company from a build before v12: never claimed. */
+const NO_DAILY = { lastClaimDay: null, streak: 0 };
+/** The goals of a company from a build before v13, which recorded nothing of them. */
+const NO_GOALS = { counters: {}, claimed: [] };
+/** The crates of a company from a build before v14: none, no streak. */
+const NO_CRATES = { held: {}, opened: 0, paints: [], liveries: [], perfectStreak: 0, bestPerfectStreak: 0, freeCrateAtMs: 0 };
+/** The designs of a company from a build before v16: the classic everywhere. */
+const NO_LIVERIES = { bought: [], worn: {}, text: null };
+const NO_RESEARCH = { points: 0, researched: [] };
+/** The career of a company from a build before v18: nothing kept yet. */
+const NO_CAREER = emptyCareer();
+/** The road's events of a company from a build before v19: no warning given, the contract clean. */
+const NO_ROAD_EVENTS = { warned: false, redLightWarned: false, fined: false, knocked: false };
+/** The used-truck market of a company from a build before v20: nothing bought from it. */
+const NO_USED_TRUCKS = { period: null, sold: [] };
+/** The weekly cup of a company from a build before v21: no points, no cup played. */
+const NO_CUP = { week: null, points: 0, last: null };
+/** The Road Pass of a company from a build before v22: no points, nothing collected. */
+const NO_PASS = { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] };
+/** What crates gave and the day's quests of a company from a build before v15: none. */
+const NO_SUPPLIES = { parts: 0, boosters: {}, payBoostLeft: 0, xpBoostLeft: 0 };
+const NO_QUESTS = { day: null, counts: {}, distanceStartMeters: 0, claimed: [], bonusClaimed: false };
+/** The level rewards of a company from a build before v14 (level 2, as every save here): its levels count as collected. */
+const LEVELS_COLLECTED = { rewardedLevel: 2 };
 
 /** A garage as v7 has it: every truck in its factory colour. */
 function inFactoryColours<T extends { vehicles: readonly object[] }>(garage: T): T {
@@ -52,7 +77,7 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...V1_SAVE,
-        version: 11,
+        version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS,
         garage: {
           activeVehicleInstanceId: 'truck_001',
           vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 80, damage: 0.1, upgrades: {}, paintId: null }],
@@ -62,7 +87,7 @@ describe('save migrations', () => {
         stats: { deliveriesCompleted: 0, deliveriesFailed: 0, creditsEarned: 0, distanceDrivenMeters: 0 },
         events: { runs: [] },
         tutorial: { step: 'done' },
-        fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES,
+        fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS,
       },
     });
   });
@@ -127,13 +152,15 @@ describe('save migrations', () => {
       garage: inFactoryColours(v3.garage),
       // The contract under way is one of the game's own.
       missions: { active: { ...v3.missions.active, contract: null } },
-      fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES,
+      fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY,
+      // The upgrade fitted counts toward the goals.
+      achievements: { counters: { upgradesFitted: 1 }, claimed: [] },
     };
     expect(moved).toEqual({
       ok: true,
-      value: { ...v3, version: 11, world: { mapId: 'north_valley', truck: null }, ...added },
+      value: { ...v3, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, world: { mapId: 'north_valley', truck: null }, ...added },
     });
-    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 11, ...added } });
+    expect(kept).toEqual({ ok: true, value: { ...elsewhere, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, ...added } });
   });
 
   it('starts the events of a v4 save with no progress, keeping the rest', () => {
@@ -153,11 +180,12 @@ describe('save migrations', () => {
       ok: true,
       value: {
         ...v4,
-        version: 11,
+        version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS,
         events: { runs: [] },
         tutorial: { step: 'done' },
         garage: inFactoryColours(v4.garage),
-        fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES,
+        fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY,
+        achievements: { counters: { upgradesFitted: 2 }, claimed: [] },
       },
     });
   });
@@ -178,7 +206,7 @@ describe('save migrations', () => {
 
     expect(migrateSave(v5, context)).toEqual({
       ok: true,
-      value: { ...v5, version: 11, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage), fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES },
+      value: { ...v5, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, tutorial: { step: 'done' }, garage: inFactoryColours(v5.garage), fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS },
     });
   });
 
@@ -202,7 +230,13 @@ describe('save migrations', () => {
 
     expect(migrateSave(v6, context)).toEqual({
       ok: true,
-      value: { ...v6, version: 11, garage: inFactoryColours(v6.garage), fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES },
+      value: {
+        ...v6,
+        version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS,
+        garage: inFactoryColours(v6.garage),
+        fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY,
+        achievements: { counters: { upgradesFitted: 1 }, claimed: [] },
+      },
     });
   });
 
@@ -233,9 +267,9 @@ describe('save migrations', () => {
 
     expect(migrateSave(v7, context)).toEqual({
       ok: true,
-      value: { ...v7, version: 11, missions: { active: { ...v7.missions.active, contract: null } }, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES },
+      value: { ...v7, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, missions: { active: { ...v7.missions.active, contract: null } }, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS },
     });
-    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 11, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES } });
+    expect(migrateSave(idle, context)).toEqual({ ok: true, value: { ...idle, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v8 company a fleet with nobody hired yet, and keeps the rest as it was', () => {
@@ -256,7 +290,7 @@ describe('save migrations', () => {
       tutorial: { step: 'done' },
     };
 
-    expect(migrateSave(v8, context)).toEqual({ ok: true, value: { ...v8, version: 11, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES } });
+    expect(migrateSave(v8, context)).toEqual({ ok: true, value: { ...v8, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, fleet: NO_FLEET, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v9 company rivals that start out afresh, and keeps the rest, its fleet too, as it was', () => {
@@ -291,7 +325,7 @@ describe('save migrations', () => {
       },
     };
 
-    expect(migrateSave(v9, context)).toEqual({ ok: true, value: { ...v9, version: 11, rivals: NEW_RIVALS, facilities: NO_FACILITIES } });
+    expect(migrateSave(v9, context)).toEqual({ ok: true, value: { ...v9, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, rivals: NEW_RIVALS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
   });
 
   it('gives a v10 company no facilities yet, and keeps the rest, its fleet and rivals too, as it was', () => {
@@ -302,7 +336,134 @@ describe('save migrations', () => {
       rivals: { ...NEW_RIVALS, tendersPosted: 2, jobsPlanned: 7 },
     };
 
-    expect(migrateSave(v10, context)).toEqual({ ok: true, value: { ...v10, version: 11, facilities: NO_FACILITIES } });
+    expect(migrateSave(v10, context)).toEqual({ ok: true, value: { ...v10, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, facilities: NO_FACILITIES, daily: NO_DAILY, achievements: NO_GOALS } });
+  });
+
+  it('gives a v12 company goals counted from what its save shows, none collected, and keeps the rest as it was', () => {
+    const v12 = {
+      ...V1_SAVE,
+      version: 12,
+      garage: {
+        activeVehicleInstanceId: 'truck_001',
+        vehicles: [
+          { instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 100, damage: 0, upgrades: { engine: 2, brakes: 1 }, paintId: null },
+          { instanceId: 'truck_002', definitionId: 'rh_h2', fuelLiters: 100, damage: 0, upgrades: { tyres: 3 }, paintId: null },
+        ],
+      },
+      fleet: NO_FLEET,
+      rivals: { ...NEW_RIVALS, companies: [{ rivalId: 'a', acquired: true }, { rivalId: 'b', acquired: false }] },
+      facilities: NO_FACILITIES,
+      daily: { lastClaimDay: 20_000, streak: 4 },
+    };
+
+    expect(migrateSave(v12, context)).toEqual({
+      ok: true,
+      value: { ...v12, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, achievements: { counters: { dailyStreak: 4, upgradesFitted: 6, rivalsBoughtOut: 1 }, claimed: [] } },
+    });
+  });
+
+  it('gives a v11 company a daily reward never claimed, and keeps the rest, its facilities too, as it was', () => {
+    const v11 = {
+      ...V1_SAVE,
+      version: 11,
+      fleet: NO_FLEET,
+      rivals: NEW_RIVALS,
+      facilities: { levels: { workshop: 2 } },
+    };
+
+    expect(migrateSave(v11, context)).toEqual({ ok: true, value: { ...v11, version: 23, crates: NO_CRATES, levelRewards: LEVELS_COLLECTED, supplies: NO_SUPPLIES, quests: NO_QUESTS, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS, daily: NO_DAILY, achievements: NO_GOALS } });
+  });
+
+  it('gives a v13 company no crates yet, counts the levels it has as collected, and keeps the rest as it was', () => {
+    const v13 = { ...V1_SAVE, version: 13, company: { level: 5, xp: 41_000, reputation: 80 }, achievements: NO_GOALS };
+
+    // Its XP reaches level 8 now; the levels above the fifth wait to be collected.
+    expect(migrateSave(v13, context)).toEqual({
+      ok: true,
+      value: {
+        ...v13,
+        version: 23,
+        crates: NO_CRATES,
+        levelRewards: { rewardedLevel: 5 },
+        supplies: NO_SUPPLIES,
+        quests: NO_QUESTS,
+        liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS,
+      },
+    });
+    expect(migrateSave({ ...v13, company: 'odd' }, context)).toMatchObject({ ok: true, value: { levelRewards: { rewardedLevel: 1 } } });
+  });
+
+  it('gives a v14 company its free crate now, no supplies and no quests yet, and keeps its crates as they were', () => {
+    const crates = { held: { gold: 2 }, opened: 4, paints: ['aurora_green'], perfectStreak: 3, bestPerfectStreak: 7 };
+    const v14 = { ...V1_SAVE, version: 14, crates, levelRewards: { rewardedLevel: 2 } };
+
+    expect(migrateSave(v14, context)).toEqual({
+      ok: true,
+      value: {
+        ...v14,
+        version: 23,
+        crates: { ...crates, freeCrateAtMs: 0, liveries: [] },
+        supplies: NO_SUPPLIES,
+        quests: NO_QUESTS,
+        liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS,
+      },
+    });
+  });
+
+  it('gives a v15 company the classic on every truck, and its crates no designs yet', () => {
+    const crates = { held: {}, opened: 0, paints: [], perfectStreak: 0, bestPerfectStreak: 0, freeCrateAtMs: 5 };
+    const v15 = { ...V1_SAVE, version: 15, crates };
+
+    expect(migrateSave(v15, context)).toEqual({ ok: true, value: { ...v15, version: 23, crates: { ...crates, liveries: [] }, liveries: NO_LIVERIES, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS } });
+  });
+
+  it('gives a v16 company the research tree, nothing researched and no points yet', () => {
+    const v16 = { ...V1_SAVE, version: 16, liveries: { bought: ['speed'], worn: {}, text: 'KUZEY' } };
+
+    expect(migrateSave(v16, context)).toEqual({ ok: true, value: { ...v16, version: 23, research: NO_RESEARCH, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS } });
+  });
+
+  it('gives a v17 company an empty career, its research kept', () => {
+    const research = { points: 4, researched: ['eco_driving'] };
+    const v17 = { ...V1_SAVE, version: 17, research };
+
+    expect(migrateSave(v17, context)).toEqual({ ok: true, value: { ...v17, version: 23, career: NO_CAREER, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS } });
+  });
+
+  it('gives a v18 company the road\'s events, no warning given yet, and no fines or helps on its record', () => {
+    const career = { ...NO_CAREER, tonsDelivered: 30, cargo: { furniture: 2 } };
+    const { fines: _fines, finesPaid: _paid, roadsideHelps: _helps, ...careerBefore } = career;
+    const v18 = { ...V1_SAVE, version: 18, career: careerBefore };
+
+    expect(migrateSave(v18, context)).toEqual({ ok: true, value: { ...v18, version: 23, career, roadEvents: NO_ROAD_EVENTS, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS } });
+  });
+
+  it('gives a v19 company a used-truck market it has bought nothing from', () => {
+    const v19 = { ...V1_SAVE, version: 19, roadEvents: { warned: true, fined: false, knocked: true } };
+
+    expect(migrateSave(v19, context)).toEqual({
+      ok: true,
+      value: { ...v19, version: 23, roadEvents: { ...v19.roadEvents, redLightWarned: false }, usedTrucks: NO_USED_TRUCKS, weeklyCup: NO_CUP, roadPass: NO_PASS },
+    });
+  });
+
+  it('gives a v20 company a weekly cup with no points and none played', () => {
+    const v20 = { ...V1_SAVE, version: 20, usedTrucks: { period: 7, sold: [1] } };
+
+    expect(migrateSave(v20, context)).toEqual({ ok: true, value: { ...v20, version: 23, weeklyCup: NO_CUP, roadPass: NO_PASS } });
+  });
+
+  it('gives a v21 company a Road Pass with no points and nothing collected', () => {
+    const v21 = { ...V1_SAVE, version: 21, weeklyCup: { week: 2900, points: 40, last: null } };
+
+    expect(migrateSave(v21, context)).toEqual({ ok: true, value: { ...v21, version: 23, roadPass: NO_PASS } });
+  });
+
+  it('gives a v22 company no red light warning yet, keeping its speeding warning and the rest', () => {
+    const roadEvents = { warned: true, fined: true, knocked: false };
+    const v22 = { ...V1_SAVE, version: 22, roadEvents, roadPass: NO_PASS };
+
+    expect(migrateSave(v22, context)).toEqual({ ok: true, value: { ...v22, version: 23, roadEvents: { ...roadEvents, redLightWarned: false } } });
   });
 
   it('migrates odd data without throwing, leaving it to validation', () => {

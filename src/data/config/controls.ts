@@ -82,6 +82,23 @@ export function isSeasonChoice(value: unknown): value is SeasonChoice {
   return (SEASON_CHOICES as readonly unknown[]).includes(value);
 }
 
+/**
+ * The frame rate (Settings): at most 30 frames a second (the battery's
+ * choice), at most 60, or as many as the screen shows (`max`: 90, 120 or
+ * more on phones with such screens, which the Android app asks for).
+ */
+export const FRAME_RATE_CHOICES = ['30', '60', 'max'] as const;
+export type FrameRateChoice = (typeof FRAME_RATE_CHOICES)[number];
+
+export function isFrameRateChoice(value: unknown): value is FrameRateChoice {
+  return (FRAME_RATE_CHOICES as readonly unknown[]).includes(value);
+}
+
+/** The most frames a second `choice` allows; 0 for no cap (as many as the screen shows). */
+export function frameRateCap(choice: FrameRateChoice): number {
+  return choice === 'max' ? 0 : Number(choice);
+}
+
 /** The choice that shows the weather `held` (its id, or null while it changes by itself): `auto` for one not offered. */
 export function weatherChoiceFor(held: string | null): WeatherChoice {
   return held !== null && isWeatherChoice(held) ? held : 'auto';

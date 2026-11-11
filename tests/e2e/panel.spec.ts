@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { closePanel, openCompanyHq, openGame, openPanel, shownSpeed, watchForProblems } from './support';
+import { closePanel, continueGame, openCompanyHq, openGame, openPanel, shownSpeed, watchForProblems } from './support';
 
 /** Drags one finger up the screen from (x, y) by `distance` pixels, as a phone's touch screen reports it. */
 async function swipeUp(page: Page, x: number, y: number, distance: number): Promise<void> {
@@ -105,7 +105,7 @@ test('leaves for the main menu from the pause menu, and continues on the road', 
   await page.locator('[data-action="pause-main-menu"]').click();
   await expect(html).toHaveAttribute('data-game-state', 'mainMenu');
   await expect(page.locator('.hud-dock')).toBeHidden();
-  await page.locator('[data-action="continue-game"]').click();
+  await continueGame(page);
   await expect(html).toHaveAttribute('data-game-state', 'driving');
   await expect(page.locator('.hud-dock')).toBeVisible();
   expect(problems).toEqual([]);

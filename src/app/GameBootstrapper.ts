@@ -10,6 +10,25 @@ import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
 import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
+import { ResearchService } from '../systems/company/ResearchService';
+import { CareerService } from '../systems/company/CareerService';
+import { RoadEventService } from '../systems/world/RoadEventService';
+import { ConvoyService } from '../systems/world/ConvoyService';
+import { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
+import { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
+import { RoadPassService } from '../systems/rewards/RoadPassService';
+import { CityIncidentService } from '../systems/world/CityIncidentService';
+import { NewsService } from '../systems/world/NewsService';
+import { DailyRewardService } from '../systems/rewards/DailyRewardService';
+import { CrateService } from '../systems/rewards/CrateService';
+import { QuestService } from '../systems/rewards/QuestService';
+import { SupplyService } from '../systems/rewards/SupplyService';
+import { LiveryService } from '../systems/vehicles/LiveryService';
+import { SkyWonderService } from '../systems/weather/SkyWonderService';
+import { LevelRewardService } from '../systems/company/LevelRewardService';
+import { ReviewService } from '../systems/review/ReviewService';
+import { AchievementService, type CompanyMeasures } from '../systems/achievements/AchievementService';
+import { SeededRandom } from '../core/random/SeededRandom';
 import { CrashService } from '../systems/crash/CrashService';
 import { DrivingService } from '../systems/driving/DrivingService';
 import { EconomyService } from '../systems/economy/EconomyService';
@@ -127,6 +146,38 @@ export class GameBootstrapper {
         new TimeOfDayService(catalog, clock, config.timeOfDay, this.options.localTimeOffsetMinutes ?? 0),
       );
       const season = container.register(ServiceKeys.season, new SeasonService(clock, events));
+      // The sky's wonders: each night's draw from a run of its own.
+      const skyLuck = new SeededRandom((clock.now() * 3 + 7) % 2_147_483_647);
+      container.register(
+        ServiceKeys.skyWonders,
+        new SkyWonderService(config.skyWonders, timeOfDay, season, () => skyLuck.next(), events, logger.withCategory('Sky')),
+      );
+      // The region's rare happenings near the truck, and its news: each with a run of its own.
+      const incidentLuck = new SeededRandom((clock.now() * 5 + 29) % 2_147_483_647);
+      container.register(
+        ServiceKeys.cityIncidents,
+        new CityIncidentService(
+          config.cityLife,
+          // On the road, not the main menu's backdrop (a world is loaded behind it too).
+          {
+            get isDriving() {
+              return gameState.current === 'driving' && driving.isDriving;
+            },
+            get vehicle() {
+              return driving.vehicle;
+            },
+            get world() {
+              return driving.world;
+            },
+          },
+          timeOfDay,
+          () => incidentLuck.next(),
+          events,
+          logger.withCategory('City'),
+        ),
+      );
+      const newsLuck = new SeededRandom((clock.now() * 11 + 3) % 2_147_483_647);
+      container.register(ServiceKeys.news, new NewsService(catalog, timeOfDay, () => newsLuck.next(), events));
       container.register(
         ServiceKeys.weather,
         new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),
@@ -147,6 +198,23 @@ export class GameBootstrapper {
         ServiceKeys.facilities,
         new FacilityService(catalog, economy, company, perks, events, logger.withCategory('Facilities')),
       );
+      // The research tree: points from deliveries, perks for good; after the economy, its pay bonus on top.
+      const research = container.register(
+        ServiceKeys.research,
+        new ResearchService(catalog, config.research, economy, company, perks, events, logger.withCategory('Research')),
+      );
+      const dailyReward = container.register(
+        ServiceKeys.dailyReward,
+        new DailyRewardService(
+          config.dailyReward,
+          economy,
+          company,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          events,
+          logger.withCategory('DailyReward'),
+        ),
+      );
       const dailyContracts = container.register(
         ServiceKeys.dailyContracts,
         new DailyContracts(catalog, driving, clock, config.missions.dailyContracts, perks),
@@ -166,6 +234,33 @@ export class GameBootstrapper {
           perks,
         ),
       );
+      // The career's records: deliveries by cargo and town, the longest haul, the top speed, fuel and repairs.
+      const career = container.register(ServiceKeys.career, new CareerService(catalog, driving, missions, events));
+      // The road's events: speed cameras, the day's road works, stranded drivers, the safe-driving bonus (after the
+      // economy: a delivery is paid before its bonus).
+      const roadLuck = new SeededRandom((clock.now() * 13 + 17) % 2_147_483_647);
+      const roadEvents = container.register(
+        ServiceKeys.roadEvents,
+        new RoadEventService(
+          driving,
+          economy,
+          company,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          config.roadEvents,
+          config.traffic.speedLimitsKmh,
+          () => roadLuck.next(),
+          events,
+          logger.withCategory('Road'),
+          traffic,
+        ),
+      );
+      // Convoys to ride with now and then, paid by the kilometre.
+      const convoyLuck = new SeededRandom((clock.now() * 19 + 23) % 2_147_483_647);
+      container.register(
+        ServiceKeys.convoy,
+        new ConvoyService(driving, economy, config.convoy, () => convoyLuck.next(), events, logger.withCategory('Convoy')),
+      );
       container.register(
         ServiceKeys.navigation,
         new NavigationService(
@@ -182,7 +277,32 @@ export class GameBootstrapper {
       );
       const fuel = container.register(
         ServiceKeys.fuel,
-        new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel')),
+        new FuelService(driving, damage, economy, events, config.fuel, logger.withCategory('Fuel'), perks),
+      );
+      // What crates give besides credits and looks: after the company, so a delivery's own experience comes first.
+      const supplies = container.register(
+        ServiceKeys.supplies,
+        new SupplyService(config.crates.boosters, economy, company, fuel, damage, events, logger.withCategory('Supplies')),
+      );
+      // The crates' draws: a run of their own.
+      const crateLuck = new SeededRandom((clock.now() * 7 + 13) % 2_147_483_647);
+      const crates = container.register(
+        ServiceKeys.crates,
+        new CrateService(
+          config.crates,
+          catalog,
+          economy,
+          supplies,
+          clock,
+          () => crateLuck.next(),
+          config.dailyReward.credits.length,
+          events,
+          logger.withCategory('Crates'),
+        ),
+      );
+      const levelRewards = container.register(
+        ServiceKeys.levelRewards,
+        new LevelRewardService(config.company.levelRewards, company, economy, crates, events, logger.withCategory('Levels')),
       );
       // Ads and purchases: none until the platform attaches its own (main.ts); the garage asks it for the premium paints.
       const monetization = container.register(
@@ -196,6 +316,28 @@ export class GameBootstrapper {
           clock,
           config.monetization,
           logger.withCategory('Monetization'),
+          crates,
+        ),
+      );
+      container.register(
+        ServiceKeys.review,
+        new ReviewService(config.review, clock, storage, events, logger.withCategory('Review')),
+      );
+      // The Road Pass: seasons of tiers, its Plus track (looks only) through the store; before the garage, whose
+      // paint shop asks it which pass colours are the company's.
+      const roadPass = container.register(
+        ServiceKeys.roadPass,
+        new RoadPassService(
+          catalog,
+          economy,
+          crates,
+          supplies,
+          monetization,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          config.roadPass,
+          events,
+          logger.withCategory('RoadPass'),
         ),
       );
       const garage = container.register(
@@ -213,11 +355,32 @@ export class GameBootstrapper {
           config.fleet.garageSlots,
           perks,
           monetization,
+          crates,
+          roadPass,
         ),
+      );
+      // The used-truck market: a few used trucks every few hours, sold through the garage.
+      const usedTrucks = container.register(
+        ServiceKeys.usedTrucks,
+        new UsedTruckMarket(catalog, garage, company, clock, config.usedTrucks, logger.withCategory('UsedTrucks')),
       );
       container.register(
         ServiceKeys.upgrades,
-        new UpgradeService(catalog, garage, economy, company, events, logger.withCategory('Upgrades')),
+        new UpgradeService(
+          catalog,
+          garage,
+          economy,
+          company,
+          events,
+          logger.withCategory('Upgrades'),
+          supplies,
+          config.crates.partCredits,
+        ),
+      );
+      // The trucks' designs: bought with credits, given by crates, or with a pack from the shop.
+      const liveries = container.register(
+        ServiceKeys.liveries,
+        new LiveryService(catalog, economy, company, garage, crates, monetization, events, logger.withCategory('Liveries')),
       );
       const depotRoads = container.register(ServiceKeys.depotRoads, new DepotRoads(catalog, driving));
       const fleet = container.register(
@@ -263,6 +426,20 @@ export class GameBootstrapper {
           perks,
         ),
       );
+      // The weekly cup: the company's deliveries against the rivals' week, the top three paid on Monday.
+      const weeklyCup = container.register(
+        ServiceKeys.weeklyCup,
+        new WeeklyCupService(
+          rivals,
+          economy,
+          crates,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          config.weeklyCup,
+          events,
+          logger.withCategory('Cup'),
+        ),
+      );
       container.register(
         ServiceKeys.companyTraffic,
         new CompanyTraffic(traffic, [fleet, rivals], driving, config.traffic.radiusMeters),
@@ -280,7 +457,42 @@ export class GameBootstrapper {
           logger.withCategory('Save'),
         ),
       );
-      container.register(
+      // The goals measure the company from the services that keep it, the distance from the session (made below).
+      const achievements = container.register(
+        ServiceKeys.achievements,
+        new AchievementService(
+          catalog,
+          economy,
+          (): CompanyMeasures => ({
+            deliveries: company.stats.deliveriesCompleted,
+            distanceMeters: session.distanceDrivenMeters,
+            companyLevel: company.level,
+            trucksOwned: garage.trucks.length,
+            driversHired: fleet.hired.length,
+            facilityLevels: catalog.facilities.all.reduce((sum, facility) => sum + facilities.levelOf(facility.id), 0),
+            creditsEarned: company.stats.creditsEarned,
+            bestPerfectStreak: crates.bestPerfectStreak,
+            cratesOpened: crates.opened,
+          }),
+          events,
+          logger.withCategory('Achievements'),
+        ),
+      );
+      // The day's quests: their kilometres from the session (made below).
+      const quests = container.register(
+        ServiceKeys.quests,
+        new QuestService(
+          catalog,
+          crates,
+          config.crates.questBonusCrate,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          () => (session.isActive ? session.distanceDrivenMeters : null),
+          events,
+          logger.withCategory('Quests'),
+        ),
+      );
+      const session: GameSessionService = container.register(
         ServiceKeys.session,
         new GameSessionService({
           content: catalog,
@@ -296,6 +508,19 @@ export class GameBootstrapper {
           fleet,
           rivals,
           facilities,
+          research,
+          career,
+          roadEvents,
+          usedTrucks,
+          weeklyCup,
+          roadPass,
+          dailyReward,
+          achievements,
+          crates,
+          levelRewards,
+          supplies,
+          quests,
+          liveries,
           specialEvents,
           tutorial,
           logger: logger.withCategory('Session'),
@@ -336,5 +561,6 @@ function describeContent(catalog: ContentCatalog): string {
     `drivers ${catalog.drivers.size}`,
     `rivals ${catalog.rivals.size}`,
     `facilities ${catalog.facilities.size}`,
+    `research ${catalog.research.size}`,
   ].join(', ');
 }
