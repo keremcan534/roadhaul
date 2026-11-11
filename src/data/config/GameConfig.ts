@@ -245,7 +245,7 @@ export interface GameConfig {
     readonly serviceDiscount: Fraction;
     /** …this many times a day. */
     readonly serviceDiscountsPerDay: number;
-    /** No interstitial before this many deliveries since the game started… */
+    /** No interstitial before this many deliveries on the device (counted across visits)… */
     readonly interstitialFirstAfterDeliveries: number;
     /** …then one after every this many deliveries… */
     readonly interstitialEveryDeliveries: number;
@@ -690,7 +690,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     deliveryBonusMaxCredits: 2500,
     serviceDiscount: 0.5,
     serviceDiscountsPerDay: 5,
-    interstitialFirstAfterDeliveries: 3,
+    interstitialFirstAfterDeliveries: 2,
     interstitialEveryDeliveries: 3,
     interstitialMinSeconds: 480,
     earningsBoostShare: 0.25,

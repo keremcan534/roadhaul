@@ -288,6 +288,45 @@ describe('interstitials', () => {
     expect(context.ads.interstitials).toBe(2);
   });
 
+  it('count across visits: short visits add up, and the wait after an ad holds over a restart', async () => {
+    const storage = new MemoryStorage();
+    const first = setup(storage);
+    first.monetization.attachAds(first.ads);
+    first.deliver(1000);
+    await first.monetization.betweenContracts();
+    expect(first.ads.interstitials).toBe(0);
+    first.monetization.dispose();
+
+    const second = setup(storage);
+    second.monetization.attachAds(second.ads);
+    second.deliver(1000);
+    await second.monetization.betweenContracts();
+    expect(second.ads.interstitials).toBe(1);
+    second.monetization.dispose();
+
+    const third = setup(storage);
+    third.monetization.attachAds(third.ads);
+    third.deliver(1000);
+    third.deliver(1000);
+    third.clock.nowMs += 30_000;
+    await third.monetization.betweenContracts();
+    expect(third.ads.interstitials).toBe(0);
+    third.clock.nowMs += 30_000;
+    await third.monetization.betweenContracts();
+    expect(third.ads.interstitials).toBe(1);
+  });
+
+  it('start a new count from stored pacing that cannot be read', async () => {
+    const storage = new MemoryStorage();
+    storage.setItem('roadhaul.adPacing', '{"deliveries":"lots"}');
+    const context = setup(storage);
+    context.monetization.attachAds(context.ads);
+    context.deliver(1000);
+    await context.monetization.betweenContracts();
+    expect(context.ads.interstitials).toBe(0);
+    expect(JSON.parse(storage.getItem('roadhaul.adPacing')!)).toEqual({ deliveries: 1, sinceInterstitial: 1, lastAdAtMs: null });
+  });
+
   it('never show once ads are removed', async () => {
     const context = setup();
     context.monetization.attachAds(context.ads);

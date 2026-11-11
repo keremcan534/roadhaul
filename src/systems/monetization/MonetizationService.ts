@@ -15,6 +15,7 @@ import {
   pacingAfterAd,
   pacingAfterDelivery,
   parseAllowance,
+  parsePacing,
   type AdPacing,
   type DailyAllowance,
 } from '../../domain/monetization/adRules';
@@ -34,6 +35,8 @@ const ALLOWANCE_KEY = 'roadhaul.serviceDiscounts';
 const EARNINGS_BOOST_KEY = 'roadhaul.earningsBoost';
 /** Today's rewarded crates. */
 const AD_CRATES_KEY = 'roadhaul.adCrates';
+/** The interstitials' pacing (adRules.AdPacing): short visits add up. */
+const PACING_KEY = 'roadhaul.adPacing';
 const MS_PER_MINUTE = 60_000;
 
 /** Why a rewarded boost gave nothing: no ad to show, the ad closed before its end, or none left to give. */
@@ -74,7 +77,8 @@ export interface ServiceDiscountOffer {
  * - Rewarded ads are only ever the player's choice: a bonus on a delivery's pay, a discount on a repair or a
  *   fill-up (a few a day), a crate (a few a day), or from the main menu a boost on every delivery's pay for an
  *   hour. Everything a boost needs is checked before its ad: no ad is watched for nothing.
- * - Interstitials come only between contracts, as the delivery's result closes, and seldom (adRules.interstitialDue).
+ * - Interstitials come only between contracts, as the delivery's result closes, and seldom (adRules.interstitialDue),
+ *   counted across visits (kept on the device).
  * - `remove_ads` stops the interstitials and gives the boosts without an ad; `premium_paints` opens the garage's
  *   premium colours (GarageService asks `owns`). What was bought is kept on the device and read again from the store
  *   at each start (a refund takes it away).
@@ -85,7 +89,7 @@ export interface ServiceDiscountOffer {
 export class MonetizationService implements PremiumPaintSource {
   private ads: AdService = NO_ADS;
   private store: PurchaseStore = NO_STORE;
-  private pacing: AdPacing = FRESH_PACING;
+  private pacing: AdPacing;
   private allowance: DailyAllowance | null;
   private crateAllowance: DailyAllowance | null;
   private ownedIds: readonly ProductId[];
@@ -112,9 +116,10 @@ export class MonetizationService implements PremiumPaintSource {
     this.ownedIds = this.read(OWNED_KEY, parseOwned) ?? [];
     this.allowance = this.read(ALLOWANCE_KEY, parseAllowance);
     this.crateAllowance = this.read(AD_CRATES_KEY, parseAllowance);
+    this.pacing = this.read(PACING_KEY, (value) => parsePacing(value, clock.now())) ?? FRESH_PACING;
     this.boostEndsAtMs = this.read(EARNINGS_BOOST_KEY, (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)) ?? 0;
     this.unsubscribe = events.on('MissionCompleted', ({ reward }) => {
-      this.pacing = pacingAfterDelivery(this.pacing);
+      this.setPacing(pacingAfterDelivery(this.pacing));
       this.pendingBonus = deliveryBonus(reward.total, config);
       // The earnings boost, while it is on: its share of the delivery's pay on top.
       this.boostPaid = this.boostOn() && reward.total > 0 ? Math.round(reward.total * config.earningsBoostShare) : 0;
@@ -364,7 +369,7 @@ export class MonetizationService implements PremiumPaintSource {
     this.busy = true;
     try {
       if (await this.ads.showInterstitial()) {
-        this.pacing = pacingAfterAd(this.pacing, 'interstitial', this.clock.now());
+        this.setPacing(pacingAfterAd(this.pacing, 'interstitial', this.clock.now()));
       }
     } catch (error) {
       this.logger.warn('The interstitial failed.', error);
@@ -416,7 +421,7 @@ export class MonetizationService implements PremiumPaintSource {
       if (outcome !== 'rewarded') {
         return err(outcome === 'skipped' ? 'skipped' : 'unavailable');
       }
-      this.pacing = pacingAfterAd(this.pacing, 'rewarded', this.clock.now());
+      this.setPacing(pacingAfterAd(this.pacing, 'rewarded', this.clock.now()));
       return ok(undefined);
     } catch (error) {
       this.logger.warn('The rewarded ad failed.', error);
@@ -424,6 +429,11 @@ export class MonetizationService implements PremiumPaintSource {
     } finally {
       this.busy = false;
     }
+  }
+
+  private setPacing(pacing: AdPacing): void {
+    this.pacing = pacing;
+    this.write(PACING_KEY, pacing);
   }
 
   private useAllowance(): void {
