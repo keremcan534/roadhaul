@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  pastFirstDelivery,
   tutorialStepAfter,
   TUTORIAL_STEPS,
   TUTORIAL_TRIGGERS,
@@ -30,5 +31,11 @@ describe('tutorialStepAfter', () => {
     for (const trigger of TUTORIAL_TRIGGERS) {
       expect(tutorialStepAfter('done', trigger)).toBe('done');
     }
+  });
+});
+
+describe('pastFirstDelivery', () => {
+  it('holds from the first contract delivered on, whether or not the upgrade was bought', () => {
+    expect(TUTORIAL_STEPS.filter(pastFirstDelivery)).toEqual(['buyUpgrade', 'done']);
   });
 });

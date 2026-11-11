@@ -22,7 +22,11 @@
        */
       .boot-screen {
         position: fixed;
-        inset: 0;
+        /* inset's sides, for the WebViews too old for it (they are told to update, below). */
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
         z-index: 1000;
         display: grid;
         place-content: center;
@@ -43,6 +47,26 @@
       html[data-boot-state='ready'] .boot-screen__bar::after,
       html[data-boot-state='error'] .boot-screen__bar::after {
         animation: none;
+      }
+      /* Too old a WebView (the script below): no bar, the note and the way to update. */
+      html[data-boot-state='unsupported'] .boot-screen__bar {
+        display: none;
+      }
+      .boot-screen__note {
+        max-width: 340px;
+        margin: 0;
+        padding: 0 24px;
+        color: #e9edf0;
+        font: 16px/1.45 sans-serif;
+        text-align: center;
+      }
+      .boot-screen__update {
+        padding: 12px 22px;
+        border-radius: 10px;
+        background: #f2a33a;
+        color: #16191d;
+        font: bold 16px sans-serif;
+        text-decoration: none;
       }
       .boot-screen__mark {
         width: 88px;
@@ -98,6 +122,78 @@
     </div>
     <canvas id="game-canvas"></canvas>
     <noscript>RoadHaul needs JavaScript to run.</noscript>
+    <script>
+      // An Android System WebView too old for the game's JavaScript (ES2022, as from Chrome 94) would leave the bar
+      // moving for ever: the module below is not run, or fails to parse. The phone is told so instead, in its language,
+      // with the way to update. ES5 on purpose, to run where the game cannot. The words are the string tables'
+      // boot.oldWebview and boot.openPlay (tests/unit/ui/i18n/bootFallback.test.ts keeps them the same).
+      (function () {
+        var TEXT = {
+          de: ['RoadHaul braucht ein neueres Android System WebView. Aktualisiere es (oder Chrome) bei Google Play und öffne das Spiel dann noch einmal.', 'Google Play öffnen'],
+          en: ['RoadHaul needs a newer Android System WebView. Update it (or Chrome) in Google Play, then open the game again.', 'Open Google Play'],
+          es: ['RoadHaul necesita un Android System WebView más reciente. Actualízalo (o Chrome) en Google Play y vuelve a abrir el juego.', 'Abrir Google Play'],
+          fr: ['RoadHaul a besoin d’une version plus récente d’Android System WebView. Mets-la à jour (ou Chrome) sur Google Play, puis rouvre le jeu.', 'Ouvrir Google Play'],
+          id: ['RoadHaul memerlukan Android System WebView yang lebih baru. Perbarui (atau Chrome) di Google Play, lalu buka game ini lagi.', 'Buka Google Play'],
+          it: ['RoadHaul ha bisogno di una versione più recente di Android System WebView. Aggiornala (o aggiorna Chrome) su Google Play, poi riapri il gioco.', 'Apri Google Play'],
+          pl: ['RoadHaul wymaga nowszego Android System WebView. Zaktualizuj go (lub Chrome) w Google Play, a potem uruchom grę ponownie.', 'Otwórz Google Play'],
+          pt: ['O RoadHaul precisa de um Android System WebView mais recente. Atualize-o (ou o Chrome) no Google Play e abra o jogo de novo.', 'Abrir o Google Play'],
+          ru: ['Для RoadHaul нужна более новая версия Android System WebView. Обнови её (или Chrome) в Google Play и открой игру снова.', 'Открыть Google Play'],
+          tr: ['RoadHaul daha yeni bir Android System WebView istiyor. Google Play’den WebView’ı (ya da Chrome’u) güncelle, sonra oyunu yeniden aç.', 'Google Play’i aç'],
+        };
+        var root = document.documentElement;
+        function supported() {
+          if (!('noModule' in document.createElement('script'))) {
+            return false;
+          }
+          try {
+            new Function('class A { static {} #a = 1; b() { return this.#a ?? 0; } }');
+            return true;
+          } catch (error) {
+            return false;
+          }
+        }
+        function language() {
+          var asked = /[?&]lang=([a-z]{2})/.exec(location.search);
+          var wanted = [].concat(asked ? [asked[1]] : [], navigator.languages || [], navigator.language || []);
+          for (var i = 0; i < wanted.length; i++) {
+            var code = String(wanted[i]).slice(0, 2).toLowerCase();
+            if (TEXT.hasOwnProperty(code)) {
+              return code;
+            }
+          }
+          return 'en';
+        }
+        function tell() {
+          var screen = document.querySelector('.boot-screen');
+          if (screen === null || root.getAttribute('data-boot-state') === 'unsupported') {
+            return;
+          }
+          root.setAttribute('data-boot-state', 'unsupported');
+          var text = TEXT[language()];
+          var note = document.createElement('p');
+          note.className = 'boot-screen__note';
+          note.setAttribute('role', 'alert');
+          note.appendChild(document.createTextNode(text[0]));
+          var update = document.createElement('a');
+          update.className = 'boot-screen__update';
+          update.href = 'https://play.google.com/store/apps/details?id=com.google.android.webview';
+          update.appendChild(document.createTextNode(text[1]));
+          screen.removeAttribute('aria-hidden');
+          screen.appendChild(note);
+          screen.appendChild(update);
+        }
+        if (!supported()) {
+          tell();
+          return;
+        }
+        // Up to date as far as can be told: a parse error before the game starts (main.ts marks the boot) is one too.
+        window.addEventListener('error', function (event) {
+          if (!root.hasAttribute('data-boot-state') && event.error instanceof SyntaxError) {
+            tell();
+          }
+        });
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

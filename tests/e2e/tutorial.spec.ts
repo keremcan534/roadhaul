@@ -45,6 +45,13 @@ test('teaches the first contract and the first upgrade by playing, one short hin
   await expect(hint(page)).toBeHidden();
   await result.locator('[data-action="continue"]').click();
   await expect(html).toHaveAttribute('data-tutorial-step', 'buyUpgrade');
+  // The first contract delivered, the day's reward is offered at once; collected, it names tomorrow's.
+  const daily = page.locator('.daily');
+  await expect(daily).toBeVisible();
+  await daily.locator('[data-action="claim-daily"]').click();
+  await expect(daily.locator('[data-value="tomorrow"]')).toHaveText('Come back tomorrow for day 2: 500 credits');
+  await daily.locator('[data-action="close-daily"]').click();
+  await expect(daily).toBeHidden();
   await expect(hint(page)).toContainText('Open the Garage');
   await expect(page.locator('[data-action="dock-garage"]')).toHaveCSS('animation-name', 'tutorial-glow');
   await page.locator('[data-action="dock-garage"]').click();

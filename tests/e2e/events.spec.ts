@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from '@playwright/test';
-import { openCompanyHq, openPanel, takeContract, watchForProblems } from './support';
+import { leaveDailyReward, openCompanyHq, openPanel, takeContract, watchForProblems } from './support';
 
 /** Wednesday 2026-09-23, 09:00 UTC: Safe Driver and Heavy Cargo run; Express Week starts on Monday. */
 const SAFE_DRIVER_WEEK = '2026-09-23T09:00:00Z';
@@ -53,6 +53,7 @@ test('shows the events in the company panel, and pays a careful delivery the Saf
   await testInfo.attach('result', { body: await page.screenshot(), contentType: 'image/png' });
 
   await result.locator('[data-action="continue"]').click();
+  await leaveDailyReward(page); // Offered once the first contract is in.
   await page.locator('[data-action="dock-events"]').click();
   await expect(card('safe_driver').locator('.event-card__objective')).toHaveText('1 / 3 deliveries');
   expect(problems).toEqual([]);

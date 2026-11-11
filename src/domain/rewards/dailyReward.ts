@@ -47,6 +47,11 @@ export function claimDaily(offer: DailyOffer, today: number): DailyStreak {
   return { lastClaimDay: today, streak: offer.streak };
 }
 
+/** The streak's day tomorrow's claim will be, once today's is claimed (`state` after the claim): the next one. */
+export function nextStreakDay(state: DailyStreak, days: number): number {
+  return dayOfStreak(state.streak + 1, days);
+}
+
 /**
  * What day `day` (from 1) of the streak pays a company at `companyLevel`: `levelBonus` more for each level above the
  * first, up to `bonusLevels` of them.

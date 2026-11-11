@@ -19,6 +19,7 @@ import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrail
 import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
+import { pastFirstDelivery } from './domain/tutorial/tutorialSteps';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, type StartPlace } from './domain/world/startPlaces';
 import type { DrivingWorld } from './domain/world/DrivingWorld';
@@ -143,6 +144,7 @@ import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { FerryCrossing } from './ui/menus/FerryCrossing';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
+import { suggestedCompanyName } from './ui/menus/suggestedCompanyName';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import type { CareerShown } from './ui/menus/careerSheet';
 import { passRewardText, type RoadPassShown } from './ui/menus/roadPassSheet';
@@ -743,6 +745,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       showHud();
       if (choice === 'jobs') {
         openPanel('jobs');
+      } else {
+        offerDailyReward();
       }
     });
   }, { star: (index, lit) => audio.star(index, lit) });
@@ -1033,15 +1037,17 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       celebrateLevel();
     }, delayMs);
   };
-  // The daily reward: offered as the day's first drive starts (after the tutorial), the truck waiting until it is
-  // collected. Left for later, it waits until the game is started again.
+  // The daily reward: offered as the day's first drive starts, and in the first session once the first contract is
+  // delivered (back on the road, or the company panel closed), the truck waiting until it is collected. Left for later,
+  // it waits until the game is started again.
   let dailyLeft = false;
   const dailyDialog = new DailyRewardDialog(ui, strings, {
     onClaim: () => {
       const claimed = dailyReward.claim();
       if (claimed.ok) {
         audio.chime();
-        dailyDialog.showClaimed(strings.money(claimed.value));
+        const tomorrow = dailyReward.tomorrow;
+        dailyDialog.showClaimed(strings.money(claimed.value), tomorrow.day, strings.money(tomorrow.credits));
       } else {
         closeDailyReward();
       }
@@ -1050,7 +1056,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   });
   const offerDailyReward = (): void => {
     const offer = dailyReward.offer;
-    if (!offer.claimable || dailyLeft || tutorial.step !== 'done' || dailyDialog.isOpen || result.isOpen || paused) {
+    if (!offer.claimable || dailyLeft || !pastFirstDelivery(tutorial.step) || dailyDialog.isOpen || result.isOpen || paused) {
       return;
     }
     paused = true;
@@ -1487,7 +1493,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onNewCompany: (startId, regionId) => {
       newCompanyRegion = regionId ?? menuRegion();
       newCompanyStart = regionId !== null || startId === LEFT_START_ID ? HOME_START_ID : startId;
-      newCompany.open(session.hasSavedGame());
+      newCompany.open(
+        session.hasSavedGame(),
+        content.maps.has(newCompanyRegion) ? suggestedCompanyName(strings, content.maps.get(newCompanyRegion)) : '',
+      );
     },
     onPreviewStart: (place) => {
       menuPreview = place;
@@ -2169,6 +2178,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     hq.close();
     showHud();
     tilt.level();
+    offerDailyReward();
   };
   /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
   let pausedForMap = false;

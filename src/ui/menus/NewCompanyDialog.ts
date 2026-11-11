@@ -8,12 +8,17 @@ export interface NewCompanyActions {
   readonly onBack: () => void;
 }
 
-/** Spec §41 step 1: the player names the company. */
+/**
+ * Spec §41 step 1: the player names the company. A name is suggested (the home town's, `newCompany.suggested`), so one
+ * tap on Start founds it; the player may type another. The Start button takes the focus, not the field, so a phone's
+ * keyboard does not come up over the dialog unasked.
+ */
 export class NewCompanyDialog {
   private readonly overlay: HTMLDivElement;
   private readonly input: HTMLInputElement;
   private readonly error: HTMLParagraphElement;
   private readonly warning: HTMLParagraphElement;
+  private readonly start: HTMLButtonElement;
 
   constructor(parent: HTMLElement, strings: Strings, actions: NewCompanyActions) {
     const document = parent.ownerDocument;
@@ -35,11 +40,11 @@ export class NewCompanyDialog {
     this.error = element(document, 'p', 'new-company__error');
     this.error.setAttribute('role', 'alert');
     this.warning = element(document, 'p', 'new-company__warning', strings.t('newCompany.replaces'));
-    const start = element(document, 'button', 'button button--primary', strings.t('newCompany.start'));
-    start.type = 'submit';
-    start.dataset.action = 'start-company';
+    this.start = element(document, 'button', 'button button--primary', strings.t('newCompany.start'));
+    this.start.type = 'submit';
+    this.start.dataset.action = 'start-company';
     const buttons = element(document, 'div', 'new-company__buttons');
-    buttons.append(button(document, 'button--ghost', strings.t('newCompany.back'), 'back', actions.onBack), start);
+    buttons.append(button(document, 'button--ghost', strings.t('newCompany.back'), 'back', actions.onBack), this.start);
     form.append(element(document, 'h2', 'panel__title', strings.t('newCompany.title')), label, this.error, this.warning, buttons);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -50,12 +55,13 @@ export class NewCompanyDialog {
     parent.append(this.overlay);
   }
 
-  /** Opens the dialog; `replacesSave` warns that a saved company will be overwritten. */
-  open(replacesSave: boolean): void {
+  /** Opens the dialog with `suggestedName` filled in; `replacesSave` warns that a saved company will be overwritten. */
+  open(replacesSave: boolean, suggestedName: string): void {
     this.error.textContent = '';
     this.warning.hidden = !replacesSave;
+    this.input.value = suggestedName;
     this.overlay.hidden = false;
-    this.input.focus();
+    (suggestedName === '' ? this.input : this.start).focus();
   }
 
   get isOpen(): boolean {

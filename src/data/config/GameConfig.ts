@@ -635,7 +635,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     dayFromDegrees: 12,
   },
   company: {
-    levelXp: [0, 1000, 3000, 6500, 12000, 20000, 30000, 43000, 60000, 80000],
+    // Level 2 in about four easy deliveries, the first session's (an early goal keeps a new player); the rest spaced as before.
+    levelXp: [0, 400, 3000, 6500, 12000, 20000, 30000, 43000, 60000, 80000],
     levelRewards: [
       { credits: 1500, crate: 'silver' },
       { credits: 2500, crate: 'silver' },

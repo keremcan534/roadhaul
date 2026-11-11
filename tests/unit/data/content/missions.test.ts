@@ -13,17 +13,21 @@ const startingTruck = vehicles.find((vehicle) => vehicle.id === DEFAULT_GAME_CON
 
 /** Checks the shipped contracts as a set: the balance a field-by-field validator cannot see. */
 describe('the shipped missions', () => {
-  it('number fifty-six: the MVP\'s twenty (spec §43), four to and from Copperdale, twelve for the later trucks, six for the semi-trailers and fourteen in Metropol', () => {
-    expect(missions).toHaveLength(56);
-    expect(missions.slice(24, 42).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 4)).toBe(true);
-    expect(missions.slice(30, 42).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 6)).toBe(true);
+  it("number fifty-seven: the MVP's twenty (spec §43), four to and from Copperdale, Saltcove's way home, twelve for the later trucks, six for the semi-trailers and fourteen in Metropol", () => {
+    expect(missions).toHaveLength(57);
+    expect(missions.slice(25, 43).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 4)).toBe(true);
+    expect(missions.slice(31, 43).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 6)).toBe(true);
     expect(missions.slice(20, 24).every((mission) => [mission.originCityId, mission.destinationCityId].includes('city_d'))).toBe(true);
-    expect(missions.slice(36, 42).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 7)).toBe(true);
+    expect(missions.slice(37, 43).every((mission) => (mission.requiredCompanyLevel ?? 1) >= 7)).toBe(true);
+    // The first contract ends in Saltcove; a job from there, open from the start, brings the truck home.
+    expect(missions[0]).toMatchObject({ id: 'first_package', destinationCityId: 'city_e' });
+    expect(missions[24]).toMatchObject({ originCityId: 'city_e', destinationCityId: missions[0]!.originCityId });
+    expect(missions[24]!.requiredCompanyLevel ?? 1).toBe(1);
     // Metropol's run between its own cities, a few open from the start (a company may cross early).
     const metropol = maps.find((map) => map.id === 'metropol')!;
     const inMetropol = (cityId: string) => metropol.depots.some((depot) => depot.cityId === cityId);
-    expect(missions.slice(42).every((mission) => inMetropol(mission.originCityId) && inMetropol(mission.destinationCityId))).toBe(true);
-    expect(missions.slice(42).filter((mission) => (mission.requiredCompanyLevel ?? 1) === 1).length).toBeGreaterThanOrEqual(2);
+    expect(missions.slice(43).every((mission) => inMetropol(mission.originCityId) && inMetropol(mission.destinationCityId))).toBe(true);
+    expect(missions.slice(43).filter((mission) => (mission.requiredCompanyLevel ?? 1) === 1).length).toBeGreaterThanOrEqual(2);
   });
 
   it('run each between two depots of the same region', () => {

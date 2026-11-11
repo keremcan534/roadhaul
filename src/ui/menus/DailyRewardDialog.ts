@@ -44,6 +44,8 @@ export class DailyRewardDialog {
   /** Leaves it for now: offered again the next time the game starts, today. */
   private readonly laterButton: HTMLButtonElement;
   private readonly total: HTMLParagraphElement;
+  /** After the claim: what tomorrow's pays, a reason to come back. */
+  private readonly tomorrow: HTMLParagraphElement;
 
   constructor(
     parent: HTMLElement,
@@ -63,6 +65,8 @@ export class DailyRewardDialog {
     this.total = element(document, 'p', 'daily__total');
     this.total.dataset.value = 'collected';
     this.total.setAttribute('aria-live', 'polite');
+    this.tomorrow = element(document, 'p', 'daily__tomorrow');
+    this.tomorrow.dataset.value = 'tomorrow';
     this.claimButton = withIcon(button(document, 'button--primary daily__claim', '', 'claim-daily', actions.onClaim), 'coins');
     this.claimLabel = element(document, 'span', 'daily__claim-label');
     this.claimButton.append(this.claimLabel);
@@ -75,6 +79,7 @@ export class DailyRewardDialog {
       element(document, 'p', 'daily__intro', strings.t('daily.intro')),
       this.days,
       this.total,
+      this.tomorrow,
       this.claimButton,
       this.closeButton,
       this.laterButton,
@@ -117,6 +122,7 @@ export class DailyRewardDialog {
     );
     setText(this.claimLabel, strings.t('daily.claim', { amount: shown.amounts[shown.day - 1] ?? '' }));
     setText(this.total, '');
+    setText(this.tomorrow, '');
     this.claimButton.hidden = false;
     this.claimButton.disabled = false;
     this.laterButton.hidden = false;
@@ -124,14 +130,18 @@ export class DailyRewardDialog {
     this.overlay.hidden = false;
   }
 
-  /** Today's reward was collected (`amount` as money): the coins burst, and the way on to the road shows. */
-  showClaimed(amount: string): void {
+  /**
+   * Today's reward was collected (`amount` as money): the coins burst, tomorrow's day and pay (`tomorrowAmount` as
+   * money) are named, and the way on to the road shows.
+   */
+  showClaimed(amount: string, tomorrowDay: number, tomorrowAmount: string): void {
     this.panel.classList.add('is-claimed');
     const today = this.days.querySelector<HTMLElement>('[data-state="today"]');
     if (today !== null) {
       today.dataset.state = 'claimed';
     }
     setText(this.total, `+${amount}`);
+    setText(this.tomorrow, this.strings.t('daily.tomorrow', { day: tomorrowDay, amount: tomorrowAmount }));
     this.claimButton.hidden = true;
     this.laterButton.hidden = true;
     this.closeButton.hidden = false;
