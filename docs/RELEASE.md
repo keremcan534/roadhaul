@@ -176,8 +176,9 @@ rewarded boosts and the ads between contracts can be tried on a phone first. The
 
 - **Rewarded**, the player's choice only: a quarter of a delivery's pay again (100 to 2,500 credits), or half off a
   repair or a fill-up at a depot or rest area (five a day).
-- **Interstitial**, never while driving: as a delivery's result closes, after the first three deliveries, then every
-  third, at least eight minutes apart. None once "Remove ads" is bought.
+- **Interstitial**, never while driving: as a delivery's result closes, after a new player's first two deliveries, then
+  every third, at least eight minutes apart. The count is kept on the phone, so short visits add up. None once "Remove
+  ads" is bought.
 
 The numbers are in `GameConfig.monetization` (`src/data/config/GameConfig.ts`).
 

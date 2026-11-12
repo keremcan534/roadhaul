@@ -10,6 +10,7 @@ import {
   pacingAfterAd,
   pacingAfterDelivery,
   parseAllowance,
+  parsePacing,
   type AdPacing,
 } from '../../../../src/domain/monetization/adRules';
 
@@ -65,6 +66,27 @@ describe('interstitials', () => {
     expect(rewarded.sinceInterstitial).toBe(3);
     expect(interstitialDue(rewarded, now + 479_000, config)).toBe(false);
     expect(interstitialDue(rewarded, now + 480_000, config)).toBe(true);
+  });
+
+  it('read back only well-formed stored pacing', () => {
+    expect(parsePacing({ deliveries: 7, sinceInterstitial: 1, lastAdAtMs: now - 60_000 }, now)).toEqual({
+      deliveries: 7,
+      sinceInterstitial: 1,
+      lastAdAtMs: now - 60_000,
+    });
+    expect(parsePacing({ deliveries: 2, sinceInterstitial: 2, lastAdAtMs: null }, now)).toEqual(deliveries(2));
+    expect(parsePacing({ deliveries: -1, sinceInterstitial: 0, lastAdAtMs: null }, now)).toBeNull();
+    expect(parsePacing({ deliveries: 1.5, sinceInterstitial: 0, lastAdAtMs: null }, now)).toBeNull();
+    expect(parsePacing({ deliveries: 3, sinceInterstitial: 0 }, now)).toBeNull();
+    expect(parsePacing({ deliveries: 3, sinceInterstitial: 0, lastAdAtMs: 'yesterday' }, now)).toBeNull();
+    expect(parsePacing(null, now)).toBeNull();
+    expect(parsePacing([3, 0, null], now)).toBeNull();
+  });
+
+  it('forget a last ad later than now: a clock set back does not hold them off', () => {
+    const stored = parsePacing({ deliveries: 9, sinceInterstitial: 4, lastAdAtMs: now + 86_400_000 }, now);
+    expect(stored).toEqual({ deliveries: 9, sinceInterstitial: 4, lastAdAtMs: null });
+    expect(interstitialDue(stored!, now, config)).toBe(true);
   });
 });
 

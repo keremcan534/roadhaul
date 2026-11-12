@@ -17,9 +17,12 @@ export function deliveryBonus(total: Credits, config: MonetizationConfig): Credi
   return Math.min(config.deliveryBonusMaxCredits, Math.max(config.deliveryBonusMinCredits, bonus));
 }
 
-/** How often ads have come lately: what the interstitials' pacing needs. Session-long, not saved. */
+/**
+ * How often ads have come lately: what the interstitials' pacing needs. Kept on the device between visits, so short
+ * visits add up: the count goes on where the last visit left it.
+ */
 export interface AdPacing {
-  /** Deliveries since the game started. */
+  /** Deliveries made on the device. */
   readonly deliveries: number;
   /** Deliveries since the last interstitial. */
   readonly sinceInterstitial: number;
@@ -43,7 +46,26 @@ export function pacingAfterAd(pacing: AdPacing, kind: 'interstitial' | 'rewarded
 }
 
 /**
- * Whether an interstitial may show now, between contracts: never in the first deliveries of a game, then after every
+ * Stored pacing read back at `nowMs`, or null when it is missing or not pacing. A last ad "in the future" (the
+ * device's clock was set back) is forgotten, rather than holding the interstitials off until the clock catches up.
+ */
+export function parsePacing(value: unknown, nowMs: number): AdPacing | null {
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+  const { deliveries, sinceInterstitial, lastAdAtMs } = value as Record<string, unknown>;
+  const count = (entry: unknown): entry is number => Number.isInteger(entry) && (entry as number) >= 0;
+  if (!count(deliveries) || !count(sinceInterstitial)) {
+    return null;
+  }
+  if (lastAdAtMs !== null && !(typeof lastAdAtMs === 'number' && Number.isFinite(lastAdAtMs))) {
+    return null;
+  }
+  return { deliveries, sinceInterstitial, lastAdAtMs: lastAdAtMs !== null && lastAdAtMs <= nowMs ? lastAdAtMs : null };
+}
+
+/**
+ * Whether an interstitial may show now, between contracts: never in a new player's first deliveries, then after every
  * few, and never soon after another ad.
  */
 export function interstitialDue(pacing: AdPacing, nowMs: number, config: MonetizationConfig): boolean {
