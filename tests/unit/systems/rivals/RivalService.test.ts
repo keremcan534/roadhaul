@@ -119,9 +119,9 @@ describe('RivalService', () => {
 
   it('wins the company standing with its deliveries and its fleet\'s, where they start and end', async () => {
     const game = await newCompany(1, 5000);
-    deliver(game, 'first_package'); // Havenport (city_a) to Ironford (city_b).
+    deliver(game, 'first_package'); // Havenport (city_a) to Saltcove (city_e).
     expect(standingIn(game, 'city_a')['player']).toBeCloseTo(RIVALS.deliveryPoints, 0);
-    expect(standingIn(game, 'city_b')['player']).toBeCloseTo(RIVALS.deliveryPoints, 0);
+    expect(standingIn(game, 'city_e')['player']).toBeCloseTo(RIVALS.deliveryPoints, 0);
     expect(standingIn(game, 'city_c')['player']).toBeUndefined();
 
     game.events.emit('FleetJobCompleted', {

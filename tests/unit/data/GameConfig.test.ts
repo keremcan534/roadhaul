@@ -78,6 +78,19 @@ describe('GameConfig', () => {
     ]);
   });
 
+  it('checks the reminders: days after leaving, rising, and an evening after the morning', () => {
+    const config: GameConfig = {
+      ...DEFAULT_GAME_CONFIG,
+      reminders: { dailyRewardDays: [3, 1], earliestHour: 21, latestHour: 10, freeCrateMinHours: 0 },
+    };
+
+    expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
+      'reminders.dailyRewardDays',
+      'reminders.latestHour',
+      'reminders.freeCrateMinHours',
+    ]);
+  });
+
   it('reports contracts, trucks, upgrades, drivers and facilities locked behind a company level that does not exist', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,

@@ -2,8 +2,9 @@ import type { MissionDefinition } from '../definitions/MissionDefinition';
 
 /**
  * The MVP's 20 missions (spec §43, §77), between the depots of the three
- * cities, and four to and from Copperdale, the mining town the bigger map
- * brought. Titles come from the string tables (`mission.<id>.title`). Time
+ * cities, four to and from Copperdale, the mining town the bigger map
+ * brought, and one from Saltcove, where the first contract goes. Titles come
+ * from the string tables (`mission.<id>.title`). Time
  * limits cover the delivery leg, from loading to unloading: the road distance
  * at an average of 36 (easy), 42 (normal), 50 (hard) or 46 km/h (expert),
  * 15% more for loads over 10 t, and 50 s to leave one yard and park in the
@@ -21,13 +22,15 @@ import type { MissionDefinition } from '../definitions/MissionDefinition';
  */
 export const MISSIONS: readonly MissionDefinition[] = [
   {
+    // The tutorial's: to Saltcove, the nearest town (3.2 km by road), so the first pay comes soon; saltcove_tins
+    // brings the truck back.
     id: 'first_package',
     originCityId: 'city_a',
-    destinationCityId: 'city_b',
+    destinationCityId: 'city_e',
     cargoId: 'packaged_food',
     cargoWeightTons: 2,
     baseReward: 900,
-    timeLimitSeconds: 490,
+    timeLimitSeconds: 370,
     damageTolerance: 0.3,
     difficulty: 'easy',
   },
@@ -302,6 +305,18 @@ export const MISSIONS: readonly MissionDefinition[] = [
     damageTolerance: 0.15,
     difficulty: 'hard',
     requiredCompanyLevel: 3,
+  },
+  // Saltcove's way home: after the first contract, a job from where it left the truck.
+  {
+    id: 'saltcove_tins',
+    originCityId: 'city_e',
+    destinationCityId: 'city_a',
+    cargoId: 'packaged_food',
+    cargoWeightTons: 3,
+    baseReward: 950,
+    timeLimitSeconds: 370,
+    damageTolerance: 0.25,
+    difficulty: 'easy',
   },
   {
     id: 'fuel_depot',

@@ -17,6 +17,14 @@ export const TUTORIAL_TRIGGERS = [
 export type TutorialTrigger = (typeof TUTORIAL_TRIGGERS)[number];
 
 /**
+ * The player has delivered a contract: the tutorial is at the upgrade or done. From then on the daily reward is
+ * offered (the first session's drive comes first).
+ */
+export function pastFirstDelivery(step: TutorialStep): boolean {
+  return step === 'buyUpgrade' || step === 'done';
+}
+
+/**
  * The step after `step` once the player has done `trigger`; `step` itself
  * when that does not move the tutorial on. A contract that fails part way
  * starts the drive over; any delivered contract leads on to the upgrade.

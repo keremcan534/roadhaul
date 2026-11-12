@@ -4,7 +4,7 @@ import { err, ok, type Result } from '../../core/Result';
 import type { Clock } from '../../core/time/Clock';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { Credits } from '../../data/units';
-import { claimDaily, dailyCredits, dailyOffer, localDay, NO_STREAK, type DailyStreak } from '../../domain/rewards/dailyReward';
+import { claimDaily, dailyCredits, dailyOffer, localDay, nextStreakDay, NO_STREAK, type DailyStreak } from '../../domain/rewards/dailyReward';
 import type { DailyRewardSaveData } from '../../domain/save/SaveGameData';
 import type { EconomyService } from '../economy/EconomyService';
 import type { GameEvents } from '../GameEvents';
@@ -20,6 +20,12 @@ export interface DailyRewardView {
   readonly streak: number;
   /** What each day of the streak pays the company at its level now, the first day first. */
   readonly credits: readonly Credits[];
+}
+
+/** One day of the streak and what it pays. */
+export interface DailyRewardDay {
+  readonly day: number;
+  readonly credits: Credits;
 }
 
 export type ClaimDailyError = 'claimed';
@@ -53,6 +59,15 @@ export class DailyRewardService {
       streak: offer.streak,
       credits: this.config.credits.map((_, index) => this.creditsFor(index + 1)),
     };
+  }
+
+  /**
+   * Tomorrow's reward, the streak kept: its day and what it pays the company at its level now. Meant for after today's
+   * claim (before it, the day after the last claim's).
+   */
+  get tomorrow(): DailyRewardDay {
+    const day = nextStreakDay(this.state, this.config.credits.length);
+    return { day, credits: this.creditsFor(day) };
   }
 
   /** Pays today's reward. Returns what it paid. */

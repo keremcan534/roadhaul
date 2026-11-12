@@ -26,6 +26,7 @@ import { SupplyService } from '../systems/rewards/SupplyService';
 import { LiveryService } from '../systems/vehicles/LiveryService';
 import { SkyWonderService } from '../systems/weather/SkyWonderService';
 import { LevelRewardService } from '../systems/company/LevelRewardService';
+import { ReminderService } from '../systems/reminders/ReminderService';
 import { ReviewService } from '../systems/review/ReviewService';
 import { AchievementService, type CompanyMeasures } from '../systems/achievements/AchievementService';
 import { SeededRandom } from '../core/random/SeededRandom';
@@ -322,6 +323,20 @@ export class GameBootstrapper {
       container.register(
         ServiceKeys.review,
         new ReviewService(config.review, clock, storage, events, logger.withCategory('Review')),
+      );
+      // The phone's reminders: none until the Android app attaches its notifications (main.ts) and the player says yes.
+      container.register(
+        ServiceKeys.reminders,
+        new ReminderService(
+          config.reminders,
+          dailyReward,
+          config.dailyReward.credits.length,
+          crates,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          storage,
+          logger.withCategory('Reminders'),
+        ),
       );
       // The Road Pass: seasons of tiers, its Plus track (looks only) through the store; before the garage, whose
       // paint shop asks it which pass colours are the company's.

@@ -31,6 +31,7 @@ const SHIPPED_PACKAGES = [
   '@capacitor/app',
   '@capacitor/android',
   '@capgo/native-purchases',
+  '@capacitor/local-notifications',
   ...(ADS.mode === 'off' ? [] : ['@capacitor-community/admob']),
 ];
 

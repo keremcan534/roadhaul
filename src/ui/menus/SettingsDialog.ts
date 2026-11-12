@@ -13,7 +13,7 @@ import { QUALITY_CHOICES, type QualityChoice, type QualityLevel } from '../../da
 import { isLanguageChoice, LANGUAGE_NAMES, LANGUAGES, type Language, type LanguageChoice } from '../../data/config/languages';
 import { CLOCK_PRESETS, type ClockPreset } from '../../systems/weather/TimeOfDayService';
 import { button, element } from '../dom';
-import { choiceRow, select } from './choiceRow';
+import { choiceRow, select, type ChoiceRow } from './choiceRow';
 import type { Strings } from '../i18n';
 
 /** What the dialog shows as set when it opens. */
@@ -62,6 +62,8 @@ export interface SettingsActions {
   readonly onSound: (on: boolean) => void;
   readonly onVibration: (on: boolean) => void;
   readonly onStats: (on: boolean) => void;
+  /** Reminders on the phone, on or off (the Android app's, ReminderService). */
+  readonly onReminders: (on: boolean) => void;
   /** The player set the clock, minutes after midnight (a preset, or the slider). */
   readonly onClock: (minutes: number) => void;
   readonly onTimeFlow: (flow: TimeFlow) => void;
@@ -109,6 +111,7 @@ export class SettingsDialog {
   private readonly licensesPanel: HTMLDivElement;
   private readonly licensesText: HTMLPreElement;
   private readonly purchases: HTMLDivElement;
+  private readonly reminders: ChoiceRow<boolean>;
   private readonly restoreButton: HTMLButtonElement;
   private readonly adPrivacyButton: HTMLButtonElement;
   private readonly restoreBackupButton: HTMLButtonElement;
@@ -247,6 +250,12 @@ export class SettingsDialog {
     const stats = choiceRow(document, strings.t('settings.stats'), 'stats', ON_OFF, shown.stats, onOff);
     stats.row.dataset.setting = 'stats';
     stats.onPick(actions.onStats);
+    // Reminders: shown once the phone's notifications are up, in the Android app.
+    this.reminders = choiceRow(document, strings.t('settings.reminders'), 'reminders', ON_OFF, false, onOff);
+    this.reminders.row.dataset.setting = 'reminders';
+    this.reminders.row.hidden = true;
+    this.reminders.row.append(element(document, 'p', 'settings__note', strings.t('settings.remindersNote')));
+    this.reminders.onPick(actions.onReminders);
 
     // About the game: its version and build, what it is made with, the licences and the privacy policy.
     const about = element(document, 'div', 'settings__row settings__about');
@@ -347,6 +356,7 @@ export class SettingsDialog {
       season.row,
       sound.row,
       ...(vibration === null ? [] : [vibration.row]),
+      this.reminders.row,
       stats.row,
       company,
       this.purchases,
@@ -378,6 +388,12 @@ export class SettingsDialog {
     this.restoreButton.hidden = !restore;
     this.adPrivacyButton.hidden = !adPrivacy;
     this.purchases.hidden = !restore && !adPrivacy;
+  }
+
+  /** Shows the reminders' row (where the phone can show them), `on` picked or off. */
+  showReminders(on: boolean): void {
+    this.reminders.pick(on);
+    this.reminders.row.hidden = false;
   }
 
   /** A backup is restored from the main menu only (in a drive, the company loaded would have to be left first). */

@@ -34,6 +34,7 @@ test('offers the daily reward as the day’s first drive starts, pays it once, a
   await expect(dialog).toBeVisible();
   await dialog.locator('[data-action="claim-daily"]').click();
   await expect(dialog.locator('[data-value="collected"]')).toHaveText('+450 credits');
+  await expect(dialog.locator('[data-value="tomorrow"]')).toHaveText('Come back tomorrow for day 2: 750 credits');
   await expect(dialog.locator('[data-state="claimed"]')).toHaveAttribute('data-day', '1');
   await dialog.locator('[data-action="close-daily"]').click();
   await expect(dialog).toBeHidden();

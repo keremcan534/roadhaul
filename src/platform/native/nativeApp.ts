@@ -8,6 +8,8 @@ export interface NativeAppShell {
   onBackButton(listener: () => void): void;
   /** The app is going to the background. */
   onPause(listener: () => void): void;
+  /** The app is back in the foreground. */
+  onResume(listener: () => void): void;
   /** Puts the app away, like the home button: it keeps its state. */
   minimize(): void;
 }
@@ -17,11 +19,13 @@ export interface NativeAppActions {
   back(): boolean;
   /** The player is leaving the game for now: pause the drive and save. */
   leave(): void;
+  /** The player is back. */
+  returned(): void;
 }
 
 /**
  * Inside the Android app: the back button steps back through the game and,
- * at its root, puts the app away; going to the background pauses and saves.
+ * at its root, puts the app away; going to the background pauses and saves; the game hears when the app is back.
  */
 export function attachNativeApp(shell: NativeAppShell, actions: NativeAppActions): void {
   shell.onBackButton(() => {
@@ -30,6 +34,7 @@ export function attachNativeApp(shell: NativeAppShell, actions: NativeAppActions
     }
   });
   shell.onPause(() => actions.leave());
+  shell.onResume(() => actions.returned());
 }
 
 /** The global that Capacitor's native bridge sets up before the page's scripts run, in the app only. */

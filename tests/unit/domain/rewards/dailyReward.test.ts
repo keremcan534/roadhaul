@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claimDaily, dailyCredits, dailyOffer, localDay, NO_STREAK } from '../../../../src/domain/rewards/dailyReward';
+import { claimDaily, dailyCredits, dailyOffer, localDay, nextStreakDay, NO_STREAK } from '../../../../src/domain/rewards/dailyReward';
 
 const DAY_MS = 86_400_000;
 const TABLE = [300, 500, 800, 1200, 1600, 2200, 4000];
@@ -55,5 +55,14 @@ describe('dailyCredits', () => {
   it('keeps a day outside the table to its ends', () => {
     expect(dailyCredits(TABLE, 0, 1, 0.5, 4)).toBe(300);
     expect(dailyCredits(TABLE, 9, 1, 0.5, 4)).toBe(4000);
+  });
+});
+
+describe('nextStreakDay', () => {
+  it('names the day after the one just claimed, round again after the last', () => {
+    expect(nextStreakDay(claimDaily(dailyOffer(NO_STREAK, 100, 7), 100), 7)).toBe(2);
+    expect(nextStreakDay({ lastClaimDay: 100, streak: 6 }, 7)).toBe(7);
+    expect(nextStreakDay({ lastClaimDay: 100, streak: 7 }, 7)).toBe(1);
+    expect(nextStreakDay({ lastClaimDay: 100, streak: 15 }, 7)).toBe(2);
   });
 });

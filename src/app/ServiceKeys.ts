@@ -16,6 +16,7 @@ import type { RoadPassService } from '../systems/rewards/RoadPassService';
 import type { CityIncidentService } from '../systems/world/CityIncidentService';
 import type { NewsService } from '../systems/world/NewsService';
 import type { DailyRewardService } from '../systems/rewards/DailyRewardService';
+import type { ReminderService } from '../systems/reminders/ReminderService';
 import type { ReviewService } from '../systems/review/ReviewService';
 import type { AchievementService } from '../systems/achievements/AchievementService';
 import type { CrateService } from '../systems/rewards/CrateService';
@@ -83,6 +84,8 @@ export const ServiceKeys = Object.freeze({
   dailyReward: serviceKey<DailyRewardService>('DailyRewardService'),
   /** Asks for a rating on the store, seldom, after deliveries in good order. */
   review: serviceKey<ReviewService>('ReviewService'),
+  /** The phone's reminders while the game is away: the daily reward, the free crate; at most one a day. */
+  reminders: serviceKey<ReminderService>('ReminderService'),
   /** The company's goals and their rewards. */
   achievements: serviceKey<AchievementService>('AchievementService'),
   /** Crates: earned for perfect streaks, levels and the daily streak; opened for credits and crate colours. */

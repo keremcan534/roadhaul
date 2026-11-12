@@ -124,6 +124,12 @@ the declarations.
 | Health | None. |
 | News app | No. |
 
+**Permissions.** Beyond the internet, vibration and billing, the app asks for notifications
+(`POST_NOTIFICATIONS`, the game's reminders; Android 13 and up shows the question only when the player taps "Remind me
+tomorrow" or turns Reminders on in Settings) and gets `RECEIVE_BOOT_COMPLETED` and `WAKE_LOCK` with them, to keep the
+reminders over a restart. It takes **no exact alarms**: the manifest removes the plugin's `SCHEDULE_EXACT_ALARM`, so
+Play's exact alarm declaration does not come up. The notifications are made on the phone; Data safety stays as above.
+
 ### 6. Selling in the app (in-app purchases)
 
 The game sells six one-time products (`src/data/config/products.ts`): **Remove ads** (no ads between contracts, and the

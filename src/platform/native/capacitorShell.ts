@@ -14,6 +14,9 @@ export function capacitorShell(): NativeAppShell {
     onPause: (listener) => {
       void App.addListener('pause', () => listener());
     },
+    onResume: (listener) => {
+      void App.addListener('resume', () => listener());
+    },
     minimize: () => {
       void App.minimizeApp();
     },

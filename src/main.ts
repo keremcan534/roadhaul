@@ -19,6 +19,7 @@ import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrail
 import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
+import { pastFirstDelivery } from './domain/tutorial/tutorialSteps';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
 import { HOME_START_ID, LEFT_START_ID, nearestDepotCity, type StartPlace } from './domain/world/startPlaces';
 import type { DrivingWorld } from './domain/world/DrivingWorld';
@@ -143,6 +144,7 @@ import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { FerryCrossing } from './ui/menus/FerryCrossing';
 import { MainMenu } from './ui/menus/MainMenu';
 import { NewCompanyDialog } from './ui/menus/NewCompanyDialog';
+import { suggestedCompanyName } from './ui/menus/suggestedCompanyName';
 import { PauseMenu, type RoadsideFuelOffer } from './ui/menus/PauseMenu';
 import type { CareerShown } from './ui/menus/careerSheet';
 import { passRewardText, type RoadPassShown } from './ui/menus/roadPassSheet';
@@ -156,6 +158,7 @@ import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
+import { reminderText } from './ui/menus/reminderText';
 import { AchievementsDialog } from './ui/menus/AchievementsDialog';
 import { CrateDialog, type CratePage, type CratesShown } from './ui/menus/CrateDialog';
 import { LevelUpDialog } from './ui/menus/LevelUpDialog';
@@ -404,6 +407,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   }
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const review = services.resolve(ServiceKeys.review);
+  const reminders = services.resolve(ServiceKeys.reminders);
   const achievements = services.resolve(ServiceKeys.achievements);
   const crates = services.resolve(ServiceKeys.crates);
   const liveries = services.resolve(ServiceKeys.liveries);
@@ -743,6 +747,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       showHud();
       if (choice === 'jobs') {
         openPanel('jobs');
+      } else {
+        offerDailyReward();
       }
     });
   }, { star: (index, lit) => audio.star(index, lit) });
@@ -1033,24 +1039,36 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       celebrateLevel();
     }, delayMs);
   };
-  // The daily reward: offered as the day's first drive starts (after the tutorial), the truck waiting until it is
-  // collected. Left for later, it waits until the game is started again.
+  // The daily reward: offered as the day's first drive starts, and in the first session once the first contract is
+  // delivered (back on the road, or the company panel closed), the truck waiting until it is collected. Left for later,
+  // it waits until the game is started again.
   let dailyLeft = false;
   const dailyDialog = new DailyRewardDialog(ui, strings, {
     onClaim: () => {
       const claimed = dailyReward.claim();
       if (claimed.ok) {
         audio.chime();
-        dailyDialog.showClaimed(strings.money(claimed.value));
+        const tomorrow = dailyReward.tomorrow;
+        dailyDialog.showClaimed(strings.money(claimed.value), tomorrow.day, strings.money(tomorrow.credits), reminders.askDue);
       } else {
         closeDailyReward();
       }
     },
     onClose: () => closeDailyReward(),
+    onRemind: () => {
+      void reminders.ask().then((coming) => {
+        settingsDialog.showReminders(reminders.on);
+        toastReminders(coming);
+      });
+    },
   });
+  /** Says whether the reminders asked for will come, or that Android's settings hold them back. */
+  const toastReminders = (coming: boolean): void => {
+    toasts.show(strings.t(coming ? 'toast.remindersOn' : 'toast.remindersBlocked'), coming ? 'success' : 'warning');
+  };
   const offerDailyReward = (): void => {
     const offer = dailyReward.offer;
-    if (!offer.claimable || dailyLeft || tutorial.step !== 'done' || dailyDialog.isOpen || result.isOpen || paused) {
+    if (!offer.claimable || dailyLeft || !pastFirstDelivery(tutorial.step) || dailyDialog.isOpen || result.isOpen || paused) {
       return;
     }
     paused = true;
@@ -1487,7 +1505,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onNewCompany: (startId, regionId) => {
       newCompanyRegion = regionId ?? menuRegion();
       newCompanyStart = regionId !== null || startId === LEFT_START_ID ? HOME_START_ID : startId;
-      newCompany.open(session.hasSavedGame());
+      newCompany.open(
+        session.hasSavedGame(),
+        content.maps.has(newCompanyRegion) ? suggestedCompanyName(strings, content.maps.get(newCompanyRegion)) : '',
+      );
     },
     onPreviewStart: (place) => {
       menuPreview = place;
@@ -1727,6 +1748,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       settings = { ...settings, vibration: on };
       saveSettings(storage, settings);
       haptics.enabled = on;
+    },
+    onReminders: (on) => {
+      void reminders.setOn(on).then((coming) => {
+        if (on) {
+          toastReminders(coming);
+        }
+      });
     },
     onStats: (on) => {
       settings = { ...settings, stats: on };
@@ -2169,6 +2197,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     hq.close();
     showHud();
     tilt.level();
+    offerDailyReward();
   };
   /** The drive stands still while the map is open over the road; it goes on when the map closes, unless paused before. */
   let pausedForMap = false;
@@ -2566,11 +2595,24 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     session.save();
     keepClock();
   };
+  /**
+   * The player leaves the game, or comes back to it: the reminders the player asked for (ReminderService) are left with
+   * the phone as they go, and taken back as they return. The Android app's pause and resume, and the page hidden and
+   * shown, both say so: the reminders are set once however many do.
+   */
+  const away = (): void => {
+    leave();
+    void reminders.away();
+  };
+  const returned = (): void => {
+    void reminders.back();
+  };
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
-      leave();
+      away();
       audio.suspend();
     } else {
+      returned();
       adaptiveResolution.restart();
       audio.resume();
       screenWake.resume();
@@ -2656,7 +2698,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   };
   if (isNativeApp(window)) {
     import('./platform/native/capacitorShell')
-      .then(({ capacitorShell }) => attachNativeApp(capacitorShell(), { back: goBack, leave }))
+      .then(({ capacitorShell }) => attachNativeApp(capacitorShell(), { back: goBack, leave: away, returned }))
       .catch((error: unknown) => logger.error('The Android app shell did not load.', error));
   }
   // Ads and purchases come up after the game has started (their SDKs load late): in the Android app, AdMob when this
@@ -2683,6 +2725,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     import('./platform/native/inAppReview')
       .then(({ inAppReview }) => review.attach(inAppReview()))
       .catch((error: unknown) => logger.warn('The rating sheet did not load.', error));
+    // Reminders: the phone's own notifications, left with Android as the player goes, once they asked for them.
+    import('./platform/native/localNotifications')
+      .then(({ localNotifications }) => localNotifications(strings.t('reminder.channel')))
+      .then(async (notifier) => {
+        await reminders.attach(notifier, (reminder) => reminderText(strings, reminder));
+        settingsDialog.showReminders(reminders.on);
+      })
+      .catch((error: unknown) => logger.warn('The reminders did not start.', error));
     import('./platform/native/playBilling')
       .then(({ playBilling }) => playBilling(logger.withCategory('Store')))
       .then(async (store) => {

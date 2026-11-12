@@ -12,6 +12,8 @@ const plugins = [
   // The photo mode's pictures: written to the app's cache and handed to the share sheet.
   '@capacitor/filesystem',
   '@capacitor/share',
+  // The reminders (ReminderService): the phone's own notifications, left with Android, nothing sent anywhere.
+  '@capacitor/local-notifications',
   ...(ads === 'off' ? [] : ['@capacitor-community/admob']),
 ];
 

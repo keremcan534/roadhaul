@@ -1734,6 +1734,22 @@
   align-self: center;
 }
 
+.daily__remind {
+  align-self: center;
+  min-height: 44px;
+}
+
+.daily__tomorrow {
+  margin: 0;
+  color: var(--rh-muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.daily__tomorrow:empty {
+  display: none;
+}
+
 /* ---- The company's goals (src/ui/menus/AchievementsDialog.ts) ---- */
 
 .goals {

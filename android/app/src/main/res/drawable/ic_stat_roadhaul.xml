@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The reminders' status bar icon (src/platform/native/localNotifications.ts): the brand's mark, white, as Android draws such icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:translateX="4.4"
+        android:translateY="10">
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M18 12a2 2 0 0 1 2-2h20v80H20a2 2 0 0 1-2-2zM40 10h16a24 24 0 0 1 0 48H40V43h14a9 9 0 0 0 0-18H40zM42.5 58H65l31 32H44.5z" />
+    </group>
+</vector>

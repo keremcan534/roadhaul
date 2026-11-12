@@ -73,4 +73,15 @@ describe('DailyRewardService', () => {
     daily.restore({ lastClaimDay: 20_000, streak: 2 });
     expect(daily.offer.claimable).toBe(false);
   });
+
+  it('names tomorrow’s day and pay once today’s is claimed, and day 1 again after the last', () => {
+    const { daily, later } = setup(2);
+    daily.claim();
+    expect(daily.tomorrow).toEqual({ day: 2, credits: 300 });
+    later(24);
+    daily.claim();
+    later(24);
+    daily.claim();
+    expect(daily.tomorrow).toEqual({ day: 1, credits: 150 });
+  });
 });

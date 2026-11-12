@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -49,4 +50,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- A short buzz when the truck hits something (Settings can switch it off). -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!--
+      The reminders (@capacitor/local-notifications) bring POST_NOTIFICATIONS, asked for only when the player taps
+      "Remind me", and RECEIVE_BOOT_COMPLETED, to keep them over a restart. Not its exact alarms: Google Play keeps
+      those for alarm clocks and calendars, and a reminder may come a few minutes late (isExactNotification: false).
+    -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />
 </manifest>
