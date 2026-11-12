@@ -129,7 +129,7 @@ If this loop is fun and bug-free, the project continues. If it is not, adding ci
 - Saves stay in the app's WebView storage under the `https://localhost` origin. The app's scheme and hostname must never change, or saves are lost.
 - Debug builds share a signing key kept in the repository, so each installs over the last one and keeps the save; CI numbers the builds. A store release (step 30) needs its own, secret key.
 - Android's back button closes the dialog that is open, pauses and resumes the drive, takes the HQ back to the main menu, and at the main menu puts the app away. Going to the background pauses the drive and saves; a hidden browser tab now does the same.
-- Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber; since the brand round, the brand's mark) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
+- Full screen: the system bars hide, and a swipe shows them for a moment. The icon (a dark box truck on the game's amber; since the brand round, the brand's mark; since 2026-10-23, the store icon's shot of the starter truck at dusk, rendered with TruckView) and the splash are drawn by `scripts/androidIcons.mjs`: no template art is left.
 - Nothing here ran on a phone yet: this container has no Android emulator (no hardware virtualization). Step 29 installs the CI build on real phones.
 - For step 29, Settings has a performance display switch: FPS, draw calls, the pixel ratio, the graphics preset and the GPU, in the browser and the app, without `?debug`.
 - Release hardening (toward step 30):
