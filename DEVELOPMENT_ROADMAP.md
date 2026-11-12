@@ -541,6 +541,21 @@ What it measures: the performance run's frames, before and after alternately (tw
 
 Not done: the minimap's paint (a few milliseconds a dozen times a second on the low-end phone) turns with the truck, so its layers cannot simply be kept; merging shader variants and sending the lamps in world space would change the picture, and were left.
 
+### New players who stay: a quicker first session and reminders (between steps 28 and 29)
+
+Few new players stayed past their first days. The first session took long to reach anything to come back for (a name to type, a 4.4 km first contract, level 2 at 1,000 XP, the daily reward only after the whole tutorial), some phones never got past the loading screen, and nothing called the player back.
+
+| Item | Status | Notes |
+|---|---|---|
+| A name ready | ✅ | The new company dialog fills in one after the home town, in the player's language ("Havenport Haulage"): one tap on Start founds the company |
+| A shorter first contract | ✅ | The tutorial's first package goes to Saltcove, the nearest town (3.2 km); a new level-1 job (`saltcove_tins`) brings the truck home |
+| Level 2 sooner | ✅ | 400 XP instead of 1,000: about four easy deliveries |
+| The daily reward on the first day | ✅ | Offered once the first contract is delivered, not after the whole tutorial; collected, it names tomorrow's day and pay |
+| An old WebView told | ✅ | A phone whose Android System WebView is too old for the game's ES2022 is told to update it (a link to Google Play) instead of loading forever; ES5 in `index.html`, its ten languages kept equal to the string tables by a test |
+| Reminders | ✅ | The Android app's own notifications, only once the player asks (the daily reward's "Remind me tomorrow", or Settings): the daily reward and the free crate, never more than one a day, between 10:00 and 21:00, taken back as the game opens. Local (`@capacitor/local-notifications`), no server; inexact alarms, no exact-alarm permission |
+
+Not done: what it changes is read in Google Play's retention (day 1 and day 7) a few weeks after the release. A reminder on a phone switched off at its time comes when it is switched on again, if still due.
+
 ## Next step: 29 Device testing
 
 Suggested request:

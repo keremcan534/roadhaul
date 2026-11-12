@@ -7,6 +7,8 @@ export interface DailyRewardActions {
   readonly onClaim: () => void;
   /** The player goes on to the road: once it is collected, or leaving it for later. */
   readonly onClose: () => void;
+  /** The player asks to be reminded tomorrow (ReminderService, in the Android app). */
+  readonly onRemind: () => void;
 }
 
 /** The daily reward as the dialog shows it. */
@@ -46,6 +48,8 @@ export class DailyRewardDialog {
   private readonly total: HTMLParagraphElement;
   /** After the claim: what tomorrow's pays, a reason to come back. */
   private readonly tomorrow: HTMLParagraphElement;
+  /** After the claim, where the phone can remind the player and they have not been asked yet: "Remind me tomorrow". */
+  private readonly remindButton: HTMLButtonElement;
 
   constructor(
     parent: HTMLElement,
@@ -73,6 +77,14 @@ export class DailyRewardDialog {
     this.closeButton = withIcon(button(document, 'button--primary daily__claim', strings.t('result.continue'), 'close-daily', actions.onClose), 'play');
     this.closeButton.hidden = true;
     this.laterButton = button(document, 'button--ghost daily__later', strings.t('daily.later'), 'later-daily', actions.onClose);
+    this.remindButton = withIcon(
+      button(document, 'button--secondary daily__remind', strings.t('daily.remind'), 'remind-daily', () => {
+        this.remindButton.hidden = true;
+        actions.onRemind();
+      }),
+      'clock',
+    );
+    this.remindButton.hidden = true;
     this.panel.append(
       head,
       this.streakLine,
@@ -82,6 +94,7 @@ export class DailyRewardDialog {
       this.tomorrow,
       this.claimButton,
       this.closeButton,
+      this.remindButton,
       this.laterButton,
     );
     this.overlay.append(this.panel);
@@ -127,14 +140,15 @@ export class DailyRewardDialog {
     this.claimButton.disabled = false;
     this.laterButton.hidden = false;
     this.closeButton.hidden = true;
+    this.remindButton.hidden = true;
     this.overlay.hidden = false;
   }
 
   /**
    * Today's reward was collected (`amount` as money): the coins burst, tomorrow's day and pay (`tomorrowAmount` as
-   * money) are named, and the way on to the road shows.
+   * money) are named, and the way on to the road shows, with "Remind me tomorrow" under it when `offerReminder`.
    */
-  showClaimed(amount: string, tomorrowDay: number, tomorrowAmount: string): void {
+  showClaimed(amount: string, tomorrowDay: number, tomorrowAmount: string, offerReminder = false): void {
     this.panel.classList.add('is-claimed');
     const today = this.days.querySelector<HTMLElement>('[data-state="today"]');
     if (today !== null) {
@@ -145,6 +159,7 @@ export class DailyRewardDialog {
     this.claimButton.hidden = true;
     this.laterButton.hidden = true;
     this.closeButton.hidden = false;
+    this.remindButton.hidden = !offerReminder;
     this.closeButton.focus({ preventScroll: true });
   }
 

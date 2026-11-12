@@ -441,6 +441,20 @@ export interface GameConfig {
     /** …and never more than this many times. */
     readonly maxAsks: number;
   };
+  /**
+   * The phone's reminders while the game is away (ReminderService, the Android app's local notifications): at most one
+   * a day, only between these local hours, and only once the player allowed them.
+   */
+  readonly reminders: {
+    /** The days after the one the player leaves on that the daily reward is reminded of (1: tomorrow). */
+    readonly dailyRewardDays: readonly number[];
+    /** No reminder before this local hour… */
+    readonly earliestHour: number;
+    /** …or after this one. */
+    readonly latestHour: number;
+    /** The free crate is reminded of the same day only when it is ready at least this many hours after leaving. */
+    readonly freeCrateMinHours: number;
+  };
   readonly debug: {
     readonly logLevel: LogLevel;
     /** Shows FPS, draw calls and triangles (enable in the browser with `?debug`). */
@@ -857,6 +871,13 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     daysBetween: 60,
     maxAsks: 3,
   },
+  reminders: {
+    // Tomorrow, and once more two days on: a player gone three days has most likely left, and is let be after that.
+    dailyRewardDays: [1, 3],
+    earliestHour: 10,
+    latestHour: 21,
+    freeCrateMinHours: 2,
+  },
   debug: {
     logLevel: 'info',
     showPerfOverlay: false,
@@ -943,6 +964,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     roadEvents,
     cityLife,
     review,
+    reminders,
     debug,
   } = config;
 
@@ -1294,6 +1316,21 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   validator.fraction(review.maxCargoDamage, 'review.maxCargoDamage');
   validator.positiveInteger(review.daysBetween, 'review.daysBetween');
   validator.nonNegativeInteger(review.maxAsks, 'review.maxAsks');
+  validator.check(
+    reminders.dailyRewardDays.every((day, index) => Number.isInteger(day) && day >= 1 && day > (reminders.dailyRewardDays[index - 1] ?? 0)),
+    'reminders.dailyRewardDays',
+    'must be whole days from 1, rising',
+  );
+  validator.check(
+    Number.isInteger(reminders.earliestHour) &&
+      Number.isInteger(reminders.latestHour) &&
+      reminders.earliestHour >= 0 &&
+      reminders.earliestHour < reminders.latestHour &&
+      reminders.latestHour <= 23,
+    'reminders.latestHour',
+    'must be a whole hour after earliestHour, both 0 to 23',
+  );
+  validator.positiveNumber(reminders.freeCrateMinHours, 'reminders.freeCrateMinHours');
   validator.check(isLogLevel(debug.logLevel), 'debug.logLevel', `unknown log level "${debug.logLevel}"`);
   validator.boolean(debug.showPerfOverlay, 'debug.showPerfOverlay');
   return validator.issues;

@@ -5,6 +5,7 @@ import { attachNativeApp, isNativeApp, type NativeAppShell } from '../../../src/
 function fakeShell() {
   let back = (): void => undefined;
   let pause = (): void => undefined;
+  let resume = (): void => undefined;
   const shell: NativeAppShell & { minimized: number } = {
     minimized: 0,
     onBackButton: (listener) => {
@@ -13,11 +14,14 @@ function fakeShell() {
     onPause: (listener) => {
       pause = listener;
     },
+    onResume: (listener) => {
+      resume = listener;
+    },
     minimize: () => {
       shell.minimized++;
     },
   };
-  return { shell, pressBack: () => back(), sendAway: () => pause() };
+  return { shell, pressBack: () => back(), sendAway: () => pause(), bringBack: () => resume() };
 }
 
 describe('attachNativeApp', () => {
@@ -31,6 +35,7 @@ describe('attachNativeApp', () => {
         return !atRoot;
       },
       leave: () => undefined,
+      returned: () => undefined,
     });
 
     pressBack();
@@ -43,14 +48,17 @@ describe('attachNativeApp', () => {
     expect(shell.minimized).toBe(1);
   });
 
-  it('tells the game when the app goes to the background', () => {
-    const { shell, sendAway } = fakeShell();
+  it('tells the game when the app goes to the background, and when it is back', () => {
+    const { shell, sendAway, bringBack } = fakeShell();
     let left = 0;
-    attachNativeApp(shell, { back: () => true, leave: () => left++ });
+    let returned = 0;
+    attachNativeApp(shell, { back: () => true, leave: () => left++, returned: () => returned++ });
 
     sendAway();
-
     expect(left).toBe(1);
+    expect(returned).toBe(0);
+    bringBack();
+    expect(returned).toBe(1);
   });
 });
 

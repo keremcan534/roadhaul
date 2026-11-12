@@ -48,7 +48,7 @@ const ALLOWED_PACKAGES: Readonly<Record<Layer, readonly string[]>> = {
   presentation: ['three'],
   ui: [],
   // @capacitor/core: registerPlugin, for the app's own plugin (displayRate.ts: the screen's refresh rate).
-  platform: ['@capacitor/app', '@capacitor/core', '@capacitor-community/admob', '@capacitor-community/in-app-review', '@capgo/native-purchases', '@capacitor/filesystem', '@capacitor/share'],
+  platform: ['@capacitor/app', '@capacitor/core', '@capacitor-community/admob', '@capacitor-community/in-app-review', '@capgo/native-purchases', '@capacitor/filesystem', '@capacitor/share', '@capacitor/local-notifications'],
   entry: [],
 };
 

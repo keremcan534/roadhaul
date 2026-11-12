@@ -1734,6 +1734,11 @@
   align-self: center;
 }
 
+.daily__remind {
+  align-self: center;
+  min-height: 44px;
+}
+
 .daily__tomorrow {
   margin: 0;
   color: var(--rh-muted);
