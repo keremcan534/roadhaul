@@ -158,6 +158,8 @@ import { photoFileName } from './ui/photo/photoFileName';
 import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
+import { WhatsNewDialog } from './ui/menus/WhatsNewDialog';
+import { DEVELOPMENT_BUILD, notesIn, notesToShow } from './ui/menus/whatsNew';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
 import { reminderText } from './ui/menus/reminderText';
 import { AchievementsDialog } from './ui/menus/AchievementsDialog';
@@ -272,6 +274,8 @@ const THICK_MIST = 0.5;
 /** The game's version (package.json) and its build number (CI; `dev` on a desktop): vite.config.ts sets them. */
 declare const __APP_VERSION__: string;
 declare const __APP_BUILD__: string;
+/** This build's release notes in each language (vite.config.ts: the store listing's changelogs), for What's New. */
+declare const __RELEASE_NOTES__: Readonly<Record<string, string>>;
 /** The ads this build shows (vite.config.ts, from ROADHAUL_ADS; docs/RELEASE.md): none, Google's test ads, or the game's own. */
 declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly rewarded: string; readonly interstitial: string };
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
@@ -1545,6 +1549,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     },
     onSettings: () => openSettings(),
     onShop: () => openShop(),
+    onWhatsNew: () => openWhatsNew(),
     onEarningsBoost: () => startEarningsBoost(),
     onMap: () => openMap(true),
   });
@@ -1865,6 +1870,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const openShop = (): void => {
     shop.open();
     fillShop();
+  };
+  // What's New: the update's release notes (the store's own words), once after each update and from the main menu.
+  const whatsNew = new WhatsNewDialog(ui, strings, { onClose: () => whatsNew.close() });
+  const openWhatsNew = (): void => {
+    const notes = notesIn(__RELEASE_NOTES__, strings.language);
+    if (notes !== null) {
+      whatsNew.open(notes, __APP_BUILD__ === DEVELOPMENT_BUILD ? __APP_VERSION__ : `${__APP_VERSION__} (${__APP_BUILD__})`);
+    }
   };
   const restorePurchases = (): void => {
     shop.busy = true;
@@ -2681,6 +2694,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     const action = backAction({
       gameState: gameState.current,
       menuDialogOpen:
+        whatsNew.isOpen ||
         settingsDialog.isOpen ||
         controlsDialog.isOpen ||
         newCompany.isOpen ||
@@ -2699,6 +2713,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         if (goalsDialog.isOpen) {
           goalsDialog.close();
+          break;
+        }
+        if (whatsNew.isOpen) {
+          whatsNew.close();
           break;
         }
         settingsDialog.stepBack();
@@ -3271,6 +3289,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     if (founded.ok) {
       enterCompany();
     }
+  }
+  // An update's notes, once, at the main menu, to a player who played before; a new player's first build is noted
+  // without them, so the next update's are shown (whatsNew.ts). A development build notes nothing.
+  if (gameState.current === 'mainMenu' && notesToShow(__APP_BUILD__, settings.seenNotesBuild, session.hasSavedGame(), query.get('news') === '1')) {
+    openWhatsNew();
+  }
+  if (__APP_BUILD__ !== DEVELOPMENT_BUILD && settings.seenNotesBuild !== __APP_BUILD__) {
+    settings = { ...settings, seenNotesBuild: __APP_BUILD__ };
+    saveSettings(storage, settings);
   }
 }
 

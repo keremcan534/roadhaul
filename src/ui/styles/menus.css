@@ -375,6 +375,11 @@
   font-size: 13px;
 }
 
+/* What's New: its picture alone. */
+.main-menu__news {
+  padding-inline: 9px;
+}
+
 @media (orientation: portrait) {
   .main-menu__small {
     justify-content: center;
@@ -1395,6 +1400,48 @@
 
 .shop__buttons .button {
   flex: 1 1 140px;
+}
+
+/* ---- What's New (src/ui/menus/WhatsNewDialog.ts): what an update brought, once after it ---- */
+
+.whats-new {
+  /* Over the main menu. */
+  z-index: 13;
+  background: var(--rh-scrim);
+}
+
+.whats-new__panel {
+  width: min(100%, 440px);
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.whats-new__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.whats-new__icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  color: var(--rh-accent);
+}
+
+.whats-new__version {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 600 12px/1.3 var(--rh-numeric);
+  letter-spacing: 0.04em;
+}
+
+.whats-new__notes {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  /* The notes' own line breaks. */
+  white-space: pre-line;
 }
 
 /* ---- Half-price services after a rewarded ad (src/ui/serviceDiscounts.ts): rest areas and the truck page ---- */

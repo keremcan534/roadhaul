@@ -1073,6 +1073,8 @@ export const DE: StringTable = {
   'ads.used': 'Für heute sind alle Rabatte aufgebraucht.',
   'ads.privacy': 'Datenschutzoptionen für Werbung',
   'menu.shop': 'Shop',
+  'whatsNew.title': 'Was ist neu',
+  'whatsNew.ok': 'Verstanden',
   'settings.purchases': 'Käufe und Werbung',
   'settings.company': 'Deine Firma',
   'settings.companyNote': 'Bewahre eine Kopie deiner Firma außerhalb des Spiels auf (in deinen Dateien, einem Cloud-Speicher oder einer Nachricht an dich selbst) und hol sie auf diesem oder einem neuen Handy zurück.',

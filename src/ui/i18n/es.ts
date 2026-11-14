@@ -1073,6 +1073,8 @@ export const ES: StringTable = {
   'ads.used': 'Ya has usado todos los servicios a mitad de precio de hoy.',
   'ads.privacy': 'Opciones de privacidad de anuncios',
   'menu.shop': 'Tienda',
+  'whatsNew.title': 'Novedades',
+  'whatsNew.ok': 'Entendido',
   'settings.purchases': 'Compras y anuncios',
   'settings.company': 'Tu empresa',
   'settings.companyNote': 'Guarda una copia de tu empresa fuera del juego (en tus archivos, una nube o un mensaje a ti mismo) y recupérala en este móvil o en uno nuevo.',

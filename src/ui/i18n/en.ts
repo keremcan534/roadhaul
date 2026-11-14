@@ -1073,6 +1073,8 @@ export const EN: StringTable = {
   'ads.used': 'That is all the half-price services for today.',
   'ads.privacy': 'Ad privacy choices',
   'menu.shop': 'Shop',
+  'whatsNew.title': 'What’s new',
+  'whatsNew.ok': 'Got it',
   'settings.purchases': 'Purchases and ads',
   'settings.company': 'Your company',
   'settings.companyNote': 'Keep a copy of your company outside the game (in your files, a drive or a message to yourself) and bring it back on this phone or a new one.',

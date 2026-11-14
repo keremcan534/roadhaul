@@ -1073,6 +1073,8 @@ export const IT: StringTable = {
   'ads.used': 'Per oggi hai finito i servizi a metà prezzo.',
   'ads.privacy': 'Scelte sulla privacy della pubblicità',
   'menu.shop': 'Negozio',
+  'whatsNew.title': 'Novità',
+  'whatsNew.ok': 'Ho capito',
   'settings.purchases': 'Acquisti e pubblicità',
   'settings.company': 'La tua azienda',
   'settings.companyNote': 'Tieni una copia della tua azienda fuori dal gioco (nei tuoi file, in un cloud o in un messaggio a te stesso) e riportala su questo telefono o su uno nuovo.',

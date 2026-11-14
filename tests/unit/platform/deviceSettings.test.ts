@@ -18,6 +18,7 @@ const DEFAULTS: DeviceSettings = {
   weather: 'auto',
   season: 'auto',
   radio: 'off',
+  seenNotesBuild: null,
 };
 
 describe('device settings', () => {
@@ -41,6 +42,7 @@ describe('device settings', () => {
       weather: 'rain',
       season: 'winter',
       radio: 'night',
+      seenNotesBuild: '1201',
     };
     expect(saveSettings(storage, picked)).toBe(true);
 
@@ -53,7 +55,7 @@ describe('device settings', () => {
       '{',
       'null',
       '[]',
-      '{"language":"klingon","quality":"ultra","sound":"loud","vibration":"strong","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon"}',
+      '{"language":"klingon","quality":"ultra","sound":"loud","vibration":"strong","stats":1,"steering":"joystick","tiltSensitivity":9,"controlSize":"huge","camera":"drone","timeFlow":"backwards","clockMinutes":1440,"weather":"snowstorm","season":"monsoon","seenNotesBuild":12}',
     ]) {
       storage.setItem(SETTINGS_KEY, raw);
       expect(loadSettings(storage), raw).toEqual(DEFAULTS);

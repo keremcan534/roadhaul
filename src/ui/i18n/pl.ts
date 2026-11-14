@@ -1073,6 +1073,8 @@ export const PL: StringTable = {
   'ads.used': 'Na dziś wykorzystano już wszystkie usługi za pół ceny.',
   'ads.privacy': 'Ustawienia prywatności reklam',
   'menu.shop': 'Sklep',
+  'whatsNew.title': 'Co nowego',
+  'whatsNew.ok': 'Rozumiem',
   'settings.purchases': 'Zakupy i reklamy',
   'settings.company': 'Twoja firma',
   'settings.companyNote': 'Przechowuj kopię swojej firmy poza grą (w plikach, na dysku w chmurze lub w wiadomości do siebie) i przywróć ją na tym lub nowym telefonie.',

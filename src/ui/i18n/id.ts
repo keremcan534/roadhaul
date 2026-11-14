@@ -1073,6 +1073,8 @@ export const ID: StringTable = {
   'ads.used': 'Jatah layanan setengah harga hari ini sudah habis.',
   'ads.privacy': 'Pilihan privasi iklan',
   'menu.shop': 'Toko',
+  'whatsNew.title': 'Yang baru',
+  'whatsNew.ok': 'Mengerti',
   'settings.purchases': 'Pembelian dan iklan',
   'settings.company': 'Perusahaanmu',
   'settings.companyNote': 'Simpan salinan perusahaanmu di luar game (di file, drive, atau pesan untuk dirimu sendiri) dan pulihkan di ponsel ini atau ponsel baru.',

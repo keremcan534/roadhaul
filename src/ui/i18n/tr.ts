@@ -1073,6 +1073,8 @@ export const TR: StringTable = {
   'ads.used': 'Bugünkü yarı fiyat hakların bitti.',
   'ads.privacy': 'Reklam gizlilik seçenekleri',
   'menu.shop': 'Mağaza',
+  'whatsNew.title': 'Yenilikler',
+  'whatsNew.ok': 'Tamam',
   'settings.purchases': 'Satın alımlar ve reklamlar',
   'settings.company': 'Şirketin',
   'settings.companyNote': 'Şirketinin bir kopyasını oyunun dışında sakla (dosyalarında, bir sürücüde ya da kendine bir mesajda) ve bu telefonda ya da yenisinde geri getir.',
