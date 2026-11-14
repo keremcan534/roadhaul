@@ -158,6 +158,24 @@ export interface RestAreaDefinition {
   readonly lot: RectangleDefinition;
 }
 
+/** What there is to do at a place to visit (PlaceDefinition). */
+export const PLACE_KINDS = ['diner', 'truckWash', 'lookout'] as const;
+export type PlaceKind = (typeof PLACE_KINDS)[number];
+
+/**
+ * A place to visit beside a road (the owner's request): a paved lot with a
+ * building of its kind on its back half. Stopping on it the first time pays
+ * a finder's reward; the diner serves the day's Yard Jam puzzle, the truck
+ * wash a scrub, the lookout a view. Ids end up in saves (the places found).
+ */
+export interface PlaceDefinition {
+  /** Stable snake_case id, unique across the maps. */
+  readonly id: string;
+  readonly kind: PlaceKind;
+  /** The paved lot: drives like asphalt. One long side should open onto a road. */
+  readonly lot: RectangleDefinition;
+}
+
 /** Which way along a road: toward its last control point, or back toward its first. */
 export const ROAD_DIRECTIONS = ['forward', 'backward'] as const;
 export type RoadDirection = (typeof ROAD_DIRECTIONS)[number];
@@ -373,6 +391,8 @@ export interface MapDefinition {
    * are built. Its fence is solid; nothing else is placed on it.
    */
   readonly headOffice?: RectangleDefinition;
+  /** Places to visit beside the roads (PlaceDefinition); absent: none. */
+  readonly places?: readonly PlaceDefinition[];
   /** Name boards where roads enter the cities. */
   readonly citySigns: readonly CitySignDefinition[];
   readonly fields: readonly FieldDefinition[];
@@ -497,6 +517,21 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
   }
   if (map.headOffice !== undefined) {
     validateRectangle(map.headOffice, `${path}.headOffice`, validator, inside);
+  }
+  if (map.places !== undefined && validator.check(Array.isArray(map.places), `${path}.places`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.places.forEach((place, index) => {
+      const placePath = `${path}.places[${index}]`;
+      if (!validator.check(typeof place === 'object' && place !== null, placePath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(place.id, `${placePath}.id`)) {
+        validator.check(!seen.has(place.id), `${placePath}.id`, `duplicate place id "${place.id}"`);
+        seen.add(place.id);
+      }
+      validator.oneOf(place.kind, PLACE_KINDS, `${placePath}.kind`);
+      validateRectangle(place.lot, `${placePath}.lot`, validator, inside);
+    });
   }
   const roadIds = new Set(
     Array.isArray(map.roads) ? map.roads.filter((road) => typeof road === 'object' && road !== null).map((road) => road.id) : [],

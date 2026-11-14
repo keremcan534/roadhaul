@@ -1,4 +1,4 @@
-import { FIELD_CROPS, type FieldCrop, type RoadKind } from '../../data/definitions/MapDefinition';
+import { FIELD_CROPS, type FieldCrop, type PlaceKind, type RoadKind } from '../../data/definitions/MapDefinition';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { FleetService } from '../../systems/fleet/FleetService';
@@ -76,6 +76,9 @@ const COLORS = {
   delivery: '#3ddc84',
   depot: '#c9d3dc',
   restArea: '#4aa3ff',
+  diner: '#e8663d',
+  truckWash: '#2f9be8',
+  lookout: '#2bb673',
   ferry: '#16a99c',
   ferryClosed: '#5b6b70',
   ferryGlow: 'rgb(22 169 156 / 35%)',
@@ -550,6 +553,13 @@ export class MapPainter {
         context.fillText('P', x, y + 0.5);
       }
     }
+    // The places to visit: a cup, a drop or hills on the place's colour.
+    for (let i = 0; i < sketch.places.length; i++) {
+      const place = sketch.places[i]!;
+      if (view.sees(this.around(place.x, place.z), 12)) {
+        paintPlace(context, view.screenX(place.x, place.z), view.screenY(place.x, place.z), place.kind);
+      }
+    }
     // The headquarters: a house on the company's amber, where a new company starts and "Home" on the main menu.
     const home = sketch.home;
     if (view.sees(this.around(home.x, home.z), 12)) {
@@ -889,6 +899,37 @@ export function paintHome(context: CanvasRenderingContext2D, x: number, y: numbe
   context.lineTo(x - 5.5, y - 0.5);
   context.closePath();
   context.fill();
+}
+
+/** A place's pin at (x, y): a cup for a diner, a drop for a truck wash, two hills for a lookout, white on the place's colour. */
+export function paintPlace(context: CanvasRenderingContext2D, x: number, y: number, kind: PlaceKind): void {
+  disc(context, x, y, 9.5, COLORS.truckEdge);
+  disc(context, x, y, 8, COLORS[kind]);
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = '#ffffff';
+  context.lineWidth = 1.4;
+  context.beginPath();
+  if (kind === 'diner') {
+    context.rect(x - 4, y - 3, 6, 6);
+    context.fill();
+    context.beginPath();
+    context.arc(x + 2.6, y, 2.2, -Math.PI / 2, Math.PI / 2);
+    context.stroke();
+  } else if (kind === 'truckWash') {
+    context.moveTo(x, y - 5.5);
+    context.quadraticCurveTo(x + 4.5, y, x + 3.6, y + 1.8);
+    context.arc(x, y + 1.6, 3.6, 0, Math.PI);
+    context.quadraticCurveTo(x - 4.5, y, x, y - 5.5);
+    context.fill();
+  } else {
+    context.moveTo(x - 5.5, y + 4);
+    context.lineTo(x - 1.5, y - 3);
+    context.lineTo(x + 0.5, y);
+    context.lineTo(x + 2.5, y - 4);
+    context.lineTo(x + 6, y + 4);
+    context.closePath();
+    context.fill();
+  }
 }
 
 function disc(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {

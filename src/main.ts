@@ -143,6 +143,11 @@ import { MapPainter } from './ui/map/MapPainter';
 import { sketchWorld } from './ui/map/mapSketch';
 import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
+import { TruckWashGame } from './ui/menus/TruckWashGame';
+import { YardJamDialog, type YardJamPuzzle } from './ui/menus/YardJamDialog';
+import { PlacePanel } from './ui/hud/PlacePanel';
+import { PlacesView } from './presentation/world/PlacesView';
+import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { FerryCrossing } from './ui/menus/FerryCrossing';
@@ -428,6 +433,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const career = services.resolve(ServiceKeys.career);
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
   const convoy = services.resolve(ServiceKeys.convoy);
+  const places = services.resolve(ServiceKeys.places);
   const requestedRoad = requestedRoadEvent(query);
   if (requestedRoad === 'stranded') {
     roadEvents.sendStrandedDriver();
@@ -536,6 +542,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       ? null
       : new HeadOfficeView(renderHost.scene, headOfficeSite, driving.world.terrain.heightAt(headOfficeSite.x, headOfficeSite.z));
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
+  // The places to visit: a diner, a truck wash and a lookout beside the roads, drawn only near one.
+  const placesView = new PlacesView(renderHost.scene, driving.world, { prelit });
   const lampGlows = config.rendering.lampGlows;
   // What the truck knocks over leaves its place and tumbles about with the debris (CrashService): the views know
   // each thing's circle in the world (the same in every drive of the map) and draw it lying about.
@@ -1278,6 +1286,78 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       onRepairToken: repairToken,
     },
   );
+  // The places to visit: the counter on a place's lot, the diner's Yard Jam and the truck wash's scrub. The drive
+  // waits while one of those is open.
+  const yardJam = new YardJamDialog(ui, strings);
+  const truckWash = new TruckWashGame(ui, strings, () => performance.now(), Math.random);
+  let pausedForPlace = false;
+  const holdForPlace = (): void => {
+    if (!paused) {
+      paused = true;
+      pausedForPlace = true;
+    }
+  };
+  const releaseForPlace = (): void => {
+    if (pausedForPlace) {
+      pausedForPlace = false;
+      paused = false;
+    }
+  };
+  /** The day's yard, dealt once for the day (the deal takes a moment on a slow phone). */
+  let dailyYard: { readonly day: number; readonly puzzle: YardJamPuzzle } | null = null;
+  const openYardJam = (daily: boolean): void => {
+    const day = places.puzzleDay;
+    if (daily && dailyYard?.day !== day) {
+      dailyYard = { day, puzzle: generateYardJam(day, { minMoves: config.places.puzzleMinMoves }) };
+    }
+    const puzzle =
+      daily && dailyYard !== null
+        ? dailyYard.puzzle
+        : generateYardJam(Math.floor(Math.random() * 2 ** 31), { minMoves: config.places.puzzleMinMoves });
+    holdForPlace();
+    yardJam.open(puzzle, {
+      daily,
+      onCleared: (moves) => {
+        if (!daily) {
+          return null;
+        }
+        const paid = places.solvePuzzle(day, moves);
+        return paid.ok ? strings.t('puzzle.reward', { credits: strings.money(paid.value.credits), xp: paid.value.xp }) : null;
+      },
+      onAnother: () => openYardJam(false),
+      onClose: () => {
+        yardJam.close();
+        releaseForPlace();
+      },
+    });
+  };
+  const placePanel = new PlacePanel(
+    ui,
+    strings,
+    places,
+    { puzzleCredits: config.places.puzzleCredits, washCredits: config.places.washCredits },
+    {
+      onPuzzle: () => openYardJam(!places.puzzleSolvedToday),
+      onWash: () => {
+        holdForPlace();
+        const paint = garage.activeTruck?.paint?.color ?? driving.definition.factoryColor;
+        truckWash.open(`#${paint.toString(16).padStart(6, '0')}`, config.places.washSeconds, config.places.washCleanShare, {
+          onFinished: (share) => {
+            const paid = places.finishWash(share);
+            return paid.ok ? strings.t('wash.tip', { credits: strings.money(paid.value) }) : null;
+          },
+          onClose: () => {
+            truckWash.close();
+            releaseForPlace();
+          },
+        });
+      },
+      onPhoto: () => openPhoto(true),
+    },
+  );
+  events.on('PlaceFound', ({ placeId, credits, xp }) => {
+    toasts.show(strings.t('toast.placeFound', { place: strings.t(`place.name.${placeId}`), credits: strings.money(credits), xp }), 'success');
+  });
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   // The road's events: a camera or road works ahead, under the minimap; a camera's flash over the screen.
   const roadAlert = new RoadAlert(ui, strings);
@@ -1400,10 +1480,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     },
     onClose: () => closePhoto(),
   });
-  const openPhoto = (): void => {
+  /** The photo was taken at a lookout: closing it goes back to the road, not to the pause menu. */
+  let photoFromPlace = false;
+  const openPhoto = (fromPlace = false): void => {
     if (!isDriving() || photoMode.isOpen) {
       return;
     }
+    photoFromPlace = fromPlace;
     paused = true;
     pauseMenu.close();
     photoCamera.setBody(driving.definition.body);
@@ -1420,7 +1503,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     photoMode.close();
     delete root.dataset.photo;
     showCamera(onRoad());
-    if (isDriving()) {
+    if (photoFromPlace) {
+      photoFromPlace = false;
+      paused = false;
+    } else if (isDriving()) {
       pauseMenu.open(missions.active !== null, roadsideFuelOffer());
     }
   };
@@ -2386,7 +2472,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     if (hq.isOpen) {
       return 'panel';
     }
-    return restArea.isOpen ? null : 'road';
+    return restArea.isOpen || placePanel.isOpen ? null : 'road';
   };
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
@@ -2816,7 +2902,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         newCompany.isOpen ||
         worldMap.isOpen ||
         goalsDialog.isOpen ||
-        photoMode.isOpen,
+        photoMode.isOpen ||
+        yardJam.isOpen ||
+        truckWash.isOpen,
       panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
@@ -2825,6 +2913,16 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       case 'closeDialog':
         if (photoMode.isOpen) {
           closePhoto();
+          break;
+        }
+        if (yardJam.isOpen) {
+          yardJam.close();
+          releaseForPlace();
+          break;
+        }
+        if (truckWash.isOpen) {
+          truckWash.close();
+          releaseForPlace();
           break;
         }
         if (goalsDialog.isOpen) {
@@ -2926,8 +3024,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   }
 
   if (config.debug.showPerfOverlay) {
-    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area; F runs the fleet and the rivals
-    // 10 minutes on.
+    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area, G at the nearest place to
+    // visit; F runs the fleet and the rivals 10 minutes on.
     window.addEventListener('keydown', (event) => {
       if (event.repeat || !onRoad() || paused) {
         return;
@@ -2939,7 +3037,22 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       }
       const target = missions.target;
       const restArea = driving.world.restAreas[0];
-      const spot = event.code === 'KeyT' ? target?.depot.bay : event.code === 'KeyY' ? restArea?.lot : undefined;
+      // G: the nearest place to visit.
+      let nearestPlace = driving.world.places[0];
+      for (const place of driving.world.places) {
+        const distance = Math.hypot(place.lot.x - driving.vehicle.x, place.lot.z - driving.vehicle.z);
+        if (distance < Math.hypot(nearestPlace!.lot.x - driving.vehicle.x, nearestPlace!.lot.z - driving.vehicle.z)) {
+          nearestPlace = place;
+        }
+      }
+      const spot =
+        event.code === 'KeyT'
+          ? target?.depot.bay
+          : event.code === 'KeyY'
+            ? restArea?.lot
+            : event.code === 'KeyG'
+              ? nearestPlace?.lot
+              : undefined;
       if (spot !== undefined) {
         const parked = bayParkingPose(spot, driving.definition.body, driving.definition.trailer);
         driving.placeTruck(parked.x, parked.z, parked.heading);
@@ -3025,6 +3138,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         session.update(stepSeconds);
         career.update(stepSeconds);
         roadEvents.update(stepSeconds);
+        places.update();
         // A convoy contract's own trucks follow the truck: no other convoy sets off meanwhile (one under way drives on).
         if (convoy.active || missions.convoy === null) {
           convoy.update(stepSeconds);
@@ -3271,6 +3385,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         crashEffects.update(paused ? 0 : deltaSeconds, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
         headOffice?.showAround(renderHost.camera.position.x, renderHost.camera.position.z);
+        placesView.showAround(renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);
         const clockMinute = Math.floor(timeOfDay.minutes);
@@ -3291,6 +3406,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         worldMap.frame();
         restArea.visible = simulating;
         restArea.update();
+        placePanel.visible = simulating;
+        placePanel.update();
         ferry.visible = simulating;
         ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.

@@ -15,6 +15,7 @@ import { ResearchService } from '../systems/company/ResearchService';
 import { CareerService } from '../systems/company/CareerService';
 import { RoadEventService } from '../systems/world/RoadEventService';
 import { ConvoyService } from '../systems/world/ConvoyService';
+import { PlaceService } from '../systems/world/PlaceService';
 import { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
 import { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
 import { RoadPassService } from '../systems/rewards/RoadPassService';
@@ -205,6 +206,20 @@ export class GameBootstrapper {
       const rent = container.register(
         ServiceKeys.rent,
         new RentService(facilities, economy, clock, config.company.rentCapHours, events, logger.withCategory('Rent')),
+      );
+      // The places to visit beside the roads: a finder's reward, the diner's puzzle of the day, the truck wash.
+      const places = container.register(
+        ServiceKeys.places,
+        new PlaceService(
+          driving,
+          economy,
+          company,
+          config.places,
+          clock,
+          this.options.localTimeOffsetMinutes ?? 0,
+          events,
+          logger.withCategory('Places'),
+        ),
       );
       // The research tree: points from deliveries, perks for good; after the economy, its pay bonus on top.
       const research = container.register(
@@ -533,6 +548,7 @@ export class GameBootstrapper {
           facilities,
           research,
           rent,
+          places,
           career,
           roadEvents,
           usedTrucks,

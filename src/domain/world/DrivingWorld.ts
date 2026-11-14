@@ -17,6 +17,7 @@ import {
   type Point2,
   type QuayDefinition,
   type RectangleDefinition,
+  type PlaceDefinition,
   type RestAreaDefinition,
   type SeaDefinition,
   type DistrictKind,
@@ -485,6 +486,10 @@ export class DrivingWorld implements DebrisSolids {
   readonly restAreas: readonly RestAreaDefinition[];
   /** The company's head office site (MapDefinition.headOffice), fenced; null on a map without one. */
   readonly headOffice: RectangleDefinition | null;
+  /** Places to visit beside the roads (MapDefinition.places): a diner, a truck wash, a lookout. */
+  readonly places: readonly PlaceDefinition[];
+  /** The head office's site and the places' lots: kept clear of scenery like a yard. */
+  private readonly sites: readonly RectangleDefinition[];
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
   /** The ways to the other regions (MapDefinition.gates): ferry terminals, borders. */
@@ -627,6 +632,8 @@ export class DrivingWorld implements DebrisSolids {
     this.depots = map.depots;
     this.restAreas = map.restAreas;
     this.headOffice = map.headOffice ?? null;
+    this.places = map.places ?? [];
+    this.sites = [...(map.headOffice === undefined ? [] : [map.headOffice]), ...this.places.map((place) => place.lot)];
     this.servicePoints = [
       ...map.depots.map((depot): ServicePoint => ({ kind: 'depot', depot })),
       ...map.restAreas.map((restArea): ServicePoint => ({ kind: 'restArea', restArea })),
@@ -651,7 +658,7 @@ export class DrivingWorld implements DebrisSolids {
       yards: [
         ...map.depots.map((depot) => depot.yard),
         ...map.restAreas.map((restArea) => restArea.lot),
-        ...(map.headOffice === undefined ? [] : [map.headOffice]),
+        ...this.sites,
       ],
       buildings: mapBuildings,
       windTurbines: this.windTurbines,
@@ -670,7 +677,7 @@ export class DrivingWorld implements DebrisSolids {
     stackContainers(
       plan,
       depotYards,
-      [...depotYards, ...map.restAreas.map((area) => area.lot), ...(map.headOffice === undefined ? [] : [map.headOffice])],
+      [...depotYards, ...map.restAreas.map((area) => area.lot), ...this.sites],
       map.buildings,
       countrySeed + 3,
     );
@@ -993,7 +1000,22 @@ export class DrivingWorld implements DebrisSolids {
         return ASPHALT;
       }
     }
+    for (let i = 0; i < this.places.length; i++) {
+      if (rectangleContains(this.places[i]!.lot, x, z)) {
+        return ASPHALT;
+      }
+    }
     return GRASS;
+  }
+
+  /** The place to visit whose lot (x, z) lies on, or null. Allocation-free. */
+  placeAt(x: number, z: number): PlaceDefinition | null {
+    for (let i = 0; i < this.places.length; i++) {
+      if (rectangleContains(this.places[i]!.lot, x, z)) {
+        return this.places[i]!;
+      }
+    }
+    return null;
   }
 
   /** The depot yard or rest area lot that (x, z) lies in, or null. Allocation-free. */
@@ -1831,7 +1853,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.network.junctions.some((junction) => Math.hypot(x - junction.x, z - junction.z) < LAMP_JUNCTION_CLEARANCE)) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, LAMP_YARD_CLEARANCE)) || this.inHeadOffice(x, z, LAMP_YARD_CLEARANCE)) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, LAMP_YARD_CLEARANCE)) || this.onSite(x, z, LAMP_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, LAMP_YARD_CLEARANCE))) {
@@ -1867,7 +1889,7 @@ export class DrivingWorld implements DebrisSolids {
     if (Math.hypot(x - this.spawn.x, z - this.spawn.z) < RAIL_SPAWN_CLEARANCE) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, RAIL_YARD_CLEARANCE)) || this.inHeadOffice(x, z, RAIL_YARD_CLEARANCE)) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, RAIL_YARD_CLEARANCE)) || this.onSite(x, z, RAIL_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, RAIL_YARD_CLEARANCE))) {
@@ -1930,7 +1952,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.hidesCitySign(x, z) || this.roadGrid.nearRoad(x, z, ROAD_SIGN_ROAD_CLEARANCE)) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, ROAD_SIGN_YARD_CLEARANCE)) || this.inHeadOffice(x, z, ROAD_SIGN_YARD_CLEARANCE)) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, ROAD_SIGN_YARD_CLEARANCE)) || this.onSite(x, z, ROAD_SIGN_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, ROAD_SIGN_YARD_CLEARANCE))) {
@@ -1960,7 +1982,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.isWater(x, z, 1) || this.isOnQuay(x, z, WALK_YARD_CLEARANCE)) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, WALK_YARD_CLEARANCE)) || this.inHeadOffice(x, z, WALK_YARD_CLEARANCE)) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, WALK_YARD_CLEARANCE)) || this.onSite(x, z, WALK_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, WALK_YARD_CLEARANCE))) {
@@ -1972,9 +1994,14 @@ export class DrivingWorld implements DebrisSolids {
     return this.isClearOfBuildings(x, z, WALK_BUILDING_CLEARANCE);
   }
 
-  /** Whether (x, z) lies on the head office's site, or within `margin` meters of it. */
-  private inHeadOffice(x: number, z: number, margin: number): boolean {
-    return this.headOffice !== null && rectangleContains(this.headOffice, x, z, margin);
+  /** Whether (x, z) lies on the head office's site or a place's lot, or within `margin` meters of one. */
+  private onSite(x: number, z: number, margin: number): boolean {
+    for (let i = 0; i < this.sites.length; i++) {
+      if (rectangleContains(this.sites[i]!, x, z, margin)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -2036,7 +2063,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.roadGrid.nearRoad(x, z, TREE_ROAD_CLEARANCE - 0.5)) {
       return false; // Another stretch of road passes close by.
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE)) || this.inHeadOffice(x, z, TREE_YARD_CLEARANCE)) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE)) || this.onSite(x, z, TREE_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, TREE_YARD_CLEARANCE))) {

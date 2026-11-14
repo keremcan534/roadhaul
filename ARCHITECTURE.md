@@ -402,6 +402,7 @@ Spec §65 (V3: tenders, an AI economy), for the player's request to race rival c
 - **What the company can do:** run a campaign (6,000 credits for 40 points, once every 10 minutes in a city). It can buy out a rival it is worth more than, for 1.25 times its value; the rival's trucks leave, and its standing becomes the company's (`RivalAcquired`).
 - **What it tells the UI:** a league by value (money and trucks at their price), the news of the market, and markers for the rivals' trucks and the one racing the company.
 - **Catching up:** the rivals catch up with the time the game was closed before the fleet does. Until a game is loaded (behind the main menu) the market stands still.
+- **Places to visit** (`MapDefinition.places`: a diner, a truck wash and a lookout per region) are lots the world keeps clear and paves like a rest area's (`DrivingWorld.placeAt`). **`PlaceService`** (`src/systems/world`) notes the place the truck stands still on each fixed step, pays a finder's reward the first time, and pays the day's Yard Jam and a wash once a day by the player's own day (saved, v26). The puzzle is domain code (`src/domain/puzzles/yardJam.ts`: rules, a breadth-first solver, a seeded deal checked by it); the dialogs only drag pieces and report the result.
 - **`TenderBoard`** holds the tender on the job board. `CombinedContracts` puts it beside the contracts of the day, so `MissionService` offers, accepts and saves it like any generated contract.
 - **The Rivals page** (`RivalsPage`) shows:
   - the league;

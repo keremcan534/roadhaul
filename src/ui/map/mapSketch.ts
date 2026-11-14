@@ -3,6 +3,7 @@ import {
   type FieldCrop,
   type HillDefinition,
   type MapDefinition,
+  type PlaceKind,
   type Point2,
   type RectangleDefinition,
   type RoadKind,
@@ -83,6 +84,14 @@ export interface MapDepot {
 
 export interface MapRestArea {
   readonly id: string;
+  readonly x: number;
+  readonly z: number;
+}
+
+/** A place to visit (MapDefinition.places): a pin of its kind. */
+export interface MapPlace {
+  readonly id: string;
+  readonly kind: PlaceKind;
   readonly x: number;
   readonly z: number;
 }
@@ -191,6 +200,7 @@ export interface MapSketch {
   readonly buildings: readonly MapBox[];
   readonly depots: readonly MapDepot[];
   readonly restAreas: readonly MapRestArea[];
+  readonly places: readonly MapPlace[];
   readonly ferries: readonly MapFerry[];
   /** The company's headquarters: where the map's own start is (a new company's truck, "Home" on the main menu). */
   readonly home: { readonly x: number; readonly z: number };
@@ -234,6 +244,7 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
   }
   const depots = world.depots.map((depot) => ({ id: depot.id, cityId: depot.cityId, x: depot.yard.x, z: depot.yard.z }));
   const restAreas = world.restAreas.map((restArea) => ({ id: restArea.id, x: restArea.lot.x, z: restArea.lot.z }));
+  const places = world.places.map((place): MapPlace => ({ id: place.id, kind: place.kind, x: place.lot.x, z: place.lot.z }));
   const ferries = world.gates.map(
     (gate): MapFerry => ({ x: gate.area.x, z: gate.area.z, toMapId: gate.toMapId, requiredLevel: gate.requiredCompanyLevel ?? 1 }),
   );
@@ -260,9 +271,11 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
   });
   const buildings = world.buildings.map(({ minX, maxX, minZ, maxZ }) => ({ minX, maxX, minZ, maxZ }));
   const pavedAreas = [
-    ...[...world.depots.map((depot) => depot.yard), ...world.restAreas.map((restArea) => restArea.lot)].map(
-      rectangleCorners,
-    ),
+    ...[
+      ...world.depots.map((depot) => depot.yard),
+      ...world.restAreas.map((restArea) => restArea.lot),
+      ...world.places.map((place) => place.lot),
+    ].map(rectangleCorners),
     ...(world.sea === null ? [] : quayAreas(world.sea)),
   ];
   const turningCircles = world.turningCircles.map(({ x, z, radiusMeters }) => ({ x, z, radiusMeters }));
@@ -282,7 +295,7 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
   runs.forEach(include);
   pavedAreas.forEach(include);
   buildings.forEach(include);
-  for (const place of [...depots, ...restAreas, ...ferries]) {
+  for (const place of [...depots, ...restAreas, ...places, ...ferries]) {
     include({ minX: place.x, maxX: place.x, minZ: place.z, maxZ: place.z });
   }
   if (minX > maxX) {
@@ -317,6 +330,7 @@ export function sketchWorld(world: DrivingWorld, maps: readonly MapDefinition[] 
     buildings,
     depots,
     restAreas,
+    places,
     ferries,
     home: { x: world.spawn.x, z: world.spawn.z },
     // The towns' own buildings place their names: not the farms and villages round them.

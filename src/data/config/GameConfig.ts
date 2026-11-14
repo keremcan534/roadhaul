@@ -364,6 +364,21 @@ export interface GameConfig {
     readonly creditsPerKm: Credits;
     readonly leastRiddenMeters: number;
   };
+  /** The places to visit (PlaceService): finding one, the diner's puzzle of the day and the truck wash's scrub. */
+  readonly places: {
+    /** The first stop at each place pays this, and this much XP. */
+    readonly findCredits: Credits;
+    readonly findXp: number;
+    /** The day's Yard Jam at a diner pays this and this much XP, once a day… */
+    readonly puzzleCredits: Credits;
+    readonly puzzleXp: number;
+    /** …and takes at least this many moves (the hardest of some tries if none does). */
+    readonly puzzleMinMoves: number;
+    /** A truck scrubbed this clean (a share of its dirt) within this long, seconds, earns the wash's tip, once a day. */
+    readonly washCleanShare: Fraction;
+    readonly washSeconds: number;
+    readonly washCredits: Credits;
+  };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
     /** A delivery of the company's own earns a point per this many credits of its pay, at least this many… */
@@ -814,6 +829,16 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     creditsPerKm: 160,
     leastRiddenMeters: 300,
   },
+  places: {
+    findCredits: 500,
+    findXp: 60,
+    puzzleCredits: 1200,
+    puzzleXp: 100,
+    puzzleMinMoves: 9,
+    washCleanShare: 0.9,
+    washSeconds: 30,
+    washCredits: 300,
+  },
   weeklyCup: {
     creditsPerPoint: 100,
     leastDeliveryPoints: 5,
@@ -962,6 +987,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     research,
     roadPass,
     convoy,
+    places,
     weeklyCup,
     usedTrucks,
     roadEvents,
@@ -1261,6 +1287,11 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     const [least, most] = convoy[key];
     validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
   }
+  for (const key of ['findCredits', 'findXp', 'puzzleCredits', 'puzzleXp', 'puzzleMinMoves', 'washCredits'] as const) {
+    validator.check(Number.isInteger(places[key]) && places[key] > 0, `places.${key}`, 'must be a whole number above 0');
+  }
+  validator.positiveNumber(places.washSeconds, 'places.washSeconds');
+  validator.check(places.washCleanShare > 0 && places.washCleanShare <= 1, 'places.washCleanShare', 'must be above 0, at most 1');
   for (const key of ['creditsPerPoint', 'fleetCreditsPerPoint', 'rivalPointsPerTruck'] as const) {
     validator.positiveNumber(weeklyCup[key], `weeklyCup.${key}`);
   }

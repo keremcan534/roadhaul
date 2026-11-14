@@ -4,7 +4,7 @@ import { createNewSaveGameData } from '../../../../src/domain/save/createNewSave
 import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
-import { contentFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
+import { contentFixture, mapFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const content = ContentCatalog.create(contentFixture());
 const MAX_LEVEL = 5;
@@ -90,6 +90,37 @@ describe('validateSaveGameData', () => {
       'weeklyCup',
       'roadPass',
       'rent',
+      'places',
+    ]);
+  });
+
+  it('keeps the places found, known ones once, and whole days', () => {
+    const lot = { x: 0, z: 60, headingDegrees: 90, lengthMeters: 44, widthMeters: 30 };
+    const withPlaces = ContentCatalog.create(
+      contentFixture({
+        maps: [
+          mapFixture({
+            places: [
+              { id: 'test_diner', kind: 'diner', lot },
+              { id: 'test_lookout', kind: 'lookout', lot: { ...lot, z: -60 } },
+            ],
+          }),
+        ],
+      }),
+    );
+    const placePaths = (data: unknown) => validateSaveGameData(data, withPlaces, MAX_LEVEL).map((issue) => issue.path);
+    const places = { found: ['test_diner', 'test_lookout'], puzzleDay: 20_400, washDay: null };
+
+    expect(placePaths(withPart('places', places))).toEqual([]);
+    expect(placePaths(withPart('places', { ...places, found: ['test_diner', 'test_diner', 'moon_base', 7] }))).toEqual([
+      'places.found[1]',
+      'places.found[2]',
+      'places.found[3]',
+    ]);
+    expect(placePaths(withPart('places', { found: 'all', puzzleDay: 1.5, washDay: '2' }))).toEqual([
+      'places.found',
+      'places.puzzleDay',
+      'places.washDay',
     ]);
   });
 

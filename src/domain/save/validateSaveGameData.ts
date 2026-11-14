@@ -353,6 +353,21 @@ export function validateSaveGameData(
     validator.check(typeof stored === 'number' && Number.isFinite(stored) && stored >= 0, 'rent.storedCredits', 'must be a number of at least 0');
     validator.check(typeof since === 'number' && Number.isFinite(since) && since >= 0, 'rent.sinceMs', 'must be a number of at least 0');
   });
+  section('places', (places) => {
+    const found = places['found'];
+    if (validator.check(Array.isArray(found), 'places.found', 'must be a list')) {
+      const known = new Set(content.maps.all.flatMap((map) => (map.places ?? []).map((place) => place.id)));
+      const seen = new Set<unknown>();
+      (found as unknown[]).forEach((id, index) => {
+        validator.check(typeof id === 'string' && known.has(id) && !seen.has(id), `places.found[${index}]`, 'must be a known place, once');
+        seen.add(id);
+      });
+    }
+    for (const key of ['puzzleDay', 'washDay'] as const) {
+      const day = places[key];
+      validator.check(day === null || Number.isInteger(day), `places.${key}`, 'must be null or a whole number');
+    }
+  });
   return validator.issues;
 }
 

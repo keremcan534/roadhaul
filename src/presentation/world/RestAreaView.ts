@@ -1,6 +1,4 @@
 import {
-  BoxGeometry,
-  BufferAttribute,
   Color,
   Group,
   Mesh,
@@ -11,11 +9,12 @@ import {
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { RectangleDefinition, RestAreaDefinition } from '../../data/definitions/MapDefinition';
+import type { RectangleDefinition } from '../../data/definitions/MapDefinition';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
 import { concreteImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { pavedRectangle, placeFlat } from './groundDecals';
+import { lotBackSide, lotBox, lotPoint } from './lotParts';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
 
 /** The lot lies like a depot yard: over the grass and shoulders, under the asphalt (see TrackView). */
@@ -66,7 +65,7 @@ export class RestAreaView {
     if (restAreas.length > 0) {
       const groundLight = flatGroundLight();
       const concrete = this.track(toTexture(concreteImage(), { repeat: true, anisotropy: options.anisotropy ?? 1 }));
-      const backs = restAreas.map((restArea) => backSide(restArea, world));
+      const backs = restAreas.map((restArea) => lotBackSide(restArea.lot, world));
       this.root.add(
         new Mesh(
           this.merged(restAreas.map((restArea) => pavedRectangle(restArea.lot, CONCRETE_TILE_METERS, LOT_Y))),
@@ -127,46 +126,6 @@ export class RestAreaView {
     this.resources.push(resource);
     return resource;
   }
-}
-
-/**
- * Which long side of the lot is its back, away from the road: 1 for the side
- * to the left of its heading (seen by a driver facing that way), -1 for the right.
- */
-function backSide(restArea: RestAreaDefinition, world: DrivingWorld): 1 | -1 {
-  const { lot } = restArea;
-  const heading = (lot.headingDegrees * Math.PI) / 180;
-  const reach = lot.widthMeters / 2;
-  const roadDistance = (side: 1 | -1): number => {
-    const x = lot.x + Math.cos(heading) * reach * side;
-    const z = lot.z - Math.sin(heading) * reach * side;
-    return Math.min(...world.roads.map((road) => road.distanceTo(x, z)));
-  };
-  return roadDistance(1) >= roadDistance(-1) ? 1 : -1;
-}
-
-/** A point `along` meters along the lot and `across` meters toward its back, in world coordinates. */
-function lotPoint(lot: RectangleDefinition, back: 1 | -1, along: number, across: number): [number, number] {
-  const heading = (lot.headingDegrees * Math.PI) / 180;
-  return [
-    lot.x + Math.sin(heading) * along + Math.cos(heading) * across * back,
-    lot.z + Math.cos(heading) * along - Math.sin(heading) * across * back,
-  ];
-}
-
-/** A box `alongSize` long (along the lot), `acrossSize` deep and `height` tall, standing on `bottom`. */
-function lotBox(
-  lot: RectangleDefinition,
-  back: 1 | -1,
-  size: { along: number; across: number; height: number },
-  at: { along: number; across: number; bottom: number },
-  color: number,
-): BufferGeometry {
-  const [x, z] = lotPoint(lot, back, at.along, at.across);
-  const geometry = new BoxGeometry(size.across, size.height, size.along)
-    .rotateY((lot.headingDegrees * Math.PI) / 180)
-    .translate(x, at.bottom + size.height / 2, z);
-  return colored(geometry, color);
 }
 
 /** Stall lines along the back of the lot, beside the canopy (at its far end, along the heading). */
@@ -237,18 +196,4 @@ function fuelStation(lot: RectangleDefinition, back: 1 | -1): BufferGeometry[] {
     lotBox(lot, back, { along: 0.56, across: 2.2, height: 1.4 }, { ...sign, bottom: 7.4 }, SCREEN_COLOR),
   );
   return parts;
-}
-
-/** Gives every vertex of `geometry` one colour. */
-function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
-  const color = new Color(hex);
-  const count = geometry.getAttribute('position').count;
-  const colors = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    colors[i * 3] = color.r;
-    colors[i * 3 + 1] = color.g;
-    colors[i * 3 + 2] = color.b;
-  }
-  geometry.setAttribute('color', new BufferAttribute(colors, 3));
-  return geometry;
 }

@@ -395,6 +395,49 @@ describe.each(MAPS)('map $id', (map) => {
     });
   });
 
+  describe.each(map.places ?? [])('place $id', (place) => {
+    it('opens onto a road along most of one long side of its lot', () => {
+      expect(pavedAlongLongestEdge(place.lot)).toBeGreaterThanOrEqual(place.lot.lengthMeters * 0.8);
+    });
+
+    it('lies on flat, dry land, clear of the other yards, lots and sites, and any other road', () => {
+      const others = [
+        ...map.depots.map((depot) => depot.yard),
+        ...map.restAreas.map((restArea) => restArea.lot),
+        ...(map.headOffice === undefined ? [] : [map.headOffice]),
+        ...(map.places ?? []).filter((other) => other !== place).map((other) => other.lot),
+      ];
+      const heights: number[] = [];
+      const [ax, az] = [Math.sin((place.lot.headingDegrees * Math.PI) / 180), Math.cos((place.lot.headingDegrees * Math.PI) / 180)];
+      for (let along = -0.45; along <= 0.45; along += 0.15) {
+        for (let across = -0.3; across <= 0.45; across += 0.15) {
+          const x = place.lot.x + ax * along * place.lot.lengthMeters + az * across * place.lot.widthMeters;
+          const z = place.lot.z + az * along * place.lot.lengthMeters - ax * across * place.lot.widthMeters;
+          expect(world.isWater(x, z, 2), `${x}, ${z}`).toBe(false);
+          expect(others.some((other) => rectangleContains(other, x, z, 20))).toBe(false);
+          heights.push(world.terrain.heightAt(x, z));
+        }
+      }
+      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(1.5);
+    });
+
+    it('keeps buildings and trees off the lot', () => {
+      for (const building of world.buildings) {
+        const middle = [(building.minX + building.maxX) / 2, (building.minZ + building.maxZ) / 2] as const;
+        expect(rectangleContains(place.lot, middle[0], middle[1], 0.5)).toBe(false);
+      }
+      for (const tree of world.trees) {
+        expect(rectangleContains(place.lot, tree.x, tree.z, 3)).toBe(false);
+      }
+    });
+
+    it('is paved, and found by where the truck stands', () => {
+      expect(world.surfaceAt(place.lot.x, place.lot.z)).toBe(ASPHALT);
+      expect(world.placeAt(place.lot.x, place.lot.z)).toBe(place);
+      expect(world.placeAt(place.lot.x + 200, place.lot.z + 200)).toBeNull();
+    });
+  });
+
   describe.each(map.depots)('depot $id', (depot) => {
     it('opens onto the road along one whole side of its yard', () => {
       expect(pavedAlongLongestEdge(depot.yard)).toBeGreaterThanOrEqual(depot.yard.lengthMeters - 1);
@@ -439,5 +482,16 @@ describe.each(MAPS)('map $id', (map) => {
         expect(depot.bay.widthMeters, vehicle.id).toBeGreaterThanOrEqual(vehicle.body.widthMeters + 1.5);
       }
     });
+  });
+});
+
+describe('places to visit', () => {
+  it('has a diner, a truck wash and a lookout in every region, each id once across the maps (saves keep them)', () => {
+    const ids = MAPS.flatMap((map) => (map.places ?? []).map((place) => place.id));
+
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const map of MAPS) {
+      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['diner', 'lookout', 'truckWash']);
+    }
   });
 });

@@ -55,8 +55,10 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  * - v25: a generated contract under way may say what kind of job it is
  *   (`variant`: a rush, a convoy), and a convoy's how many of its trucks
  *   were lost (`convoyTrucksLost`); one saved before is a plain one.
+ * - v26: adds the places to visit: the ones found, and the days of the last
+ *   puzzle solved and the last wash.
  */
-export const CURRENT_SAVE_VERSION = 25;
+export const CURRENT_SAVE_VERSION = 26;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -95,6 +97,8 @@ export interface SaveGameData {
   readonly weeklyCup: WeeklyCupSaveData;
   readonly roadPass: RoadPassSaveData;
   readonly rent: RentSaveData;
+  /** The places to visit (PlaceService), from v26. */
+  readonly places: PlacesSaveData;
 }
 
 /** The Road Pass (RoadPassService): the season the points are for (null before any), tiers collected, colours kept. */
@@ -261,6 +265,16 @@ export interface DailyRewardSaveData {
 export interface FacilitiesSaveData {
   /** Each facility's level by FacilityDefinition id; one not listed is not built. */
   readonly levels: Readonly<Record<string, number>>;
+}
+
+/** The places to visit (PlaceService): the ones found, and the player's days of the last puzzle and wash paid. */
+export interface PlacesSaveData {
+  /** PlaceDefinition ids, each once. */
+  readonly found: readonly string[];
+  /** The day (dailyReward.localDay) the diner's puzzle was last solved, or null. */
+  readonly puzzleDay: number | null;
+  /** The day the truck was last washed clean, or null. */
+  readonly washDay: number | null;
 }
 
 /** The warehouse's rent (RentService): the credits waiting, to the fraction, and the time it has grown from. */

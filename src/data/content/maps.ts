@@ -588,6 +588,14 @@ export const MAPS: readonly MapDefinition[] = [
         bay: { x: 2560, z: 2466, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
       },
     ],
+    // Places to visit, each a lot beside its road (overlapping its edge), where the land is flat and open: the
+    // diner on the highway east of Havenport, the truck wash on the road north to the farms, the lookout on the
+    // coast road over the sea.
+    places: [
+      { id: 'valley_diner', kind: 'diner', lot: { x: -593, z: -537, headingDegrees: 110, lengthMeters: 44, widthMeters: 30 } },
+      { id: 'valley_truck_wash', kind: 'truckWash', lot: { x: -1700, z: 382, headingDegrees: 12, lengthMeters: 44, widthMeters: 30 } },
+      { id: 'valley_lookout', kind: 'lookout', lot: { x: -1612, z: 1659, headingDegrees: 29, lengthMeters: 44, widthMeters: 30 } },
+    ],
     restAreas: [
       {
         id: 'valley_rest_area',

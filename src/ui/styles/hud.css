@@ -1190,7 +1190,8 @@ html[data-camera='cabin'] .signal-button {
   .mission-hud,
   .toasts,
   .rest-area-panel,
-  .ferry-panel {
+  .ferry-panel,
+  .place-panel {
     left: calc(50% + 55px);
   }
 
@@ -1205,7 +1206,8 @@ html[data-camera='cabin'] .signal-button {
   }
 
   .rest-area-panel,
-  .ferry-panel {
+  .ferry-panel,
+  .place-panel {
     width: max-content;
     max-width: min(520px, calc(100vw - 250px));
   }
@@ -1425,6 +1427,78 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 .rest-area-panel__discounts:empty {
   display: none;
+}
+
+/* A place to visit's counter (src/ui/hud/PlacePanel.ts): the rest area's, in the place's colour on the maps. */
+.place-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 92px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: min(92vw, 520px);
+  padding: 10px 14px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-plate-line);
+  border-top: 3px solid var(--place-color, var(--rh-accent));
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.place-panel[hidden] {
+  display: none;
+}
+
+.place-panel[data-kind='diner'] {
+  --place-color: #e8663d;
+}
+
+.place-panel[data-kind='truckWash'] {
+  --place-color: #2f9be8;
+}
+
+.place-panel[data-kind='lookout'] {
+  --place-color: #2bb673;
+}
+
+.place-panel__kind {
+  margin: 0;
+  color: var(--place-color);
+  font: 500 12px/1.2 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.place-panel__name {
+  margin: 0;
+  color: var(--rh-fg);
+  font: 600 18px/1.2 var(--rh-display);
+}
+
+.place-panel__line {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 400 13.5px/1.35 var(--rh-text);
+}
+
+.place-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.place-panel__action {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 14px;
 }
 
 /* The ferry terminal's counter (src/ui/hud/FerryPanel.ts): the rest area's, teal like the ferry on the maps, with a line on the crossing. */

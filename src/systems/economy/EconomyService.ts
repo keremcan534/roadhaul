@@ -41,6 +41,7 @@ export const MONEY_REASONS = [
   'convoy',
   'roadPass',
   'rent',
+  'place',
 ] as const;
 export type MoneyReason = (typeof MONEY_REASONS)[number];
 

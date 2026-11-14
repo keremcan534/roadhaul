@@ -66,6 +66,7 @@ describe('createNewSaveGameData', () => {
       weeklyCup: { week: null, points: 0, last: null },
       roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
       rent: { storedCredits: 0, sinceMs: 0 },
+      places: { found: [], puzzleDay: null, washDay: null },
     });
   });
 

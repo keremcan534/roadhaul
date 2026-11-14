@@ -18,6 +18,7 @@ import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
 import type { ResearchService } from '../company/ResearchService';
 import type { RentService } from '../company/RentService';
+import type { PlaceService } from '../world/PlaceService';
 import type { CareerService } from '../company/CareerService';
 import type { RoadEventService } from '../world/RoadEventService';
 import type { UsedTruckMarket } from '../vehicles/UsedTruckMarket';
@@ -65,6 +66,8 @@ export interface GameSessionDependencies {
   readonly research: ResearchService;
   /** The warehouse's rent, waiting to be collected. */
   readonly rent: RentService;
+  /** The places to visit: the ones found, the day's puzzle and wash. */
+  readonly places: PlaceService;
   /** The career's records. */
   readonly career: CareerService;
   /** The road's events: the warning given, the contract's fines and knocks. */
@@ -155,6 +158,9 @@ export class GameSessionService {
       events.on('CrateEarned', saveNow),
       events.on('SuppliesChanged', saveNow),
       events.on('LiveryChanged', saveNow),
+      events.on('PlaceFound', saveNow),
+      events.on('PuzzleSolved', saveNow),
+      events.on('TruckWashed', saveNow),
       events.on('CampaignRun', ({ companyId, away }) => {
         if (companyId === PLAYER_COMPANY_ID && !away) {
           saveNow();
@@ -390,6 +396,7 @@ export class GameSessionService {
       facilities,
       research,
       rent,
+      places,
       career,
       roadEvents,
       usedTrucks,
@@ -431,6 +438,7 @@ export class GameSessionService {
       facilities: facilities.snapshot(),
       research: research.snapshot(),
       rent: rent.snapshot(),
+      places: places.snapshot(),
       career: career.snapshot(),
       roadEvents: roadEvents.snapshot(),
       usedTrucks: usedTrucks.snapshot(),
@@ -502,6 +510,7 @@ export class GameSessionService {
       facilities,
       research,
       rent,
+      places,
       career,
       roadEvents,
       usedTrucks,
@@ -531,6 +540,7 @@ export class GameSessionService {
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
     research.restore(save.research);
     rent.restore(save.rent); // After the facilities: the rent grows at the warehouse's rate.
+    places.restore(save.places);
     career.restore(save.career);
     roadEvents.restore(save.roadEvents);
     usedTrucks.restore(save.usedTrucks);

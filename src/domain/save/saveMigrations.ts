@@ -232,6 +232,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 24,
     migrate: (save) => ({ ...save, version: 25 }),
   },
+  {
+    // v26 adds the places to visit: none found yet, no puzzle solved, no wash.
+    from: 25,
+    migrate: (save) => ({ ...save, version: 26, places: { found: [], puzzleDay: null, washDay: null } }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

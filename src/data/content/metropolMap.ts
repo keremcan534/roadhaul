@@ -351,6 +351,12 @@ const LAID_OUT: MapDefinition = {
       bay: { x: 3350, z: 3516, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
     },
   ],
+  // Places to visit: the diner across the motorway from the rest area, the truck wash on the west county road, the lookout on the waterfront.
+  places: [
+    { id: 'metropol_diner', kind: 'diner', lot: { x: -2330, z: MOTORWAY_Z - 26.5, headingDegrees: 90, lengthMeters: 44, widthMeters: 30 } },
+    { id: 'metropol_truck_wash', kind: 'truckWash', lot: { x: -2980, z: 469.5, headingDegrees: 91, lengthMeters: 44, widthMeters: 30 } },
+    { id: 'metropol_lookout', kind: 'lookout', lot: { x: 80.5, z: 1420, headingDegrees: 0, lengthMeters: 44, widthMeters: 30 } },
+  ],
   restAreas: [
     {
       id: 'm1_rest_area',
@@ -539,6 +545,7 @@ function flipNorth(map: MapDefinition): MapDefinition {
     depots: map.depots.map((depot) => ({ ...depot, yard: flipRectangle(depot.yard), bay: flipRectangle(depot.bay) })),
     restAreas: map.restAreas.map((restArea) => ({ ...restArea, lot: flipRectangle(restArea.lot) })),
     ...(map.headOffice === undefined ? {} : { headOffice: flipRectangle(map.headOffice) }),
+    ...(map.places === undefined ? {} : { places: map.places.map((place) => ({ ...place, lot: flipRectangle(place.lot) })) }),
     rivers: (map.rivers ?? []).map((river) => ({ ...river, points: river.points.map(flip) })),
     forests: (map.forests ?? []).map((forest) => ({ ...forest, outline: forest.outline.map(flip) })),
     terrain: { hills: (map.terrain?.hills ?? []).map((hill) => ({ ...hill, z: -hill.z })) },

@@ -4,6 +4,7 @@ import type { CrateTier } from '../data/config/GameConfig';
 import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { KnockableKind } from '../domain/crash/knockables';
+import type { PlaceKind } from '../data/definitions/MapDefinition';
 import type { MissionDefinition } from '../data/definitions/MissionDefinition';
 import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
@@ -311,6 +312,24 @@ export interface GameEvents {
   ConvoyTruckLost: {
     readonly missionId: string;
     readonly remaining: number;
+  };
+  /** The truck stopped at a place to visit for the first time (PlaceService): the finder's reward paid. */
+  PlaceFound: {
+    readonly placeId: string;
+    readonly kind: PlaceKind;
+    readonly credits: Credits;
+    readonly xp: number;
+  };
+  /** The diner's Yard Jam of the day was solved (PlaceService), in `moves`: paid once a day. */
+  PuzzleSolved: {
+    readonly day: number;
+    readonly moves: number;
+    readonly credits: Credits;
+    readonly xp: number;
+  };
+  /** The truck was scrubbed clean at a truck wash (PlaceService): the day's tip paid. */
+  TruckWashed: {
+    readonly credits: Credits;
   };
   /** The player collected the warehouse's rent at the head office (RentService): `credits` paid in. */
   RentCollected: {
