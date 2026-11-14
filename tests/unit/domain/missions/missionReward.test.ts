@@ -21,6 +21,7 @@ function input(overrides: Partial<MissionRewardInput> = {}): MissionRewardInput 
 describe('calculateMissionReward', () => {
   it('pays base, on-time bonus and condition bonus for a clean, punctual delivery', () => {
     expect(calculateMissionReward(input())).toEqual({
+      parkingBonus: 0,
       basePay: 1000,
       timeBonus: 200, // 10% + 20% × 0.5 time sensitivity
       latePenalty: 0,
@@ -29,6 +30,14 @@ describe('calculateMissionReward', () => {
       onTime: true,
       lateSeconds: 0,
     });
+  });
+
+  it('pays a twentieth of the base pay more for a perfect park at the drop-off', () => {
+    const plain = calculateMissionReward(input());
+    const parked = calculateMissionReward(input({ perfectParking: true }));
+    expect(parked.parkingBonus).toBe(50);
+    expect(parked.total).toBe(plain.total + 50);
+    expect(calculateMissionReward(input({ perfectParking: false, cargoRewardMultiplier: 1.3 })).parkingBonus).toBe(0);
   });
 
   it('multiplies the base pay by the cargo multiplier, in whole credits', () => {

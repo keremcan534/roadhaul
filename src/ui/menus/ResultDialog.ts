@@ -93,6 +93,9 @@ export class ResultDialog {
       );
     }
     line(strings.t('result.conditionBonus'), strings.signedMoney(reward.conditionBonus), 'is-bonus');
+    if (reward.parkingBonus > 0) {
+      line(strings.t('result.parkingBonus'), strings.signedMoney(reward.parkingBonus), 'is-bonus');
+    }
     line(strings.t('result.total'), strings.money(reward.total), 'is-total');
     line(strings.t('result.xp'), `+${strings.t('format.xp', { value: delivery.xp })}`, 'is-progress');
     line(strings.t('result.reputation'), `+${delivery.reputation}`, 'is-progress');

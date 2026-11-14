@@ -9,6 +9,8 @@ export const ON_TIME_BONUS_PER_TIME_SENSITIVITY: Fraction = 0.2;
 export const LATE_PENALTY_MAX: Fraction = 0.5;
 /** Condition bonus for pristine cargo, as a share of the base pay. It shrinks to 0 at the damage tolerance. */
 export const CONDITION_BONUS_MAX: Fraction = 0.2;
+/** A perfect park at the drop-off (loadingBay.isParkedPerfectly) earns this share of the base pay. */
+export const PARKING_BONUS: Fraction = 0.05;
 /** Deliveries up to this late still count as on time: nobody should lose a bonus to a frame. */
 export const LATE_GRACE_SECONDS = 1;
 
@@ -22,6 +24,8 @@ export interface MissionRewardInput {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly damageTolerance: Fraction;
+  /** Parked perfectly at the drop-off: the parking bonus. Absent counts as not. */
+  readonly perfectParking?: boolean;
 }
 
 /** The pay for a contract before bonuses and penalties: its reward times the cargo multiplier, in whole credits. */
@@ -38,7 +42,9 @@ export interface MissionReward {
   readonly latePenalty: Credits;
   /** Paid for careful driving: the less cargo damage, the more. */
   readonly conditionBonus: Credits;
-  /** basePay + timeBonus + conditionBonus - latePenalty. Always positive for a paid job. */
+  /** Paid for a perfect park at the drop-off (PARKING_BONUS); 0 otherwise. */
+  readonly parkingBonus: Credits;
+  /** basePay + timeBonus + conditionBonus + parkingBonus - latePenalty. Always positive for a paid job. */
   readonly total: Credits;
   readonly onTime: boolean;
   /** Seconds over the time limit; 0 when on time (including the grace second). */
@@ -69,13 +75,15 @@ export function calculateMissionReward(input: MissionRewardInput): MissionReward
     : Math.min(Math.round(basePay * lateShare), Math.floor(basePay * LATE_PENALTY_MAX));
 
   const conditionBonus = Math.round(basePay * CONDITION_BONUS_MAX * cargoCondition(input.cargoDamage, input.damageTolerance));
+  const parkingBonus = input.perfectParking === true ? Math.round(basePay * PARKING_BONUS) : 0;
 
   return {
     basePay,
     timeBonus,
     latePenalty,
     conditionBonus,
-    total: basePay + timeBonus + conditionBonus - latePenalty,
+    parkingBonus,
+    total: basePay + timeBonus + conditionBonus + parkingBonus - latePenalty,
     onTime,
     lateSeconds,
   };

@@ -77,6 +77,7 @@ export const ID: StringTable = {
   'result.timeBonus': 'Tepat waktu',
   'result.latePenalty': 'Terlambat {time}',
   'result.conditionBonus': 'Mengemudi hati-hati',
+  'result.parkingBonus': 'Parkir sempurna',
   'result.total': 'Total',
   'result.deliveryTime': 'Waktu pengiriman',
   'result.cargoCondition': 'Kondisi muatan',

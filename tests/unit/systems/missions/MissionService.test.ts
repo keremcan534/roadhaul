@@ -241,10 +241,25 @@ describe('MissionService', () => {
     const [delivery] = completed;
     // The clock ran for the 0.1 s still spent in the bay after loading, 2 s of driving and the unloading.
     expect(delivery!.deliverySeconds).toBeCloseTo(0.1 + 2 + LOADING_SECONDS, 1);
-    expect(delivery!.reward).toMatchObject({ basePay: 1000, timeBonus: 200, conditionBonus: 200, total: 1400 });
+    // Parked squarely in the middle of the bay: the parking bonus too.
+    expect(delivery!.reward).toMatchObject({ basePay: 1000, timeBonus: 200, conditionBonus: 200, parkingBonus: 50, total: 1450 });
     expect(missions.active).toBeNull();
     expect(missions.target).toBeNull();
     expect(driving.totalMassKg).toBe(EMPTY_MASS);
+  });
+
+  it('delivers with the truck a little over the bay\'s lines and askew, only a perfect park earning the parking bonus', () => {
+    const context = setup();
+    const { driving, missions, completed } = context;
+    acceptAndLoad(context);
+    run(driving, missions, 1, 1);
+    const pose = bayParkingPose(missions.target!.depot.bay, driving.definition.body);
+    // 0.8 m to one side of the middle and 5° askew: a corner some 0.4 m over the line.
+    driving.placeTruck(pose.x + Math.cos(pose.heading) * 0.8, pose.z - Math.sin(pose.heading) * 0.8, pose.heading + (5 * Math.PI) / 180);
+    run(driving, missions, LOADING_SECONDS + 0.1);
+
+    expect(completed).toHaveLength(1);
+    expect(completed[0]!.reward).toMatchObject({ parkingBonus: 0, total: 1400 });
   });
 
   it('pays less for a late delivery', () => {
@@ -357,8 +372,8 @@ describe('MissionService', () => {
     parkIn(driving, missions.target!.depot.bay);
     run(driving, missions, LOADING_SECONDS + 0.1);
 
-    // Easy, 1400 credits, on time and pristine: 112 XP and the full 10 reputation.
-    expect(completed[0]).toMatchObject({ xp: 112, reputation: 10 });
+    // Easy, 1450 credits (parked perfectly), on time and pristine: 116 XP and the full 10 reputation.
+    expect(completed[0]).toMatchObject({ xp: 116, reputation: 10 });
 
     missions.accept('test_mission');
     missions.abandon();

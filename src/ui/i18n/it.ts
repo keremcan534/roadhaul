@@ -77,6 +77,7 @@ export const IT: StringTable = {
   'result.timeBonus': 'In orario',
   'result.latePenalty': 'In ritardo di {time}',
   'result.conditionBonus': 'Guida attenta',
+  'result.parkingBonus': 'Parcheggio perfetto',
   'result.total': 'Totale',
   'result.deliveryTime': 'Tempo di consegna',
   'result.cargoCondition': 'Stato del carico',

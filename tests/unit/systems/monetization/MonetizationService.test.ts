@@ -89,6 +89,7 @@ const reward = (total: number): MissionReward => ({
   timeBonus: 0,
   latePenalty: 0,
   conditionBonus: 0,
+  parkingBonus: 0,
   total,
   onTime: true,
   lateSeconds: 0,

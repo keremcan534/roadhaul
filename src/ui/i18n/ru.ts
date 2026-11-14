@@ -77,6 +77,7 @@ export const RU: StringTable = {
   'result.timeBonus': 'Вовремя',
   'result.latePenalty': 'Опоздание на {time}',
   'result.conditionBonus': 'Аккуратная езда',
+  'result.parkingBonus': 'Идеальная парковка',
   'result.total': 'Итого',
   'result.deliveryTime': 'Время доставки',
   'result.cargoCondition': 'Состояние груза',

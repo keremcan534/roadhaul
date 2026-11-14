@@ -11,7 +11,13 @@ import type { RectangleDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import { addCargoDamage, cargoDamageFromImpact, isWithinTolerance } from '../../domain/missions/cargoDamage';
-import { isParkedInBay, isTrailerInsideBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
+import {
+  isParkedInBay,
+  isParkedPerfectly,
+  isTrailerParkedInBay,
+  isTrailerParkedPerfectly,
+  STOPPED_SPEED_METERS_PER_SECOND,
+} from '../../domain/missions/loadingBay';
 import {
   createMissionInstance,
   failMission,
@@ -323,7 +329,8 @@ export class MissionService {
   }
 
   /**
-   * Whether the truck stands still in `bay`: all of it, or a tractor unit's
+   * Whether the truck stands still in `bay` (a little over its lines or
+   * askew will do: isParkedInBay): all of it, or a tractor unit's
    * semi-trailer, which carries the load (the tractor may stand out of it).
    */
   private parkedIn(bay: RectangleDefinition): boolean {
@@ -331,7 +338,24 @@ export class MissionService {
     if (definition.trailer === undefined || trailer === null) {
       return isParkedInBay(bay, vehicle, definition.body);
     }
-    return Math.abs(vehicle.speed) < STOPPED_SPEED_METERS_PER_SECOND && isTrailerInsideBay(bay, trailer, definition.trailer, definition.body.widthMeters);
+    return (
+      Math.abs(vehicle.speed) < STOPPED_SPEED_METERS_PER_SECOND &&
+      isTrailerParkedInBay(bay, trailer, definition.trailer, definition.body.widthMeters)
+    );
+  }
+
+  /** Whether the truck (or its semi-trailer) stands perfectly in the target bay: within the lines, square, in the middle. */
+  private parkedPerfectly(): boolean {
+    const target = this.currentTarget;
+    if (target === null) {
+      return false;
+    }
+    const bay = target.depot.bay;
+    const { vehicle, definition, trailer } = this.driving;
+    if (definition.trailer === undefined || trailer === null) {
+      return isParkedPerfectly(bay, vehicle, definition.body);
+    }
+    return isTrailerParkedPerfectly(bay, trailer, definition.trailer, definition.body.widthMeters);
   }
 
   /** How long loading or unloading takes: research takes a share off. */
@@ -388,6 +412,7 @@ export class MissionService {
       deliverySeconds: mission.deliverySeconds,
       cargoDamage: mission.cargoDamage,
       damageTolerance: definition.damageTolerance,
+      perfectParking: this.parkedPerfectly(),
     });
     const xp = Math.round(deliveryXp(reward, definition.difficulty) * (1 + this.perks.perks.xpBonus));
     const reputation = deliveryReputation(reward, mission.cargoDamage, definition.damageTolerance);

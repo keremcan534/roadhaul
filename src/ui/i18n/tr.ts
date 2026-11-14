@@ -77,6 +77,7 @@ export const TR: StringTable = {
   'result.timeBonus': 'Zaman bonusu',
   'result.latePenalty': '{time} gecikme',
   'result.conditionBonus': 'Hasar bonusu',
+  'result.parkingBonus': 'Kusursuz park',
   'result.total': 'Toplam',
   'result.deliveryTime': 'Teslim süresi',
   'result.cargoCondition': 'Yük durumu',
