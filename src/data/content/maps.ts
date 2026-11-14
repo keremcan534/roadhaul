@@ -541,6 +541,8 @@ export const MAPS: readonly MapDefinition[] = [
       { x: -2600, z: -2100, widthMeters: 10, depthMeters: 10, heightMeters: 28, form: 'lighthouse' },
       { x: -2575, z: -2068, widthMeters: 10, depthMeters: 8, heightMeters: 5 },
     ],
+    // The company's head office: open land 90 m east of the Ashford depot, back from the road.
+    headOffice: { x: -1626, z: -470, headingDegrees: 90, lengthMeters: 48, widthMeters: 36 },
     // Each yard's near long side overlaps its road by 2 m, so the truck can drive straight in.
     depots: [
       {

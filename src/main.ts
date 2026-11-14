@@ -77,6 +77,7 @@ import { CrashEffects } from './presentation/effects/CrashEffects';
 import { SlowMotion } from './presentation/effects/SlowMotion';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
+import { HeadOfficeView } from './presentation/world/HeadOfficeView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { ShootingStars } from './presentation/world/ShootingStars';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
@@ -527,6 +528,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     treeDetailMeters: plainer ? PLAINER_TREE_DETAIL_METERS : undefined,
   });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
+  // The company's head office: its buildings rise as the facilities are built (showHeadOffice, below).
+  const headOfficeSite = driving.world.headOffice;
+  const headOffice =
+    headOfficeSite === null
+      ? null
+      : new HeadOfficeView(renderHost.scene, headOfficeSite, driving.world.terrain.heightAt(headOfficeSite.x, headOfficeSite.z));
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
   const lampGlows = config.rendering.lampGlows;
   // What the truck knocks over leaves its place and tumbles about with the debris (CrashService): the views know
@@ -1492,6 +1499,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * what the garage previews on it: another look gets its own view, and the
    * camera follows it.
    */
+  /** The head office as the company has built it, in the colour of the truck it drives. */
+  const showHeadOffice = (): void => {
+    const active = session.isActive ? garage.activeTruck : null;
+    headOffice?.setLevels((facilityId) => (session.isActive ? facilities.levelOf(facilityId) : 0), active?.paint?.color ?? driving.definition.factoryColor);
+  };
+  showHeadOffice();
   const showTruck = (): void => {
     // Before a company is loaded (the main menu at the start), the truck behind the menu wears its factory colour.
     const active = session.isActive ? garage.activeTruck : null;
@@ -1542,6 +1555,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     truckPreview = null;
     menuPreview = null;
     showTruck();
+    showHeadOffice();
     syncMissionView();
     root.dataset.tutorialStep = tutorial.step;
     gameState.transitionTo('driving');
@@ -2546,6 +2560,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   events.on('VehicleSold', refreshHq);
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
+  events.on('FacilityBuilt', showHeadOffice);
   events.on('RentCollected', refreshHq);
   events.on('ResearchCompleted', refreshHq);
   // A dot on the company page's tab while a research step is within reach (points and credits).
@@ -3239,6 +3254,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         crashEffects.update(paused ? 0 : deltaSeconds, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
+        headOffice?.showAround(renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);
         const clockMinute = Math.floor(timeOfDay.minutes);

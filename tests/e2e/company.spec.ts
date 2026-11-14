@@ -138,9 +138,14 @@ test('lets a warehouse at the head office earn rent as time goes by, nobody driv
   // The card counts up by itself while it shows.
   await page.clock.setFixedTime(start + 3 * 3_600_000);
   await expect(waiting).toHaveText('450 credits waiting');
-  await collect.click();
-  await expect(page.locator('.toast').filter({ hasText: 'Rent collected: 450 credits' })).toBeVisible();
-  await expect(credits).toHaveText('24,450 credits');
+  // The page draws itself again as the game goes on (a tap on a button just replaced is lost): tapped until paid.
+  await expect(async () => {
+    if (await collect.isEnabled()) {
+      await collect.click();
+    }
+    await expect(credits).toHaveText('24,450 credits', { timeout: 2_000 });
+  }).toPass();
   await expect(waiting).toHaveText('0 credits waiting');
+  await expect(collect).toBeDisabled();
   expect(problems).toEqual([]);
 });

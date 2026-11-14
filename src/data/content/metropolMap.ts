@@ -317,6 +317,8 @@ const LAID_OUT: MapDefinition = {
     // Ridgemont's quarry sheds, past the town.
     { x: 3560, z: 3560, widthMeters: 30, depthMeters: 24, heightMeters: 10 },
   ],
+  // The company's head office: open land 60 m west of the first depot (laid out with z north).
+  headOffice: { x: -2278, z: 200, headingDegrees: 0, lengthMeters: 48, widthMeters: 36 },
   depots: [
     {
       id: 'city_h_depot',
@@ -536,6 +538,7 @@ function flipNorth(map: MapDefinition): MapDefinition {
     villages: (map.villages ?? []).map((village) => ({ ...village, z: -village.z, headingDegrees: (180 - village.headingDegrees + 360) % 180 })),
     depots: map.depots.map((depot) => ({ ...depot, yard: flipRectangle(depot.yard), bay: flipRectangle(depot.bay) })),
     restAreas: map.restAreas.map((restArea) => ({ ...restArea, lot: flipRectangle(restArea.lot) })),
+    ...(map.headOffice === undefined ? {} : { headOffice: flipRectangle(map.headOffice) }),
     rivers: (map.rivers ?? []).map((river) => ({ ...river, points: river.points.map(flip) })),
     forests: (map.forests ?? []).map((forest) => ({ ...forest, outline: forest.outline.map(flip) })),
     terrain: { hills: (map.terrain?.hills ?? []).map((hill) => ({ ...hill, z: -hill.z })) },

@@ -367,6 +367,12 @@ export interface MapDefinition {
   readonly buildings: readonly BuildingDefinition[];
   readonly depots: readonly DepotDefinition[];
   readonly restAreas: readonly RestAreaDefinition[];
+  /**
+   * Where the company's head office stands (HeadOfficeView): a fenced site
+   * near the region's first depot, its buildings rising as the facilities
+   * are built. Its fence is solid; nothing else is placed on it.
+   */
+  readonly headOffice?: RectangleDefinition;
   /** Name boards where roads enter the cities. */
   readonly citySigns: readonly CitySignDefinition[];
   readonly fields: readonly FieldDefinition[];
@@ -488,6 +494,9 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       }
       validateRectangle(restArea.lot, `${restAreaPath}.lot`, validator, inside);
     });
+  }
+  if (map.headOffice !== undefined) {
+    validateRectangle(map.headOffice, `${path}.headOffice`, validator, inside);
   }
   const roadIds = new Set(
     Array.isArray(map.roads) ? map.roads.filter((road) => typeof road === 'object' && road !== null).map((road) => road.id) : [],
