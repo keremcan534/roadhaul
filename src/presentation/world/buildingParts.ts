@@ -24,6 +24,102 @@ const PARAPET_COLOR = 0xc9c3b6;
 const METAL_ROOF_COLOR = 0x7d8894;
 const ROOF_OVERHANG_METERS = 0.5;
 
+/**
+ * BoxGeometry's faces in its order (its buildPlane calls): the axes a face's
+ * u, v and w run along (0 x, 1 y, 2 z), u's and v's directions, which of the
+ * box's width, height and depth the face spans across u and v, which its w
+ * stands out by, and that one's sign.
+ */
+const BOX_FACES: readonly (readonly [number, number, number, number, number, number, number, number, number])[] = [
+  [2, 1, 0, -1, -1, 2, 1, 0, 1],
+  [2, 1, 0, 1, -1, 2, 1, 0, -1],
+  [0, 2, 1, 1, 1, 0, 2, 1, 1],
+  [0, 2, 1, 1, -1, 0, 2, 1, -1],
+  [0, 1, 2, 1, -1, 0, 1, 2, 1],
+  [0, 1, 2, -1, -1, 0, 1, 2, -1],
+];
+/** The corners of a face taken by its two triangles, as BoxGeometry indexes them (a, b, d and b, c, d). */
+const BOX_FACE_CORNERS = [0, 2, 1, 2, 3, 1] as const;
+
+/**
+ * `coloured(new BoxGeometry(width, height, depth).translate(x, y, z), hex)`,
+ * the same numbers in the same order, without the box made twice over (its
+ * indexed arrays, then each corner copied out per triangle): thousands of
+ * walls' parts at boot. Every step is three.js's own arithmetic, so even
+ * the signs of zeros come out the same (unit-tested against it).
+ */
+export function colouredBox(width: number, height: number, depth: number, x: number, y: number, z: number, hex: number): BufferGeometry {
+  const sizes = [width, height, depth];
+  const positions = new Float32Array(108);
+  const normals = new Float32Array(108);
+  const colors = new Float32Array(108);
+  // A face's four corners and its normal as BoxGeometry stores them (single precision), then moved as translate().
+  const corners = new Float32Array(12);
+  const normal = new Float32Array(3);
+  const local = [0, 0, 0];
+  const color = new Color(hex);
+  let at = 0;
+  for (const [u, v, w, udir, vdir, across, up, out, sign] of BOX_FACES) {
+    const planeWidth = sizes[across]!;
+    const planeHeight = sizes[up]!;
+    const planeDepth = sign * sizes[out]!;
+    const segmentWidth = planeWidth / 1;
+    const segmentHeight = planeHeight / 1;
+    const widthHalf = planeWidth / 2;
+    const heightHalf = planeHeight / 2;
+    const depthHalf = planeDepth / 2;
+    for (let iy = 0; iy < 2; iy++) {
+      const cy = iy * segmentHeight - heightHalf;
+      for (let ix = 0; ix < 2; ix++) {
+        const cx = ix * segmentWidth - widthHalf;
+        local[u] = cx * udir;
+        local[v] = cy * vdir;
+        local[w] = depthHalf;
+        corners.set(local, (iy * 2 + ix) * 3);
+      }
+    }
+    local[u] = 0;
+    local[v] = 0;
+    local[w] = planeDepth > 0 ? 1 : -1;
+    normal.set(local);
+    // translate(): the corners through a translation matrix, the normal through its normal matrix (the identity).
+    const nx = normal[0]!;
+    const ny = normal[1]!;
+    const nz = normal[2]!;
+    let mx = 1 * nx + 0 * ny + 0 * nz;
+    let my = 0 * nx + 1 * ny + 0 * nz;
+    let mz = 0 * nx + 0 * ny + 1 * nz;
+    const scale = 1 / (Math.sqrt(mx * mx + my * my + mz * mz) || 1);
+    mx *= scale;
+    my *= scale;
+    mz *= scale;
+    for (const corner of BOX_FACE_CORNERS) {
+      const px = corners[corner * 3]!;
+      const py = corners[corner * 3 + 1]!;
+      const pz = corners[corner * 3 + 2]!;
+      const perspective = 1 / (0 * px + 0 * py + 0 * pz + 1);
+      positions[at] = (1 * px + 0 * py + 0 * pz + x) * perspective;
+      positions[at + 1] = (0 * px + 1 * py + 0 * pz + y) * perspective;
+      positions[at + 2] = (0 * px + 0 * py + 1 * pz + z) * perspective;
+      normals[at] = mx;
+      normals[at + 1] = my;
+      normals[at + 2] = mz;
+      colors[at] = color.r;
+      colors[at + 1] = color.g;
+      colors[at + 2] = color.b;
+      at += 3;
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new BufferAttribute(normals, 3));
+  geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  for (let face = 0; face < 6; face++) {
+    geometry.addGroup(face * 6, 6, face);
+  }
+  return geometry;
+}
+
 /** `geometry` in one colour for the details' merged mesh: a colour attribute, no uv. */
 export function coloured(geometry: BufferGeometry, hex: number): BufferGeometry {
   const color = new Color(hex);
@@ -270,7 +366,7 @@ function siloGeometry(box: BuildingObstacle): BufferGeometry[] {
     parts.push(coloured(new CylinderGeometry(radius + 0.05, radius + 0.05, 0.1, 20, 1, true).translate(cx, y, cz), ring));
   }
   for (const side of [-0.25, 0.25]) {
-    parts.push(coloured(new BoxGeometry(0.06, drum, 0.06).translate(cx + radius + 0.18, drum / 2, cz + side), 0x6f757a));
+    parts.push(colouredBox(0.06, drum, 0.06, cx + radius + 0.18, drum / 2, cz + side, 0x6f757a));
   }
   return parts;
 }
@@ -288,7 +384,7 @@ function chimneyGeometry(box: BuildingObstacle): BufferGeometry[] {
   const radiusAt = (y: number): number => foot + ((top - foot) * y) / height;
   const band = 1.1;
   const parts = [
-    coloured(new BoxGeometry(2 * foot + 1.4, 2.2, 2 * foot + 1.4).translate(cx, 1.1, cz), FOOTING_COLOR),
+    colouredBox(2 * foot + 1.4, 2.2, 2 * foot + 1.4, cx, 1.1, cz, FOOTING_COLOR),
     coloured(new CylinderGeometry(top, foot, height, 16, 1, true).translate(cx, height / 2, cz), 0x8b4a37),
     coloured(new CylinderGeometry(top + 0.15, top + 0.15, 0.6, 16).translate(cx, height + 0.1, cz), 0x3b3530),
   ];
@@ -343,7 +439,7 @@ function headframeGeometry(box: BuildingObstacle): BufferGeometry[] {
   const cz = (box.minZ + box.maxZ) / 2;
   const half = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) / 4;
   const tower = box.heightMeters - 4;
-  const parts: BufferGeometry[] = [coloured(new BoxGeometry(4 * half, 0.6, 4 * half).translate(cx, 0.3, cz), FOOTING_COLOR)];
+  const parts: BufferGeometry[] = [colouredBox(4 * half, 0.6, 4 * half, cx, 0.3, cz, FOOTING_COLOR)];
   const steel = (geometry: BufferGeometry): void => {
     parts.push(coloured(geometry, HEADFRAME_STEEL));
   };
@@ -408,7 +504,7 @@ function onWall(box: BuildingObstacle, side: BuildingSide, parts: BufferGeometry
 
 /** A box in a wall's frame: `width` along it about `along`, from `bottom` up `height`, `depth` out from `out`. */
 function wallBox(along: number, width: number, bottom: number, height: number, out: number, depth: number, hex: number): BufferGeometry {
-  return coloured(new BoxGeometry(width, height, depth).translate(along, bottom + height / 2, out + depth / 2), hex);
+  return colouredBox(width, height, depth, along, bottom + height / 2, out + depth / 2, hex);
 }
 
 /** Shop fascias and awnings: original, plain colours. */
@@ -513,8 +609,8 @@ export function chimneyStackGeometry(box: BuildingObstacle, rise: number, random
   const bottom = box.heightMeters - 0.3;
   const top = box.heightMeters + rise * 0.8 + 0.9;
   return [
-    coloured(new BoxGeometry(0.6, top - bottom, 0.6).translate(x, (top + bottom) / 2, z), 0x8b4a37),
-    coloured(new BoxGeometry(0.8, 0.12, 0.8).translate(x, top + 0.06, z), 0x5a5048),
+    colouredBox(0.6, top - bottom, 0.6, x, (top + bottom) / 2, z, 0x8b4a37),
+    colouredBox(0.8, 0.12, 0.8, x, top + 0.06, z, 0x5a5048),
   ];
 }
 
@@ -584,7 +680,7 @@ function solarHeater(x: number, y: number, z: number, bearing: number): BufferGe
 function outerBox(box: BuildingObstacle, proud: number, y: number, height: number, color: number): BufferGeometry {
   const width = box.maxX - box.minX + 2 * proud;
   const depth = box.maxZ - box.minZ + 2 * proud;
-  return coloured(new BoxGeometry(width, height, depth).translate((box.minX + box.maxX) / 2, y + height / 2, (box.minZ + box.maxZ) / 2), color);
+  return colouredBox(width, height, depth, (box.minX + box.maxX) / 2, y + height / 2, (box.minZ + box.maxZ) / 2, color);
 }
 
 function edgeBoxes(box: BuildingObstacle, thickness: number, height: number, y: number, color: number, inset: number): BufferGeometry[] {
@@ -595,11 +691,11 @@ function edgeBoxes(box: BuildingObstacle, thickness: number, height: number, y: 
   const cz = box.minZ + depth / 2;
   const middle = y + height / 2;
   return [
-    new BoxGeometry(width + 2 * out + thickness, height, thickness).translate(cx, middle, box.minZ - out),
-    new BoxGeometry(width + 2 * out + thickness, height, thickness).translate(cx, middle, box.maxZ + out),
-    new BoxGeometry(thickness, height, depth + 2 * out - thickness).translate(box.minX - out, middle, cz),
-    new BoxGeometry(thickness, height, depth + 2 * out - thickness).translate(box.maxX + out, middle, cz),
-  ].map((part) => coloured(part, color));
+    colouredBox(width + 2 * out + thickness, height, thickness, cx, middle, box.minZ - out, color),
+    colouredBox(width + 2 * out + thickness, height, thickness, cx, middle, box.maxZ + out, color),
+    colouredBox(thickness, height, depth + 2 * out - thickness, box.minX - out, middle, cz, color),
+    colouredBox(thickness, height, depth + 2 * out - thickness, box.maxX + out, middle, cz, color),
+  ];
 }
 
 /** Non-indexed parts with the same attributes, merged by concatenation. */

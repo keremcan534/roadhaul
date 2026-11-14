@@ -1,9 +1,11 @@
-import { Box3, Color, Vector3, type BufferAttribute, type BufferGeometry } from 'three';
+import { Box3, BoxGeometry, Color, Vector3, type BufferAttribute, type BufferGeometry } from 'three';
 import { describe, expect, it } from 'vitest';
 import { SeededRandom } from '../../../../src/core/random/SeededRandom';
 import type { BuildingObstacle } from '../../../../src/domain/world/DrivingWorld';
 import {
   chimneyStackGeometry,
+  coloured,
+  colouredBox,
   flatRoofGeometry,
   formGeometry,
   frontDoorGeometry,
@@ -217,5 +219,35 @@ describe('the fronts: shops, loading doors and doors', () => {
     expect(bounds(cap!).max.y).toBeGreaterThan(block.heightMeters + rise);
     // On the ridge: across the narrower way, in the middle.
     expect((shaft.min.x + shaft.max.x) / 2).toBeCloseTo(110, 6);
+  });
+});
+
+describe('colouredBox', () => {
+  /** Each attribute's numbers, sign of zero included, and the groups. */
+  function snapshot(geometry: BufferGeometry): unknown {
+    return {
+      index: geometry.index,
+      groups: geometry.groups,
+      attributes: Object.entries(geometry.attributes).map(([name, attribute]) => [
+        name,
+        (attribute as BufferAttribute).itemSize,
+        (attribute as BufferAttribute).normalized,
+        Array.from((attribute as BufferAttribute).array as Float32Array, (value) => (Object.is(value, -0) ? '-0' : value)),
+      ]),
+    };
+  }
+
+  it('is a box made as BoxGeometry, moved and coloured, number for number', () => {
+    const random = new SeededRandom(7);
+    const sizes = [0, 0.06, 0.3, 1, 2.2, 7.5, 31.25, 120.7];
+    const places = [0, -0, 0.5, -3.75, 12.125, -481.33, 2467.9];
+    for (let i = 0; i < 400; i++) {
+      const [w, h, d] = [sizes[random.int(0, sizes.length - 1)]!, sizes[random.int(0, sizes.length - 1)]!, random.range(0, 40)];
+      const [x, y, z] = [places[random.int(0, places.length - 1)]!, random.range(-5, 60), places[random.int(0, places.length - 1)]!];
+      const hex = random.int(0, 0xffffff);
+      expect(snapshot(colouredBox(w, h, d, x, y, z, hex)), `${w} ${h} ${d} at ${x} ${y} ${z}`).toEqual(
+        snapshot(coloured(new BoxGeometry(w, h, d).translate(x, y, z), hex)),
+      );
+    }
   });
 });
