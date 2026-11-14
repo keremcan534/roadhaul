@@ -3241,6 +3241,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   } else {
     renderHost.precompile();
   }
+  renderHost.readPrograms();
   applyFrameRate(settings.frameRate);
   loop.start();
   root.dataset.bootState = 'ready';

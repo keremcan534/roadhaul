@@ -234,6 +234,24 @@ export class RenderHost {
     this.precompile();
   }
 
+  /**
+   * Reads in every shader program made so far: where its uniforms and
+   * attributes are, which three.js asks the GPU for the first time a
+   * program draws, waiting on it (each program's link, then a question per
+   * uniform). Asked at the end of the boot, behind the loading screen, not
+   * on the road the first time the guard rails or a glow come into view.
+   */
+  readPrograms(): void {
+    const programs = this.renderer.info.programs;
+    if (programs === null) {
+      return;
+    }
+    for (const program of programs) {
+      program.getUniforms();
+      program.getAttributes();
+    }
+  }
+
   /** Whether the preset draws shadow maps: then things out of view can still cast shadows into it. */
   get shadowsOn(): boolean {
     return this.renderer.shadowMap.enabled;
