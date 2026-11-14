@@ -8,6 +8,7 @@ import {
   MeshBasicMaterial,
   MeshLambertMaterial,
   type BufferGeometry,
+  type Frustum,
   type Scene,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -94,6 +95,8 @@ export class RoadEventsView {
    */
   /** The speed cameras and the day's works, drawn as one (a TileBatch culling itself), made again when the works change. */
   private fixtures: TileBatch | null = null;
+  /** Whether the batch holds only the hidden speck: no cameras and no works. */
+  private placeholder = true;
   private world: DrivingWorld | null = null;
   private shownZones: readonly WorkZone[] | null = null;
   private readonly car: Group;
@@ -142,6 +145,18 @@ export class RoadEventsView {
     }
     this.world = world;
     this.build(this.shownZones ?? []);
+  }
+
+  /**
+   * Shows the cameras and the works near (x, z), the camera, and in its view,
+   * as the world's tiles (TileBatch.update; `view` null where the sun's
+   * shadow map is drawn): with none near, no draw at all, where the batch
+   * culling itself drew an empty one every frame. Allocation-free.
+   */
+  showAround(x: number, z: number, view: Frustum | null, eyeView: Frustum | null): void {
+    if (this.fixtures !== null && !this.placeholder) {
+      this.fixtures.update(x, z, view, eyeView);
+    }
   }
 
   /** A camera caught the truck at (x, z): the camera there flashes. */
@@ -282,6 +297,7 @@ export class RoadEventsView {
     }
     const fixtures = new TileBatch(tiles, this.fixtureMaterial, 'road-events:fixtures', undefined, true);
     fixtures.mesh.visible = !placeholder;
+    this.placeholder = placeholder;
     for (const tile of tiles) {
       tile.dispose();
     }

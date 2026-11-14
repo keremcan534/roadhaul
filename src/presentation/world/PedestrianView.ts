@@ -295,6 +295,8 @@ export class PedestrianView {
       this.person.needsUpdate = true;
     }
     this.mesh.count = count;
+    // Nobody near (the country, the highway): no draw at all, where an empty one still sets everything up.
+    this.mesh.visible = count > 0;
   }
 
   dispose(): void {

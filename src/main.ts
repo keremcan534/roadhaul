@@ -3063,6 +3063,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         streetLamps.showAround(eye.x, eye.z);
         trafficSignals?.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);
+        parkView?.showAround(eye.x, eye.z);
+        roadEventsView.showAround(eye.x, eye.z, view, eyeView);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         // On a map's hills the drops fall round the camera from the ground under it (at the truck's level: a deck).
         const fallsFrom = driving.world.flat ? 0 : Math.min(eye.y - 1, driving.world.groundAt(eye.x, eye.z, bodyPose.y + 1));

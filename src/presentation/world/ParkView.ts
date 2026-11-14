@@ -26,7 +26,7 @@ import type { SkyUniforms } from './EnvironmentView';
 import { flatGroundLight, type PrelitMaterials } from './lighting';
 import { groundTint } from './TrackView';
 import { createWaterMaterial } from './waterMaterial';
-import { freezeTransforms } from './worldTiles';
+import { FAR_CULL_METERS, freezeTransforms } from './worldTiles';
 
 /** The lawn is mown in stripes this wide along the park's length, alternately lighter and darker. */
 const STRIPE_METERS = 3;
@@ -100,6 +100,8 @@ export class ParkView {
   private readonly root = new Group();
   private readonly resources: { dispose(): void }[] = [];
   private readonly time = { value: 0 };
+  /** Each park's middle and the radius of the circle round it (x, z, r), for showAround. */
+  private readonly reach: Float64Array;
 
   constructor(
     private readonly scene: Scene,
@@ -107,6 +109,12 @@ export class ParkView {
     options: ParkViewOptions,
   ) {
     this.root.name = 'parks';
+    this.reach = new Float64Array(parks.length * 3);
+    parks.forEach((park, index) => {
+      this.reach[index * 3] = park.area.x;
+      this.reach[index * 3 + 1] = park.area.z;
+      this.reach[index * 3 + 2] = Math.sqrt(park.area.lengthMeters ** 2 + park.area.widthMeters ** 2) / 2;
+    });
     if (parks.length > 0) {
       const lawnMaterial = options.lawnMaterial;
       // Over the ground plane it lies on, under the gravel.
@@ -151,6 +159,23 @@ export class ParkView {
     }
     freezeTransforms(this.root);
     scene.add(this.root);
+  }
+
+  /**
+   * Draws the parks only while one comes within FAR_CULL_METERS of (x, z),
+   * the camera, as the world's tiles past it are left out, deep in the haze:
+   * five draw calls fewer out in the country. Allocation-free.
+   */
+  showAround(x: number, z: number): void {
+    const reach = this.reach;
+    let near = false;
+    for (let i = 0; i < reach.length && !near; i += 3) {
+      const dx = reach[i]! - x;
+      const dz = reach[i + 1]! - z;
+      const within = FAR_CULL_METERS + reach[i + 2]!;
+      near = dx * dx + dz * dz <= within * within;
+    }
+    this.root.visible = near;
   }
 
   /** Moves the fountains' ripples `deltaSeconds` on. Allocation-free. */
