@@ -663,6 +663,39 @@
   color: #ffb020;
 }
 
+/* A rush (a shorter clock, more pay) and a convoy (the company's trucks follow) on the job board. */
+.badge--rush,
+.badge--convoy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge--rush {
+  color: #ff8a5c;
+}
+
+.badge--convoy {
+  color: #9fd4ff;
+}
+
+.badge--rush .icon,
+.badge--convoy .icon {
+  width: 12px;
+  height: 12px;
+  --rh-icon-accent: currentColor;
+}
+
+.job-card__variant--rush {
+  border-color: rgb(255 138 92 / 55%);
+  color: #ff8a5c;
+}
+
+.job-card__variant--convoy {
+  border-color: rgb(159 212 255 / 55%);
+  color: #9fd4ff;
+}
+
 /* A tender on the job board: a pennant, the rival's colour and the prize. */
 .badge--tender {
   display: inline-flex;

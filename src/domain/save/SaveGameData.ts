@@ -52,8 +52,11 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   warning was given.
  * - v24: adds the warehouse's rent (what waits to be collected, and since
  *   when it has grown).
+ * - v25: a generated contract under way may say what kind of job it is
+ *   (`variant`: a rush, a convoy), and a convoy's how many of its trucks
+ *   were lost (`convoyTrucksLost`); one saved before is a plain one.
  */
-export const CURRENT_SAVE_VERSION = 24;
+export const CURRENT_SAVE_VERSION = 25;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -331,6 +334,8 @@ export interface ActiveMissionSaveData {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly failureReason: MissionFailureReason | null;
+  /** A convoy contract's trucks lost to the convoy so far (v25); absent for none. */
+  readonly convoyTrucksLost?: number;
   /**
    * A generated contract (a contract of the day) itself: the generator moves
    * on to new batches, so the save keeps it. Null for the game's own

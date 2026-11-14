@@ -1065,6 +1065,43 @@ html[data-camera='cabin'] .signal-button {
   color: #ffb3a8;
 }
 
+/* A convoy contract on the sign: how many of its trucks are with the truck; amber while one falls behind. */
+.mission-hud__convoy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font: 500 12.5px/1.25 var(--rh-text);
+}
+
+.mission-hud__convoy[hidden] {
+  display: none;
+}
+
+.mission-hud__convoy .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  --rh-icon-accent: currentColor;
+}
+
+.mission-hud__convoy-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.mission-hud__convoy.is-lagging {
+  color: #ffd35a;
+}
+
+.mission-hud__convoy.is-lost {
+  color: #ffb3a8;
+}
+
 /* Upright phones: the sign drops below the corner buttons and takes the full width. */
 @media (orientation: portrait) {
   .mission-hud {

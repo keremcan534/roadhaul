@@ -22,6 +22,7 @@ describe('calculateMissionReward', () => {
   it('pays base, on-time bonus and condition bonus for a clean, punctual delivery', () => {
     expect(calculateMissionReward(input())).toEqual({
       parkingBonus: 0,
+      convoyBonus: 0,
       basePay: 1000,
       timeBonus: 200, // 10% + 20% × 0.5 time sensitivity
       latePenalty: 0,

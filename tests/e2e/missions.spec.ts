@@ -1,5 +1,19 @@
 import { expect, test, type Page } from '@playwright/test';
-import { closePanel, continueGame, foundCompany, openCompanyHq, openGame, openMainMenu, openPanel, shownSpeed, takeContract, waitForFrames, watchForProblems } from './support';
+import {
+  closePanel,
+  continueGame,
+  continueSavedCompany,
+  foundCompany,
+  openCompanyHq,
+  openGame,
+  openMainMenu,
+  openPanel,
+  savedCompany,
+  shownSpeed,
+  takeContract,
+  waitForFrames,
+  watchForProblems,
+} from './support';
 
 const html = (page: Page) => page.locator('html');
 
@@ -138,6 +152,37 @@ test('offers contracts of the day, and keeps one under way across a reload', asy
   await expect(result).toBeVisible({ timeout: 15_000 });
   await expect(result.locator('.panel__title')).toHaveText('Delivered!');
   await expect(result.locator('.result-dialog__mission')).toContainText(' delivery · ');
+  expect(problems).toEqual([]);
+});
+
+test('deals rushes and convoys among the contracts of the day, and pays a convoy for its trucks kept together', async ({ page }) => {
+  test.slow();
+  const problems = watchForProblems(page);
+  // A level 4 company in the RoadHaul H4, on an evening whose batch has a convoy it can take and one it cannot.
+  const save = JSON.parse(
+    savedCompany({ credits: 30_000, xp: 6500, trucks: [{ instanceId: 'truck_001', definitionId: 'rh_h4', fuelLiters: 200 }] }),
+  ) as Record<string, unknown>;
+  save['company'] = { level: 4, xp: 6500, reputation: 40 };
+  await continueSavedCompany(page, JSON.stringify(save), '?debug&lang=en&traffic=0', { date: '2026-10-02T20:00:00Z' });
+  await openPanel(page, 'jobs');
+
+  await expect(page.locator('.job-card--daily .badge--convoy')).toHaveCount(2);
+  const card = page.locator('.job-card[data-mission-id="daily_82915_3"]');
+  await expect(card.locator('.badge--convoy')).toHaveText('Convoy');
+  await expect(card.locator('.job-card__variant--convoy')).toHaveText('Keep the 2 trucks with you: +20% each, up to 70 km/h');
+  await card.locator('[data-action="accept"]').click();
+  await expect(html(page)).toHaveAttribute('data-game-state', 'driving');
+  const convoy = page.locator('.mission-hud__convoy');
+  await expect(convoy).toHaveText('The convoy forms at loading');
+
+  await page.keyboard.press('KeyT');
+  await expect(html(page)).toHaveAttribute('data-mission-state', 'loaded', { timeout: 15_000 });
+  await expect(convoy).toHaveText('Convoy 2/2');
+  await pullAway(page);
+  await page.keyboard.press('KeyT');
+  const result = page.locator('.result-dialog');
+  await expect(result).toBeVisible({ timeout: 15_000 });
+  await expect(result.locator('.result-dialog__line', { hasText: 'Convoy kept together' }).locator('dd')).toHaveText(/^\+[\d,]+ credits$/);
   expect(problems).toEqual([]);
 });
 

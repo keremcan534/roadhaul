@@ -227,6 +227,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 23,
     migrate: (save) => ({ ...save, version: 24, rent: { storedCredits: 0, sinceMs: 0 } }),
   },
+  {
+    // v25 lets a generated contract say what kind of job it is; one saved before names none, a plain one.
+    from: 24,
+    migrate: (save) => ({ ...save, version: 25 }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

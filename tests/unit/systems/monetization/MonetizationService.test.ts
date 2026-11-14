@@ -90,6 +90,7 @@ const reward = (total: number): MissionReward => ({
   latePenalty: 0,
   conditionBonus: 0,
   parkingBonus: 0,
+  convoyBonus: 0,
   total,
   onTime: true,
   lateSeconds: 0,

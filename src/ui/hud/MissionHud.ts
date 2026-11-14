@@ -1,9 +1,11 @@
+import { missionVariant, type MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
 import type { RivalService } from '../../systems/rivals/RivalService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { icon } from '../icons';
 import { arrowRotationDegrees } from './arrowRotation';
 
 /** The HUD redraws at most this often; the DOM is touched only when a shown value changes. */
@@ -25,8 +27,9 @@ export type RaceSource = Pick<RivalService, 'racing' | 'raceSeconds' | 'colorOf'
  * The mission part of the HUD (spec §12, §30, §63): where to go (an arrow
  * towards the route ahead and the distance by road), the next turn, the
  * arrival time, the stop-in-the-bay hint and loading progress, the delivery
- * clock and the cargo's condition, and in a tender, how the race with the
- * rival stands. The speed readout stays on the touch controls. It reads
+ * clock and the cargo's condition, in a tender, how the race with the
+ * rival stands, and in a convoy contract, how many of its trucks are with
+ * the truck. The speed readout stays on the touch controls. It reads
  * MissionService, NavigationService, DrivingService and RivalService and
  * never changes them.
  */
@@ -46,6 +49,8 @@ export class MissionHud {
   private readonly race: HTMLParagraphElement;
   private readonly raceText: HTMLSpanElement;
   private readonly raceFill: HTMLSpanElement;
+  private readonly convoyLine: HTMLParagraphElement;
+  private readonly convoyText: HTMLSpanElement;
   private sinceRefresh = REFRESH_INTERVAL_SECONDS;
   private flashSeconds = 0;
   private shownArrowDegrees = Number.NaN;
@@ -64,6 +69,8 @@ export class MissionHud {
   private shownRaceKey = '';
   private shownRaceClock = Number.NaN;
   private shownRaceProgress = -1;
+  /** The convoy shown (convoyKey): 0 for none. */
+  private shownConvoyKey = -1;
   private enabled = false;
 
   constructor(
@@ -114,7 +121,12 @@ export class MissionHud {
     this.raceFill = element(document, 'span', 'mission-hud__race-fill');
     raceBar.append(this.raceFill);
     this.race.append(element(document, 'span', 'company-swatch'), this.raceText, raceBar);
-    text.append(this.objective, this.turn, this.hint, this.progress, this.race);
+    // A convoy contract: its trucks with the truck, or a word to slow down.
+    this.convoyLine = element(document, 'p', 'mission-hud__convoy');
+    this.convoyLine.hidden = true;
+    this.convoyText = element(document, 'span', 'mission-hud__convoy-text');
+    this.convoyLine.append(icon(document, 'fleet'), this.convoyText);
+    text.append(this.objective, this.turn, this.hint, this.progress, this.race, this.convoyLine);
 
     const stats = element(document, 'div', 'mission-hud__stats');
     this.timer = element(document, 'span', 'mission-hud__timer');
@@ -141,6 +153,7 @@ export class MissionHud {
     this.shownRaceKey = '';
     this.shownRaceClock = Number.NaN;
     this.shownRaceProgress = -1;
+    this.shownConvoyKey = -1;
     if (!visible) {
       this.root.hidden = true;
     }
@@ -242,6 +255,7 @@ export class MissionHud {
     }
 
     this.updateRace(mission.state);
+    this.updateConvoy(definition);
 
     if (!pickup) {
       const clock = Math.ceil(secondsLeft);
@@ -260,6 +274,35 @@ export class MissionHud {
         setText(this.cargo, `${strings.t('hud.cargo')} ${strings.percent(1 - mission.cargoDamage)}`);
       }
     }
+  }
+
+  /**
+   * A convoy contract's trucks: forming at the pickup, then how many are with
+   * the truck, and a word to slow down while one falls behind. The key is a
+   * number (none, forming, and trucks × lagging), so nothing is built unless it changes.
+   */
+  private updateConvoy(definition: MissionDefinition): void {
+    const trail = this.missions.convoy;
+    const key =
+      missionVariant(definition) !== 'convoy' ? 0 : trail === null ? 1 : 2 + trail.trucksWithConvoy * 2 + (trail.lagging ? 1 : 0);
+    if (key === this.shownConvoyKey) {
+      return;
+    }
+    this.shownConvoyKey = key;
+    this.convoyLine.hidden = key === 0;
+    if (key === 0) {
+      return;
+    }
+    const strings = this.strings;
+    const lagging = trail !== null && trail.lagging;
+    this.convoyLine.classList.toggle('is-lagging', lagging);
+    this.convoyLine.classList.toggle('is-lost', trail !== null && trail.trucksWithConvoy === 0);
+    setText(
+      this.convoyText,
+      trail === null
+        ? strings.t('hud.convoy.forming')
+        : strings.t(lagging ? 'hud.convoy.lagging' : 'hud.convoy.with', { count: trail.trucksWithConvoy, total: trail.size }),
+    );
   }
 
   /** How the race for a tender stands: waiting for the load, the rival's time left, or lost. */

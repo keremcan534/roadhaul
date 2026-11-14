@@ -34,6 +34,18 @@ export interface ConvoySource {
   readonly vehicleHeading: Float64Array;
 }
 
+/** A convoy contract's trucks behind the player's, as MissionService.convoy has them. */
+export interface ConvoyFollowers {
+  readonly vehicleX: Float64Array;
+  readonly vehicleZ: Float64Array;
+  readonly vehicleHeading: Float64Array;
+  /** 1 for each one on the road behind the truck. */
+  readonly shown: Uint8Array;
+}
+
+/** A convoy contract has this many trucks at most. */
+const FOLLOWERS = 2;
+
 /** The convoy's trucks' cabs, lead first. */
 const CONVOY_PAINTS = [0xe8742a, 0x2f6dff, 0x35a46b] as const;
 /** The convoy's trucks, after the traffic's. */
@@ -104,6 +116,10 @@ export class RoadEventsView {
   private readonly triangle: Mesh;
   private readonly carGeometries: BufferGeometry[];
   private readonly convoyTrucks: Mesh[];
+  /** A convoy contract's trucks, in the company's colour (setFollowerPaint): one body for all. */
+  private readonly followerTrucks: Mesh[] = [];
+  private followerBody: BufferGeometry | null = null;
+  private followerPaint = -1;
   /** The hazard lights' and the arrow boards' glows (at night), and a camera's flash. */
   private readonly glows = new LampGlows(16, 2.2);
   private readonly flashGlow = new LampGlows(1, 9);
@@ -136,6 +152,25 @@ export class RoadEventsView {
       this.root.add(truck);
       return truck;
     });
+    for (let i = 0; i < FOLLOWERS; i++) {
+      const truck = new Mesh(undefined, this.lambert);
+      truck.visible = false;
+      this.followerTrucks.push(truck);
+      this.root.add(truck);
+    }
+  }
+
+  /** A convoy contract's trucks wear the company's colour (`hex`): their body is painted again only when it changes. */
+  setFollowerPaint(hex: number): void {
+    if (hex === this.followerPaint) {
+      return;
+    }
+    this.followerPaint = hex;
+    this.followerBody?.dispose();
+    this.followerBody = paintedVehicle(CONVOY_TRUCK, hex);
+    for (const truck of this.followerTrucks) {
+      truck.geometry = this.followerBody;
+    }
   }
 
   /** The world the truck drives in: its speed cameras are drawn (with the works). */
@@ -176,8 +211,12 @@ export class RoadEventsView {
     this.flashLeft = FLASH_SECONDS;
   }
 
-  /** Per frame: the works as they are today, the stranded car, the blinking and the flash. `night` 0..1 lights the glows. */
-  update(dt: number, source: RoadEventsSource, night: number, convoy: ConvoySource): void {
+  /**
+   * Per frame: the works as they are today, the stranded car, the convoy on
+   * the road, a convoy contract's trucks (`followers`, null without one),
+   * the blinking and the flash. `night` 0..1 lights the glows.
+   */
+  update(dt: number, source: RoadEventsSource, night: number, convoy: ConvoySource, followers: ConvoyFollowers | null = null): void {
     this.time += dt;
     if (source.workZones !== this.shownZones) {
       this.shownZones = source.workZones;
@@ -214,6 +253,17 @@ export class RoadEventsView {
         truck.rotation.y = convoy.vehicleHeading[i]!;
       }
     }
+    for (let i = 0; i < this.followerTrucks.length; i++) {
+      const truck = this.followerTrucks[i]!;
+      const shown = followers !== null && this.followerBody !== null && followers.shown[i] === 1;
+      truck.visible = shown;
+      if (shown) {
+        const x = followers.vehicleX[i]!;
+        const z = followers.vehicleZ[i]!;
+        truck.position.set(x, this.ground(x, z), z);
+        truck.rotation.y = followers.vehicleHeading[i]!;
+      }
+    }
     // The lead truck's amber beacon, blinking.
     if (convoy.active && blinkOn && glows < 16) {
       this.glows.setPosition(glows, convoy.vehicleX[0]!, this.convoyTrucks[0]!.position.y + CONVOY_TRUCK.heightMeters + 0.4, convoy.vehicleZ[0]!);
@@ -248,6 +298,7 @@ export class RoadEventsView {
     for (const geometry of this.carGeometries) {
       geometry.dispose();
     }
+    this.followerBody?.dispose();
     this.lambert.dispose();
     this.fixtureMaterial.dispose();
     this.lit.dispose();

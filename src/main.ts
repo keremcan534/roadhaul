@@ -14,6 +14,7 @@ import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { Credits } from './data/units';
 import { validateCompanyName } from './domain/company/companyName';
 import type { KnockableKind } from './domain/crash/knockables';
+import { CONVOY_FOLLOW_GAPS } from './domain/missions/convoyTrail';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrailer';
 import type { SaveSummary } from './domain/save/saveSummary';
@@ -1502,7 +1503,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   /** The head office as the company has built it, in the colour of the truck it drives. */
   const showHeadOffice = (): void => {
     const active = session.isActive ? garage.activeTruck : null;
-    headOffice?.setLevels((facilityId) => (session.isActive ? facilities.levelOf(facilityId) : 0), active?.paint?.color ?? driving.definition.factoryColor);
+    const companyColor = active?.paint?.color ?? driving.definition.factoryColor;
+    headOffice?.setLevels((facilityId) => (session.isActive ? facilities.levelOf(facilityId) : 0), companyColor);
+    // A convoy contract's trucks are the company's: in its colour too.
+    roadEventsView.setFollowerPaint(companyColor);
   };
   showHeadOffice();
   const showTruck = (): void => {
@@ -2638,6 +2642,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     events.on(name, () => {
       refreshHq();
       showTruck();
+      // The head office and a convoy's trucks wear the truck's colour.
+      showHeadOffice();
     });
   }
 
@@ -2720,6 +2726,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     if (owner === 'fleet') {
       toasts.show(strings.t('toast.hootBack', { driver: driverName(strings, { id: key }) }), 'info');
     }
+  });
+  // A convoy contract's truck left too far behind drives on alone: its bonus is lost.
+  events.on('ConvoyTruckLost', ({ remaining }) => {
+    toasts.show(
+      remaining > 0 ? strings.t('toast.convoyTruckLost', { count: remaining, total: CONVOY_FOLLOW_GAPS.length }) : strings.t('toast.convoyLost'),
+      'warning',
+    );
   });
   root.dataset.missionState = 'none';
   root.dataset.vehicle = driving.definition.id;
@@ -3012,7 +3025,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         session.update(stepSeconds);
         career.update(stepSeconds);
         roadEvents.update(stepSeconds);
-        convoy.update(stepSeconds);
+        // A convoy contract's own trucks follow the truck: no other convoy sets off meanwhile (one under way drives on).
+        if (convoy.active || missions.convoy === null) {
+          convoy.update(stepSeconds);
+        }
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -3107,7 +3123,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
         roadEventsView.setWorld(driving.world);
-        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy);
+        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy, missions.convoy);
         if (cityLife.sounds.bursts > 0) {
           audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
         }

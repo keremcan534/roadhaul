@@ -465,6 +465,43 @@ describe('validateSaveGameData', () => {
     ]);
   });
 
+  it('counts a convoy\'s lost trucks in whole numbers up to the convoy\'s size', () => {
+    const active = {
+      missionId: 'test_mission',
+      state: 'loaded',
+      handlingSeconds: 0,
+      deliverySeconds: 3,
+      cargoDamage: 0,
+      failureReason: null,
+      contract: null,
+    };
+
+    for (const lost of [0, 1, 2]) {
+      expect(paths(withPart('missions.active', { ...active, convoyTrucksLost: lost }))).toEqual([]);
+    }
+    for (const lost of [-1, 3, 0.5, '1', null]) {
+      expect(paths(withPart('missions.active', { ...active, convoyTrucksLost: lost }))).toEqual(['missions.active.convoyTrucksLost']);
+    }
+  });
+
+  it('keeps a generated contract\'s kind, and only a known one', () => {
+    const contract = missionFixture({ id: 'daily_7_2', variant: 'convoy' });
+    const active = {
+      missionId: 'daily_7_2',
+      state: 'loaded',
+      handlingSeconds: 0,
+      deliverySeconds: 3,
+      cargoDamage: 0,
+      failureReason: null,
+      contract,
+    };
+
+    expect(paths(withPart('missions.active', active))).toEqual([]);
+    expect(paths(withPart('missions.active', { ...active, contract: { ...contract, variant: 'parade' } }))).toEqual([
+      'missions.active.contract.variant',
+    ]);
+  });
+
   it('keeps a generated contract whole: valid, under its own id, naming known cargo and cities', () => {
     const contract = missionFixture({ id: 'daily_7_2', baseReward: 1250 });
     const active = {

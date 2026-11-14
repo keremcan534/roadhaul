@@ -307,6 +307,11 @@ export interface GameEvents {
   WorkZonesChanged: {
     readonly count: number;
   };
+  /** A convoy contract's truck fell too far behind the player's and is lost to the convoy: `remaining` still with it. */
+  ConvoyTruckLost: {
+    readonly missionId: string;
+    readonly remaining: number;
+  };
   /** The player collected the warehouse's rent at the head office (RentService): `credits` paid in. */
   RentCollected: {
     readonly credits: Credits;

@@ -2,6 +2,7 @@ import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinitio
 import { isCrateTier } from '../../data/config/GameConfig';
 import { isBoosterKind } from '../../data/definitions/BoosterKind';
 import { TRAILER_TEXT_MAX } from '../vehicles/trailerText';
+import { CONVOY_FOLLOW_GAPS } from '../missions/convoyTrail';
 import { QUEST_METRICS } from '../../data/definitions/QuestDefinition';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
@@ -134,6 +135,12 @@ export function validateSaveGameData(
     }
     validator.fraction(active['cargoDamage'], 'missions.active.cargoDamage');
     validator.check(active['failureReason'] === null, 'missions.active.failureReason', 'must be null');
+    const lost = active['convoyTrucksLost'];
+    validator.check(
+      lost === undefined || (Number.isInteger(lost) && (lost as number) >= 0 && (lost as number) <= CONVOY_FOLLOW_GAPS.length),
+      'missions.active.convoyTrucksLost',
+      `must be a whole number from 0 to ${CONVOY_FOLLOW_GAPS.length}`,
+    );
   });
   section('stats', (stats) => {
     validator.nonNegativeInteger(stats['deliveriesCompleted'], 'stats.deliveriesCompleted');

@@ -1,5 +1,7 @@
 import type { EventDefinition } from '../../data/definitions/EventDefinition';
-import type { MissionDefinition } from '../../data/definitions/MissionDefinition';
+import { missionVariant, type MissionDefinition } from '../../data/definitions/MissionDefinition';
+import { CONVOY_FOLLOW_GAPS, CONVOY_SPEED_KMH } from '../../domain/missions/convoyTrail';
+import { CONVOY_BONUS_PER_TRUCK } from '../../domain/missions/missionReward';
 import type { Credits, Fraction } from '../../data/units';
 import type { JobOffer } from '../../systems/missions/MissionService';
 import { button, element } from '../dom';
@@ -18,8 +20,8 @@ const NO_RIVALRY: JobRivalry = { tender: null, leaderBonus: null };
 
 /**
  * A contract on the job board (spec §28): its cargo's picture, route, cargo,
- * distance, time and pay; the running `events` it counts toward, with their
- * bonus; a tender's rival and prize, and the leader's bonus of the city it
+ * distance, time and pay; a rush's or a convoy's badge and what it asks;
+ * the running `events` it counts toward, with their bonus; a tender's rival and prize, and the leader's bonus of the city it
  * leaves (`rivalry`); what blocks it, or the button to take it. While another
  * contract is `busy`, it says to finish that one first.
  */
@@ -53,6 +55,12 @@ export function jobCard(
   } else if (offer.daily) {
     badges.append(element(document, 'span', 'badge badge--daily', strings.t('hq.daily')));
   }
+  const variant = missionVariant(mission);
+  if (variant !== 'standard') {
+    const badge = element(document, 'span', `badge badge--${variant}`);
+    badge.append(icon(document, variant === 'rush' ? 'express' : 'fleet'), element(document, 'span', '', strings.t(`hq.variant.${variant}`)));
+    badges.append(badge);
+  }
   badges.append(
     element(document, 'span', `badge badge--${mission.difficulty}`, strings.t(`difficulty.${mission.difficulty}`)),
   );
@@ -75,7 +83,24 @@ export function jobCard(
     fact.append(element(document, 'dt', '', label), element(document, 'dd', '', value));
     facts.append(fact);
   }
-  const bonuses = events.map((event) =>
+  const bonuses: HTMLElement[] = [];
+  if (variant === 'rush') {
+    bonuses.push(element(document, 'span', 'job-card__event job-card__variant--rush', strings.t('hq.variantNote.rush')));
+  } else if (variant === 'convoy') {
+    bonuses.push(
+      element(
+        document,
+        'span',
+        'job-card__event job-card__variant--convoy',
+        strings.t('hq.variantNote.convoy', {
+          count: CONVOY_FOLLOW_GAPS.length,
+          percent: strings.percent(CONVOY_BONUS_PER_TRUCK),
+          speed: strings.t('format.kmh', { value: CONVOY_SPEED_KMH }),
+        }),
+      ),
+    );
+  }
+  const eventBonuses = events.map((event) =>
     element(
       document,
       'span',
@@ -83,6 +108,7 @@ export function jobCard(
       strings.t('hq.eventBonus', { event: strings.eventName(event.id), percent: strings.percent(event.payBonus) }),
     ),
   );
+  bonuses.push(...eventBonuses);
   if (rivalry.leaderBonus !== null) {
     bonuses.push(
       element(document, 'span', 'job-card__event job-card__leader', strings.t('hq.leaderBonus', { percent: strings.percent(rivalry.leaderBonus) })),
