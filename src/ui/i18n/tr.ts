@@ -392,7 +392,7 @@ export const TR: StringTable = {
   'settings.frameRate.30': '30',
   'settings.frameRate.60': '60',
   'settings.frameRate.max': 'Maks',
-  'settings.frameRateNote': 'Maks: ekranın gösterebildiği kadar kare (bu telefonlarda 90 ya da 120), en akıcı sürüş. 30 pili korur.',
+  'settings.frameRateNote': 'Maks: ekranın gösterebildiği kadar kare (bu telefonlarda 90 ya da 120), en akıcı sürüş; telefon yetişemezse daha az ama eşit aralıkla. 30 pili korur.',
   'settings.restart': 'Yeni grafik ayarı için oyun yeniden başlar.',
   'settings.steering': 'Sürüş kontrolü',
   'settings.steering.wheel': 'Direksiyon',

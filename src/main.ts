@@ -65,6 +65,7 @@ import { PhotoCamera } from './presentation/cameras/PhotoCamera';
 import { CabRadio } from './presentation/audio/CabRadio';
 import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
+import { FramePacing } from './presentation/FramePacing';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
 import { RenderHost, SOFTWARE_MIN_RESOLUTION_SCALE, isSoftwareRenderer } from './presentation/RenderHost';
@@ -660,6 +661,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const adaptiveResolution = new AdaptiveResolution(
     isSoftwareRenderer(renderHost.gpu) ? Math.min(SOFTWARE_MIN_RESOLUTION_SCALE, config.rendering.minResolutionScale) : config.rendering.minResolutionScale,
   );
+  // A phone that cannot keep up with its screen shows its frames evenly, at its rate halved (or a third…): an even 30
+  // on a 60 Hz screen judders less than 40 to 50 shown one for one beat and the next for two, and runs cooler.
+  const framePacing = new FramePacing();
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   /** Company trucks in the traffic, as last written to the page (e2e tests read it). */
@@ -2635,6 +2639,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     } else {
       returned();
       adaptiveResolution.restart();
+      framePacing.restart();
       audio.resume();
       screenWake.resume();
     }
@@ -3171,6 +3176,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         // drawn at half rate, are no measure.
         // At 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second or more.
         renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps >= 120;
+        // Frames on the road the phone cannot show as fast as its screen are capped evenly (FramePacing); the dynamic
+        // resolution then aims at the rate paced at.
+        if (simulating && framePacing.frame(loop.realFrameSeconds, loop.screenFrameSeconds)) {
+          loop.maxFramesPerSecond = framePacing.cap;
+          adaptiveResolution.setFrameCap(framePacing.steadyCap);
+        }
         // Measured in real time: a moment of slow motion's short game frames are not a quicker screen.
         if (simulating && adaptiveResolution.frame(loop.realFrameSeconds, lastFrameWorkSeconds)) {
           renderHost.setResolutionScale(adaptiveResolution.scale);
@@ -3204,7 +3215,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           root.dataset.sound = shownSound;
         }
         if (perfOverlay.visible) {
-          perfOverlay.frame(loop.realFrameSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+          perfOverlay.frame(loop.realFrameSeconds, renderHost.renderStats, renderHost.pixelRatio, pose, framePacing.paced ? framePacing.steadyCap : 0);
         }
         lastFrameWorkSeconds = (performance.now() - workStarted) / 1000;
       },
@@ -3228,8 +3239,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    */
   const applyFrameRate = (choice: FrameRateChoice): void => {
     const cap = frameRateCap(choice);
-    loop.maxFramesPerSecond = cap;
-    adaptiveResolution.setFrameCap(cap);
+    // The most the frames are paced at (FramePacing): fewer where the phone cannot keep up.
+    framePacing.setCeiling(cap);
+    loop.maxFramesPerSecond = framePacing.cap;
+    adaptiveResolution.setFrameCap(framePacing.steadyCap);
     if (isNativeApp(window)) {
       void import('./platform/native/displayRate').then(({ preferRefreshRate }) => preferRefreshRate(cap === 0 ? 240 : 60));
     }

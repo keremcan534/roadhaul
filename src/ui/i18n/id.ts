@@ -392,7 +392,7 @@ export const ID: StringTable = {
   'settings.frameRate.30': '30',
   'settings.frameRate.60': '60',
   'settings.frameRate.max': 'Maks',
-  'settings.frameRateNote': 'Maks: sebanyak frame yang bisa ditampilkan layar (90 atau 120 di ponsel seperti itu), berkendara paling mulus. 30 menghemat baterai.',
+  'settings.frameRateNote': 'Maks: sebanyak frame yang bisa ditampilkan layar (90 atau 120 di ponsel seperti itu), berkendara paling mulus; lebih sedikit tapi rata bila ponsel tak sanggup. 30 menghemat baterai.',
   'settings.restart': 'Game dimulai ulang untuk menerapkan pengaturan grafis baru.',
   'settings.steering': 'Kemudi',
   'settings.steering.wheel': 'Setir',

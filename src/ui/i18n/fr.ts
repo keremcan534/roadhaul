@@ -392,7 +392,7 @@ export const FR: StringTable = {
   'settings.frameRate.30': '30',
   'settings.frameRate.60': '60',
   'settings.frameRate.max': 'Max',
-  'settings.frameRateNote': 'Max : autant d’images que l’écran en affiche (90 ou 120 sur ces téléphones), la conduite la plus fluide. 30 ménage la batterie.',
+  'settings.frameRateNote': 'Max : autant d’images que l’écran en affiche (90 ou 120 sur ces téléphones), la conduite la plus fluide ; moins mais régulières si le téléphone ne suit pas. 30 ménage la batterie.',
   'settings.restart': 'Le jeu redémarre pour appliquer un nouveau réglage graphique.',
   'settings.steering': 'Direction',
   'settings.steering.wheel': 'Volant',

@@ -392,7 +392,7 @@ export const EN: StringTable = {
   'settings.frameRate.30': '30',
   'settings.frameRate.60': '60',
   'settings.frameRate.max': 'Max',
-  'settings.frameRateNote': 'Max: as many frames as the screen shows (90 or 120 on such phones), the smoothest drive. 30 saves the battery.',
+  'settings.frameRateNote': 'Max: as many frames as the screen shows (90 or 120 on such phones), the smoothest drive; evenly fewer where the phone cannot keep up. 30 saves the battery.',
   'settings.restart': 'The game restarts to apply a new graphics setting.',
   'settings.steering': 'Steering',
   'settings.steering.wheel': 'Wheel',

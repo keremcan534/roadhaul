@@ -392,7 +392,7 @@ export const IT: StringTable = {
   'settings.frameRate.30': '30',
   'settings.frameRate.60': '60',
   'settings.frameRate.max': 'Max',
-  'settings.frameRateNote': 'Max: tanti fotogrammi quanti ne mostra lo schermo (90 o 120 su questi telefoni), la guida più fluida. 30 risparmia la batteria.',
+  'settings.frameRateNote': 'Max: tanti fotogrammi quanti ne mostra lo schermo (90 o 120 su questi telefoni), la guida più fluida; meno ma regolari se il telefono non regge. 30 risparmia la batteria.',
   'settings.restart': 'Il gioco si riavvia per applicare la nuova impostazione grafica.',
   'settings.steering': 'Sterzo',
   'settings.steering.wheel': 'Volante',

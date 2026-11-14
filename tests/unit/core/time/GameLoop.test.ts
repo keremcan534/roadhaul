@@ -263,6 +263,29 @@ describe('GameLoop', () => {
     expect(capped.calls.filter((call) => call.startsWith('frame'))).toHaveLength(6);
   });
 
+  it("tells the screen's beat from every callback, those skipped under the cap too", () => {
+    const beats: number[] = [];
+    const frames: number[] = [];
+    const { loop, scheduler } = createLoop({
+      frameUpdate: () => {
+        beats.push(loop.screenFrameSeconds);
+        frames.push(loop.realFrameSeconds);
+      },
+    });
+    loop.maxFramesPerSecond = 30;
+    loop.start();
+    // A 60 Hz screen: every other callback runs a frame, 33 ms after the one before, a beat after the callback before.
+    for (let i = 0; i <= 6; i++) {
+      scheduler.frame(i * (1000 / 60));
+    }
+    expect(frames).toHaveLength(4);
+    expect(beats[0]).toBe(0);
+    for (let i = 1; i < frames.length; i++) {
+      expect(frames[i]).toBeCloseTo(1 / 30, 6);
+      expect(beats[i]).toBeCloseTo(1 / 60, 6);
+    }
+  });
+
   it('starts the cadence afresh after a long pause under a cap', () => {
     const { loop, scheduler, calls } = createLoop();
     loop.maxFramesPerSecond = 30;

@@ -392,7 +392,7 @@ export const PT: StringTable = {
   'settings.frameRate.30': '30',
   'settings.frameRate.60': '60',
   'settings.frameRate.max': 'Máx.',
-  'settings.frameRateNote': 'Máx.: tantos quadros quanto a tela mostrar (90 ou 120 nesses celulares), a direção mais suave. 30 poupa a bateria.',
+  'settings.frameRateNote': 'Máx.: tantos quadros quanto a tela mostrar (90 ou 120 nesses celulares), a direção mais suave; menos e regulares se o celular não acompanhar. 30 poupa a bateria.',
   'settings.restart': 'O jogo reinicia para aplicar a nova configuração gráfica.',
   'settings.steering': 'Direção',
   'settings.steering.wheel': 'Volante',

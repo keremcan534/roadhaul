@@ -60,8 +60,15 @@ export class GameLoop {
    * a start. What the frame rate is measured by.
    */
   realFrameSeconds = 0;
+  /**
+   * The real time between the scheduler's last two callbacks, seconds, run
+   * or skipped under the cap: the screen's beat however few frames run. 0
+   * for the first callback after a start.
+   */
+  screenFrameSeconds = 0;
   private handle: number | null = null;
   private previousTimestampMs: number | null = null;
+  private previousCallbackMs: number | null = null;
   /** When the next frame is due under the cap, ms; NaN until a frame has run. */
   private nextFrameDueMs = Number.NaN;
 
@@ -81,6 +88,7 @@ export class GameLoop {
       return;
     }
     this.previousTimestampMs = null;
+    this.previousCallbackMs = null;
     this.nextFrameDueMs = Number.NaN;
     this.timestep.reset();
     this.handle = this.scheduler.request(this.onFrame);
@@ -100,6 +108,8 @@ export class GameLoop {
     if (frameHandle === null) {
       return;
     }
+    this.screenFrameSeconds = this.previousCallbackMs === null ? 0 : Math.max((timestampMs - this.previousCallbackMs) / 1000, 0);
+    this.previousCallbackMs = timestampMs;
     try {
       if (this.due(timestampMs)) {
         this.tick(timestampMs, frameHandle);
