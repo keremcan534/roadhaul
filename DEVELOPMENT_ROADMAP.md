@@ -556,6 +556,37 @@ Few new players stayed past their first days. The first session took long to rea
 
 Not done: what it changes is read in Google Play's retention (day 1 and day 7) a few weeks after the release. A reminder on a phone switched off at its time comes when it is switched on again, if still due.
 
+### Smooth on entry phones: the minimap, the plainer world and even frames (between steps 28 and 29)
+
+The owner, sharing Google Play's reviews: optimization must be god-level ("optimizasyon ilah seviyesinde olmali"). The review asking for it ("Oyunun optimizasyonunu yapmalarını isterdim") came from a Samsung Galaxy J7 Prime: an Exynos 7870 (eight Cortex-A53 cores at 1.6 GHz), a single-core Mali-T830, 3 GB, Android 8.1. Another reviewer plays on an Itel A70. Both are well below the low-end phone the performance run emulated (a Mali-G52 MC2, its CPU six times slower than the desktop's), so the run got a fourth phone, `entry` (that J7 Prime: ten times slower, a Mali-T830, 3 GB that Chrome reports as 2), and this round measured against it first. Profiles of the entry and low-end phones' frames, traces of the page, and profiles of the boot found where the time went.
+
+| Item | Status | Notes |
+|---|---|---|
+| An entry phone in the performance run | ✅ | `npm run perf` runs four phones by default; `entry` comes first |
+| The minimap draws its ground once | ✅ | Each of its twelve repaints a second drew every path of the whole map (the coasts stroked four times, every forest, field and building, a clip on the coast) and sent it all to the GPU, to show 300 m round the truck: the slowest thing on the road. Hiding the minimap took the low-end phone's main thread from 38.6 to 12.9 ms a frame in the page's own trace. `MapGroundCache` draws the ground north up once into a picture twice as fine, reaching 250 m past what the minimap shows, and turns it onto the minimap at each repaint (one image) under the route and the marks; drawn again only as the truck nears its edge, a land's relief comes in or a city's leader changes. The same picture, but for sub-pixel resampling along edges (compared pixel by pixel at three places) |
+| No draw calls for what draws nothing | ✅ | three.js sets a draw up in full (program, uniforms, buffers) even when it draws nothing: the pedestrians with nobody near, lamp glows with none counted, the speed cameras' and road works' batch with none in reach and the parks (five draws for all of them) beyond the kilometre the world's tiles reach are now hidden |
+| Entry GPUs draw the plainer world | ✅ | `isEntryGpu` (the small Mali-T, Mali-G31 and G51, the single-core G52 and G57, PowerVR GE8 and G6, Adreno 3xx, 40x and 50x) on the low preset: the software path's plainer look (half the plants and clouds, the grass read once, no clouds' shadows or mist on the land), the forests' far crowns past 300 m, the props within 600 m, lamp posts within 450 m, 24 people at most. 6% to 29% fewer triangles on the entry phone (the mountain pass 372k → 263k); the GPU's own time only a phone can tell |
+| Even frame pacing | ✅ | `FramePacing`: a phone short of its screen's rate (under 85% of it and under 58 a second, two 2 s windows) is capped at the screen's rate divided by a whole number it keeps (60 Hz: 30; 90: 45, 30; 120: 60, 40, 30), so every frame shows as long as the next; the rate above is tried after 30 s, the wait doubling after each failed try. On the entry phone the highway's 41 uneven frames a second became an even 30. The performance display shows it ("paced 30"); Settings' note on Max says so in the ten languages |
+| No shader stalls on the road | ✅ | Three programs compiled at boot first drew on the road (the guard rails, a glow, a plain material), each reading the GPU back in that frame (in the rain run, a 150 ms stall). Every program is now read in at the end of the boot (`RenderHost.readPrograms`) |
+| A quicker boot | Better | On the entry phone: the gradual shader compile walked the whole scene for its lights for each of hundreds of pieces (553 ms; now the parts without a light are hidden meanwhile: 24 ms), and the buildings' boxes were each made twice over (2.9 s; `colouredBox` writes them straight, number for number the same: 2.0 s). About 1.3 s of the entry phone's 25 s boot |
+| The people's pavements skipped whole | ✅ | `PedestrianView` looked at every walker on the map each frame to draw the few within 140 m; the pavements out of reach are now skipped together, the rest in the same order |
+
+The frame's own work on the main thread, the original build and this one run in turn, twice each on the entry and low-end phones (p50, ms; with the frame rate it allows):
+
+| | Entry phone, low (its plainer world after) | Low-end phone, low | Mid-range phone, medium |
+|---|---|---|---|
+| Highway, full throttle | 35.7 / 33.0 → 15.5 / 14.8 (≈28–30 → ≈65–68 FPS) | 19.1 / 17.6 → 8.8 / 8.3 | 17.8 → 8.5 |
+| City yard at night | 39.9 / 33.7 → 14.8 / 20.4 | 19.0 / 20.2 → 12.9 / 10.2 | 18.2 → 11.4 |
+| Downtown Metropol | 36.1 / 35.6 → 11.7 / 18.1 | 18.5 / 19.6 → 10.6 / 8.7 | 16.6 → 8.4 |
+| The slowest frames (p95), those scenes | 60–79 → 26–38 | 29–45 → 14–25 | 32–41 → 15–22 |
+| Rain, the mountain pass (this build) | 22.3, 16.1 | 12.3 (20.1 at the start of the round), 8.2 | 11.8, 8.3 |
+| Boot to the main menu | 22.6–23.5 → 21.5–23.7 s; Metropol 33.5–35.5 → 32.4–33.0 s | 13.3–14.8 → 13.1–13.9 s; Metropol 21 → 20.2 s | 9.6–10.7 → 9.4–10.5 s; Metropol 15.5 → 14.2 s |
+| Triangles: the highway, Metropol | 155k, 259k–264k → 142k, 234k | the same | the same |
+
+How far the minimap's share holds on a phone is the run's least sure figure: in the run the GPU's process drew the canvas's paths in software, which made them dearer than a phone's GPU does; on a phone they still went over the main thread to the GPU twelve times a second, every path of the map.
+
+Not done: the boot's procedural textures (3.6–3.9 s of the entry phone's boot) could be drawn in workers on the other cores while the world is built, and the world itself (7–8 s) in a worker or at build time; the sheep and cows are animated and drawn over the whole map (a reach would need their shadow subsets reworked); the truck is 15 draws, most of them distinct shaders; one frame of the entry phone's rain run took 263 ms (a single hitch, not yet found). What the entry GPUs make of the plainer world, and whether the J7 Prime holds an even 30, only a phone can tell: step 29 should start with an entry phone.
+
 ## Next step: 29 Device testing
 
 Suggested request:
