@@ -2,6 +2,7 @@ import {
   ACESFilmicToneMapping,
   Frustum,
   Matrix4,
+  type Object3D,
   PCFShadowMap,
   PerspectiveCamera,
   Scene,
@@ -214,21 +215,34 @@ export class RenderHost {
   async precompileGradually(pause: () => Promise<void>): Promise<void> {
     let compiling: Promise<unknown>[] = [];
     let sincePause = this.programCount();
-    for (const piece of compilePieces(this.scene)) {
-      const before = this.programCount();
-      const ready =
-        this.post === null
-          ? this.renderer.compileAsync(piece, this.camera, this.scene)
-          : this.post.compileObject(piece, this.scene, this.camera);
-      if (this.programCount() > before) {
-        compiling.push(ready);
+    // For every piece three.js gathers the lights of the whole scene (the programs depend on them), walking every
+    // object shown: hundreds of pieces walked the scene hundreds of times. Meanwhile the scene's parts without a
+    // light in them are hidden, so the walk finds the lights at once. What is shown makes no program differ.
+    const hidden = this.scene.children.filter((child) => child.visible && !holdsLight(child));
+    for (const child of hidden) {
+      child.visible = false;
+    }
+    try {
+      for (const piece of compilePieces(this.scene)) {
+        const before = this.programCount();
+        const ready =
+          this.post === null
+            ? this.renderer.compileAsync(piece, this.camera, this.scene)
+            : this.post.compileObject(piece, this.scene, this.camera);
+        if (this.programCount() > before) {
+          compiling.push(ready);
+        }
+        if (this.programCount() - sincePause >= SHADERS_PER_PAUSE) {
+          this.renderer.getContext().flush();
+          await Promise.all(compiling);
+          compiling = [];
+          await pause();
+          sincePause = this.programCount();
+        }
       }
-      if (this.programCount() - sincePause >= SHADERS_PER_PAUSE) {
-        this.renderer.getContext().flush();
-        await Promise.all(compiling);
-        compiling = [];
-        await pause();
-        sincePause = this.programCount();
+    } finally {
+      for (const child of hidden) {
+        child.visible = true;
       }
     }
     this.precompile();
@@ -353,6 +367,15 @@ export class RenderHost {
     this.post?.dispose();
     this.renderer.dispose();
   }
+}
+
+/** Whether `object` is a light or holds one. */
+function holdsLight(object: Object3D): boolean {
+  let found = false;
+  object.traverse((child) => {
+    found ||= (child as { isLight?: boolean }).isLight === true;
+  });
+  return found;
 }
 
 /** The GPU's name. Browsers that hide it behind a generic name report it through a debug extension. */
