@@ -241,7 +241,9 @@ Google → Backup), and brings it back when the game is installed again with the
   Performance display shows the frame rate.
 - Set the version players see in `package.json` (for example `1.0.0` for the first production release). The build
   number (`versionCode`) takes care of itself.
-- Update the release notes in `fastlane/metadata/android/<locale>/changelogs/default.txt`.
+- Update the release notes in `fastlane/metadata/android/<locale>/changelogs/default.txt`. The game shows the same
+  words once after the update, at the main menu (What's New: the build has them built in), to players who played
+  before.
 
 ### 2. Build the signed bundle
 

@@ -587,6 +587,27 @@ How far the minimap's share holds on a phone is the run's least sure figure: in 
 
 Not done: the boot's procedural textures (3.6–3.9 s of the entry phone's boot) could be drawn in workers on the other cores while the world is built, and the world itself (7–8 s) in a worker or at build time; the sheep and cows are animated and drawn over the whole map (a reach would need their shadow subsets reworked); the truck is 15 draws, most of them distinct shaders; one frame of the entry phone's rain run took 263 ms (a single hitch, not yet found). What the entry GPUs make of the plainer world, and whether the J7 Prime holds an even 30, only a phone can tell: step 29 should start with an entry phone.
 
+### The owner's requests from the reviews: what is new, and what comes next (between steps 28 and 29)
+
+After the performance round the owner asked, from the players' reviews and their own ideas, for: turn signals ("sinyal lambalarını ekleyin"), a horn that does something, the parking brake and the engine (Jake) brake, getting out of the truck, a better-looking truck and cooler designs, places to visit on the map, a larger parking square on contracts, missions that are not boring, convoy deliveries, ways to earn without driving and a company building that grows, rare solar and lunar eclipses, races in a car that pay crates, minigames and puzzles, an auto-drive with things to do meanwhile (card games), and the update's news on the main menu with a notification. They are taken in this order, each its own update.
+
+| Item | Status | Notes |
+|---|---|---|
+| What's New on the main menu | ✅ | Once after each update, to a player who played before, the update's release notes in their language: Google Play's own words (the store listing's changelogs, built in), so they are written once. A button on the main menu opens them again. This update's notes are in `default.txt` in the ten languages (machine-written but for English and Turkish: native speakers should read them before a release, docs/RELEASE.md) |
+| A notification once Google Play has updated the game | ⬜ | For players who allowed the game's notifications (the reminders' opt-in): Android's own word that the app was updated, caught by a small receiver in the app, no server. Telling every player before they update would need a push service (an online service: the owner's decision) |
+| Turn signals and hazard lights | ⬜ | The truck's indicators blinking (glowing at night), the cab's arrows, the relay's tick, cancelled by the steering's return, buttons on the screen and keys |
+| A horn that does something | ⬜ | The car dawdling ahead moves on or aside, people step back onto the pavement, sheep and cows startle, the company's and the rivals' trucks hoot back |
+| Parking brake and engine brake | ⬜ | The parking brake holds the truck still on a slope, its air hissing off; the engine brake slows the truck off the throttle, harder at high revs, with its own sound |
+| A larger parking square | ⬜ | The bays take a truck parked less squarely; a bonus for a perfect one |
+| Earning without driving, a company that grows | ⬜ | The hired drivers working on while the game is closed (capped), and the head office drawn on the map, its buildings rising as the facilities are built |
+| New missions | ⬜ | Express, fragile, hazardous, multi-drop, cold chain, at night and in storms, and convoy deliveries with the company's trucks behind the player's |
+| Places to visit, minigames and puzzles | ⬜ | A diner, a car wash, a funfair, a truck show, a viewpoint and a race track; parking, loading, washing, refuelling and repair games; the yard jam, cargo packing and route puzzles, a daily one. No gambling (Google Play counts a casino's games as simulated gambling) |
+| Auto-drive and the cab's tablet | ⬜ | The truck drives itself along the route (a little less pay, earned in research, never sold); card games and the puzzles meanwhile |
+| Races in a car | ⬜ | An original sports car on the track and the streets against three cars, crates for the podium, a few a day |
+| Solar and lunar eclipses | ⬜ | Rare sky wonders: the day darkening round the sun's corona; the moon turning copper |
+| Designs and the truck's looks | ⬜ | New original designs for crates and packs; more detail on the truck within its draw calls |
+| Getting out of the truck | ⬜ | The largest: walking round the truck and back in |
+
 ## Next step: 29 Device testing
 
 Suggested request:
