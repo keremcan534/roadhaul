@@ -48,8 +48,12 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   one it played ended).
  * - v22: adds the Road Pass (the season, its points, the tiers collected on
  *   each track, the pass colours the company has).
+ * - v23: the road's events note whether the red light cameras' first
+ *   warning was given.
+ * - v24: adds the warehouse's rent (what waits to be collected, and since
+ *   when it has grown).
  */
-export const CURRENT_SAVE_VERSION = 23;
+export const CURRENT_SAVE_VERSION = 24;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -87,6 +91,7 @@ export interface SaveGameData {
   readonly usedTrucks: UsedTrucksSaveData;
   readonly weeklyCup: WeeklyCupSaveData;
   readonly roadPass: RoadPassSaveData;
+  readonly rent: RentSaveData;
 }
 
 /** The Road Pass (RoadPassService): the season the points are for (null before any), tiers collected, colours kept. */
@@ -253,6 +258,12 @@ export interface DailyRewardSaveData {
 export interface FacilitiesSaveData {
   /** Each facility's level by FacilityDefinition id; one not listed is not built. */
   readonly levels: Readonly<Record<string, number>>;
+}
+
+/** The warehouse's rent (RentService): the credits waiting, to the fraction, and the time it has grown from. */
+export interface RentSaveData {
+  readonly storedCredits: number;
+  readonly sinceMs: number;
 }
 
 export interface ProfileSaveData {

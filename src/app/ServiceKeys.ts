@@ -42,6 +42,7 @@ import type { SaveService } from '../systems/save/SaveService';
 import type { GameSessionService } from '../systems/session/GameSessionService';
 import type { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
 import type { HornService } from '../systems/vehicles/HornService';
+import type { RentService } from '../systems/company/RentService';
 import type { TrafficService } from '../systems/traffic/TrafficService';
 import type { TutorialService } from '../systems/tutorial/TutorialService';
 import type { SeasonService } from '../systems/weather/SeasonService';
@@ -131,6 +132,8 @@ export const ServiceKeys = Object.freeze({
   roadPass: serviceKey<RoadPassService>('RoadPassService'),
   /** The fleet's and the rivals' trucks in the traffic around the truck. */
   companyTraffic: serviceKey<CompanyTraffic>('CompanyTraffic'),
+  /** The warehouse's rent: money that piles up without driving. */
+  rent: serviceKey<RentService>('RentService'),
   /** What the truck's horn does on the road: the traffic ahead hurries, company trucks hoot back. */
   horn: serviceKey<HornService>('HornService'),
   saves: serviceKey<SaveService>('SaveService'),

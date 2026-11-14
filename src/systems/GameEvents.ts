@@ -307,6 +307,10 @@ export interface GameEvents {
   WorkZonesChanged: {
     readonly count: number;
   };
+  /** The player collected the warehouse's rent at the head office (RentService): `credits` paid in. */
+  RentCollected: {
+    readonly credits: Credits;
+  };
   /** A stranded driver waits ahead with their hazard lights on (RoadEventService.stranded). */
   StrandedDriverAppeared: {
     readonly x: number;

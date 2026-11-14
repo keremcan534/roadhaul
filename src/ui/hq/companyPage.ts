@@ -7,6 +7,16 @@ import type { Strings } from '../i18n';
 import { facilityIcon, icon } from '../icons';
 import { researchTree, type ResearchTreeView } from './researchTree';
 
+/** The warehouse's rent as the company page shows it (RentService); null without a warehouse. */
+export interface RentView {
+  readonly waiting: Credits;
+  readonly ratePerHour: Credits;
+  /** 0..1 of the most that may pile up. */
+  readonly fullness: number;
+  /** Seconds until it is full; 0 once it is. */
+  readonly fullInSeconds: number;
+}
+
 /** What the company page shows: the facilities as the head office offers them, and what they give now. */
 export interface CompanyPageView {
   readonly offers: readonly FacilityOffer[];
@@ -14,6 +24,8 @@ export interface CompanyPageView {
   readonly canAfford: (price: Credits) => boolean;
   /** The research tree. */
   readonly research: ResearchTreeView;
+  /** The warehouse's rent; null (or absent) without a warehouse. */
+  readonly rent?: RentView | null;
 }
 
 /**
@@ -29,6 +41,7 @@ export function companyPage(
   view: CompanyPageView,
   onBuild: (facilityId: string) => void,
   onResearch: (researchId: string) => void,
+  onCollectRent: () => void = () => undefined,
 ): HTMLElement[] {
   const section = (name: string, title: string, ...content: HTMLElement[]): HTMLElement => {
     const node = element(document, 'section', `hq__section hq__section--${name}`);
@@ -56,6 +69,9 @@ export function companyPage(
   );
   return [
     element(document, 'p', 'hq__note', strings.t('hq.company.note')),
+    ...(view.rent === null || view.rent === undefined
+      ? []
+      : [section('rent', strings.t('hq.company.rent'), rentCard(document, strings, view.rent, onCollectRent))]),
     section('perks', strings.t('hq.company.perks'), perks),
     researchTree(document, strings, view.research, onResearch),
     section('facilities', strings.t('hq.company.facilities'), cards),
@@ -127,7 +143,30 @@ export function facilityCard(
   return card;
 }
 
+/** The warehouse's rent: what waits, how full it is and when it fills, its rate, and the button that collects it. */
+function rentCard(document: Document, strings: Strings, rent: RentView, onCollect: () => void): HTMLElement {
+  const card = element(document, 'article', 'rent-card');
+  const amount = element(document, 'p', 'rent-card__amount', strings.t('hq.company.rentWaiting', { money: strings.money(rent.waiting) }));
+  amount.dataset.value = 'rent-waiting';
+  const bar = element(document, 'div', 'rent-card__bar');
+  const fill = element(document, 'div', 'rent-card__fill');
+  fill.style.transform = `scaleX(${Math.min(1, Math.max(0, rent.fullness)).toFixed(3)})`;
+  bar.append(fill);
+  const note = element(
+    document,
+    'p',
+    'rent-card__note',
+    `${facilityEffectText(strings, 'rentPerHour', rent.ratePerHour)} · ${
+      rent.fullInSeconds > 0 ? strings.t('hq.company.rentFillsIn', { time: strings.timeSpan(rent.fullInSeconds * 1000) }) : strings.t('hq.company.rentFull')
+    }`,
+  );
+  const collect = button(document, 'button--primary rent-card__collect', strings.t('hq.company.collectRent'), 'collect-rent', onCollect);
+  collect.disabled = rent.waiting <= 0;
+  card.append(icon(document, 'cargo', 'rent-card__icon'), amount, bar, note, collect);
+  return card;
+}
+
 /** What a facility's `value` gives the company: "Repair costs −15%", "Garage space +2". */
 export function facilityEffectText(strings: Strings, effect: FacilityEffect, value: number): string {
-  return strings.t(`facility.effect.${effect}`, { percent: strings.percent(value), count: strings.number(value) });
+  return strings.t(`facility.effect.${effect}`, { percent: strings.percent(value), count: strings.number(value), money: strings.money(value) });
 }

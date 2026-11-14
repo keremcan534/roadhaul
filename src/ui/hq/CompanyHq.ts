@@ -6,6 +6,7 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { CompanyService } from '../../systems/company/CompanyService';
 import type { FacilityService } from '../../systems/company/FacilityService';
+import type { RentService } from '../../systems/company/RentService';
 import type { ResearchService } from '../../systems/company/ResearchService';
 import type { NewsService } from '../../systems/world/NewsService';
 import type { DrivingService } from '../../systems/driving/DrivingService';
@@ -26,7 +27,7 @@ import type { Strings } from '../i18n';
 import { icon, type IconName } from '../icons';
 import { LabelFitter } from '../LabelFitter';
 import { newsTicker } from './newsFeed';
-import { companyPage } from './companyPage';
+import { companyPage, type RentView } from './companyPage';
 import { eventCard } from './eventCards';
 import { sortEvents } from './eventText';
 import { FleetPage } from './fleetPage';
@@ -64,6 +65,8 @@ export interface CompanyHqServices {
   readonly fleet: FleetService;
   readonly rivals: RivalService;
   readonly facilities: FacilityService;
+  /** The warehouse's rent. */
+  readonly rent: RentService;
   readonly research: ResearchService;
   /** The region's Gazette: its newest headline over the job board, all of it on the rivals page. */
   readonly news: NewsService;
@@ -127,6 +130,8 @@ export interface CompanyHqActions {
   readonly onBuyOut: (rivalId: string) => void;
   /** Builds a facility's next level at the head office. */
   readonly onBuildFacility: (facilityId: string) => void;
+  /** The warehouse's rent collected. */
+  readonly onCollectRent: () => void;
   readonly onResearch: (researchId: string) => void;
   /** Shows `preview` on the truck while the panel is open; null shows the truck as it is. */
   readonly onPreview: (preview: TruckPreview | null) => void;
@@ -163,6 +168,8 @@ const TAB_ICONS: Readonly<Record<HqTab, IconName>> = {
  * progress. Everything below the tabs scrolls as one list.
  */
 export class CompanyHq {
+  /** The rent waiting as the company page last showed it: it is drawn again as a whole credit more piles up. */
+  private shownRent = -1;
   private readonly root: HTMLDivElement;
   private readonly sheet: HTMLElement;
   private readonly companyName: HTMLHeadingElement;
@@ -345,6 +352,23 @@ export class CompanyHq {
     this.list.scrollTop = 0;
   }
 
+  /** The warehouse's rent as the company page shows it; null without a warehouse. */
+  private rentView(): RentView | null {
+    const rent = this.services.rent;
+    const rate = rent.ratePerHour;
+    if (rate <= 0) {
+      return null;
+    }
+    const waiting = rent.waiting;
+    this.shownRent = waiting;
+    return {
+      waiting,
+      ratePerHour: rate,
+      fullness: rent.fullness,
+      fullInSeconds: Math.max(0, ((rent.capacity - waiting) / rate) * 3600),
+    };
+  }
+
   /**
    * Redraws the figures and the open page (after a purchase, a level-up, a
    * delivery), keeping the list where it was scrolled to. Anything previewed
@@ -402,14 +426,19 @@ export class CompanyHq {
   /**
    * Moves the fleet page's progress bars and the rivals page's campaign
    * waits on while they show, and draws them again when a driver moves on
-   * to another contract or something happens in the market: call a few
-   * times a second, not every frame.
+   * to another contract or something happens in the market; draws the
+   * company page again as the warehouse's rent grows by a whole credit:
+   * call a few times a second, not every frame.
    */
   tick(): void {
     if (!this.isOpen) {
       return;
     }
-    if ((this.tab === 'fleet' && this.fleetPage.tick()) || (this.tab === 'rivals' && this.rivalsPage.tick())) {
+    if (
+      (this.tab === 'fleet' && this.fleetPage.tick()) ||
+      (this.tab === 'rivals' && this.rivalsPage.tick()) ||
+      (this.tab === 'company' && this.services.rent.ratePerHour > 0 && this.services.rent.waiting !== this.shownRent)
+    ) {
       this.refresh();
     }
   }
@@ -491,9 +520,11 @@ export class CompanyHq {
               pointsPerPerfectDelivery: this.services.researchPoints.perPerfectDelivery,
               canAfford: (price) => this.services.economy.canAfford(price),
             },
+            rent: this.rentView(),
           },
           this.actions.onBuildFacility,
           this.actions.onResearch,
+          this.actions.onCollectRent,
         );
       case 'rivals':
         return this.rivalsPage.render();

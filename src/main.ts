@@ -421,6 +421,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
   const facilities = services.resolve(ServiceKeys.facilities);
+  const rent = services.resolve(ServiceKeys.rent);
   const research = services.resolve(ServiceKeys.research);
   const career = services.resolve(ServiceKeys.career);
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
@@ -1583,6 +1584,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         showMainMenu(strings.t(`menu.problem.${continued.error}`));
         return;
       }
+      // What the warehouse's rent took while the game was closed: waiting at the head office.
+      if (rent.waiting > 0) {
+        toasts.show(strings.t('toast.rentWaiting', { money: strings.money(rent.waiting) }), 'info');
+      }
       // The region over the water picked: straight on board its ferry, without the drive to the terminal.
       const gate = regionId === null ? undefined : driving.world.gates.find((candidate) => candidate.toMapId === regionId);
       if (gate === undefined || !crossBy(gate)) {
@@ -2018,6 +2023,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       content,
       driving,
       missions,
+      rent,
       economy,
       company,
       fuel,
@@ -2214,6 +2220,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           toasts.show(strings.t('toast.rivalTooStrong'), 'warning');
         } else {
           logger.warn(`Could not buy ${rivalId} out: ${bought.error}.`);
+        }
+      },
+      onCollectRent: () => {
+        const collected = rent.collect();
+        if (collected.ok) {
+          audio.chime();
+          toasts.show(strings.t('toast.rentCollected', { money: strings.money(collected.value) }), 'success');
         }
       },
       onBuildFacility: (facilityId) => {
@@ -2533,6 +2546,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   events.on('VehicleSold', refreshHq);
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
+  events.on('RentCollected', refreshHq);
   events.on('ResearchCompleted', refreshHq);
   // A dot on the company page's tab while a research step is within reach (points and credits).
   const showResearchReady = (): void => {

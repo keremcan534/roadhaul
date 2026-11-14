@@ -428,6 +428,7 @@ For the player's request for more to buy for the company ("şirket yönetimini d
   - `RivalService` gives the company's own deliveries, and its fleet's, more standing;
   - `MissionService` gives a delivery more experience;
   - `DailyContracts` deals more contracts of the day, the same ones first.
+- **`RentService`** (`src/systems/company`) is money that comes without driving: the warehouse (a facility whose effect is `rentPerHour`) lets space, and its rent piles up in real time from the clock, while the player drives, sits in the menus or has the game closed, up to `GameConfig.company.rentCapHours` of it (`domain/company/rent.ts`: the clock going back adds nothing). The player collects it on the company page (`RentCollected`); coming back, a toast says what waits. A level built settles what piled up at the old rate first. The save keeps what was settled and since when (v24), so the rent goes on growing while the game is closed.
 - **The Company page** (`companyPage.ts`) shows what the facilities give now, the research tree, and a card for each facility: its level, its effect, and the next level's effect and price or the company level that unlocks it.
 
 ### Research

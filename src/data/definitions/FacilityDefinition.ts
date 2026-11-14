@@ -17,6 +17,8 @@ import type { Credits } from '../units';
  * - cargoDamageReduction: share of the cargo damage a knock does kept away.
  * - fuelUseReduction: share of the company's own truck's diesel saved.
  * - loadingTimeReduction: share taken off loading and unloading.
+ * - rentPerHour: whole credits an hour in rent, piling up whether the
+ *   player drives or not (RentService), collected at the head office.
  */
 export const FACILITY_EFFECTS = [
   'repairDiscount',
@@ -30,6 +32,7 @@ export const FACILITY_EFFECTS = [
   'cargoDamageReduction',
   'fuelUseReduction',
   'loadingTimeReduction',
+  'rentPerHour',
 ] as const;
 export type FacilityEffect = (typeof FACILITY_EFFECTS)[number];
 
@@ -43,9 +46,12 @@ const DISCOUNTS: readonly FacilityEffect[] = [
 ];
 /** Effects that count things (trucks, contracts): whole numbers. */
 const COUNTS: readonly FacilityEffect[] = ['garageSlots', 'extraContracts'];
-/** The most a counting effect may add, and a bonus may be (+200 %). */
+/** Effects that are sums of credits: whole numbers. */
+const AMOUNTS: readonly FacilityEffect[] = ['rentPerHour'];
+/** The most a counting effect may add, and a bonus may be (+200 %), and an amount of credits. */
 const MAX_COUNT = 10;
 const MAX_BONUS = 2;
+const MAX_AMOUNT = 10_000;
 
 /** One level of a facility: what building it costs, when the company may, and the effect's size. */
 export interface FacilityLevelDefinition {
@@ -121,6 +127,9 @@ export function validatePerkValue(effect: FacilityEffect, value: number, path: s
   }
   if (COUNTS.includes(effect)) {
     return validator.check(Number.isInteger(value) && value <= MAX_COUNT, path, `must be a whole number up to ${MAX_COUNT}`);
+  }
+  if (AMOUNTS.includes(effect)) {
+    return validator.check(Number.isInteger(value) && value <= MAX_AMOUNT, path, `must be whole credits up to ${MAX_AMOUNT}`);
   }
   return validator.check(value <= MAX_BONUS, path, `must be at most ${MAX_BONUS}`);
 }

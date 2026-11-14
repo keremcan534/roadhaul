@@ -65,7 +65,11 @@ describe('GameConfig', () => {
       ...DEFAULT_GAME_CONFIG,
       economy: { fuelPricePerLiter: 0, roadsideFuelPriceFactor: 0.5, fullRepairShare: 1.5 },
       fuel: { consumptionScale: -1, lowFuelFraction: 2 },
-      company: { levelXp: [100, 50, 60, 70, 80, 90, 100, 110, 120, 130], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards },
+      company: {
+        levelXp: [100, 50, 60, 70, 80, 90, 100, 110, 120, 130],
+        levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards,
+        rentCapHours: 0,
+      },
     };
 
     expect(validateGameConfig(config, catalog).map((issue) => issue.path)).toEqual([
@@ -75,6 +79,7 @@ describe('GameConfig', () => {
       'fuel.consumptionScale',
       'fuel.lowFuelFraction',
       'company.levelXp',
+      'company.rentCapHours',
     ]);
   });
 
@@ -94,7 +99,7 @@ describe('GameConfig', () => {
   it('reports contracts, trucks, upgrades, drivers and facilities locked behind a company level that does not exist', () => {
     const config: GameConfig = {
       ...DEFAULT_GAME_CONFIG,
-      company: { levelXp: [0, 1000], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 1) },
+      company: { levelXp: [0, 1000], levelRewards: DEFAULT_GAME_CONFIG.company.levelRewards.slice(0, 1), rentCapHours: 8 },
       fleet: { ...DEFAULT_GAME_CONFIG.fleet, garageSlots: [2, 3] },
     };
     const beyondLevel2 = (level: number | undefined): boolean => (level ?? 1) > 2;

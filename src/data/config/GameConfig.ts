@@ -160,6 +160,8 @@ export interface GameConfig {
     readonly levelXp: readonly number[];
     /** What each level from the second brings when the player collects it (LevelRewardService), level 2 first. */
     readonly levelRewards: readonly LevelRewardConfig[];
+    /** The warehouse's rent piles up for at most this many hours before the player collects it (RentService). */
+    readonly rentCapHours: number;
   };
   /** The fleet (spec §27): the company's other trucks, on contracts of their own with hired drivers. */
   readonly fleet: {
@@ -662,6 +664,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
       { credits: 15000, crate: 'gold' },
       { credits: 25000, crate: 'gold' },
     ],
+    rentCapHours: 8,
   },
   fleet: {
     garageSlots: [2, 3, 4, 6, 8, 8, 9, 9, 10, 10],
@@ -1210,6 +1213,11 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.positiveInteger(reward.credits, `company.levelRewards[${index}].credits`);
     validator.check(isCrateTier(reward.crate), `company.levelRewards[${index}].crate`, `unknown crate "${String(reward.crate)}"`);
   });
+  validator.check(
+    Number.isFinite(company.rentCapHours) && company.rentCapHours > 0 && company.rentCapHours <= 72,
+    'company.rentCapHours',
+    'must be above 0 and at most 72',
+  );
   for (const season of SEASONS) {
     validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
   }

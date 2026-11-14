@@ -17,6 +17,7 @@ import { HOME_START_ID, LEFT_START_ID, startPlaces, type StartPlace } from '../.
 import type { CompanyService } from '../company/CompanyService';
 import type { FacilityService } from '../company/FacilityService';
 import type { ResearchService } from '../company/ResearchService';
+import type { RentService } from '../company/RentService';
 import type { CareerService } from '../company/CareerService';
 import type { RoadEventService } from '../world/RoadEventService';
 import type { UsedTruckMarket } from '../vehicles/UsedTruckMarket';
@@ -62,6 +63,8 @@ export interface GameSessionDependencies {
   readonly facilities: FacilityService;
   /** The research tree. */
   readonly research: ResearchService;
+  /** The warehouse's rent, waiting to be collected. */
+  readonly rent: RentService;
   /** The career's records. */
   readonly career: CareerService;
   /** The road's events: the warning given, the contract's fines and knocks. */
@@ -386,6 +389,7 @@ export class GameSessionService {
       rivals,
       facilities,
       research,
+      rent,
       career,
       roadEvents,
       usedTrucks,
@@ -426,6 +430,7 @@ export class GameSessionService {
       rivals: rivals.snapshot(),
       facilities: facilities.snapshot(),
       research: research.snapshot(),
+      rent: rent.snapshot(),
       career: career.snapshot(),
       roadEvents: roadEvents.snapshot(),
       usedTrucks: usedTrucks.snapshot(),
@@ -496,6 +501,7 @@ export class GameSessionService {
       rivals,
       facilities,
       research,
+      rent,
       career,
       roadEvents,
       usedTrucks,
@@ -524,6 +530,7 @@ export class GameSessionService {
     company.restore(save.profile, save.company, save.stats);
     facilities.restore(save.facilities); // Before the garage: a yard built makes room for more trucks.
     research.restore(save.research);
+    rent.restore(save.rent); // After the facilities: the rent grows at the warehouse's rate.
     career.restore(save.career);
     roadEvents.restore(save.roadEvents);
     usedTrucks.restore(save.usedTrucks);

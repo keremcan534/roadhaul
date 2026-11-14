@@ -22,6 +22,7 @@ export const NO_PERKS: FacilityPerks = Object.freeze({
   cargoDamageReduction: 0,
   fuelUseReduction: 0,
   loadingTimeReduction: 0,
+  rentPerHour: 0,
 });
 
 /** `a` and `b` together: each effect's sizes added up. */

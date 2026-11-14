@@ -1255,6 +1255,62 @@
   height: 17px;
 }
 
+/* The warehouse's rent (companyPage.ts): what waits, how full it is, and the button that collects it. */
+.rent-card {
+  --rh-icon-accent: var(--rh-accent);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'icon amount collect'
+    'icon bar collect'
+    'icon note collect';
+  align-items: center;
+  gap: 5px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--rh-line-strong);
+  border-radius: 3px;
+  background: var(--rh-surface-2);
+}
+
+.rent-card__icon {
+  grid-area: icon;
+  width: 34px;
+  height: 34px;
+}
+
+.rent-card__amount {
+  grid-area: amount;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rent-card__bar {
+  grid-area: bar;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgb(255 255 255 / 12%);
+}
+
+.rent-card__fill {
+  height: 100%;
+  background: var(--rh-accent);
+  transform-origin: left center;
+}
+
+.rent-card__note {
+  grid-area: note;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.rent-card__collect {
+  grid-area: collect;
+}
+
 /* ---- The region's Gazette and the rivals' bosses (src/ui/hq/newsFeed.ts, rivalsPage.ts) ---- */
 
 .gazette {

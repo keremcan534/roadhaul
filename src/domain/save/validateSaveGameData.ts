@@ -340,6 +340,12 @@ export function validateSaveGameData(
       (paints as unknown[]).forEach((id, index) => validator.check(typeof id === 'string', `roadPass.paints[${index}]`, 'must be an id'));
     }
   });
+  section('rent', (rent) => {
+    const stored = rent['storedCredits'];
+    const since = rent['sinceMs'];
+    validator.check(typeof stored === 'number' && Number.isFinite(stored) && stored >= 0, 'rent.storedCredits', 'must be a number of at least 0');
+    validator.check(typeof since === 'number' && Number.isFinite(since) && since >= 0, 'rent.sinceMs', 'must be a number of at least 0');
+  });
   return validator.issues;
 }
 

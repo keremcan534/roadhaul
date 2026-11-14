@@ -222,6 +222,11 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
           : save['roadEvents'],
     }),
   },
+  {
+    // v24 adds the warehouse's rent: nothing waiting (no company had a warehouse before).
+    from: 23,
+    migrate: (save) => ({ ...save, version: 24, rent: { storedCredits: 0, sinceMs: 0 } }),
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

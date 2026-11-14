@@ -40,6 +40,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     traffic: services.resolve(ServiceKeys.traffic),
     companyTraffic: services.resolve(ServiceKeys.companyTraffic),
     horn: services.resolve(ServiceKeys.horn),
+    rent: services.resolve(ServiceKeys.rent),
     facilities: services.resolve(ServiceKeys.facilities),
     research: services.resolve(ServiceKeys.research),
     career: services.resolve(ServiceKeys.career),

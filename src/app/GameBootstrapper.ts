@@ -10,6 +10,7 @@ import type { GameContent } from '../data/GameContent';
 import { CompanyService } from '../systems/company/CompanyService';
 import { CompanyPerks } from '../systems/company/CompanyPerks';
 import { FacilityService } from '../systems/company/FacilityService';
+import { RentService } from '../systems/company/RentService';
 import { ResearchService } from '../systems/company/ResearchService';
 import { CareerService } from '../systems/company/CareerService';
 import { RoadEventService } from '../systems/world/RoadEventService';
@@ -199,6 +200,11 @@ export class GameBootstrapper {
       const facilities = container.register(
         ServiceKeys.facilities,
         new FacilityService(catalog, economy, company, perks, events, logger.withCategory('Facilities')),
+      );
+      // The warehouse's rent: money that piles up without driving, collected at the head office.
+      const rent = container.register(
+        ServiceKeys.rent,
+        new RentService(facilities, economy, clock, config.company.rentCapHours, events, logger.withCategory('Rent')),
       );
       // The research tree: points from deliveries, perks for good; after the economy, its pay bonus on top.
       const research = container.register(
@@ -526,6 +532,7 @@ export class GameBootstrapper {
           rivals,
           facilities,
           research,
+          rent,
           career,
           roadEvents,
           usedTrucks,

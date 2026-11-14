@@ -61,6 +61,17 @@ export const FACILITIES: readonly FacilityDefinition[] = [
     ],
   },
   {
+    // Space the company lets: rent that piles up whether anyone drives or not (RentService), up to
+    // GameConfig.company.rentCapHours of it, collected at the head office.
+    id: 'warehouse',
+    effect: 'rentPerHour',
+    levels: [
+      { cost: 6000, value: 150 },
+      { cost: 15000, requiredCompanyLevel: 3, value: 350 },
+      { cost: 32000, requiredCompanyLevel: 5, value: 700 },
+    ],
+  },
+  {
     id: 'logistics_office',
     effect: 'extraContracts',
     levels: [
