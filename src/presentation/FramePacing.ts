@@ -24,10 +24,11 @@ const HITCH_SECONDS = 0.25;
  */
 const KEEP_SHARE = 0.85;
 /**
- * …or at this many a second: on a 90 or 120 Hz screen frames shown for one
- * beat or two differ by 11 or 8 ms, and more of them is the smoother drive.
+ * …or at this many a second: about 60 and more, frames shown for one beat
+ * or two of a 90, 120 or 144 Hz screen differ by 11 ms or less, and more of
+ * them is the smoother drive.
  */
-const KEEP_FPS = 75;
+const KEEP_FPS = 58;
 /** Windows in a row short of the rate before it is given up for a lower one. */
 const SLOW_WINDOWS = 2;
 /** A lower rate is paced at only where the frames came at this share of it or more. */
@@ -41,7 +42,8 @@ const LONGEST_TRY_SECONDS = 480;
  * its screen shows frames unevenly, one for one refresh and the next for
  * two, and the drive judders: 45 frames a second on a 60 Hz screen look
  * rougher than 30 shown evenly, and run the phone hotter. On the road,
- * after SLOW_WINDOWS windows short of the rate aimed at, the frames are
+ * after SLOW_WINDOWS windows short of the rate aimed at (under KEEP_SHARE
+ * of it and under KEEP_FPS), the frames are
  * capped at the screen's rate divided by a whole number (60 Hz: 30; 90 Hz:
  * 45 or 30; 120 Hz: 60, 40 or 30), the highest the phone kept: each frame
  * then shows as long as the next. After FIRST_TRY_SECONDS of frames keeping

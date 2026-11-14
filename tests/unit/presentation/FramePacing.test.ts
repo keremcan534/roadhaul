@@ -73,7 +73,7 @@ describe('FramePacing', () => {
     expect(pacing.paced).toBe(false);
   });
 
-  it('paces a 120 Hz screen at 60, 40 or 30, keeping 75 frames a second and more unpaced', () => {
+  it('paces a 120 Hz screen at 40 or 30, keeping about 60 frames a second and more unpaced', () => {
     const fast = new FramePacing();
     run(fast, 120, () => 7, 20);
     expect(fast.screenFps).toBe(120);
@@ -84,11 +84,11 @@ describe('FramePacing', () => {
     run(eighty, 120, (frame) => (frame % 2 === 0 ? 7 : 10), 20);
     expect(eighty.paced).toBe(false);
 
-    // 72 a second, the screen's beat seen on a lighter stretch before: an even 60.
-    const sixty = new FramePacing();
-    run(sixty, 120, () => 7, 3);
-    run(sixty, 120, (frame) => (frame % 3 === 0 ? 7 : 14), 20);
-    expect(sixty.cap).toBe(60);
+    // 72 a second, the screen's beat seen on a lighter stretch before: kept.
+    const seventy = new FramePacing();
+    run(seventy, 120, () => 7, 3);
+    run(seventy, 120, (frame) => (frame % 3 === 0 ? 7 : 14), 20);
+    expect(seventy.paced).toBe(false);
 
     // About 48 a second: an even 40 once the screen's beat shows between paced frames and 40 has been tried.
     const forty = new FramePacing();
@@ -100,6 +100,21 @@ describe('FramePacing', () => {
     const thirty = new FramePacing();
     run(thirty, 120, (frame) => (frame % 2 === 0 ? 26 : 28), 60);
     expect(thirty.cap).toBe(30);
+  });
+
+  it('keeps about 60 frames a second unpaced on a 144 Hz screen, and paces 50 at an even 48', () => {
+    const sixty = new FramePacing();
+    run(sixty, 144, () => 5, 3);
+    // Two beats, two beats, three: about 62 a second.
+    run(sixty, 144, (frame) => (frame % 3 === 2 ? 15 : 12), 20);
+    expect(sixty.screenFps).toBe(144);
+    expect(sixty.paced).toBe(false);
+
+    const fifty = new FramePacing();
+    run(fifty, 144, () => 5, 3);
+    // Two beats and four in turn: about 48 a second, unevenly.
+    run(fifty, 144, (frame) => (frame % 2 === 0 ? 12 : 26), 20);
+    expect(fifty.cap).toBe(48);
   });
 
   it('tries the rate above again after a while, and keeps it once the phone keeps up', () => {
