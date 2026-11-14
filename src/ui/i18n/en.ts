@@ -903,6 +903,8 @@ export const EN: StringTable = {
   'settings.reminders': 'Reminders',
   'settings.remindersNote': 'The daily reward and the free crate, at most once a day, between 10:00 and 21:00.',
   'reminder.channel': 'Reminders',
+  'reminder.updated.title': 'RoadHaul has been updated',
+  'reminder.updated.body': 'Open the game to see what’s new.',
   'reminder.streak.title': 'Day {day} of your daily reward is ready',
   'reminder.streak.body': 'Collect it today to keep your streak going.',
   'reminder.daily.title': 'Your daily reward is ready',

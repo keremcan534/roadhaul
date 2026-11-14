@@ -903,6 +903,8 @@ export const TR: StringTable = {
   'settings.reminders': 'Hatırlatmalar',
   'settings.remindersNote': 'Günlük ödül ve bedava kasa için, günde en fazla bir kez, 10:00 ile 21:00 arasında.',
   'reminder.channel': 'Hatırlatmalar',
+  'reminder.updated.title': 'RoadHaul güncellendi',
+  'reminder.updated.body': 'Yenilikleri görmek için oyunu aç.',
   'reminder.streak.title': 'Günlük ödülünün {day}. günü hazır',
   'reminder.streak.body': 'Serini sürdürmek için bugün al.',
   'reminder.daily.title': 'Günlük ödülün hazır',

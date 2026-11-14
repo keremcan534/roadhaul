@@ -2847,7 +2847,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     import('./platform/native/localNotifications')
       .then(({ localNotifications }) => localNotifications(strings.t('reminder.channel')))
       .then(async (notifier) => {
-        await reminders.attach(notifier, (reminder) => reminderText(strings, reminder));
+        await reminders.attach(notifier, (reminder) => reminderText(strings, reminder), {
+          title: strings.t('reminder.updated.title'),
+          body: strings.t('reminder.updated.body'),
+        });
         settingsDialog.showReminders(reminders.on);
       })
       .catch((error: unknown) => logger.warn('The reminders did not start.', error));

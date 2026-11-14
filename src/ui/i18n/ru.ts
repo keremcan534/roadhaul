@@ -903,6 +903,8 @@ export const RU: StringTable = {
   'settings.reminders': 'Напоминания',
   'settings.remindersNote': 'Ежедневная награда и бесплатный ящик, не чаще раза в день, с 10:00 до 21:00.',
   'reminder.channel': 'Напоминания',
+  'reminder.updated.title': 'RoadHaul обновлён',
+  'reminder.updated.body': 'Откройте игру, чтобы увидеть новое.',
   'reminder.streak.title': 'День {day} ежедневной награды готов',
   'reminder.streak.body': 'Забери её сегодня, чтобы не прервать серию.',
   'reminder.daily.title': 'Твоя ежедневная награда готова',

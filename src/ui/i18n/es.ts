@@ -903,6 +903,8 @@ export const ES: StringTable = {
   'settings.reminders': 'Recordatorios',
   'settings.remindersNote': 'La recompensa diaria y la caja gratis, como mucho una vez al día, entre las 10:00 y las 21:00.',
   'reminder.channel': 'Recordatorios',
+  'reminder.updated.title': 'RoadHaul se ha actualizado',
+  'reminder.updated.body': 'Abre el juego para ver las novedades.',
   'reminder.streak.title': 'El día {day} de tu recompensa diaria está listo',
   'reminder.streak.body': 'Recógelo hoy para mantener tu racha.',
   'reminder.daily.title': 'Tu recompensa diaria está lista',

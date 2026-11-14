@@ -903,6 +903,8 @@ export const IT: StringTable = {
   'settings.reminders': 'Promemoria',
   'settings.remindersNote': 'Il premio giornaliero e la cassa gratis, al massimo una volta al giorno, tra le 10:00 e le 21:00.',
   'reminder.channel': 'Promemoria',
+  'reminder.updated.title': 'RoadHaul è stato aggiornato',
+  'reminder.updated.body': 'Apri il gioco per scoprire le novità.',
   'reminder.streak.title': 'Il giorno {day} del tuo premio giornaliero è pronto',
   'reminder.streak.body': 'Ritiralo oggi per non interrompere la serie.',
   'reminder.daily.title': 'Il tuo premio giornaliero è pronto',

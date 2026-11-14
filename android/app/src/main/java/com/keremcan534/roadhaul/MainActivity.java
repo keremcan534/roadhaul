@@ -15,7 +15,8 @@ import com.getcapacitor.BridgeActivity;
  * the controls. Hidden again whenever the game comes back into focus. The
  * screen stays on while the game is in front: a drive steered by tilting the
  * phone touches nothing, and the screen would dim and lock mid-drive. The
- * game asks for the screen's refresh rate through DisplayRatePlugin.
+ * game asks for the screen's refresh rate through DisplayRatePlugin, and
+ * leaves the update notice's words with UpdateNoticePlugin.
  */
 public class MainActivity extends BridgeActivity {
 
@@ -23,6 +24,8 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         // The game's own plugin: the screen's refresh rate (90 or 120 Hz where the phone has it).
         registerPlugin(DisplayRatePlugin.class);
+        // The update notice's words, for UpdateReceiver to show after Google Play updates the game.
+        registerPlugin(UpdateNoticePlugin.class);
         super.onCreate(savedInstanceState);
         // Edge to edge on every Android, as Android 15 and later draw an app targeting them anyway: behind the hidden
         // bars and into the camera's notch, the interface kept clear of it by the page's safe-area insets.

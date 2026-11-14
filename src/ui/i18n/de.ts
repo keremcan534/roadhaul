@@ -903,6 +903,8 @@ export const DE: StringTable = {
   'settings.reminders': 'Erinnerungen',
   'settings.remindersNote': 'Tagesbelohnung und Gratis-Kiste, höchstens einmal am Tag, zwischen 10:00 und 21:00.',
   'reminder.channel': 'Erinnerungen',
+  'reminder.updated.title': 'RoadHaul wurde aktualisiert',
+  'reminder.updated.body': 'Öffne das Spiel und sieh dir die Neuigkeiten an.',
   'reminder.streak.title': 'Tag {day} deiner Tagesbelohnung ist bereit',
   'reminder.streak.body': 'Hol sie heute ab, damit deine Serie weiterläuft.',
   'reminder.daily.title': 'Deine Tagesbelohnung ist bereit',

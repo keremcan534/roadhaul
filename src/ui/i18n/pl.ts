@@ -903,6 +903,8 @@ export const PL: StringTable = {
   'settings.reminders': 'Przypomnienia',
   'settings.remindersNote': 'Nagroda dnia i darmowa skrzynia, najwyżej raz dziennie, między 10:00 a 21:00.',
   'reminder.channel': 'Przypomnienia',
+  'reminder.updated.title': 'RoadHaul został zaktualizowany',
+  'reminder.updated.body': 'Otwórz grę, aby zobaczyć nowości.',
   'reminder.streak.title': 'Dzień {day} nagrody dnia jest gotowy',
   'reminder.streak.body': 'Odbierz ją dziś, by nie przerwać serii.',
   'reminder.daily.title': 'Twoja nagroda dnia jest gotowa',

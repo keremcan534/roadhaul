@@ -903,6 +903,8 @@ export const ID: StringTable = {
   'settings.reminders': 'Pengingat',
   'settings.remindersNote': 'Hadiah harian dan peti gratis, paling banyak sekali sehari, antara pukul 10.00 dan 21.00.',
   'reminder.channel': 'Pengingat',
+  'reminder.updated.title': 'RoadHaul telah diperbarui',
+  'reminder.updated.body': 'Buka game untuk melihat yang baru.',
   'reminder.streak.title': 'Hari ke-{day} hadiah harianmu sudah siap',
   'reminder.streak.body': 'Ambil hari ini agar rangkaianmu tidak putus.',
   'reminder.daily.title': 'Hadiah harianmu sudah siap',

@@ -243,7 +243,8 @@ Google → Backup), and brings it back when the game is installed again with the
   number (`versionCode`) takes care of itself.
 - Update the release notes in `fastlane/metadata/android/<locale>/changelogs/default.txt`. The game shows the same
   words once after the update, at the main menu (What's New: the build has them built in), to players who played
-  before.
+  before. Players who turned the reminders on also get a notification once Google Play has installed the update
+  ("RoadHaul has been updated", from the app itself: `UpdateReceiver`).
 
 ### 2. Build the signed bundle
 
