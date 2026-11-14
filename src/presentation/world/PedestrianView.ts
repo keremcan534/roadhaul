@@ -161,6 +161,8 @@ export class PedestrianView {
   private readonly capacity: number;
   /** Each pavement's middle and how far it reaches from it, to skip those out of reach at once. */
   private readonly reachOf: Float64Array;
+  /** Where each pavement's walkers start among them (they are placed pavement by pavement), and where the last end. */
+  private readonly walkersFrom: Uint32Array;
   private readonly matrix = new Matrix4();
   private readonly pose = createPedestrianPose();
   private readonly point = createRoadPoint();
@@ -180,6 +182,19 @@ export class PedestrianView {
     this.capacity = Math.max(1, options.capacity ?? 120);
     this.people = placePedestrians(roads, sidewalks, furniture, PEDESTRIAN_SEED);
     this.walkerDodge = new Float32Array(this.people.walkers.length * 2);
+    this.walkersFrom = new Uint32Array(sidewalks.length + 1);
+    let pavement = 0;
+    let previous = 0;
+    this.people.walkers.forEach((walker, index) => {
+      if (walker.sidewalk < previous) {
+        throw new Error('PedestrianView: the walkers are not placed pavement by pavement.');
+      }
+      previous = walker.sidewalk;
+      while (pavement <= walker.sidewalk) {
+        this.walkersFrom[pavement++] = index;
+      }
+    });
+    this.walkersFrom.fill(this.people.walkers.length, pavement);
     this.waitingDodge = new Float32Array(this.people.waiting.length * 2);
     this.reachOf = new Float64Array(sidewalks.length * 3);
     sidewalks.forEach((sidewalk, index) => {
@@ -247,29 +262,36 @@ export class PedestrianView {
     const reachSq = REACH_METERS * REACH_METERS;
     let count = 0;
     const { walkers, waiting } = this.people;
-    for (let i = 0; i < walkers.length && count < this.capacity; i++) {
-      const walker = walkers[i]!;
-      if (!crowdShows(walker.presence, crowd) || !this.nearEnough(walker.sidewalk, eye)) {
+    // Pavement by pavement, those out of reach skipped whole: the walkers in the same order as one by one.
+    for (let pavement = 0; pavement < this.sidewalks.length && count < this.capacity; pavement++) {
+      const end = this.walkersFrom[pavement + 1]!;
+      if (this.walkersFrom[pavement] === end || !this.nearEnough(pavement, eye)) {
         continue;
       }
-      const sidewalk = this.sidewalks[walker.sidewalk]!;
-      const pose = walkerAt(walker, this.roads[sidewalk.roadIndex]!, sidewalk, this.time, this.point, this.pose);
-      const dx = pose.x - eye.x;
-      const dz = pose.z - eye.z;
-      if (dx * dx + dz * dz > reachSq) {
-        continue;
+      for (let i = this.walkersFrom[pavement]!; i < end && count < this.capacity; i++) {
+        const walker = walkers[i]!;
+        if (!crowdShows(walker.presence, crowd)) {
+          continue;
+        }
+        const sidewalk = this.sidewalks[walker.sidewalk]!;
+        const pose = walkerAt(walker, this.roads[sidewalk.roadIndex]!, sidewalk, this.time, this.point, this.pose);
+        const dx = pose.x - eye.x;
+        const dz = pose.z - eye.z;
+        if (dx * dx + dz * dz > reachSq) {
+          continue;
+        }
+        this.dodge(this.walkerDodge, i, pose.x, pose.z, deltaSeconds, truck);
+        this.mesh.setMatrixAt(
+          count,
+          this.matrix
+            .makeRotationY(pose.heading)
+            .setPosition(pose.x + this.walkerDodge[i * 2]!, PAVEMENT_Y + this.hop, pose.z + this.walkerDodge[i * 2 + 1]!),
+        );
+        person[count * PERSON_STRIDE] = pose.stride;
+        person[count * PERSON_STRIDE + 1] = 1;
+        person[count * PERSON_STRIDE + 2] = walker.look;
+        count++;
       }
-      this.dodge(this.walkerDodge, i, pose.x, pose.z, deltaSeconds, truck);
-      this.mesh.setMatrixAt(
-        count,
-        this.matrix
-          .makeRotationY(pose.heading)
-          .setPosition(pose.x + this.walkerDodge[i * 2]!, PAVEMENT_Y + this.hop, pose.z + this.walkerDodge[i * 2 + 1]!),
-      );
-      person[count * PERSON_STRIDE] = pose.stride;
-      person[count * PERSON_STRIDE + 1] = 1;
-      person[count * PERSON_STRIDE + 2] = walker.look;
-      count++;
     }
     for (let i = 0; i < waiting.length && count < this.capacity; i++) {
       const one = waiting[i]!;
