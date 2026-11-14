@@ -229,17 +229,22 @@ async function measure(browser, profileId, sceneId, options) {
 
 /** Serves dist/ as players get it; ready when the port answers. */
 async function serve() {
-  const vite = join(ROOT, 'node_modules/vite/bin/vite.js');
-  const server = spawn(process.execPath, [vite, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const open = await new Promise((resolve) => {
+  const answers = () =>
+    new Promise((resolve) => {
       const socket = connect(PORT, '127.0.0.1', () => {
         socket.end();
         resolve(true);
       });
       socket.on('error', () => resolve(false));
     });
-    if (open) return () => server.kill();
+  // Another server there (one left by a run that stopped short) would be measured in this build's place.
+  if (await answers()) {
+    throw new Error(`Port ${PORT} is in use: stop what serves it (a server left by an earlier run?) and run again.`);
+  }
+  const vite = join(ROOT, 'node_modules/vite/bin/vite.js');
+  const server = spawn(process.execPath, [vite, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (await answers()) return () => server.kill();
     await sleep(500);
   }
   server.kill();
@@ -253,22 +258,26 @@ const scenes = (lists[1] ?? Object.keys(SCENES).join(',')).split(',');
 const options = { counters: args.includes('--counters'), trace: args.includes('--trace'), heap: args.includes('--heap'), cpuProfile: args.includes('--cpu-profile') };
 mkdirSync(OUT, { recursive: true });
 const stop = await serve();
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-const results = [];
 try {
-  for (const phone of phones) {
-    for (const scene of scenes) {
-      const result = await measure(browser, phone, scene, options);
-      results.push(result);
-      const f = result.frameMs ?? {};
-      console.log(
-        `${phone.padEnd(5)} ${scene.padEnd(10)} boot ${String(result.bootSeconds).padStart(5)} s  frame ${f.p50} ms (p95 ${f.p95}, max ${f.max})` +
-          `  ≈${result.cpuFps} fps by the CPU  ${result.drawCalls} draws  ${result.triangles} tris  ${result.longTasks} long tasks${result.error ? '  ERROR ' + result.error : ''}`,
-      );
-      writeFileSync(join(OUT, 'run.json'), JSON.stringify(results, null, 1));
+  // Inside: a browser that fails to start leaves no server behind.
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const results = [];
+  try {
+    for (const phone of phones) {
+      for (const scene of scenes) {
+        const result = await measure(browser, phone, scene, options);
+        results.push(result);
+        const f = result.frameMs ?? {};
+        console.log(
+          `${phone.padEnd(5)} ${scene.padEnd(10)} boot ${String(result.bootSeconds).padStart(5)} s  frame ${f.p50} ms (p95 ${f.p95}, max ${f.max})` +
+            `  ≈${result.cpuFps} fps by the CPU  ${result.drawCalls} draws  ${result.triangles} tris  ${result.longTasks} long tasks${result.error ? '  ERROR ' + result.error : ''}`,
+        );
+        writeFileSync(join(OUT, 'run.json'), JSON.stringify(results, null, 1));
+      }
     }
+  } finally {
+    await browser.close();
   }
 } finally {
-  await browser.close();
   stop();
 }
