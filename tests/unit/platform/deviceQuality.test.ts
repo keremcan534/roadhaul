@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseQuality, detectQuality, deviceHints, isWeakGpu, qualitySetting } from '../../../src/platform/browser/deviceQuality';
+import { chooseQuality, detectQuality, deviceHints, isEntryGpu, isWeakGpu, qualitySetting } from '../../../src/platform/browser/deviceQuality';
 
 describe('detectQuality', () => {
   it('gives weak devices the low preset, other phones medium and desktops high', () => {
@@ -50,6 +50,48 @@ describe('isWeakGpu', () => {
       'ANGLE (Qualcomm, Adreno (TM) 8cx Gen 3, D3D11)',
     ]) {
       expect(isWeakGpu(strong), strong).toBe(false);
+    }
+  });
+});
+
+describe('isEntryGpu', () => {
+  it('knows the weakest phone GPUs, a few years old or entry, by their WebGL names', () => {
+    for (const entry of [
+      // The Galaxy J7 Prime's.
+      'Mali-T830',
+      'ANGLE (ARM, Mali-T830, OpenGL ES 3.2)',
+      'Mali-T720',
+      'Mali-T628',
+      'Mali-G31 MP2',
+      'Mali-G51',
+      // The Infinix Smart 8's and the Galaxy A13's: one core.
+      'Mali-G57',
+      'Mali-G52',
+      'Mali-G52 MC1',
+      'PowerVR Rogue GE8320',
+      'PowerVR Rogue GE8322',
+      'Adreno (TM) 308',
+      'Adreno (TM) 506',
+    ]) {
+      expect(isEntryGpu(entry), entry).toBe(true);
+      // Every one of them is weak too: the low preset.
+      expect(isWeakGpu(entry), entry).toBe(true);
+    }
+    for (const stronger of [
+      'Mali-G52 MC2',
+      'ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)',
+      'Mali-G57 MC2',
+      'Mali-G57X',
+      'Mali-T880',
+      'Mali-T760',
+      'Mali-G68 MC4',
+      'PowerVR B-Series BXM-8-256',
+      'Adreno (TM) 610',
+      'Adreno (TM) 702',
+      'Adreno (TM) 740',
+      'Apple GPU',
+    ]) {
+      expect(isEntryGpu(stronger), stronger).toBe(false);
     }
   });
 });

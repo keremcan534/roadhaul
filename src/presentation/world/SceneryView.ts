@@ -56,7 +56,7 @@ import { toTexture } from '../textures/toTexture';
 import { DebrisInstances } from '../effects/DebrisInstances';
 import { SHADOW_GATHER_MARGIN_METERS, ShadowSubset, type ShadowReach } from './ShadowSubset';
 import { TileBatch } from './TileBatch';
-import { COUNTRY_TILE_METERS, FarCulling, freezeTransforms, TileParts } from './worldTiles';
+import { COUNTRY_TILE_METERS, FAR_CULL_METERS, FarCulling, freezeTransforms, TileParts } from './worldTiles';
 
 /** The scenery is merged by square tiles this wide, so what is out of view is not drawn. */
 const TILE_METERS = 600;
@@ -158,6 +158,8 @@ export interface SceneryViewOptions {
    * (drawDebris). Without it, only their places empty (showKnocked).
    */
   readonly debrisCapacity?: number;
+  /** How far from the camera the props' and the wires' tiles are drawn, meters. Default: FAR_CULL_METERS. */
+  readonly reachMeters?: number | undefined;
 }
 
 /**
@@ -199,7 +201,9 @@ export class SceneryView {
   private shadowStamp = -1;
   private readonly tileCount: number;
   /** The wires' tiles, hidden while far from the camera (showAround). */
-  private readonly culling = new FarCulling();
+  private readonly culling: FarCulling;
+  /** How far the tiles are drawn (SceneryViewOptions.reachMeters). */
+  private readonly reachMeters: number;
   /** The props' tiles and the pavements' (TileBatch: a draw call each for all the tiles near and in view). */
   private readonly batches: TileBatch[] = [];
   private time = 0;
@@ -240,6 +244,8 @@ export class SceneryView {
     options: SceneryViewOptions = {},
   ) {
     const castShadows = options.castShadows === true;
+    this.reachMeters = options.reachMeters ?? FAR_CULL_METERS;
+    this.culling = new FarCulling(this.reachMeters);
     const atlas = this.track(toTexture(propAtlasImage()));
     const propMaterial = this.track(new MeshLambertMaterial({ map: atlas, vertexColors: true }));
     const tiles = new Tiles();
@@ -453,7 +459,7 @@ export class SceneryView {
   }
 
   /**
-   * Shows the tiles near (x, z), the camera, and hides the ones lost in the haze (FAR_CULL_METERS); given the
+   * Shows the tiles near (x, z), the camera, and hides the ones lost in the haze (`reachMeters`); given the
    * camera's `view`, also those out of it (FarCulling.update; `view` null and `eyeView` the camera's where the shadow
    * map is drawn, as TileBatch.update). Allocation-free.
    */
@@ -660,7 +666,7 @@ export class SceneryView {
 
   /** `tiles` (released once copied) drawn as one (TileBatch), culled in showAround. */
   private batch(tiles: readonly BufferGeometry[], material: Material, name: string): TileBatch {
-    const batch = this.track(new TileBatch(tiles, material, name));
+    const batch = this.track(new TileBatch(tiles, material, name, this.reachMeters));
     for (const tile of tiles) {
       tile.dispose();
     }

@@ -30,6 +30,22 @@ export function isWeakGpu(name: string): boolean {
 }
 
 /**
+ * The weakest of them, drawing half of an entry Mali-G52 MC2's or less: the
+ * small Mali-T (T6xx, T720, T820, T830: the Galaxy J7 Prime, the J and A
+ * phones of 2016–2019), the Mali-G31 and G51, the single-core G52 and G57
+ * (the Galaxy A13, the Unisoc phones), PowerVR's GE8 and G6 Rogues (the
+ * Helio A, P, G2x and G3x) and the Adreno 3xx, 40x and 50x (Snapdragon 4xx
+ * and 625). On the low preset they draw the plainer world (main.ts).
+ */
+const ENTRY_GPU =
+  /mali-t(?:6\d\d|7[02]0|8[23]0)\b|mali-g(?:31|51)\b|mali-g5[27](?!\s*m[cp][2-9])\b|powervr rogue g(?:e8|6)\d{3}|adreno\D*(?:3\d\d|40\d|50\d)\b/i;
+
+/** True for an entry GPU (ENTRY_GPU), the weakest phones still played on. */
+export function isEntryGpu(name: string): boolean {
+  return ENTRY_GPU.test(name);
+}
+
+/**
  * The graphics preset a device can carry: low with few cores, little memory
  * or a weak GPU (low-end Android), medium on other phones and tablets, high
  * on desktops. Unknown figures count as a mid-range phone's.

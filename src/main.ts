@@ -47,7 +47,7 @@ import {
   requestedTimeOfDay,
   requestedWetness,
 } from './platform/browser/configOverrides';
-import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
+import { chooseQuality, detectQuality, deviceHints, isEntryGpu, qualitySetting } from './platform/browser/deviceQuality';
 import { gpuName } from './platform/browser/gpuName';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { MirroredStorage, restoreMirror, type MirrorFiles } from './platform/native/mirroredStorage';
@@ -188,11 +188,24 @@ const AURORA_SEEN = 0.35;
 const RAINBOW_SEEN = 0.45;
 /**
  * Drawn in software (RenderHost.softwareRendering): the shadow map at most
- * this size, and this share of the plants and of the clouds.
+ * this size. The plainer world (drawn in software, or on the low preset by an
+ * entry GPU: isEntryGpu): this share of the plants and of the clouds.
  */
 const SOFTWARE_SHADOW_MAP_SIZE = 1024;
-const SOFTWARE_VEGETATION_SHARE = 0.5;
-const SOFTWARE_CLOUD_SHARE = 0.5;
+const PLAINER_VEGETATION_SHARE = 0.5;
+const PLAINER_CLOUD_SHARE = 0.5;
+/**
+ * The plainer world's forests wear their simpler far crowns, without their
+ * inner trunks and shadows, past this far, meters (TrackView: 450), and its
+ * scenery's props (benches, poles, fences, pavements) are drawn this far
+ * (SceneryView: 1 km, the world's tiles' reach): both deep in the haze.
+ */
+const PLAINER_TREE_DETAIL_METERS = 300;
+const PLAINER_SCENERY_METERS = 600;
+/** The plainer world's street lamps are drawn this far, meters (StreetLampView: 700); their glows at night further. */
+const PLAINER_LAMP_POST_METERS = 450;
+/** The plainer world's people on the pavements near the camera, at most. */
+const PLAINER_PEDESTRIANS = 24;
 /**
  * Drawn in software, a frame takes 200 ms or more, half a second on a slow
  * machine; a fixed step, well under a millisecond. Frames simulated up to
@@ -439,6 +452,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const castShadows = config.rendering.shadowMapSize > 0;
   // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
+  // An entry GPU (a Galaxy J7 Prime's Mali-T830, a PowerVR GE8320, an Adreno 506: half an entry Mali-G52's drawing
+  // or less) on the low preset draws the plainer world too: half the plants and clouds, the grass read once, no clouds'
+  // shadows or mist on the land, the forests' far crowns nearer, the scenery's props and the people fewer. Its
+  // lamps still light the night.
+  const plainer = software || (config.rendering.quality === 'low' && device.gpu !== undefined && isEntryGpu(device.gpu));
   // A phone's GPU gets the shaders a few at a time (RenderHost.precompileGradually): all at once, a weak one stays
   // busy so long that Android reports the game not responding.
   const gradualCompile = device.mobile && !software;
@@ -466,18 +484,18 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
-    cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
+    cloudShare: plainer ? PLAINER_CLOUD_SHARE : 1,
     seasons: seasonShading,
     // The ranges round the region stand still in the world, coming down to the sea where its coast meets the edges.
     mountains: { halfSizeMeters: driving.world.halfSizeMeters, coastX: coastAtEdges(driving.world) },
   });
   /**
    * Shades what is in the scene so far, each material once: the clouds' shadows and the morning mist on the land (not
-   * drawn in software, where every pixel's instructions count: the sky and its hills still show the mist), the lamps'
-   * light on everything, and the seasons. Before its shaders compile.
+   * in the plainer world, where every pixel's instructions count: the sky and its hills still show the mist), the
+   * lamps' light on everything, and the seasons. Before its shaders compile.
    */
   const shadeScene = (): void => {
-    if (!software) {
+    if (!plainer) {
       cloudShadows.shadeScene(renderHost.scene, prelit);
       environment.mist.shadeScene(renderHost.scene);
     }
@@ -490,8 +508,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     anisotropy: renderHost.anisotropy,
     prelit,
     sky: environment.sky,
-    groundDetail: !software,
+    groundDetail: !plainer,
     seasons: seasonShading,
+    treeDetailMeters: plainer ? PLAINER_TREE_DETAIL_METERS : undefined,
   });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
@@ -508,6 +527,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     shadowReach: environment,
     circles: circlesOf(driving.world.streetLamps),
     debrisCapacity,
+    reachMeters: plainer ? PLAINER_LAMP_POST_METERS : undefined,
   });
   lampLighting.setStreetLamps(streetLamps.lampLights());
   lampLighting.setStreetLampsDark(streetLamps.dark);
@@ -532,10 +552,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     driving.world.roads,
     driving.world.sidewalks,
     driving.world.streetFurniture,
-    { capacity: PEDESTRIANS[config.rendering.quality] },
+    { capacity: plainer ? Math.min(PLAINER_PEDESTRIANS, PEDESTRIANS[config.rendering.quality]) : PEDESTRIANS[config.rendering.quality] },
   );
   const roadside = new RoadsideView(renderHost.scene, driving.world, {
-    density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
+    density: config.rendering.vegetationDensity * (plainer ? PLAINER_VEGETATION_SHARE : 1),
     prelit,
     seasons: seasonShading,
   });
@@ -557,6 +577,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     shadowReach: environment,
     anisotropy: renderHost.anisotropy,
     debrisCapacity,
+    reachMeters: plainer ? PLAINER_SCENERY_METERS : undefined,
   });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;

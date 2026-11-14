@@ -420,6 +420,12 @@ export interface TrackViewOptions {
   readonly groundDetail?: boolean;
   /** The seasons, for the grass, the broadleaf trees and the snow on the ground to follow. */
   readonly seasons?: SeasonShading;
+  /**
+   * Past this far from the camera, meters, a forest tile leaves out its
+   * trees' shadows and inner trunks and its crowns are the simpler far ones.
+   * Default: TREE_DETAIL_METERS.
+   */
+  readonly treeDetailMeters?: number | undefined;
 }
 
 /**
@@ -474,7 +480,7 @@ export class TrackView {
   /** The forest's tiles, hidden while far from the camera (showAround). */
   private readonly culling = new FarCulling();
   /** The forest tiles' shadows and inner trunks, left out a little nearer (TREE_DETAIL_METERS). */
-  private readonly treeDetail = new FarCulling(TREE_DETAIL_METERS);
+  private readonly treeDetail: FarCulling;
   /** The forest kinds' crowns near and far, in pairs: each far one shown while its near one is culled. */
   private readonly treeLods: InstancedMesh[] = [];
   /** The forest's tiles in view, drawn a kind of mesh at a time (ForestBatch); null without trees. */
@@ -491,6 +497,7 @@ export class TrackView {
   ) {
     this.prelit = options.prelit;
     this.seasons = options.seasons ?? null;
+    this.treeDetail = new FarCulling(options.treeDetailMeters ?? TREE_DETAIL_METERS);
     this.wet = {
       wetness: { value: 0 },
       rainfall: { value: 0 },
