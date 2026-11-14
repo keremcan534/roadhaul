@@ -357,6 +357,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const events = services.resolve(ServiceKeys.events);
   const gameState = services.resolve(ServiceKeys.gameState);
   const driving = services.resolve(ServiceKeys.driving);
+  const horn = services.resolve(ServiceKeys.horn);
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
@@ -753,7 +754,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   // The screen stays on while the truck is driven: steering by tilting the phone touches nothing.
   const screenWake = new ScreenWake(navigator);
   const soundState = createSoundState();
-  const honk = (pressed: boolean): void => audio.setHorn(pressed);
+  // The horn sounds; on the road it also hurries the traffic ahead and startles what is near (HornService).
+  const honk = (pressed: boolean): void => {
+    audio.setHorn(pressed);
+    horn.press(pressed && onRoad() && !paused);
+  };
   const signal = (side: 'left' | 'right'): void => {
     if (onRoad() && !paused) {
       turnSignals.toggle(side);
@@ -2637,8 +2642,22 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       const { x, z, heading } = driving.vehicle;
       driving.placeTruck(x, z, heading);
       turnSignals.reset();
+      horn.reset();
     }
     showState(current);
+  });
+  // The horn on the road: the people near it flinch and the animals startle; a company truck near it hoots back (a
+  // driver of the company's own says so).
+  events.on('HornSounded', ({ x, z }) => {
+    pedestrians.startle(x, z);
+    scenery.startle(x, z);
+  });
+  events.on('HornAnswered', ({ owner, key, x, z }) => {
+    const vehicle = driving.vehicle;
+    audio.hootBack(Math.hypot(x - vehicle.x, z - vehicle.z));
+    if (owner === 'fleet') {
+      toasts.show(strings.t('toast.hootBack', { driver: driverName(strings, { id: key }) }), 'info');
+    }
   });
   root.dataset.missionState = 'none';
   root.dataset.vehicle = driving.definition.id;
@@ -2919,6 +2938,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         combineVehicleInputs(driverInput, controlsInput, tilt.state);
         driving.step(stepSeconds, driverInput);
         turnSignals.update(stepSeconds, driving.vehicle);
+        horn.update(stepSeconds);
         // What the truck knocked over goes flying, and the debris tumbles on.
         crashes.update(stepSeconds);
         missions.update(stepSeconds);

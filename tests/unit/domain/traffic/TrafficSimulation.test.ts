@@ -184,6 +184,32 @@ describe('TrafficSimulation', () => {
     expect(seen).toContain('turn');
   });
 
+  it("hurries on to the speed limit when the truck honks behind it, for a while: not those coming the other way, nor behind", () => {
+    const graph = laneGraphOf(straightStreet(2400));
+    const sim = scene(graph);
+    const lane = laneAt(graph, 0, -1100, 0);
+    const dawdler = sim.addVehicle(CAR_TYPE, lane, 60, TEST_SPEED_LIMITS.street * 0.6, 0.6);
+    const behind = sim.addVehicle(CAR_TYPE, lane, 5, 0, 0.6);
+    const oncomingLane = laneAt(graph, 0, -1100, 180);
+    const oncoming = sim.addVehicle(CAR_TYPE, oncomingLane, alongAt(graph, oncomingLane, 2.5, -1130), TEST_SPEED_LIMITS.street * 0.6, 0.6);
+    const truck: Truck = { x: -2.5, z: -1165, heading: 0, speed: 0 };
+    run(sim, truck, 1);
+    expect(sim.speed[dawdler]).toBeCloseTo(TEST_SPEED_LIMITS.street * 0.6, 1);
+
+    // The horn, from the truck's nose.
+    expect(sim.hearHorn(truck.x, truck.z + 7, truck.heading)).toBe(1);
+    expect(sim.isHurrying(dawdler)).toBe(true);
+    expect(sim.isHurrying(oncoming)).toBe(false);
+    expect(sim.isHurrying(behind)).toBe(false);
+    run(sim, truck, 8);
+    expect(sim.speed[dawdler]).toBeCloseTo(TEST_SPEED_LIMITS.street, 0);
+
+    // Its own pace again once it has hurried on a while.
+    run(sim, truck, 14);
+    expect(sim.isHurrying(dawdler)).toBe(false);
+    expect(sim.speed[dawdler]).toBeCloseTo(TEST_SPEED_LIMITS.street * 0.6, 0);
+  });
+
   it('overtakes a slower vehicle on the highway and pulls back into the right lane', () => {
     const graph = laneGraphOf(straightStreet(2400, 'highway', 14));
     const sim = scene(graph);

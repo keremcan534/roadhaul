@@ -119,6 +119,17 @@ const AVOID_SPEED = 6;
 const AVOID_MARGIN_METERS = 0.5;
 /** …if the other lane is clear this far beyond the truck. */
 const AVOID_ONCOMING_CLEARANCE_METERS = 90;
+/**
+ * The truck's horn (hearHorn) is heard by the vehicles going its way ahead
+ * of its nose, within this far and this far to either side of its way
+ * (meters). They hurry on: this long at no less than the speed limit (a
+ * dawdler's own pace forgotten), and a vehicle in the passing lane moves
+ * back over at once where it can.
+ */
+const HORN_AHEAD_METERS = 50;
+const HORN_SIDE_METERS = 7;
+const HURRY_SECONDS = 10;
+const HURRY_FACTOR = 1;
 /** How often a vehicle on a two-lane road considers changing lanes, s. */
 const LANE_CHANGE_INTERVAL_SECONDS = 0.5;
 /** Sideways speed limit of a lane change, m/s, and how quickly it settles (1/s). */
@@ -239,6 +250,8 @@ export class TrafficSimulation implements MovingObstacles {
   private readonly bumped: Float64Array;
   private readonly avoidUntil: Float64Array;
   private readonly laneTimer: Float64Array;
+  /** Seconds the vehicle still hurries on, honked at (hearHorn). */
+  private readonly hurrySeconds: Float64Array;
   private readonly leaderGap: Float64Array;
   private readonly leaderSpeed: Float64Array;
   private readonly leaderKind: Uint8Array;
@@ -354,6 +367,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.bumped = new Float64Array(capacity).fill(-1);
     this.avoidUntil = new Float64Array(capacity).fill(-1);
     this.laneTimer = new Float64Array(capacity);
+    this.hurrySeconds = new Float64Array(capacity);
     this.leaderGap = new Float64Array(capacity);
     this.leaderSpeed = new Float64Array(capacity);
     this.leaderKind = new Uint8Array(capacity);
@@ -434,6 +448,44 @@ export class TrafficSimulation implements MovingObstacles {
   }
 
   /** Removes every vehicle; the roads fill again on the next update. */
+  /**
+   * The truck's horn, sounded with its nose at (x, z), facing `heading`
+   * (radians, 0 toward +z): the vehicles going its way ahead of it
+   * (HORN_AHEAD_METERS) hurry on, and those in a passing lane move back
+   * over as soon as the lane beside is clear. Returns how many heard it.
+   * Allocation-free.
+   */
+  hearHorn(x: number, z: number, heading: number): number {
+    const forwardX = Math.sin(heading);
+    const forwardZ = Math.cos(heading);
+    let heard = 0;
+    for (let i = 0; i < this.capacity; i++) {
+      if (this.active[i] !== 1 || this.crashSeconds[i]! > 0) {
+        continue;
+      }
+      const dx = this.x[i]! - x;
+      const dz = this.z[i]! - z;
+      const along = dx * forwardX + dz * forwardZ;
+      const across = dx * forwardZ - dz * forwardX;
+      if (along <= 0 || along > HORN_AHEAD_METERS + this.halfLength[i]! || Math.abs(across) > HORN_SIDE_METERS) {
+        continue;
+      }
+      // Going the truck's way, not coming the other way or crossing it.
+      if (Math.cos(this.heading[i]! - heading) < 0.7) {
+        continue;
+      }
+      this.hurrySeconds[i] = HURRY_SECONDS;
+      this.laneTimer[i] = 0;
+      heard++;
+    }
+    return heard;
+  }
+
+  /** Whether vehicle `slot` is hurrying on, honked at (for tests). */
+  isHurrying(slot: number): boolean {
+    return this.active[slot] === 1 && this.hurrySeconds[slot]! > 0;
+  }
+
   reset(): void {
     for (let i = 0; i < this.capacity; i++) {
       if (this.active[i] === 1) {
@@ -794,6 +846,7 @@ export class TrafficSimulation implements MovingObstacles {
     this.bumped[i] = -1;
     this.avoidUntil[i] = -1;
     this.laneTimer[i] = (i % 8) * (LANE_CHANGE_INTERVAL_SECONDS / 8);
+    this.hurrySeconds[i] = 0;
     this.behaviour[i] = CRUISE;
     this.leaderGap[i] = Infinity;
     this.leaderSpeed[i] = 0;
@@ -930,6 +983,9 @@ export class TrafficSimulation implements MovingObstacles {
       this.bumped[i] = -1;
       this.endAvoid(i);
     }
+    if (this.hurrySeconds[i]! > 0) {
+      this.hurrySeconds[i]! -= dt;
+    }
     let speed = this.speed[i]!;
     let acceleration: number;
     let behaviour: number;
@@ -986,14 +1042,20 @@ export class TrafficSimulation implements MovingObstacles {
 
   /** Cruising speed on the current link, m/s. */
   private cruiseSpeed(i: number): number {
-    return this.graph.speedLimit[this.link[i]!]! * this.cruiseFactor[i]! * this.speedFactor;
+    return this.graph.speedLimit[this.link[i]!]! * this.paceOf(i);
+  }
+
+  /** The share of the speed limit the vehicle drives at: its own, at least the limit while it hurries, and the weather's. */
+  private paceOf(i: number): number {
+    const own = this.cruiseFactor[i]!;
+    return (this.hurrySeconds[i]! > 0 ? Math.max(own, HURRY_FACTOR) : own) * this.speedFactor;
   }
 
   /** How fast the vehicle wants to go: its cruise speed, slowed for bends and turns ahead. */
   private desiredSpeed(i: number): number {
     const graph = this.graph;
     const link = this.link[i]!;
-    const factor = this.cruiseFactor[i]! * this.speedFactor;
+    const factor = this.paceOf(i);
     let desired = Math.min(this.cruiseSpeed(i), graph.advisorySpeed[graph.pointStart[link]! + this.segment[i]! + 1]!);
     const next = this.next[i]!;
     const toEnd = Math.max(0, graph.length[link]! - this.s[i]!);

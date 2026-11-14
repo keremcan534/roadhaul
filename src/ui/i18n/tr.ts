@@ -641,6 +641,7 @@ export const TR: StringTable = {
   'toast.fleetCalledBack': '{truck} garaja döndü.',
   'toast.fleetDelivered': '{driver} teslim etti: {route} · {profit}',
   'toast.fleetRepaired': '{driver}: kamyon servise girdi ({cost})',
+  'toast.hootBack': '{driver} kornayla karşılık verdi',
   'toast.fleetAway': 'Sen yokken filon {jobs} teslimat yaptı: {credits}',
   'toast.garageFull': 'Garaj dolu: şirketle ve kamyon parkıyla genişler.',
   'toast.truckOnTheRoad': 'Bu kamyon bir şoförle yolda: önce garaja çağır.',

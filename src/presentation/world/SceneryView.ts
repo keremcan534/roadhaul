@@ -26,6 +26,7 @@ import {
   type Frustum,
   type Scene,
 } from 'three';
+import { smoothstep } from '../../core/math/scalar';
 import type { DebrisSimulation } from '../../domain/crash/DebrisSimulation';
 import { KNOCKABLES, knockableCode, type KnockableKind } from '../../domain/crash/knockables';
 import type { Grazer, GrazerKind, PowerLine } from '../../domain/world/countryside';
@@ -207,6 +208,10 @@ export class SceneryView {
   /** The props' tiles and the pavements' (TileBatch: a draw call each for all the tiles near and in view). */
   private readonly batches: TileBatch[] = [];
   private time = 0;
+  /** When each grazer was last startled by the horn (`time`), and the way it runs from it (a unit vector). */
+  private readonly startledAt: Float64Array;
+  private readonly fleeX: Float32Array;
+  private readonly fleeZ: Float32Array;
   /**
    * What can be knocked over among the merged props: each one's circle in
    * the world, and its vertices in the props' batch (from, count); whether
@@ -425,6 +430,9 @@ export class SceneryView {
 
     this.grazers = world.grazers;
     this.grazerGround = Float32Array.from(world.grazers, (grazer) => ground(grazer.x, grazer.z));
+    this.startledAt = new Float64Array(world.grazers.length).fill(-STARTLED_SECONDS);
+    this.fleeX = new Float32Array(world.grazers.length);
+    this.fleeZ = new Float32Array(world.grazers.length);
     this.herds = (['sheep', 'cow'] as const)
       .filter((kind) => world.grazers.some((grazer) => grazer.kind === kind))
       .map((kind) => this.createHerd(kind, castShadows));
@@ -483,6 +491,28 @@ export class SceneryView {
       this.animate();
     }
     this.castHerdShadows(deltaSeconds > 0);
+  }
+
+  /**
+   * The truck's horn sounded at (x, z): the sheep and cows within
+   * STARTLE_METERS look up and run off from it, then wander back (animate).
+   * One already startled carries on as it was.
+   */
+  startle(x: number, z: number): void {
+    for (let i = 0; i < this.grazers.length; i++) {
+      const grazer = this.grazers[i]!;
+      const dx = grazer.x - x;
+      const dz = grazer.z - z;
+      const distanceSq = dx * dx + dz * dz;
+      if (distanceSq > STARTLE_METERS * STARTLE_METERS || this.time - this.startledAt[i]! < STARTLED_SECONDS) {
+        continue;
+      }
+      const distance = Math.sqrt(distanceSq);
+      // Right under the horn, it runs the way it faces.
+      this.fleeX[i] = distance > 1e-3 ? dx / distance : Math.sin(grazer.heading);
+      this.fleeZ[i] = distance > 1e-3 ? dz / distance : Math.cos(grazer.heading);
+      this.startledAt[i] = this.time;
+    }
   }
 
   /**
@@ -605,12 +635,41 @@ export class SceneryView {
         // Looking round for the last tenth of each cycle: head up, turned one way then the other.
         const up = lookCycle > 0.9 ? Math.sin(((lookCycle - 0.9) / 0.1) * Math.PI) : 0;
         const graze = 0.1 * Math.sin((own * 2 * Math.PI) / GRAZE_PERIOD_SECONDS);
-        const pitch = (0.75 + graze) * (1 - up) - 0.15 * up;
-        const yaw = up * 0.5 * Math.sin(own * 1.3);
-        const heading = grazer.heading + GRAZE_TURN_RADIANS * Math.sin(own * GRAZE_TURN_RATE);
+        let pitch = (0.75 + graze) * (1 - up) - 0.15 * up;
+        let yaw = up * 0.5 * Math.sin(own * 1.3);
+        let heading = grazer.heading + GRAZE_TURN_RADIANS * Math.sin(own * GRAZE_TURN_RATE);
         const step = GRAZE_STEP_METERS * Math.sin(own * GRAZE_STEP_RATE + index);
+        let x = grazer.x + Math.sin(heading) * step;
+        let y = this.grazerGround[index]!;
+        let z = grazer.z + Math.cos(heading) * step;
+        const since = this.time - this.startledAt[index]!;
+        if (since < STARTLED_SECONDS) {
+          // Startled by the horn: off at a run, a stand looking, then back to its grazing.
+          const fleeX = this.fleeX[index]!;
+          const fleeZ = this.fleeZ[index]!;
+          const away =
+            RUN_METERS[herd.kind] *
+            (since < STAND_UNTIL_SECONDS ? smoothstep(0, RUN_SECONDS, since) : 1 - smoothstep(STAND_UNTIL_SECONDS, STARTLED_SECONDS, since));
+          x += fleeX * away;
+          z += fleeZ * away;
+          if (since < RUN_SECONDS) {
+            y += RUN_BOUNCE_METERS * Math.abs(Math.sin(since * 14));
+          }
+          // Facing the way it runs, then home as it wanders back, then as it grazed.
+          const fleeing = since < STAND_UNTIL_SECONDS;
+          const towardX = fleeing ? fleeX : -fleeX;
+          const towardZ = fleeing ? fleeZ : -fleeZ;
+          const turned = fleeing ? smoothstep(0, 0.3, since) : 1 - smoothstep(STARTLED_SECONDS - 1.2, STARTLED_SECONDS, since);
+          heading = Math.atan2(
+            Math.sin(heading) + (towardX - Math.sin(heading)) * turned,
+            Math.cos(heading) + (towardZ - Math.cos(heading)) * turned,
+          );
+          const headUp = 1 - smoothstep(STARTLED_SECONDS - 1.5, STARTLED_SECONDS, since);
+          pitch += (HEAD_UP_PITCH - pitch) * headUp;
+          yaw *= 1 - headUp;
+        }
         this.turn.setFromAxisAngle(UP, heading);
-        this.position.set(grazer.x + Math.sin(heading) * step, this.grazerGround[index]!, grazer.z + Math.cos(heading) * step);
+        this.position.set(x, y, z);
         this.matrix.compose(this.position, this.turn, this.unit);
         herd.bodies.setMatrixAt(slot, this.matrix);
         this.neck.makeRotationFromEuler(this.euler.set(pitch, yaw, 0));
@@ -691,6 +750,20 @@ const GRAZE_STEP_RATE = (2 * Math.PI) / 70;
 /** Where a sheep's and a cow's neck is on its body (the head turns there), meters up and forward. */
 const SHEEP_NECK = { y: 0.78, z: 0.55 } as const;
 const COW_NECK = { y: 1.32, z: 1.0 } as const;
+/**
+ * The truck's horn (startle): the animals within this far of it, meters,
+ * look up and run this far from it (sheep further than cows), bouncing,
+ * for RUN_SECONDS; stand looking a while; and wander back to their grazing
+ * by STARTLED_SECONDS. They stay near their solid circle in the world.
+ */
+const STARTLE_METERS = 90;
+const RUN_METERS = { sheep: 3.2, cow: 2.2 } as const;
+const RUN_SECONDS = 1.1;
+const STAND_UNTIL_SECONDS = 3.6;
+const STARTLED_SECONDS = 9;
+const RUN_BOUNCE_METERS = 0.08;
+/** Head up while startled: the neck's pitch (grazing it is about 0.75 down). */
+const HEAD_UP_PITCH = -0.2;
 
 /**
  * A prop's part where it stands (Parts.place): the part, built once and

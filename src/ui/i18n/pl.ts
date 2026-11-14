@@ -641,6 +641,7 @@ export const PL: StringTable = {
   'toast.fleetCalledBack': '{truck} wraca do garażu.',
   'toast.fleetDelivered': '{driver} kończy kurs {route}: {profit}',
   'toast.fleetRepaired': '{driver}: ciężarówka w warsztacie ({cost})',
+  'toast.hootBack': '{driver} trąbi w odpowiedzi',
   'toast.fleetAway': 'Gdy cię nie było, twoja flota pracowała. Dostawy: {jobs} · {credits}',
   'toast.garageFull': 'Garaż jest pełny: rośnie razem z firmą i parkingiem ciężarówek.',
   'toast.truckOnTheRoad': 'Ta ciężarówka jest w trasie z kierowcą: najpierw wezwij ją do garażu.',

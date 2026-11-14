@@ -167,6 +167,38 @@ describe('SceneryView', () => {
     expect(matricesOf(bodies)).not.toEqual(still.bodies);
   });
 
+  it('startles the animals near the horn: off at a run from it, a stand, then back to grazing; those far graze on', () => {
+    const scene = new Scene();
+    const view = new SceneryView(scene, world);
+    const bodies = scene.getObjectByName('scenery:sheep') as InstancedMesh;
+    const sheep = world.grazers.filter((grazer) => grazer.kind === 'sheep');
+    const first = sheep[0]!;
+    // The horn 20 m west of the first sheep.
+    const hornX = first.x - 20;
+    const hornZ = first.z;
+    const far = sheep.findIndex((grazer) => Math.hypot(grazer.x - hornX, grazer.z - hornZ) > 200);
+    expect(far).toBeGreaterThan(0);
+    const matrix = new Matrix4();
+    const where = (slot: number): { x: number; z: number } => {
+      bodies.getMatrixAt(slot, matrix);
+      return { x: matrix.elements[12]!, z: matrix.elements[14]! };
+    };
+    const offFrom = (slot: number): number => Math.hypot(where(slot).x - sheep[slot]!.x, where(slot).z - sheep[slot]!.z);
+
+    view.update(0.1);
+    view.startle(hornX, hornZ);
+    for (let i = 0; i < 20; i++) view.update(0.1);
+    // Two seconds on: east, away from it, further than its shuffle; the far one where it grazes.
+    expect(where(0).x - first.x).toBeGreaterThan(2.5);
+    expect(Math.abs(where(0).z - first.z)).toBeLessThan(1);
+    expect(offFrom(far)).toBeLessThanOrEqual(0.41);
+
+    // Ten seconds on: back where it grazes.
+    for (let i = 0; i < 80; i++) view.update(0.1);
+    expect(offFrom(0)).toBeLessThanOrEqual(0.41);
+    view.dispose();
+  });
+
   it('draws the tiles near the camera only', () => {
     const scene = new Scene();
     const view = new SceneryView(scene, world);

@@ -44,6 +44,14 @@ const DODGE_CLEARANCE_METERS = 1;
 const DODGE_RATE = 10;
 const RETURN_RATE = 1.2;
 const DODGE_HOP_METERS = 0.35;
+/**
+ * The truck's horn (startle): the people within this far of it, meters,
+ * flinch this far away from it, hopping, for this long, seconds, then drift
+ * back to their way.
+ */
+const STARTLE_METERS = 30;
+const STARTLE_STEP_METERS = 0.9;
+const STARTLE_SECONDS = 1.6;
 
 /** The truck as the people see it coming (PedestrianView.update): where it is, and its body round its rear axle. */
 export interface TruckNearby {
@@ -171,6 +179,10 @@ export class PedestrianView {
   private readonly walkerDodge: Float32Array;
   private readonly waitingDodge: Float32Array;
   private hop = 0;
+  /** Where the horn last sounded, and how long its people still flinch from it, seconds. */
+  private startleX = 0;
+  private startleZ = 0;
+  private startleSeconds = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -257,6 +269,9 @@ export class PedestrianView {
     truck: Readonly<TruckNearby> | null = null,
   ): void {
     this.time += deltaSeconds;
+    if (this.startleSeconds > 0) {
+      this.startleSeconds -= deltaSeconds;
+    }
     this.uniforms.umbrella.value = Math.min(1, Math.max(0, umbrella));
     const person = this.person.array as Float32Array;
     const reachSq = REACH_METERS * REACH_METERS;
@@ -321,6 +336,13 @@ export class PedestrianView {
     this.mesh.visible = count > 0;
   }
 
+  /** The truck's horn sounded at (x, z): the people near it flinch away from it a moment (STARTLE_METERS). */
+  startle(x: number, z: number): void {
+    this.startleX = x;
+    this.startleZ = z;
+    this.startleSeconds = STARTLE_SECONDS;
+  }
+
   dispose(): void {
     this.scene.remove(this.mesh);
     this.mesh.geometry.dispose();
@@ -331,7 +353,8 @@ export class PedestrianView {
   /**
    * Person `i` (its step aside in `steps`), whose way puts it at (x, z):
    * in the path `truck` sweeps within DODGE_LOOK_AHEAD_SECONDS, it jumps
-   * out to its side of it, hopping (`hop`); clear of it, it drifts back.
+   * out to its side of it, hopping (`hop`); near the horn just sounded, it
+   * flinches away from it; clear of both, it drifts back.
    */
   private dodge(steps: Float32Array, i: number, x: number, z: number, dt: number, truck: Readonly<TruckNearby> | null): void {
     let toX = 0;
@@ -351,6 +374,16 @@ export class PedestrianView {
         const step = (right >= 0 ? clear : -clear) - right;
         toX = -cos * step;
         toZ = sin * step;
+      }
+    }
+    if (toX === 0 && toZ === 0 && this.startleSeconds > 0) {
+      const awayX = x - this.startleX;
+      const awayZ = z - this.startleZ;
+      const distanceSq = awayX * awayX + awayZ * awayZ;
+      if (distanceSq < STARTLE_METERS * STARTLE_METERS && distanceSq > 1e-6) {
+        const scale = STARTLE_STEP_METERS / Math.sqrt(distanceSq);
+        toX = awayX * scale;
+        toZ = awayZ * scale;
       }
     }
     const fromX = steps[i * 2]!;

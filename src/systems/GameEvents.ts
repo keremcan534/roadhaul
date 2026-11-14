@@ -14,6 +14,7 @@ import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
+import type { CompanyTruckOwner } from './traffic/CompanyTraffic';
 
 /** What earned a crate. */
 export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass';
@@ -314,6 +315,24 @@ export interface GameEvents {
   /** The truck stopped and helped the stranded driver: `reward` paid. */
   RoadsideHelped: {
     readonly reward: Credits;
+  };
+  /**
+   * The truck's horn sounded (HornService), the truck at (x, z) facing
+   * `heading`: the traffic going its way ahead hurried on (`hurried` of
+   * them), and the people and the animals near it startle (presentation).
+   */
+  HornSounded: {
+    readonly x: number;
+    readonly z: number;
+    readonly heading: number;
+    readonly hurried: number;
+  };
+  /** A company truck in the traffic near the truck hooted back (HornService): the fleet's (`key`: its driver's id) or a rival's. */
+  HornAnswered: {
+    readonly owner: CompanyTruckOwner;
+    readonly key: string;
+    readonly x: number;
+    readonly z: number;
   };
   /** Something rare began near the truck (CityIncidentService): a fire, a police chase, fireworks. */
   CityIncidentStarted: {

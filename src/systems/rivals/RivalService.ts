@@ -164,6 +164,8 @@ export class RivalService {
   /** A game is loaded (restore): until then the market stands still. */
   private loaded = false;
   private readonly recentNews: MarketNews[] = [];
+  /** Its trucks are the rivals', on the maps and in the traffic (CompanyTraffic). */
+  readonly truckOwner = 'rival';
   /** Reused markers, one per truck on the map, filled by updateMarkers(). */
   readonly markers: RivalMarker[] = [];
   private readonly jobRules: FleetJobRules;

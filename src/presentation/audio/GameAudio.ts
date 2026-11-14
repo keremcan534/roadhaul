@@ -82,6 +82,17 @@ const SIREN_REACH_METERS = 380;
 const FIREWORK_VOLUME = 0.5;
 /** A truck's dual-tone air horn: two notes a major third apart, Hz. */
 const HORN_NOTES = [196, 247] as const;
+/**
+ * Another truck's horn answering the player's (hootBack): its two notes, a
+ * little higher, in two short blasts (from, seconds long), as loud as the
+ * player's at this far off, meters, and fainter farther.
+ */
+const HOOT_BACK_NOTES = [233, 294] as const;
+const HOOT_BACK_BLASTS = [
+  [0, 0.22],
+  [0.34, 0.5],
+] as const;
+const HOOT_BACK_FULL_METERS = 15;
 
 /** The nodes that play all the time; their levels follow the SoundState. */
 interface Graph {
@@ -245,6 +256,35 @@ export class GameAudio {
   relay(lit: boolean): void {
     this.noiseBurst('bandpass', lit ? 2600 : 1600, 0.025, lit ? 0.1 : 0.07);
     this.note(lit ? 1250 : 820, 0, 0.018, lit ? 0.05 : 0.035, 'square');
+  }
+
+  /** Another truck's horn answering the player's from `distanceMeters` off: two short blasts. */
+  hootBack(distanceMeters: number): void {
+    const context = this.context;
+    const graph = this.graph;
+    if (context === null || graph === null || context.state !== 'running') {
+      return;
+    }
+    const level = HORN_VOLUME / Math.max(1, Math.max(0, distanceMeters) / HOOT_BACK_FULL_METERS);
+    const softened = filterNode(context, 'lowpass', 1500);
+    softened.connect(graph.master);
+    const now = context.currentTime;
+    for (const [from, seconds] of HOOT_BACK_BLASTS) {
+      const start = now + from;
+      for (const frequency of HOOT_BACK_NOTES) {
+        const note = context.createOscillator();
+        note.type = 'sawtooth';
+        note.frequency.value = frequency;
+        const envelope = context.createGain();
+        envelope.gain.setValueAtTime(0, start);
+        envelope.gain.linearRampToValueAtTime(level, start + 0.02);
+        envelope.gain.setValueAtTime(level, start + seconds - 0.05);
+        envelope.gain.linearRampToValueAtTime(0, start + seconds);
+        note.connect(envelope).connect(softened);
+        note.start(start);
+        note.stop(start + seconds);
+      }
+    }
   }
 
   /** A speed camera's shutter: a sharp double click and a hiss of its flash. */

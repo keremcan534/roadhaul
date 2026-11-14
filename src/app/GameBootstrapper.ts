@@ -48,6 +48,7 @@ import { TenderBoard } from '../systems/rivals/TenderBoard';
 import { SaveService } from '../systems/save/SaveService';
 import { GameSessionService } from '../systems/session/GameSessionService';
 import { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
+import { HornService } from '../systems/vehicles/HornService';
 import { TrafficService } from '../systems/traffic/TrafficService';
 import { TutorialService } from '../systems/tutorial/TutorialService';
 import { SeasonService } from '../systems/weather/SeasonService';
@@ -455,10 +456,11 @@ export class GameBootstrapper {
           logger.withCategory('Cup'),
         ),
       );
-      container.register(
+      const companyTraffic = container.register(
         ServiceKeys.companyTraffic,
         new CompanyTraffic(traffic, [fleet, rivals], driving, config.traffic.radiusMeters),
       );
+      container.register(ServiceKeys.horn, new HornService(driving, traffic, companyTraffic, events));
       const tutorial = container.register(ServiceKeys.tutorial, new TutorialService(events, logger.withCategory('Tutorial')));
       const saves = container.register(
         ServiceKeys.saves,
