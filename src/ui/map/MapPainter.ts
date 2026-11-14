@@ -196,6 +196,8 @@ export class MapPainter {
   private readonly driverInitials: ReadonlyMap<string, string>;
   /** Each company's colour as CSS: its trucks' arrows, and its territory's tint and rim. */
   private readonly companyColors: ReadonlyMap<string, { readonly solid: string; readonly tint: string; readonly rim: string }>;
+  /** Each company's number, for groundVersion: who leads each city, without allocating. */
+  private readonly companyCodes: ReadonlyMap<string, number>;
   /** How many of the fleet's and the rivals' markers the last paint drew (for pick). */
   private fleetPainted = 0;
   private rivalsPainted = 0;
@@ -295,6 +297,7 @@ export class MapPainter {
       colors.set(rival.id, companyColor(rival.color));
     }
     this.companyColors = colors;
+    this.companyCodes = new Map([...colors.keys()].map((id, index) => [id, index + 1] as const));
   }
 
   /** Paints the whole picture onto `context`, whose canvas is the viewport's size times `pixelRatio`. */
@@ -323,12 +326,44 @@ export class MapPainter {
   }
 
   paint(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, options: PaintOptions): void {
+    this.paintSea(context);
+    this.paintGround(context, view, pixelRatio);
+    this.paintMarks(context, view, pixelRatio, options);
+  }
+
+  /** Fills the whole canvas with the sea: all that is not land. */
+  paintSea(context: CanvasRenderingContext2D): void {
     const canvas = context.canvas;
     context.setTransform(1, 0, 0, 1, 0, 0);
-    // The sea is all that is not land.
     context.fillStyle = COLORS.sea;
     context.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
+  /**
+   * What changes the ground (paintGround) as it is drawn: a land's relief
+   * coming in, or another company coming to lead a city. The same number,
+   * the same ground. Allocation-free.
+   */
+  get groundVersion(): number {
+    const cities = this.sketch.cities;
+    let leaders = 0;
+    for (let i = 0; i < cities.length; i++) {
+      const leader = this.sources.rivals.leaderOf(cities[i]!.cityId);
+      leaders = (Math.imul(leaders, 31) + (leader === null ? 0 : (this.companyCodes.get(leader) ?? 0))) | 0;
+    }
+    return this.terrain.version * 4294967296 + (leaders >>> 0);
+  }
+
+  /**
+   * The ground under the marks, in world meters: the shallows, the lands and
+   * their relief, the beaches, forests, parks, rivers, fields, yards and
+   * buildings, who leads each city, the roads and the ferry crossings. It
+   * changes only with `groundVersion`, so the minimap draws it once into a
+   * larger picture and turns that onto itself (MapGroundCache). The forests'
+   * canopy keeps its size in device pixels at `patternPixelRatio` (the
+   * screen's, where the picture is drawn at more pixels than it).
+   */
+  paintGround(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, patternPixelRatio = pixelRatio): void {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
@@ -349,7 +384,7 @@ export class MapPainter {
     context.stroke(this.lands);
     context.fillStyle = COLORS.forest;
     context.fill(this.forests);
-    this.paintCanopy(context, view, pixelRatio);
+    this.paintCanopy(context, view, patternPixelRatio);
     context.fillStyle = COLORS.park;
     context.fill(this.parks);
     // The rivers and the straits in the sea's own blue, over the land only (a strait runs on out to the sea through
@@ -383,6 +418,18 @@ export class MapPainter {
       context.stroke(this.crossings);
       context.setLineDash(NO_DASH);
     }
+  }
+
+  /**
+   * What moves or changes over the ground: the route, in world meters, then
+   * in screen pixels whatever the zoom the places, the rivals' and the
+   * fleet's trucks, the truck and north.
+   */
+  paintMarks(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, options: PaintOptions): void {
+    const t = view.canvasTransform(this.transform, pixelRatio);
+    context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
     this.paintRoute(context, view);
 
     // Screen pixels from here on: marks keep their size whatever the zoom.

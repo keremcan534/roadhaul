@@ -1,6 +1,7 @@
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import { setText } from '../dom';
 import type { Strings } from '../i18n';
+import { MapGroundCache } from '../map/MapGroundCache';
 import type { MapPainter, PaintOptions } from '../map/MapPainter';
 import { MapViewport } from '../map/MapViewport';
 
@@ -17,13 +18,16 @@ const MAX_PIXEL_RATIO = 2;
  * The round map on the driving screen: the roads round the truck with the
  * way it heads up, the route, the next bay (at the rim when it is further),
  * rest areas and north, with the time of day at its foot. It repaints
- * twelve times a second while shown. Tapping it opens the full map.
+ * twelve times a second while shown, the ground turned from a picture drawn
+ * once (MapGroundCache). Tapping it opens the full map.
  */
 export class Minimap {
   private readonly button: HTMLButtonElement;
   private readonly canvas: HTMLCanvasElement;
   private readonly clock: HTMLSpanElement;
   private readonly context: CanvasRenderingContext2D | null;
+  /** The map's ground, drawn once into a larger picture and turned onto the minimap at each repaint. */
+  private readonly ground: MapGroundCache;
   private paints = 0;
   private readonly viewport = new MapViewport();
   private readonly options: PaintOptions = { labels: false, truckPixels: 16, pinRimPixels: 0, northRimPixels: 0 };
@@ -52,6 +56,7 @@ export class Minimap {
     this.clock.className = 'minimap__clock';
     this.button.append(this.canvas, this.clock);
     this.context = this.canvas.getContext('2d');
+    this.ground = new MapGroundCache(document, painter);
     parent.append(this.button);
     const view = document.defaultView;
     if (view !== null && typeof view.ResizeObserver === 'function') {
@@ -99,7 +104,13 @@ export class Minimap {
     view.headUp(heading);
     view.centerX = x + Math.sin(heading) * RADIUS_METERS * LOOK_AHEAD;
     view.centerZ = z + Math.cos(heading) * RADIUS_METERS * LOOK_AHEAD;
-    this.painter.paint(this.context, view, this.pixelRatio, this.options);
+    // The ground from its picture (it covers the whole canvas), then the route and the marks over it.
+    this.context.imageSmoothingQuality = 'high';
+    if (this.ground.draw(this.context, view, this.pixelRatio)) {
+      this.painter.paintMarks(this.context, view, this.pixelRatio, this.options);
+    } else {
+      this.painter.paint(this.context, view, this.pixelRatio, this.options);
+    }
     this.paints++;
   }
 
