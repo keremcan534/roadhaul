@@ -315,6 +315,8 @@ export const IT: StringTable = {
   'controls.key.camera': 'Visuale',
   'controls.key.horn': 'Clacson',
   'controls.key.map': 'Mappa',
+  'controls.key.signals': 'Frecce (sinistra, destra)',
+  'controls.key.hazards': 'Quattro frecce',
   'controls.key.pause': 'Pausa',
   'controls.done': 'Fatto',
   'pause.controls': 'Comandi',

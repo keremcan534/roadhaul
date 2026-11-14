@@ -1,5 +1,6 @@
 import { clamp, dampFactor } from '../../core/math/scalar';
 import type { ControlSize, SteeringMode, TiltStatus } from '../../data/config/controls';
+import type { TurnSignalMode } from '../../domain/vehicles/turnSignals';
 import { createVehicleInput, type GearLever, steeringCurve, type VehicleInput } from '../../domain/vehicles/VehicleInput';
 
 /**
@@ -72,12 +73,17 @@ export interface TouchControlsOptions {
   readonly onHorn: (pressed: boolean) => void;
   /** The tilt button, shown when steering by tilt: recentre it, or allow the motion sensor (iOS). */
   readonly onTilt: () => void;
+  /** An indicator's arrow beside the speed dial tapped: that turn signal on, or off. */
+  readonly onSignal: (side: 'left' | 'right') => void;
+  /** The hazard lights' button tapped. */
+  readonly onHazards: () => void;
 }
 
 /**
  * On-screen driving controls for phones (spec §30: steering wheel, gas,
  * brake), plus a D/R gear button (in R the gas pedal drives backwards), a
- * camera button, a horn and a speed/gear readout. It is input only:
+ * camera button, a horn, a speed/gear readout between the indicators'
+ * arrows (tapped, a turn signal comes on) and the hazard lights' button. It is input only:
  * it writes `state`, which the entry point merges with the keyboard every
  * fixed step. Each control tracks its own fingers, so steering and pedals
  * work at the same time with two thumbs.
@@ -101,6 +107,13 @@ export class TouchControls {
   private readonly damageFill: HTMLDivElement;
   private readonly tiltButton: HTMLButtonElement;
   private readonly gearButton: HTMLButtonElement;
+  private readonly signalLeft: HTMLButtonElement;
+  private readonly signalRight: HTMLButtonElement;
+  private readonly hazardButton: HTMLButtonElement;
+  private shownSignal: TurnSignalMode | '' = '';
+  private shownLeftLit = false;
+  private shownRightLit = false;
+  private shownHazardLit = false;
   private mode: SteeringMode = 'wheel';
   private steerLeft = false;
   private steerRight = false;
@@ -184,7 +197,23 @@ export class TouchControls {
     [this.damageGauge, this.damageFill] = gauge('dashboard__gauge--damage', WRENCH_ICON);
     const gauges = element('div', 'dashboard__gauges');
     gauges.append(this.fuelGauge, this.damageGauge);
-    dashboard.append(dial, this.gearLabel, gauges);
+    // The indicators' arrows either side of the instruments, lit as the truck's flash; the hazard lights' button.
+    const signalButton = (side: 'left' | 'right'): HTMLButtonElement => {
+      const control = element('button', `signal-button signal-button--${side}`);
+      control.type = 'button';
+      control.setAttribute('aria-label', side === 'left' ? 'Left turn signal' : 'Right turn signal');
+      control.setAttribute('aria-pressed', 'false');
+      control.addEventListener('click', () => options.onSignal(side));
+      return control;
+    };
+    this.signalLeft = signalButton('left');
+    this.signalRight = signalButton('right');
+    dashboard.append(this.signalLeft, dial, this.gearLabel, gauges, this.signalRight);
+    this.hazardButton = element('button', 'hazard-button');
+    this.hazardButton.type = 'button';
+    this.hazardButton.setAttribute('aria-label', 'Hazard lights');
+    this.hazardButton.setAttribute('aria-pressed', 'false');
+    this.hazardButton.addEventListener('click', () => options.onHazards());
 
     const camera = element('button', 'camera-button');
     camera.type = 'button';
@@ -211,7 +240,7 @@ export class TouchControls {
     this.tiltButton.append(art('tilt-button__icon', '0 0 24 24', TILT_ICON));
     this.tiltButton.addEventListener('click', () => options.onTilt());
 
-    this.root.append(this.wheel, steerButtons, dashboard, pedals, this.gearButton, this.tiltButton, camera, horn);
+    this.root.append(this.wheel, steerButtons, dashboard, pedals, this.gearButton, this.tiltButton, camera, horn, this.hazardButton);
     // Long presses must not open menus or select anything.
     this.root.addEventListener('contextmenu', (event) => event.preventDefault());
     this.bindWheel();
@@ -235,6 +264,7 @@ export class TouchControls {
     this.size = 'normal';
     this.showTilt('off');
     this.showTelemetry(0, 1);
+    this.showSignals('off', false, false);
     parent.append(this.root);
   }
 
@@ -309,6 +339,35 @@ export class TouchControls {
     if (gear !== this.shownGear) {
       this.shownGear = gear;
       this.gearLabel.textContent = gear < 0 ? 'R' : `D${gear}`;
+    }
+  }
+
+  /**
+   * Shows the indicators (TurnSignalService): which are on (`mode`, the
+   * pressed switches) and which are lit at this moment of their flashing.
+   * The DOM changes only when one of them does (three times a second while
+   * they flash).
+   */
+  showSignals(mode: TurnSignalMode, leftLit: boolean, rightLit: boolean): void {
+    if (mode !== this.shownSignal) {
+      this.shownSignal = mode;
+      this.root.dataset.signal = mode;
+      this.signalLeft.setAttribute('aria-pressed', String(mode === 'left'));
+      this.signalRight.setAttribute('aria-pressed', String(mode === 'right'));
+      this.hazardButton.setAttribute('aria-pressed', String(mode === 'hazard'));
+    }
+    if (leftLit !== this.shownLeftLit) {
+      this.shownLeftLit = leftLit;
+      this.signalLeft.classList.toggle('is-lit', leftLit);
+    }
+    if (rightLit !== this.shownRightLit) {
+      this.shownRightLit = rightLit;
+      this.signalRight.classList.toggle('is-lit', rightLit);
+    }
+    const hazardLit = mode === 'hazard' && leftLit;
+    if (hazardLit !== this.shownHazardLit) {
+      this.shownHazardLit = hazardLit;
+      this.hazardButton.classList.toggle('is-lit', hazardLit);
     }
   }
 

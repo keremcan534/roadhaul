@@ -315,6 +315,8 @@ export const TR: StringTable = {
   'controls.key.camera': 'Kamera',
   'controls.key.horn': 'Korna',
   'controls.key.map': 'Harita',
+  'controls.key.signals': 'Sinyaller (sol, sağ)',
+  'controls.key.hazards': 'Dörtlüler',
   'controls.key.pause': 'Duraklat',
   'controls.done': 'Tamam',
   'pause.controls': 'Kontroller',

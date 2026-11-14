@@ -44,6 +44,8 @@ const KEYS: readonly (readonly [action: string, keys: readonly string[]])[] = [
   ['camera', ['C']],
   ['horn', ['H']],
   ['map', ['M']],
+  ['signals', ['Q', 'E']],
+  ['hazards', ['X']],
   ['pause', ['Esc', 'P']],
 ];
 

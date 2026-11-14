@@ -315,6 +315,8 @@ export const ID: StringTable = {
   'controls.key.camera': 'Kamera',
   'controls.key.horn': 'Klakson',
   'controls.key.map': 'Peta',
+  'controls.key.signals': 'Lampu sein (kiri, kanan)',
+  'controls.key.hazards': 'Lampu hazard',
   'controls.key.pause': 'Jeda',
   'controls.done': 'Selesai',
   'pause.controls': 'Kontrol',

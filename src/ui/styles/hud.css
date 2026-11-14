@@ -256,7 +256,8 @@
   bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
   display: flex;
   align-items: center;
-  gap: 12px;
+  /* Closer on narrow upright phones, where the indicators' arrows either side would leave the plate wider than them. */
+  gap: clamp(8px, 2.6vw, 12px);
   padding: 5px 14px 7px 10px;
   border: 1px solid var(--rh-plate-line);
   border-radius: 6px;
@@ -271,8 +272,15 @@
  * the instrument panel: it steps aside.
  */
 html[data-camera='cabin'] .dashboard {
-  opacity: 0;
   visibility: hidden;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+
+/* The indicators' arrows stay, where the readout was. */
+html[data-camera='cabin'] .signal-button {
+  visibility: visible;
 }
 
 /* Upright phones: the wheel and pedals fill the bottom row, so the readout sits above them (and the D/R switch). */
@@ -407,10 +415,60 @@ html[data-camera='cabin'] .dashboard {
   background: var(--rh-danger);
 }
 
-/* ---- The corner buttons: square plates (the pause, the camera, the horn) ---- */
+/*
+ * The indicators' arrows, either side of the instruments: grey while off, green while their signal is on, bright as
+ * they flash (the hazard lights flash both).
+ */
+.signal-button {
+  position: relative;
+  flex: none;
+  width: clamp(32px, 9vw, 40px);
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 22%);
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.signal-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 20px;
+  margin: auto;
+  background: var(--rh-control-line);
+  clip-path: polygon(0 50%, 48% 0, 48% 28%, 100% 28%, 100% 72%, 48% 72%, 48% 100%);
+}
+
+.signal-button--right::before {
+  transform: scaleX(-1);
+}
+
+.signal-button[aria-pressed='true'] {
+  border-color: #3f8f4f;
+}
+
+.signal-button[aria-pressed='true']::before {
+  background: #2e7a3c;
+}
+
+.signal-button.is-lit {
+  box-shadow: 0 0 12px rgb(90 255 120 / 45%);
+}
+
+.signal-button.is-lit::before {
+  background: #5dff7c;
+}
+
+/* ---- The corner buttons: square plates (the pause, the camera, the horn, the hazard lights) ---- */
 
 .camera-button,
 .horn-button,
+.hazard-button,
 .pause-button {
   width: 48px;
   min-height: 48px;
@@ -427,6 +485,7 @@ html[data-camera='cabin'] .dashboard {
 }
 
 .camera-button:active,
+.hazard-button:active,
 .pause-button:active {
   transform: scale(0.95);
 }
@@ -491,11 +550,53 @@ html[data-camera='cabin'] .dashboard {
   background: var(--rh-accent);
 }
 
-/* Upright phones: the mission HUD takes the width under the corner buttons, so the horn joins their row. */
+/* The hazard lights' switch, beside the horn: a red triangle, flashing with them. */
+.hazard-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  right: calc(env(safe-area-inset-right, 0px) + 70px);
+}
+
+.hazard-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 21px;
+  background: #c4473d;
+  clip-path: polygon(evenodd, 50% 0, 100% 100%, 0 100%, 50% 0, 50% 34%, 23% 84%, 77% 84%, 50% 34%);
+  transform: translate(-50%, -55%);
+}
+
+.hazard-button[aria-pressed='true'] {
+  border-color: #c4473d;
+}
+
+.hazard-button.is-lit {
+  box-shadow: 0 0 12px rgb(255 80 60 / 50%);
+}
+
+.hazard-button.is-lit::before {
+  background: #ff5a45;
+}
+
+/*
+ * Upright phones: the mission HUD takes the width under the corner buttons, so the horn and the hazard lights' switch
+ * join their row, past the radio's button.
+ */
 @media (orientation: portrait) {
-  .horn-button {
+  .horn-button,
+  .hazard-button {
     top: calc(env(safe-area-inset-top, 0px) + 12px);
-    right: calc(env(safe-area-inset-right, 0px) + 70px);
+  }
+
+  .horn-button {
+    right: calc(env(safe-area-inset-right, 0px) + 128px);
+  }
+
+  .hazard-button {
+    right: calc(env(safe-area-inset-right, 0px) + 186px);
   }
 }
 

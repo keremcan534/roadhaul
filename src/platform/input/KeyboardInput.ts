@@ -9,6 +9,9 @@ const PAUSE = new Set(['Escape', 'KeyP']);
 const HORN = 'KeyH';
 const MAP = 'KeyM';
 const RADIO = 'KeyR';
+const SIGNAL_LEFT = 'KeyQ';
+const SIGNAL_RIGHT = 'KeyE';
+const HAZARDS = 'KeyX';
 
 export interface KeyboardActions {
   readonly onToggleCamera: () => void;
@@ -19,11 +22,16 @@ export interface KeyboardActions {
   readonly onMap: () => void;
   /** R: the cab radio's next station. */
   readonly onRadio: () => void;
+  /** Q or E: the left or the right turn signal, on or off. */
+  readonly onSignal: (side: 'left' | 'right') => void;
+  /** X: the hazard lights, on or off. */
+  readonly onHazards: () => void;
 }
 
 /**
  * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
- * H sounds the horn, M opens the map, R tunes the radio, Escape or P pauses. Uses physical key codes, so it
+ * H sounds the horn, M opens the map, R tunes the radio, Q and E the turn
+ * signals, X the hazard lights, Escape or P pauses. Uses physical key codes, so it
  * works the same on Turkish Q/F and other layouts. The truck's steering rate
  * smooths the digital steering.
  */
@@ -51,7 +59,7 @@ export class KeyboardInput {
     if (isTyping(event)) {
       return; // Letters typed into a form (the company name) are not driving.
     }
-    if (event.code === CAMERA_TOGGLE || event.code === MAP || event.code === RADIO || PAUSE.has(event.code)) {
+    if (isSwitchKey(event.code)) {
       if (!event.repeat) {
         if (event.code === CAMERA_TOGGLE) {
           this.actions.onToggleCamera();
@@ -59,6 +67,10 @@ export class KeyboardInput {
           this.actions.onMap();
         } else if (event.code === RADIO) {
           this.actions.onRadio();
+        } else if (event.code === SIGNAL_LEFT || event.code === SIGNAL_RIGHT) {
+          this.actions.onSignal(event.code === SIGNAL_LEFT ? 'left' : 'right');
+        } else if (event.code === HAZARDS) {
+          this.actions.onHazards();
         } else {
           this.actions.onPause();
         }
@@ -100,6 +112,19 @@ export class KeyboardInput {
     this.state.throttle = any(THROTTLE) ? 1 : 0;
     this.state.brake = any(BRAKE) ? 1 : 0;
   }
+}
+
+/** A key that does something once as it goes down (held, it does not repeat). */
+function isSwitchKey(code: string): boolean {
+  return (
+    code === CAMERA_TOGGLE ||
+    code === MAP ||
+    code === RADIO ||
+    code === SIGNAL_LEFT ||
+    code === SIGNAL_RIGHT ||
+    code === HAZARDS ||
+    PAUSE.has(code)
+  );
 }
 
 function isDrivingKey(code: string): boolean {

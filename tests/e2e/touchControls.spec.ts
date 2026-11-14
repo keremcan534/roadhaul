@@ -16,6 +16,8 @@ const COMMON_CONTROLS = [
   '.dashboard',
   '.camera-button',
   '.horn-button',
+  '.hazard-button',
+  '.radio-button',
   '.pause-button',
   '.minimap',
   '.hud-dock',
@@ -35,6 +37,10 @@ const VIEWPORTS = {
 /** Every control is on screen, and none covers another. */
 async function expectLaidOut(page: Page, controls: readonly string[], context: string): Promise<void> {
   const viewport = page.viewportSize()!;
+  // Some show with the drive's first frame (the radio's button).
+  for (const selector of controls) {
+    await expect(page.locator(selector), `${selector} is not shown (${context})`).toBeVisible();
+  }
   const boxes = await Promise.all(controls.map((selector) => page.locator(selector).boundingBox()));
   boxes.forEach((box, index) => {
     expect(box, `${controls[index]} is not shown (${context})`).not.toBeNull();

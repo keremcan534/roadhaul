@@ -315,6 +315,8 @@ export const PT: StringTable = {
   'controls.key.camera': 'Câmera',
   'controls.key.horn': 'Buzina',
   'controls.key.map': 'Mapa',
+  'controls.key.signals': 'Setas (esquerda, direita)',
+  'controls.key.hazards': 'Pisca-alerta',
   'controls.key.pause': 'Pausa',
   'controls.done': 'Pronto',
   'pause.controls': 'Controles',

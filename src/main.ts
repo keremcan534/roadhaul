@@ -118,6 +118,7 @@ import type { GameState } from './systems/gameState/GameState';
 import type { BoostError } from './systems/monetization/MonetizationService';
 import type { RepairError } from './systems/vehicles/DamageService';
 import type { RefuelError, Refuelled } from './systems/vehicles/FuelService';
+import { TurnSignalService } from './systems/vehicles/TurnSignalService';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
@@ -660,6 +661,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   // What flies off in a crash: bits, sparks and dust; a big one is seen in slow motion.
   const crashEffects = new CrashEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const slowMotion = new SlowMotion();
+  // The indicators: the stalk (Q and E, the dashboard's arrows) and the hazard switch (X, its button). They flash on
+  // the truck and on the dashboard, the relay ticking; a drive starts with them off.
+  const turnSignals = new TurnSignalService();
+  /** Whether the indicators were lit at the last frame: the relay ticks as they come on and go off. */
+  let relayLit = false;
   const effectsState = createTruckEffectsState();
   // Drawn in software, fewer pixels are the only speed to be had (RenderHost sets no floor there): down to 60%.
   const adaptiveResolution = new AdaptiveResolution(
@@ -748,11 +754,23 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const screenWake = new ScreenWake(navigator);
   const soundState = createSoundState();
   const honk = (pressed: boolean): void => audio.setHorn(pressed);
+  const signal = (side: 'left' | 'right'): void => {
+    if (onRoad() && !paused) {
+      turnSignals.toggle(side);
+    }
+  };
+  const hazards = (): void => {
+    if (onRoad() && !paused) {
+      turnSignals.toggleHazard();
+    }
+  };
   // Steering by turning the phone reads the motion sensor while it is the picked way of steering (applySteering).
   const tilt = new TiltInput(window, settings.tiltSensitivity, (status) => showTilt(status));
   const touch = new TouchControls(ui, {
     onToggleCamera: toggleCamera,
     onHorn: honk,
+    onSignal: signal,
+    onHazards: hazards,
     onTilt: () => {
       tilt.unlock();
       tilt.recenter();
@@ -1384,6 +1402,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onToggleCamera: toggleCamera,
     onRadio: tuneRadio,
     onHorn: honk,
+    onSignal: signal,
+    onHazards: hazards,
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
@@ -2613,9 +2633,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
-      // Parked where it was left: the next drive starts from there, at rest.
+      // Parked where it was left: the next drive starts from there, at rest, its indicators off.
       const { x, z, heading } = driving.vehicle;
       driving.placeTruck(x, z, heading);
+      turnSignals.reset();
     }
     showState(current);
   });
@@ -2671,7 +2692,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   });
   // Sound may start once the page has been touched or typed on: a touch counts when the finger lifts. Starting it
   // earlier would only be refused, with a warning. iOS shares the motion sensor (tilt steering) only from a tap too.
-  // A button pressed clicks (not the pedals, steering buttons or the horn: they are held).
+  // A button pressed clicks (not the pedals, steering buttons or the horn: they are held; nor the indicators' switches:
+  // their relay ticks).
   const unlockSound = (): void => {
     // Browsers without navigator.userActivation (older Safari and Firefox) get their chance at every gesture.
     if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
@@ -2683,7 +2705,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   window.addEventListener('pointerup', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
   document.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button)') !== null) {
+    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button, .signal-button, .hazard-button)') !== null) {
       audio.click();
     }
   });
@@ -2896,6 +2918,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         combineVehicleInputs(controlsInput, keyboard.state, touch.state);
         combineVehicleInputs(driverInput, controlsInput, tilt.state);
         driving.step(stepSeconds, driverInput);
+        turnSignals.update(stepSeconds, driving.vehicle);
         // What the truck knocked over goes flying, and the debris tumbles on.
         crashes.update(stepSeconds);
         missions.update(stepSeconds);
@@ -3011,6 +3034,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         );
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
+        truck.setIndicators(turnSignals.leftLit, turnSignals.rightLit);
         // The wipers sweep the snow off the glass too.
         truck.setRain(Math.max(weather.rain, weather.snow * 0.35));
         // The pedals as the truck reads them (VehicleDynamics): on auto they swap roles in reverse.
@@ -3216,6 +3240,16 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear, deltaSeconds);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
+        touch.showSignals(turnSignals.mode, turnSignals.leftLit, turnSignals.rightLit);
+        if (turnSignals.leftLit || turnSignals.rightLit) {
+          if (!relayLit) {
+            relayLit = true;
+            audio.relay(true);
+          }
+        } else if (relayLit) {
+          relayLit = false;
+          audio.relay(false);
+        }
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
         soundState.engineRpm = vehicle.engineRpm;

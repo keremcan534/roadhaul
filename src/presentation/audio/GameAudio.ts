@@ -241,6 +241,12 @@ export class GameAudio {
     this.note(1100, 0, 0.05, 0.08, 'sine');
   }
 
+  /** The indicators' relay as their lamps come on (`lit`: a tick) and go off (a softer, lower tock). */
+  relay(lit: boolean): void {
+    this.noiseBurst('bandpass', lit ? 2600 : 1600, 0.025, lit ? 0.1 : 0.07);
+    this.note(lit ? 1250 : 820, 0, 0.018, lit ? 0.05 : 0.035, 'square');
+  }
+
   /** A speed camera's shutter: a sharp double click and a hiss of its flash. */
   shutter(): void {
     this.noiseBurst('highpass', 4200, 0.05, 0.12);

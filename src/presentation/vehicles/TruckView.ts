@@ -15,6 +15,7 @@ import {
   MeshPhongMaterial,
   PlaneGeometry,
   Quaternion,
+  Vector2,
   Vector3,
   type Material,
   type Scene,
@@ -96,6 +97,32 @@ const LAMP_NIGHT_BOOST = 1.5;
 const HEADLIGHT_GLOW = 0xfff1cf;
 const TAIL_LIGHT_GLOW = 0xff2a1a;
 const GLOW_SIZE_METERS = 1.8;
+/**
+ * The indicators' lenses, against the colour they are drawn in, whatever
+ * the time of day (the other lamps are brighter at night: they are on):
+ * unlit, a darker amber; lit, a brighter one, its red past white (where the
+ * picture is drawn in high range it blooms, and its amber holds where it
+ * is clipped), at night with a glow.
+ */
+const INDICATOR_UNLIT = 0.45;
+const INDICATOR_LIT_RED = 2.4;
+const INDICATOR_LIT_GREEN = 1.15;
+const INDICATOR_GLOW = 0xffa21c;
+/** The lamps' indicator attribute: a left indicator's lens (+X, the truck's left), a right one's, or neither. */
+const LEFT_INDICATOR = 1;
+const RIGHT_INDICATOR = -1;
+/**
+ * The lamps' shader: a lens marked as an indicator drawn in its own colour
+ * dimmed or lit by its side's flasher (`indicators`: left, right), not
+ * brightened by the night as the material's colour (`diffuse`) is.
+ */
+const INDICATOR_VERTEX_PARS = 'attribute float indicator;\nvarying float vIndicator;';
+const INDICATOR_VERTEX = 'vIndicator = indicator;';
+const INDICATOR_FRAGMENT_PARS = 'uniform vec2 indicators;\nvarying float vIndicator;';
+const INDICATOR_FRAGMENT = `
+float indicatorLit = vIndicator > 0.0 ? indicators.x : indicators.y;
+vec3 indicatorColor = vColor.rgb * mix(vec3(${INDICATOR_UNLIT.toFixed(2)}), vec3(${INDICATOR_LIT_RED.toFixed(2)}, ${INDICATOR_LIT_GREEN.toFixed(2)}, 1.0), indicatorLit);
+diffuseColor.rgb = mix(diffuseColor.rgb, indicatorColor, step(0.5, abs(vIndicator)));`;
 /** Upgraded parts (TruckViewOptions.looks), by level 0..3: how much taller the stacks stand, meters. */
 const STACK_EXTRA_HEIGHT = [0, 0.12, 0.22, 0.34] as const;
 /** The fuel tank's length and radius, meters; at level 3 a second one hangs on the other side. */
@@ -211,6 +238,17 @@ export class TruckView {
   /** Night: brighter lamps and their glows (their light on the world is LampLighting's, from headlamps()). */
   private readonly lampMaterial: MeshBasicMaterial;
   private readonly glows: LampGlows;
+  /** The indicators' flashers, left and right, 0 or 1 (setIndicators): the lamps' shader reads them. */
+  private readonly indicators = { value: new Vector2(0, 0) };
+  /**
+   * In `glows`, the steady lamps' glows (the headlights', and a rigid
+   * truck's tail lights'), then pairs of indicators' (left, right): the
+   * front ones', then a rigid truck's rear ones'. A trailer's glows: its two
+   * tail lights', then its two rear indicators'. No draw call of their own.
+   */
+  private readonly steadyGlows: number;
+  private readonly indicatorGlowPairs: number;
+  private indicatorsShown = -1;
   /** In the model: the left headlamp (the right one mirrors it across x = 0). */
   private readonly headlampAt: readonly [number, number, number];
   /** Where the left tail light shines from, on the body (the right one mirrors it): for a wet road to mirror. */
@@ -296,8 +334,11 @@ export class TruckView {
     };
     const box = (material: PartMaterial, size: readonly [number, number, number], at: readonly [number, number, number]): void =>
       add(material, new BoxGeometry(...size).translate(...at));
-    const lamp = (color: number, size: readonly [number, number, number], at: readonly [number, number, number]): void =>
-      add('lamps', colored(new BoxGeometry(...size).translate(...at), color));
+    const lamp = (color: number, size: readonly [number, number, number], at: readonly [number, number, number], indicator = 0): void =>
+      add('lamps', indicated(colored(new BoxGeometry(...size).translate(...at), color), indicator));
+    /** An indicator's lens on `side` (1 = left, +X; -1 = right): it flashes with its side's flasher. */
+    const indicatorLamp = (side: 1 | -1, size: readonly [number, number, number], at: readonly [number, number, number]): void =>
+      lamp(0xffa21c, size, at, side === 1 ? LEFT_INDICATOR : RIGHT_INDICATOR);
 
     // The cab: its shell rounded at the front corners and along the roof's edge. The lower part is open at the
     // top (its lid would be the cab's floor, seen from the driver's seat): a ledge round the glasshouse's foot
@@ -466,8 +507,8 @@ export class TruckView {
       lamp(0xfff4d6, [0.2, 0.15, 0.02], [side * (halfW - 0.3), lampY + 0.02, frontZ + 0.032]);
       lamp(0xfff8e8, [0.16, 0.13, 0.02], [side * (halfW - 0.5), lampY + 0.02, frontZ + 0.032]);
       lamp(0xffffff, [0.38, 0.022, 0.02], [side * (halfW - 0.39), lampY - 0.085, frontZ + 0.034]);
-      lamp(0xffa21c, [0.09, 0.15, 0.02], [side * (halfW - 0.14), lampY + 0.02, frontZ + 0.03]);
-      lamp(0xffa21c, [0.02, 0.05, 0.12], [side * (halfW + 0.01), lampY + 0.04, frontZ - 0.24]);
+      indicatorLamp(side, [0.09, 0.15, 0.02], [side * (halfW - 0.14), lampY + 0.02, frontZ + 0.03]);
+      indicatorLamp(side, [0.02, 0.05, 0.12], [side * (halfW + 0.01), lampY + 0.04, frontZ - 0.24]);
       lamp(0xfff8e0, [0.16, 0.07, 0.008], [side * (halfW - 0.36), bumperTop - 0.19, frontZ + 0.143]);
       // Mirror on arms near the front pillar, its glass facing back (the driver sees it from the cab).
       const { mirror } = cab;
@@ -546,7 +587,7 @@ export class TruckView {
     for (const side of [1, -1] as const) {
       lamp(0xd4261c, [0.34, 0.14, 0.05], [side * (halfW - 0.3), R + 0.26, rearZ - 0.03]);
       lamp(0xf2f2f2, [0.12, 0.1, 0.05], [side * (halfW - 0.56), R + 0.26, rearZ - 0.03]);
-      lamp(0xffa21c, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, rearZ - 0.03]);
+      indicatorLamp(side, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, rearZ - 0.03]);
     }
 
     if (rig !== null) {
@@ -718,13 +759,24 @@ export class TruckView {
       for (const side of [1, -1] as const) {
         lamp(0xd4261c, [0.34, 0.14, 0.05], [side * (halfW - 0.3), R + 0.26, bodyRearZ - 0.03]);
         lamp(0xf2f2f2, [0.12, 0.1, 0.05], [side * (halfW - 0.56), R + 0.26, bodyRearZ - 0.03]);
-        lamp(0xffa21c, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, bodyRearZ - 0.03]);
+        indicatorLamp(side, [0.12, 0.1, 0.05], [side * (halfW - 0.08), R + 0.26, bodyRearZ - 0.03]);
       }
       into = parts;
     }
 
     const accentRgb: Rgb = [(paint >> 16) & 255, (paint >> 8) & 255, paint & 255];
     this.lampMaterial = this.track(new MeshBasicMaterial({ vertexColors: true }));
+    const indicators = this.indicators;
+    this.lampMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms['indicators'] = indicators;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\n${INDICATOR_VERTEX_PARS}`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>\n${INDICATOR_VERTEX}`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>\n${INDICATOR_FRAGMENT_PARS}`)
+        .replace('#include <color_fragment>', `#include <color_fragment>\n${INDICATOR_FRAGMENT}`);
+    };
+    this.lampMaterial.customProgramCacheKey = () => 'truck-lamps';
     // Glossy paint and glass mirror the sky the flatter they are seen; chrome and metal mirror it in their colour.
     const shiny = (material: MeshPhongMaterial, reflection: SkyReflectionOptions): MeshPhongMaterial =>
       options.sky === undefined ? material : reflectSky(material, options.sky, reflection);
@@ -864,7 +916,11 @@ export class TruckView {
     // At night: a glow on each headlight and tail light (they lean with the body, and show only from in front of
     // them), and light on the road ahead.
     const headlightX = halfW - 0.32;
-    this.glows = this.track(new LampGlows(4, GLOW_SIZE_METERS));
+    // A tractor unit's tail lights that show are the trailer's: its own glows are the headlights' (and the front
+    // indicators'), the trailer's the tail lights' (and the rear indicators').
+    this.steadyGlows = rig === null ? 4 : 2;
+    this.indicatorGlowPairs = rig === null ? 2 : 1;
+    this.glows = this.track(new LampGlows(this.steadyGlows + this.indicatorGlowPairs * 2, GLOW_SIZE_METERS));
     for (const side of [1, -1] as const) {
       const index = side === 1 ? 0 : 1;
       this.glows.setPosition(index, side * headlightX, bumperTop + 0.2, frontZ + 0.12);
@@ -873,21 +929,31 @@ export class TruckView {
       this.glows.setPosition(index + 2, side * (halfW - 0.3), R + 0.26, rearZ - 0.12);
       this.glows.setColor(index + 2, TAIL_LIGHT_GLOW);
       this.glows.setFacing(index + 2, 0, 0, -1);
+      // The indicators' glows, after the steady lamps': shown while one flashes (setIndicators), left first.
+      const front = this.steadyGlows + index;
+      this.glows.setPosition(front, side * (halfW - 0.14), lampY + 0.02, frontZ + 0.08);
+      this.glows.setFacing(front, 0, 0, 1);
+      if (rig === null) {
+        this.glows.setPosition(front + 2, side * (halfW - 0.08), R + 0.26, rearZ - 0.08);
+        this.glows.setFacing(front + 2, 0, 0, -1);
+      }
     }
-    // A tractor unit's tail lights that show are the trailer's.
-    this.glows.setCount(rig === null ? 4 : 2);
+    this.glows.setCount(this.steadyGlows);
     this.body.add(this.glows.points);
     if (rig !== null) {
-      this.trailerGlows = this.track(new LampGlows(2, GLOW_SIZE_METERS));
+      this.trailerGlows = this.track(new LampGlows(4, GLOW_SIZE_METERS));
       for (const side of [1, -1] as const) {
         const index = side === 1 ? 0 : 1;
         this.trailerGlows.setPosition(index, side * (halfW - 0.3), R + 0.26, bodyRearZ - 0.12);
         this.trailerGlows.setColor(index, TAIL_LIGHT_GLOW);
         this.trailerGlows.setFacing(index, 0, 0, -1);
+        this.trailerGlows.setPosition(index + 2, side * (halfW - 0.08), R + 0.26, bodyRearZ - 0.08);
+        this.trailerGlows.setFacing(index + 2, 0, 0, -1);
       }
       this.trailerGlows.setCount(2);
       this.trailerFrame!.add(this.trailerGlows.points);
     }
+    this.setIndicators(false, false);
     // Where the headlights light the world from (LampLighting): on the body, as low as the suspension sets it.
     this.headlampAt = [headlightX, bumperTop + 0.2 - drop, frontZ + 0.12];
     this.taillampAt = rig === null ? [halfW - 0.3, R + 0.26 - drop, rearZ - 0.12] : [halfW - 0.3, R + 0.26, bodyRearZ - 0.12];
@@ -1079,6 +1145,29 @@ export class TruckView {
     this.interior?.setLamps(level);
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
     this.trailerGlows?.setLevel(this.options.lampGlows === false ? 0 : level);
+  }
+
+  /**
+   * Lights the left and right indicators as their flashers stand at this
+   * moment (TurnSignalService): their lenses bright, at night a glow on
+   * each. Cheap every frame: a change only when one turns on or off.
+   */
+  setIndicators(left: boolean, right: boolean): void {
+    const shown = (left ? 1 : 0) + (right ? 2 : 0);
+    if (shown === this.indicatorsShown) {
+      return;
+    }
+    this.indicatorsShown = shown;
+    this.indicators.value.set(left ? 1 : 0, right ? 1 : 0);
+    showIndicatorGlows(this.glows, this.steadyGlows, this.indicatorGlowPairs, left, right);
+    if (this.trailerGlows !== null) {
+      showIndicatorGlows(this.trailerGlows, 2, 1, left, right);
+    }
+  }
+
+  /** The indicators' flashers as the lamps' shader reads them, left and right (for tests). */
+  get indicatorLevels(): { readonly x: number; readonly y: number } {
+    return this.indicators.value;
   }
 
   /**
@@ -1281,6 +1370,30 @@ function colored(geometry: BufferGeometry, hex: number): BufferGeometry {
     colors.set([color.r, color.g, color.b], i * 3);
   }
   geometry.setAttribute('color', new BufferAttribute(colors, 3));
+  return geometry;
+}
+
+/**
+ * The indicators' glows in `glows`, `pairs` of them (left, right) after its
+ * `steady` lamps': the lit ones amber, an unlit one black (adding nothing),
+ * and none drawn while neither flashes.
+ */
+function showIndicatorGlows(glows: LampGlows, steady: number, pairs: number, left: boolean, right: boolean): void {
+  if (!left && !right) {
+    glows.setCount(steady);
+    return;
+  }
+  for (let pair = 0; pair < pairs; pair++) {
+    glows.setColor(steady + pair * 2, left ? INDICATOR_GLOW : 0x000000);
+    glows.setColor(steady + pair * 2 + 1, right ? INDICATOR_GLOW : 0x000000);
+  }
+  glows.setCount(steady + pairs * 2);
+}
+
+/** Marks every vertex of a lamp's `geometry` with `indicator` (LEFT_INDICATOR, RIGHT_INDICATOR, or 0: a steady lamp). */
+function indicated(geometry: BufferGeometry, indicator: number): BufferGeometry {
+  const values = new Float32Array(geometry.getAttribute('position').count).fill(indicator);
+  geometry.setAttribute('indicator', new BufferAttribute(values, 1));
   return geometry;
 }
 

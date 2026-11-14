@@ -315,6 +315,8 @@ export const RU: StringTable = {
   'controls.key.camera': 'Камера',
   'controls.key.horn': 'Гудок',
   'controls.key.map': 'Карта',
+  'controls.key.signals': 'Поворотники (левый, правый)',
+  'controls.key.hazards': 'Аварийка',
   'controls.key.pause': 'Пауза',
   'controls.done': 'Готово',
   'pause.controls': 'Управление',

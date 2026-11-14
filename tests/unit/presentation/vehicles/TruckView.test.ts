@@ -10,6 +10,7 @@ import {
   Quaternion,
   Raycaster,
   Scene,
+  ShaderLib,
   Vector3,
   type Object3D,
 } from 'three';
@@ -518,6 +519,58 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(lamps.color.r).toBe(dayBrightness);
   });
 
+  it('flashes the indicators on the side asked: their lenses, either side alike, and at night a glow on each', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const lamps = lampMaterialOf(scene);
+    // Every lens marked: as many left indicators' (+1) as right ones' (-1), the other lamps neither.
+    const marks = new Map<number, number>();
+    scene.traverse((object) => {
+      if (object instanceof Mesh && object.material === lamps) {
+        const indicator = (object as Mesh).geometry.getAttribute('indicator');
+        for (let i = 0; i < indicator.count; i++) {
+          marks.set(indicator.getX(i), (marks.get(indicator.getX(i)) ?? 0) + 1);
+        }
+      }
+    });
+    expect([...marks.keys()].sort()).toEqual([-1, 0, 1]);
+    expect(marks.get(1)).toBe(marks.get(-1));
+    // The lamps' shader takes the flashers: three.js's chunks it hooks onto are there.
+    const shader = { uniforms: {} as Record<string, unknown>, vertexShader: ShaderLib.basic.vertexShader, fragmentShader: ShaderLib.basic.fragmentShader };
+    lamps.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.uniforms['indicators']).toBeDefined();
+    expect(shader.vertexShader).toContain('vIndicator = indicator;');
+    expect(shader.fragmentShader).toContain('indicators.x');
+    expect(lamps.customProgramCacheKey()).toBe('truck-lamps');
+
+    const glows = glowsOf(scene);
+    const steady = truck.trailer === undefined ? 4 : 2;
+    view.setLamps(1);
+    view.setIndicators(true, false);
+
+    expect(view.indicatorLevels).toMatchObject({ x: 1, y: 0 });
+    // Its own glows: the front indicators' after the steady lamps' (and a rigid truck's rear ones'), the left one
+    // amber, the right one adding nothing.
+    expect(glows.geometry.drawRange.count).toBe(truck.trailer === undefined ? 8 : 4);
+    const positions = glows.geometry.getAttribute('position');
+    const colors = glows.geometry.getAttribute('color');
+    const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
+    expect(positions.getX(steady)).toBeGreaterThan(0);
+    expect(positions.getZ(steady)).toBeGreaterThan(front);
+    expect(positions.getX(steady + 1)).toBeCloseTo(-positions.getX(steady), 6);
+    expect(colors.getX(steady) - colors.getZ(steady)).toBeGreaterThan(0.8);
+    expect(colors.getY(steady)).toBeGreaterThan(colors.getZ(steady));
+    expect([colors.getX(steady + 1), colors.getY(steady + 1), colors.getZ(steady + 1)]).toEqual([0, 0, 0]);
+
+    view.setIndicators(true, true);
+    expect(view.indicatorLevels).toMatchObject({ x: 1, y: 1 });
+    expect(colors.getX(steady + 1)).toBeGreaterThan(0.8);
+
+    view.setIndicators(false, false);
+    expect(view.indicatorLevels).toMatchObject({ x: 0, y: 0 });
+    expect(glows.geometry.drawRange.count).toBe(steady);
+  });
+
   it('says where its headlamps light the road from: either side of the nose, level, following the truck round', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
@@ -805,6 +858,16 @@ describe.each(VEHICLES.filter((vehicle) => vehicle.trailer !== undefined))('the 
     expect(glows!.visible).toBe(true);
     expect(glows!.geometry.drawRange.count).toBe(2);
     expect(glows!.geometry.getAttribute('position').getZ(0)).toBeLessThan(front - trailer.lengthMeters);
+    // Its rear indicators glow after its tail lights: the right one amber here, the left one adding nothing.
+    view.setIndicators(false, true);
+    expect(glows!.geometry.drawRange.count).toBe(4);
+    const colors = glows!.geometry.getAttribute('color');
+    expect([colors.getX(2), colors.getY(2), colors.getZ(2)]).toEqual([0, 0, 0]);
+    expect(colors.getX(3) - colors.getZ(3)).toBeGreaterThan(0.8);
+    expect(glows!.geometry.getAttribute('position').getX(3)).toBeLessThan(0);
+    expect(glows!.geometry.getAttribute('position').getZ(3)).toBeLessThan(front - trailer.lengthMeters);
+    view.setIndicators(false, false);
+    expect(glows!.geometry.drawRange.count).toBe(2);
   });
 });
 

@@ -315,6 +315,8 @@ export const PL: StringTable = {
   'controls.key.camera': 'Kamera',
   'controls.key.horn': 'Klakson',
   'controls.key.map': 'Mapa',
+  'controls.key.signals': 'Kierunkowskazy (lewy, prawy)',
+  'controls.key.hazards': 'Światła awaryjne',
   'controls.key.pause': 'Pauza',
   'controls.done': 'Gotowe',
   'pause.controls': 'Sterowanie',
