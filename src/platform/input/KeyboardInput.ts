@@ -12,6 +12,8 @@ const RADIO = 'KeyR';
 const SIGNAL_LEFT = 'KeyQ';
 const SIGNAL_RIGHT = 'KeyE';
 const HAZARDS = 'KeyX';
+const PARKING_BRAKE = 'KeyB';
+const ENGINE_BRAKE = 'KeyJ';
 
 export interface KeyboardActions {
   readonly onToggleCamera: () => void;
@@ -26,12 +28,17 @@ export interface KeyboardActions {
   readonly onSignal: (side: 'left' | 'right') => void;
   /** X: the hazard lights, on or off. */
   readonly onHazards: () => void;
+  /** B: the parking brake, applied or released. */
+  readonly onParkingBrake: () => void;
+  /** J: the engine brake, switched on or off. */
+  readonly onEngineBrake: () => void;
 }
 
 /**
  * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
  * H sounds the horn, M opens the map, R tunes the radio, Q and E the turn
- * signals, X the hazard lights, Escape or P pauses. Uses physical key codes, so it
+ * signals, X the hazard lights, B the parking brake, J the engine brake,
+ * Escape or P pauses. Uses physical key codes, so it
  * works the same on Turkish Q/F and other layouts. The truck's steering rate
  * smooths the digital steering.
  */
@@ -71,6 +78,10 @@ export class KeyboardInput {
           this.actions.onSignal(event.code === SIGNAL_LEFT ? 'left' : 'right');
         } else if (event.code === HAZARDS) {
           this.actions.onHazards();
+        } else if (event.code === PARKING_BRAKE) {
+          this.actions.onParkingBrake();
+        } else if (event.code === ENGINE_BRAKE) {
+          this.actions.onEngineBrake();
         } else {
           this.actions.onPause();
         }
@@ -123,6 +134,8 @@ function isSwitchKey(code: string): boolean {
     code === SIGNAL_LEFT ||
     code === SIGNAL_RIGHT ||
     code === HAZARDS ||
+    code === PARKING_BRAKE ||
+    code === ENGINE_BRAKE ||
     PAUSE.has(code)
   );
 }

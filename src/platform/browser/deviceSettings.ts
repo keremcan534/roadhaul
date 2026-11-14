@@ -51,6 +51,8 @@ export interface DeviceSettings {
   readonly season: SeasonChoice;
   /** The cab radio: off, or the station last tuned to. */
   readonly radio: RadioChoice;
+  /** The truck's engine brake switched on (it slows the truck off the gas, with its sound) or off. */
+  readonly engineBrake: boolean;
   /** The build whose release notes the player was shown last (What's New), or null for none yet. */
   readonly seenNotesBuild: string | null;
 }
@@ -72,6 +74,7 @@ export const DEFAULT_SETTINGS: DeviceSettings = Object.freeze({
   weather: 'auto',
   season: 'auto',
   radio: 'off',
+  engineBrake: true,
   seenNotesBuild: null,
 });
 
@@ -98,6 +101,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
       weather,
       season,
       radio,
+      engineBrake,
       seenNotesBuild,
     } = parsed as Record<string, unknown>;
     return {
@@ -119,6 +123,7 @@ export function loadSettings(storage: KeyValueStorage): DeviceSettings {
       weather: isWeatherChoice(weather) ? weather : DEFAULT_SETTINGS.weather,
       season: isSeasonChoice(season) ? season : DEFAULT_SETTINGS.season,
       radio: isRadioChoice(radio) ? radio : DEFAULT_SETTINGS.radio,
+      engineBrake: typeof engineBrake === 'boolean' ? engineBrake : DEFAULT_SETTINGS.engineBrake,
       seenNotesBuild: typeof seenNotesBuild === 'string' && seenNotesBuild !== '' ? seenNotesBuild : DEFAULT_SETTINGS.seenNotesBuild,
     };
   } catch {

@@ -175,6 +175,44 @@ describe('DrivingService', () => {
     expect(modified.vehicle.speed).toBeLessThan(plain.vehicle.speed * 0.85);
   });
 
+  it('keeps the parking brake on the truck driven, holding it still, and released for a new drive', () => {
+    const { driving } = setup();
+    driving.start('test_truck', 'test_map');
+    driving.setParkingBrake(true);
+    expect(driving.parkingBrake).toBe(true);
+    stepFor(driving, 2, input({ throttle: 1 }));
+    expect(driving.vehicle.speed).toBe(0);
+
+    driving.switchVehicle('big_truck');
+    stepFor(driving, 2, input({ throttle: 1 }));
+    expect(driving.vehicle.speed).toBe(0);
+
+    driving.start('test_truck', 'test_map');
+    expect(driving.parkingBrake).toBe(false);
+    stepFor(driving, 2, input({ throttle: 1 }));
+    expect(driving.vehicle.speed).toBeGreaterThan(1);
+  });
+
+  it('keeps the engine brake switched as the player left it, for every truck and drive', () => {
+    const coastingLoss = (engineBrake: boolean, vehicleId = 'test_truck'): number => {
+      const { driving } = setup();
+      driving.setEngineBrake(engineBrake);
+      driving.start(vehicleId, 'test_map');
+      stepFor(driving, 8, input({ throttle: 1 }));
+      const from = driving.vehicle.speed;
+      stepFor(driving, 2);
+      return from - driving.vehicle.speed;
+    };
+    expect(coastingLoss(true)).toBeGreaterThan(coastingLoss(false) + 0.4);
+    expect(coastingLoss(true, 'big_truck')).toBeGreaterThan(coastingLoss(false, 'big_truck') + 0.4);
+
+    const { driving } = setup();
+    driving.setEngineBrake(true);
+    driving.start('test_truck', 'test_map');
+    driving.switchVehicle('big_truck');
+    expect(driving.engineBrake).toBe(true);
+  });
+
   it('swaps the truck in place: same spot, world, cargo and odometer, the new truck at rest', () => {
     const { driving } = setup();
     driving.start('test_truck', 'test_map');

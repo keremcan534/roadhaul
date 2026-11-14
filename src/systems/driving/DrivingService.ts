@@ -177,6 +177,9 @@ export class DrivingService {
   private drives = 0;
   private readonly modifiers = new Map<string, PerformanceModifier>();
   private engineRunning = true;
+  /** The parking brake as the player left it (off for each new drive), and the engine brake's switch (kept). */
+  private parkingBrakeApplied = false;
+  private engineBrakeOn = false;
   /** Vehicles the truck can hit besides the world's static obstacles (TrafficService). */
   private obstacles: MovingObstacles | null = null;
 
@@ -285,6 +288,27 @@ export class DrivingService {
     return this.engineRunning;
   }
 
+  /** Whether the parking brake is applied: the truck stays where it stands (VehicleDynamics.setParkingBrake). */
+  get parkingBrake(): boolean {
+    return this.parkingBrakeApplied;
+  }
+
+  /** Applies or releases the parking brake. A new drive (start) starts with it released. */
+  setParkingBrake(applied: boolean): void {
+    this.parkingBrakeApplied = applied;
+    this.session?.dynamics.setParkingBrake(applied);
+  }
+
+  /** Whether the engine brake is switched on (VehicleDynamics.setEngineBrake): the player's choice, kept across drives and trucks. */
+  get engineBrake(): boolean {
+    return this.engineBrakeOn;
+  }
+
+  setEngineBrake(on: boolean): void {
+    this.engineBrakeOn = on;
+    this.session?.dynamics.setEngineBrake(on);
+  }
+
   /** Truck plus cargo, kg. */
   get totalMassKg(): number {
     return this.requireSession().dynamics.totalMassKg;
@@ -293,6 +317,7 @@ export class DrivingService {
   /** Puts `vehicleId` at the spawn point of `mapId`. Replaces any current session. */
   start(vehicleId: string, mapId: string, cargoMassKg = 0): void {
     const definition = this.content.vehicles.get(vehicleId);
+    this.parkingBrakeApplied = false;
     // On the same map (a company founded or continued from the main menu) the world already built is used again,
     // with what was knocked over stood back up: building it takes seconds on a phone, and the views drawn from it at
     // boot go on drawing the same one.
@@ -569,6 +594,8 @@ export class DrivingService {
     }
     session.dynamics.setPerformance({ torqueFactor, brakeFactor, gripFactor, stabilityFactor });
     session.dynamics.setEngineRunning(this.engineRunning);
+    session.dynamics.setParkingBrake(this.parkingBrakeApplied);
+    session.dynamics.setEngineBrake(this.engineBrakeOn);
   }
 
   private requireSession(): DrivingSession {

@@ -13,6 +13,8 @@ const COMMON_CONTROLS = [
   '.pedal--gas',
   '.pedal--brake',
   '.gear-button',
+  '.brake-switch--engine',
+  '.brake-switch--parking',
   '.dashboard',
   '.camera-button',
   '.horn-button',

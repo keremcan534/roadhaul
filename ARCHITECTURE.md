@@ -153,7 +153,8 @@ tilt (platform/input) ─────┘                              │
 - **`VehicleDynamics`** (`src/domain/vehicles`) is a deterministic kinematic bicycle model referenced at the rear axle ([ADR 0002](docs/adr/0002-custom-vehicle-model.md)). Its drivetrain has:
   - a torque/power curve and an automatic gearbox (it cannot hunt between gears);
   - a speed governor;
-  - drag, rolling resistance and engine braking;
+  - drag, rolling resistance and engine braking; the engine brake switched on (`setEngineBrake`, the player's choice) slows the truck off the gas by up to 0.9 m/s² more, with the revs, and the gearbox holds lower gears for it (down-shifting at the middle of the shift band), so it holds a loaded truck's speed down a 6% grade; its working share is `engineBraking` (its rasp in `GameAudio`, its switch lit);
+  - a parking brake (`setParkingBrake`): applied, the truck does not pull away whatever the gas or the slope, and one rolling stops at 4 m/s²;
   - grip-limited traction and braking;
   - reverse, two ways (`VehicleInput.lever`): on `auto` (the keyboard) hold the brake at a standstill to reverse; with the touch controls' D/R button (`drive`/`reverse`) the gas pedal drives the way the lever points, the brake only brakes, and the gearbox follows the lever at a standstill;
   - understeer at the truck's cornering limit (`maxLateralAccelerationG`, 0.52–0.62 g: a junction at 30 km/h fits a 14 m radius) at town speeds, up to about 36 km/h. From there to about 72 km/h the limit opens up to 1.25× that (`RECKLESS_CORNERING`, where the tyres hold), past the rollover threshold (12% above the limit), and the steering's travel with it (8.7% more at speed): a turn taken too fast tips the truck over instead of only running wide;

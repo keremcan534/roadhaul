@@ -88,6 +88,11 @@ export interface VehicleRuntimeState {
   /** -1 is reverse, 1…n are the forward gears. */
   gear: number;
   engineRpm: number;
+  /**
+   * How hard the engine brake works this step, 0..1 (VehicleDynamics.setEngineBrake): its share of its full
+   * slowing, more at high revs. 0 while it is off, the gas is pressed, or the truck is (nearly) stopped.
+   */
+  engineBraking: number;
   /** Seconds left in the current gear change; there is no drive meanwhile. */
   shiftTimer: number;
   /** Seconds since the last gear change. Down-shifts wait for it, so the gearbox cannot hunt. */

@@ -218,6 +218,11 @@ const PLAINER_PEDESTRIANS = 24;
  */
 const SOFTWARE_MAX_SIMULATION_DELTA_SECONDS = 0.5;
 const SOFTWARE_MAX_STEPS_PER_FRAME = 30;
+/** The engine brake's switch is lit while it works at least this hard (VehicleRuntimeState.engineBraking). */
+const ENGINE_BRAKE_SHOWN_FROM = 0.15;
+/** The gas held this long against the parking brake, the player is told to release it; at most this often, seconds. */
+const PARKING_BRAKE_HINT_AFTER_SECONDS = 1.2;
+const PARKING_BRAKE_HINT_EVERY_SECONDS = 20;
 /**
  * How many lamps light the night (LampLighting), per graphics preset: the
  * nearest street lamps and vehicles. Drawn in software (with ?lamps=1), as
@@ -358,6 +363,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const gameState = services.resolve(ServiceKeys.gameState);
   const driving = services.resolve(ServiceKeys.driving);
   const horn = services.resolve(ServiceKeys.horn);
+  driving.setEngineBrake(settings.engineBrake);
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
@@ -667,6 +673,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const turnSignals = new TurnSignalService();
   /** Whether the indicators were lit at the last frame: the relay ticks as they come on and go off. */
   let relayLit = false;
+  /**
+   * Seconds the gas has been pressed against the parking brake, the truck going nowhere, and since the player was
+   * last told so: after a moment it says to release it, at most every PARKING_BRAKE_HINT_EVERY_SECONDS.
+   */
+  let gasAgainstParkingBrakeSeconds = 0;
+  let sinceParkingBrakeHintSeconds = Number.POSITIVE_INFINITY;
   const effectsState = createTruckEffectsState();
   // Drawn in software, fewer pixels are the only speed to be had (RenderHost sets no floor there): down to 60%.
   const adaptiveResolution = new AdaptiveResolution(
@@ -769,6 +781,23 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       turnSignals.toggleHazard();
     }
   };
+  // The brakes' switches: the parking brake (its air heard) and the engine brake (the player's choice, kept).
+  const parkingBrake = (): void => {
+    if (onRoad() && !paused) {
+      const applied = !driving.parkingBrake;
+      driving.setParkingBrake(applied);
+      audio.parkingBrake(applied);
+    }
+  };
+  const engineBrake = (): void => {
+    if (onRoad() && !paused) {
+      const on = !driving.engineBrake;
+      driving.setEngineBrake(on);
+      settings = { ...settings, engineBrake: on };
+      saveSettings(storage, settings);
+      toasts.show(strings.t(on ? 'toast.engineBrakeOn' : 'toast.engineBrakeOff'), 'info');
+    }
+  };
   // Steering by turning the phone reads the motion sensor while it is the picked way of steering (applySteering).
   const tilt = new TiltInput(window, settings.tiltSensitivity, (status) => showTilt(status));
   const touch = new TouchControls(ui, {
@@ -776,6 +805,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onHorn: honk,
     onSignal: signal,
     onHazards: hazards,
+    onParkingBrake: parkingBrake,
+    onEngineBrake: engineBrake,
     onTilt: () => {
       tilt.unlock();
       tilt.recenter();
@@ -1409,6 +1440,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onHorn: honk,
     onSignal: signal,
     onHazards: hazards,
+    onParkingBrake: parkingBrake,
+    onEngineBrake: engineBrake,
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
@@ -2724,7 +2757,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   window.addEventListener('pointerup', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
   document.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button, .signal-button, .hazard-button)') !== null) {
+    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button, .signal-button, .hazard-button, .brake-switch--parking)') !== null) {
       audio.click();
     }
   });
@@ -3270,9 +3303,20 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           relayLit = false;
           audio.relay(false);
         }
+        touch.showBrakes(driving.parkingBrake, driving.engineBrake, vehicle.engineBraking > ENGINE_BRAKE_SHOWN_FROM);
+        sinceParkingBrakeHintSeconds += deltaSeconds;
+        gasAgainstParkingBrakeSeconds =
+          simulating && driving.parkingBrake && driverInput.throttle > 0.5 && Math.abs(vehicle.speed) < 0.3
+            ? gasAgainstParkingBrakeSeconds + deltaSeconds
+            : 0;
+        if (gasAgainstParkingBrakeSeconds > PARKING_BRAKE_HINT_AFTER_SECONDS && sinceParkingBrakeHintSeconds > PARKING_BRAKE_HINT_EVERY_SECONDS) {
+          sinceParkingBrakeHintSeconds = 0;
+          toasts.show(strings.t('toast.parkingBrakeOn'), 'warning');
+        }
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
         soundState.engineRpm = vehicle.engineRpm;
+        soundState.engineBraking = vehicle.engineBraking;
         soundState.idleRpm = driving.definition.powertrain.idleRpm;
         soundState.maxRpm = driving.definition.powertrain.maxRpm;
         soundState.engineLoad = dashboard.drivePedal * vehicle.driveEngagement;

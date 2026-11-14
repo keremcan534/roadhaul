@@ -152,6 +152,66 @@
   transform: scale(0.96);
 }
 
+/*
+ * The brakes' switches, over the brake pedal beside the D/R switch: the engine brake (amber while switched on, lit
+ * while it works) and the parking brake (red while applied).
+ */
+.brake-switches {
+  --rh-switch-size: calc(42px * var(--rh-control-scale));
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 20px + var(--rh-pedal-width) + 14px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + var(--rh-pedal-width) * 1.2 + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.brake-switch {
+  display: grid;
+  place-items: center;
+  width: var(--rh-switch-size);
+  min-height: var(--rh-switch-size);
+  height: var(--rh-switch-size);
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-control-line);
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition:
+    transform var(--rh-quick) var(--rh-ease),
+    border-color var(--rh-quick) var(--rh-ease);
+}
+
+.brake-switch:active {
+  transform: scale(0.95);
+}
+
+.brake-switch__icon {
+  width: 62%;
+  height: 62%;
+  --rh-icon-accent: currentColor;
+}
+
+.brake-switch--parking[aria-pressed='true'] {
+  border-color: #e2483b;
+  box-shadow: 0 0 10px rgb(255 80 60 / 45%);
+  color: #ff5a45;
+}
+
+.brake-switch--engine[aria-pressed='true'] {
+  border-color: #a8812f;
+  color: #c9973c;
+}
+
+.brake-switch--engine.is-working {
+  box-shadow: 0 0 10px rgb(255 190 80 / 45%);
+  color: #ffc95c;
+}
+
 /* Steering by tilt: both thumbs are free, so the brake moves under the left one, the tilt button beside it. */
 .touch-controls[data-steering='tilt'] .pedals {
   left: calc(env(safe-area-inset-left, 0px) + 20px);

@@ -2,6 +2,7 @@ import { clamp, dampFactor } from '../../core/math/scalar';
 import type { ControlSize, SteeringMode, TiltStatus } from '../../data/config/controls';
 import type { TurnSignalMode } from '../../domain/vehicles/turnSignals';
 import { createVehicleInput, type GearLever, steeringCurve, type VehicleInput } from '../../domain/vehicles/VehicleInput';
+import { icon } from '../icons';
 
 /**
  * The on-screen wheel turns this far each way for full steering lock: a third of a turn, so a thumb's small slip is a
@@ -53,6 +54,13 @@ const TILT_ICON = `
   <path d="M9.6 1.6 9.4 4.4 6.9 3.3z M14.4 22.4l.2-2.8 2.5 1.1z" fill="currentColor"/>
 `;
 
+/** The parking brake's sign: a P in a circle between two arcs. */
+const PARKING_BRAKE_ICON = `
+  <circle cx="12" cy="12" r="6.6" fill="none" stroke="currentColor" stroke-width="1.8"/>
+  <path d="M3.9 6.6a9.6 9.6 0 0 0 0 10.8 M20.1 6.6a9.6 9.6 0 0 1 0 10.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M10.3 15.8V8.2h2.4a2.1 2.1 0 0 1 0 4.2h-2.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+`;
+
 /** Small gauge icons: a fuel pump and a wrench. */
 const FUEL_ICON =
   '<path d="M3 2h7v12H3z M10 5l3 2v5a1 1 0 0 0 2 0V6l-2-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M5 4h3v3H5z" fill="currentColor"/>';
@@ -77,13 +85,18 @@ export interface TouchControlsOptions {
   readonly onSignal: (side: 'left' | 'right') => void;
   /** The hazard lights' button tapped. */
   readonly onHazards: () => void;
+  /** The parking brake's switch tapped: applied, or released. */
+  readonly onParkingBrake: () => void;
+  /** The engine brake's switch tapped: on, or off. */
+  readonly onEngineBrake: () => void;
 }
 
 /**
  * On-screen driving controls for phones (spec §30: steering wheel, gas,
  * brake), plus a D/R gear button (in R the gas pedal drives backwards), a
  * camera button, a horn, a speed/gear readout between the indicators'
- * arrows (tapped, a turn signal comes on) and the hazard lights' button. It is input only:
+ * arrows (tapped, a turn signal comes on), the hazard lights' button, and
+ * the parking brake's and the engine brake's switches over the brake pedal. It is input only:
  * it writes `state`, which the entry point merges with the keyboard every
  * fixed step. Each control tracks its own fingers, so steering and pedals
  * work at the same time with two thumbs.
@@ -110,6 +123,11 @@ export class TouchControls {
   private readonly signalLeft: HTMLButtonElement;
   private readonly signalRight: HTMLButtonElement;
   private readonly hazardButton: HTMLButtonElement;
+  private readonly parkingBrakeButton: HTMLButtonElement;
+  private readonly engineBrakeButton: HTMLButtonElement;
+  private shownParkingBrake: boolean | null = null;
+  private shownEngineBrake: boolean | null = null;
+  private shownEngineBraking = false;
   private shownSignal: TurnSignalMode | '' = '';
   private shownLeftLit = false;
   private shownRightLit = false;
@@ -214,6 +232,21 @@ export class TouchControls {
     this.hazardButton.setAttribute('aria-label', 'Hazard lights');
     this.hazardButton.setAttribute('aria-pressed', 'false');
     this.hazardButton.addEventListener('click', () => options.onHazards());
+    // The brakes' switches, over the brake pedal: the parking brake, and the engine brake (lit while it works).
+    const brakeSwitch = (className: string, label: string, onClick: () => void): HTMLButtonElement => {
+      const control = element('button', `brake-switch ${className}`);
+      control.type = 'button';
+      control.setAttribute('aria-label', label);
+      control.setAttribute('aria-pressed', 'false');
+      control.addEventListener('click', onClick);
+      return control;
+    };
+    this.parkingBrakeButton = brakeSwitch('brake-switch--parking', 'Parking brake', options.onParkingBrake);
+    this.parkingBrakeButton.append(art('brake-switch__icon', '0 0 24 24', PARKING_BRAKE_ICON));
+    this.engineBrakeButton = brakeSwitch('brake-switch--engine', 'Engine brake', options.onEngineBrake);
+    this.engineBrakeButton.append(icon(document, 'engine', 'brake-switch__icon'));
+    const brakeSwitches = element('div', 'brake-switches');
+    brakeSwitches.append(this.engineBrakeButton, this.parkingBrakeButton);
 
     const camera = element('button', 'camera-button');
     camera.type = 'button';
@@ -240,7 +273,18 @@ export class TouchControls {
     this.tiltButton.append(art('tilt-button__icon', '0 0 24 24', TILT_ICON));
     this.tiltButton.addEventListener('click', () => options.onTilt());
 
-    this.root.append(this.wheel, steerButtons, dashboard, pedals, this.gearButton, this.tiltButton, camera, horn, this.hazardButton);
+    this.root.append(
+      this.wheel,
+      steerButtons,
+      dashboard,
+      pedals,
+      this.gearButton,
+      brakeSwitches,
+      this.tiltButton,
+      camera,
+      horn,
+      this.hazardButton,
+    );
     // Long presses must not open menus or select anything.
     this.root.addEventListener('contextmenu', (event) => event.preventDefault());
     this.bindWheel();
@@ -265,6 +309,7 @@ export class TouchControls {
     this.showTilt('off');
     this.showTelemetry(0, 1);
     this.showSignals('off', false, false);
+    this.showBrakes(false, false, false);
     parent.append(this.root);
   }
 
@@ -368,6 +413,29 @@ export class TouchControls {
     if (hazardLit !== this.shownHazardLit) {
       this.shownHazardLit = hazardLit;
       this.hazardButton.classList.toggle('is-lit', hazardLit);
+    }
+  }
+
+  /**
+   * Shows the brakes' switches: the parking brake applied, the engine brake
+   * switched on, and whether it works now (`engineBraking`: lit). The DOM
+   * changes only when one does.
+   */
+  showBrakes(parkingBrake: boolean, engineBrake: boolean, engineBraking: boolean): void {
+    if (parkingBrake !== this.shownParkingBrake) {
+      this.shownParkingBrake = parkingBrake;
+      this.root.dataset.parkingBrake = parkingBrake ? 'on' : 'off';
+      this.parkingBrakeButton.setAttribute('aria-pressed', String(parkingBrake));
+    }
+    if (engineBrake !== this.shownEngineBrake) {
+      this.shownEngineBrake = engineBrake;
+      this.root.dataset.engineBrake = engineBrake ? 'on' : 'off';
+      this.engineBrakeButton.setAttribute('aria-pressed', String(engineBrake));
+    }
+    const working = engineBrake && engineBraking;
+    if (working !== this.shownEngineBraking) {
+      this.shownEngineBraking = working;
+      this.engineBrakeButton.classList.toggle('is-working', working);
     }
   }
 
