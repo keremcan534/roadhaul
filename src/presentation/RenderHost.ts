@@ -11,6 +11,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { compilePieces } from './compilePieces';
+import { GpuFrameGate, type GpuFences } from './GpuFrameGate';
 import { opaqueByProgram } from './opaqueByProgram';
 import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
 
@@ -66,6 +67,8 @@ export class RenderHost {
   readonly gpu: string;
   /** The colour pass, or null where the scene goes straight to the screen (the low preset, older devices). */
   private readonly post: PostProcessing | null;
+  /** No more than two frames on the GPU at once (GpuFrameGate): a fence after each frame drawn. */
+  private readonly gpuGate: GpuFrameGate<WebGLSync>;
   private readonly bufferSize = new Vector2();
   /** Scratch: where the sun is, as the camera sees it (setSun). */
   private readonly sunPoint = new Vector3();
@@ -90,6 +93,7 @@ export class RenderHost {
     this.renderer.toneMappingExposure = 1.05;
     this.gpu = rendererName(this.renderer.getContext());
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
+    this.gpuGate = new GpuFrameGate(webglFences(this.renderer.getContext()));
     // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
     this.renderer.info.autoReset = false;
     // The scene's root never moves: left to update itself, it would make every object under it work out its matrix
@@ -296,6 +300,22 @@ export class RenderHost {
   shadowsEveryOtherFrame = false;
   private shadowFrames = 0;
 
+  /**
+   * Whether a frame may be drawn now (GpuFrameGate): the GPU is done with
+   * the frame before last, or has had `waitedSeconds` (since the last frame
+   * drawn) too long for it. Until then the picture waits and the game runs
+   * on: a weak GPU handed frames faster than it draws them would queue them
+   * up behind Android's own drawing. Allocation-free.
+   */
+  gpuReady(waitedSeconds: number): boolean {
+    return this.gpuGate.ready(waitedSeconds);
+  }
+
+  /** Frames held back for the GPU since the start (gpuReady), for the performance display. */
+  get framesHeldBack(): number {
+    return this.gpuGate.heldBack;
+  }
+
   render(): void {
     this.renderer.info.reset();
     const shadows = this.renderer.shadowMap;
@@ -308,6 +328,8 @@ export class RenderHost {
     } else {
       this.post.render(this.scene, this.camera);
     }
+    // The fence after the frame: gpuReady() waits for it two frames on.
+    this.gpuGate.drawn();
   }
 
   /**
@@ -364,9 +386,26 @@ export class RenderHost {
   }
 
   dispose(): void {
+    this.gpuGate.dispose();
     this.post?.dispose();
     this.renderer.dispose();
   }
+}
+
+/**
+ * WebGL2's sync objects as the gate's fences (WebGLSync: one small object a
+ * frame drawn). Without them (WebGL 1) none is placed and every frame is
+ * drawn, as before; a lost context draws nothing, so nothing waits for it.
+ */
+function webglFences(gl: WebGLRenderingContext | WebGL2RenderingContext): GpuFences<WebGLSync> {
+  if (!('fenceSync' in gl)) {
+    return { place: () => null, passed: () => true, remove: () => undefined };
+  }
+  return {
+    place: () => gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0),
+    passed: (fence) => gl.isContextLost() || gl.getSyncParameter(fence, gl.SYNC_STATUS) === gl.SIGNALED,
+    remove: (fence) => gl.deleteSync(fence),
+  };
 }
 
 /** Whether `object` is a light or holds one. */

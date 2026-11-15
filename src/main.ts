@@ -3250,6 +3250,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   let menuFrames = 0;
   /** The last frame's own work on the main thread (AdaptiveResolution: slow frames that are the CPU's keep their pixels). */
   let lastFrameWorkSeconds = 0;
+  /**
+   * Real time and the main thread's own work since the last frame drawn: a frame waits while the GPU is behind
+   * (RenderHost.gpuReady), so the frame rate and the pixels are measured from drawn frame to drawn frame.
+   */
+  let sinceDrawnSeconds = 0;
+  let workSinceDrawnSeconds = 0;
   const pose = { x: 0, z: 0, heading: 0 };
   /** The ground under a race's rival cars, near the player's car's level (no allocation per frame). */
   const raceGround = (x: number, z: number): number => driving.world.groundAt(x, z, bodyPose.y);
@@ -3650,22 +3656,28 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         // drawn at half rate, are no measure.
         // At 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second or more.
         renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps >= 120;
-        // Frames on the road the phone cannot show as fast as its screen are capped evenly (FramePacing); the dynamic
-        // resolution then aims at the rate paced at.
-        if (simulating && framePacing.frame(loop.realFrameSeconds, loop.screenFrameSeconds)) {
-          loop.maxFramesPerSecond = framePacing.cap;
-          adaptiveResolution.setFrameCap(framePacing.steadyCap);
-        }
         // Measured in real time: a moment of slow motion's short game frames are not a quicker screen.
-        if (simulating && adaptiveResolution.frame(loop.realFrameSeconds, lastFrameWorkSeconds)) {
-          renderHost.setResolutionScale(adaptiveResolution.scale);
-          fitPixelSizes();
-        }
+        sinceDrawnSeconds += loop.realFrameSeconds;
+        workSinceDrawnSeconds += lastFrameWorkSeconds;
         // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
         // saves the battery. The full map hides it all.
         // Photo mode is the picture itself: every frame.
         menuFrames = (onRoad() && !paused) || photoMode.isOpen ? 0 : menuFrames + 1;
-        if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
+        // A frame is drawn once the GPU is done with the one before last (RenderHost.gpuReady): a weak phone's GPU
+        // handed frames faster than it draws them queues them up, Android's own drawing waits behind them, and a touch
+        // meanwhile goes unanswered (Play's ANRs). Meanwhile the game runs on; only the picture waits.
+        const draw = (menuFrames & 1) === 0 && !worldMap.isOpen && renderHost.gpuReady(sinceDrawnSeconds);
+        if (draw) {
+          // Frames on the road the phone cannot show as fast as its screen are capped evenly (FramePacing); the
+          // dynamic resolution then aims at the rate paced at. Both count the frames drawn.
+          if (simulating && framePacing.frame(sinceDrawnSeconds, loop.screenFrameSeconds)) {
+            loop.maxFramesPerSecond = framePacing.cap;
+            adaptiveResolution.setFrameCap(framePacing.steadyCap);
+          }
+          if (simulating && adaptiveResolution.frame(sinceDrawnSeconds, workSinceDrawnSeconds)) {
+            renderHost.setResolutionScale(adaptiveResolution.scale);
+            fitPixelSizes();
+          }
           renderHost.setGrade(environment.grade);
           renderHost.setSun(environment.sunTowards, environment.sunGlare, environment.sunShafts);
           renderHost.render();
@@ -3709,8 +3721,19 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           shownSound = audio.status;
           root.dataset.sound = shownSound;
         }
-        if (perfOverlay.visible) {
-          perfOverlay.frame(loop.realFrameSeconds, renderHost.renderStats, renderHost.pixelRatio, pose, framePacing.paced ? framePacing.steadyCap : 0);
+        if (draw) {
+          if (perfOverlay.visible) {
+            perfOverlay.frame(
+              sinceDrawnSeconds,
+              renderHost.renderStats,
+              renderHost.pixelRatio,
+              pose,
+              framePacing.paced ? framePacing.steadyCap : 0,
+              renderHost.framesHeldBack,
+            );
+          }
+          sinceDrawnSeconds = 0;
+          workSinceDrawnSeconds = 0;
         }
         lastFrameWorkSeconds = (performance.now() - workStarted) / 1000;
       },
