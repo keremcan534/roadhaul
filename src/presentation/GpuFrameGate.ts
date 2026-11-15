@@ -86,6 +86,16 @@ export class GpuFrameGate<Fence> {
     this.oldest = (slot + 1) % this.inFlight.length;
   }
 
+  /**
+   * Drops every fence without asking the GPU about it: the context they
+   * belong to was lost (WebGL then warns of each one asked about or
+   * removed in the context restored). The next frames draw at once.
+   */
+  forget(): void {
+    this.inFlight.fill(null);
+    this.oldest = 0;
+  }
+
   /** Forgets every fence (the renderer going away). */
   dispose(): void {
     for (let i = 0; i < this.inFlight.length; i++) {

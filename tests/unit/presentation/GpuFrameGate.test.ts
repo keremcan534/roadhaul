@@ -90,6 +90,24 @@ describe('GpuFrameGate', () => {
     expect(gpu.removed).toEqual([]);
   });
 
+  it('drops a lost context\'s fences without asking the GPU about them, and draws at once', () => {
+    const gpu = new FakeGpu();
+    const gate = new GpuFrameGate(gpu, 2);
+    gate.drawn();
+    gate.drawn();
+    expect(gate.ready(0)).toBe(false);
+    gate.forget();
+    expect(gate.ready(0)).toBe(true);
+    expect(gpu.removed).toEqual([]);
+    // The context restored: fences again, the old ones never asked about.
+    gate.drawn();
+    gate.drawn();
+    expect(gate.ready(0)).toBe(false);
+    gpu.doneUpTo = 3;
+    expect(gate.ready(0)).toBe(true);
+    expect(gpu.removed).toEqual([3]);
+  });
+
   it('removes every fence it placed, none twice', () => {
     const gpu = new FakeGpu();
     const gate = new GpuFrameGate(gpu, 2);

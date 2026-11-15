@@ -69,6 +69,8 @@ export class RenderHost {
   private readonly post: PostProcessing | null;
   /** No more than two frames on the GPU at once (GpuFrameGate): a fence after each frame drawn. */
   private readonly gpuGate: GpuFrameGate<WebGLSync>;
+  /** A lost context's fences are no more: dropped, not asked about in the context restored. */
+  private readonly forgetFences = (): void => this.gpuGate.forget();
   private readonly bufferSize = new Vector2();
   /** Scratch: where the sun is, as the camera sees it (setSun). */
   private readonly sunPoint = new Vector3();
@@ -93,7 +95,11 @@ export class RenderHost {
     this.renderer.toneMappingExposure = 1.05;
     this.gpu = rendererName(this.renderer.getContext());
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
-    this.gpuGate = new GpuFrameGate(webglFences(this.renderer.getContext()));
+    // On a GPU, no more than two frames on it at once. Drawn in software, the browser holds each frame back until the
+    // one before is drawn already (the end-to-end tests run there), and the gate would only change their pace.
+    this.gpuGate = new GpuFrameGate(this.softwareRendering ? NO_FENCES : webglFences(this.renderer.getContext()));
+    canvas.addEventListener('webglcontextlost', this.forgetFences);
+    canvas.addEventListener('webglcontextrestored', this.forgetFences);
     // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
     this.renderer.info.autoReset = false;
     // The scene's root never moves: left to update itself, it would make every object under it work out its matrix
@@ -386,11 +392,17 @@ export class RenderHost {
   }
 
   dispose(): void {
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener('webglcontextlost', this.forgetFences);
+    canvas.removeEventListener('webglcontextrestored', this.forgetFences);
     this.gpuGate.dispose();
     this.post?.dispose();
     this.renderer.dispose();
   }
 }
+
+/** No fences: the gate lets every frame through. */
+const NO_FENCES: GpuFences<WebGLSync> = { place: () => null, passed: () => true, remove: () => undefined };
 
 /**
  * WebGL2's sync objects as the gate's fences (WebGLSync: one small object a
@@ -399,7 +411,7 @@ export class RenderHost {
  */
 function webglFences(gl: WebGLRenderingContext | WebGL2RenderingContext): GpuFences<WebGLSync> {
   if (!('fenceSync' in gl)) {
-    return { place: () => null, passed: () => true, remove: () => undefined };
+    return NO_FENCES;
   }
   return {
     place: () => gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0),
