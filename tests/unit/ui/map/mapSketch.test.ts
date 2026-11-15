@@ -109,6 +109,7 @@ describe('sketchWorld', () => {
       ['valley_diner', 'diner'],
       ['valley_truck_wash', 'truckWash'],
       ['valley_lookout', 'lookout'],
+      ['valley_race_club', 'raceClub'],
     ]);
     expect(sketch.ferries).toEqual(world.gates.map((gate) => ({ x: gate.area.x, z: gate.area.z, toMapId: 'metropol', requiredLevel: 2 })));
     expect(sketch.cities.map((city) => city.cityId)).toEqual(world.depots.map((depot) => depot.cityId));

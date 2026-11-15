@@ -159,14 +159,15 @@ export interface RestAreaDefinition {
 }
 
 /** What there is to do at a place to visit (PlaceDefinition). */
-export const PLACE_KINDS = ['diner', 'truckWash', 'lookout'] as const;
+export const PLACE_KINDS = ['diner', 'truckWash', 'lookout', 'raceClub'] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 
 /**
  * A place to visit beside a road (the owner's request): a paved lot with a
  * building of its kind on its back half. Stopping on it the first time pays
  * a finder's reward; the diner serves the day's Yard Jam puzzle, the truck
- * wash a scrub, the lookout a view. Ids end up in saves (the places found).
+ * wash a scrub, the lookout a view, the race club a street race to
+ * `raceTo`. Ids end up in saves (the places found).
  */
 export interface PlaceDefinition {
   /** Stable snake_case id, unique across the maps. */
@@ -174,6 +175,8 @@ export interface PlaceDefinition {
   readonly kind: PlaceKind;
   /** The paved lot: drives like asphalt. One long side should open onto a road. */
   readonly lot: RectangleDefinition;
+  /** A race club's: where its races finish (the road nearest it), raced to by road from the club. Only a race club's. */
+  readonly raceTo?: { readonly x: number; readonly z: number };
 }
 
 /** Which way along a road: toward its last control point, or back toward its first. */
@@ -531,6 +534,16 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
       }
       validator.oneOf(place.kind, PLACE_KINDS, `${placePath}.kind`);
       validateRectangle(place.lot, `${placePath}.lot`, validator, inside);
+      const raceTo = place.raceTo;
+      if (place.kind === 'raceClub') {
+        validator.check(
+          raceTo !== undefined && Number.isFinite(raceTo.x) && Number.isFinite(raceTo.z) && inside(raceTo.x, raceTo.z),
+          `${placePath}.raceTo`,
+          'a race club needs where its races finish, on the map',
+        );
+      } else {
+        validator.check(raceTo === undefined, `${placePath}.raceTo`, "is a race club's only");
+      }
     });
   }
   const roadIds = new Set(

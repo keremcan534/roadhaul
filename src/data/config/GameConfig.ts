@@ -378,6 +378,19 @@ export interface GameConfig {
     readonly washCleanShare: Fraction;
     readonly washSeconds: number;
     readonly washCredits: Credits;
+    /** Street races at the race clubs a company may run a day. */
+    readonly racesPerDay: number;
+  };
+  /** The race clubs' street races (RaceService). */
+  readonly races: {
+    /** The lights count down this long before the start, seconds. */
+    readonly countdownSeconds: number;
+    /** The rivals, each a share of the club's best: its top speed, cornering and speeding up. */
+    readonly rivalSkills: readonly number[];
+    /** The club's best on the route: top speed (m/s), the side pull it corners at and how hard it speeds up and brakes (m/s²). */
+    readonly pace: { readonly topSpeed: number; readonly corner: number; readonly accelerate: number; readonly brake: number };
+    /** The crates for the podium, first place first. */
+    readonly podiumCrates: readonly CrateTier[];
   };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
@@ -840,6 +853,15 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     washCleanShare: 0.9,
     washSeconds: 30,
     washCredits: 300,
+    racesPerDay: 3,
+  },
+  races: {
+    countdownSeconds: 3,
+    // The club's best is near what its car can do (RACE_CAR: about 5 m/s² off the line, 0.95 g round bends); its rivals
+    // a little under, the quickest close to it, so a clean race through the traffic is needed to win.
+    rivalSkills: [0.8, 0.88, 0.96],
+    pace: { topSpeed: 50, corner: 8.5, accelerate: 4.6, brake: 7 },
+    podiumCrates: ['gold', 'silver', 'bronze'],
   },
   weeklyCup: {
     creditsPerPoint: 100,
@@ -991,6 +1013,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     roadPass,
     convoy,
     places,
+    races,
     weeklyCup,
     usedTrucks,
     roadEvents,
@@ -1290,7 +1313,21 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     const [least, most] = convoy[key];
     validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
   }
-  for (const key of ['findCredits', 'findXp', 'puzzleCredits', 'puzzleXp', 'puzzleMinMoves', 'washCredits'] as const) {
+  validator.positiveNumber(races.countdownSeconds, 'races.countdownSeconds');
+  validator.check(
+    races.rivalSkills.length > 0 && races.rivalSkills.every((skill) => skill > 0 && skill <= 1.5),
+    'races.rivalSkills',
+    'must be shares of the pace, above 0',
+  );
+  for (const key of ['topSpeed', 'corner', 'accelerate', 'brake'] as const) {
+    validator.positiveNumber(races.pace[key], `races.pace.${key}`);
+  }
+  validator.check(
+    races.podiumCrates.length <= races.rivalSkills.length + 1 && races.podiumCrates.every(isCrateTier),
+    'races.podiumCrates',
+    'must be crate tiers, no more than the places in a race',
+  );
+  for (const key of ['findCredits', 'findXp', 'puzzleCredits', 'puzzleXp', 'puzzleMinMoves', 'washCredits', 'racesPerDay'] as const) {
     validator.check(Number.isInteger(places[key]) && places[key] > 0, `places.${key}`, 'must be a whole number above 0');
   }
   validator.positiveNumber(places.washSeconds, 'places.washSeconds');

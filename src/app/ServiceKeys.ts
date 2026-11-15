@@ -45,6 +45,7 @@ import type { HornService } from '../systems/vehicles/HornService';
 import type { RentService } from '../systems/company/RentService';
 import type { PlaceService } from '../systems/world/PlaceService';
 import type { AutoDriveService } from '../systems/vehicles/AutoDriveService';
+import type { RaceService } from '../systems/race/RaceService';
 import type { TrafficService } from '../systems/traffic/TrafficService';
 import type { TutorialService } from '../systems/tutorial/TutorialService';
 import type { SeasonService } from '../systems/weather/SeasonService';
@@ -140,6 +141,8 @@ export const ServiceKeys = Object.freeze({
   places: serviceKey<PlaceService>('PlaceService'),
   /** Auto-drive along the contract's route. */
   autoDrive: serviceKey<AutoDriveService>('AutoDriveService'),
+  /** The race clubs' street races. */
+  race: serviceKey<RaceService>('RaceService'),
   /** What the truck's horn does on the road: the traffic ahead hurries, company trucks hoot back. */
   horn: serviceKey<HornService>('HornService'),
   saves: serviceKey<SaveService>('SaveService'),

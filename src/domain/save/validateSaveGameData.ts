@@ -371,6 +371,10 @@ export function validateSaveGameData(
       const day = places[key];
       validator.check(day === null || Number.isInteger(day), `places.${key}`, 'must be null or a whole number');
     }
+    const raceDay = places['raceDay'];
+    validator.check(raceDay === undefined || raceDay === null || Number.isInteger(raceDay), 'places.raceDay', 'must be null or a whole number');
+    const races = places['racesToday'];
+    validator.check(races === undefined || (Number.isInteger(races) && (races as number) >= 0), 'places.racesToday', 'must be 0 or more');
   });
   return validator.issues;
 }

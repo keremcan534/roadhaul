@@ -19,7 +19,7 @@ import type { CompanyTruckOwner } from './traffic/CompanyTraffic';
 import type { AutoDriveEnd } from './vehicles/AutoDriveService';
 
 /** What earned a crate. */
-export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass';
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass' | 'race';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -331,6 +331,25 @@ export interface GameEvents {
   /** The truck was scrubbed clean at a truck wash (PlaceService): the day's tip paid. */
   TruckWashed: {
     readonly credits: Credits;
+  };
+  /** A street race at a race club started (RaceService): the lights count down. */
+  RaceStarted: {
+    readonly placeId: string;
+  };
+  /**
+   * A street race ended (RaceService): the player's place (null: they gave up), their time, and the crate the
+   * podium earned (null for none). The truck is driven again.
+   */
+  RaceEnded: {
+    readonly placeId: string;
+    readonly position: number | null;
+    readonly of: number;
+    readonly seconds: number;
+    readonly crate: CrateTier | null;
+  };
+  /** The race car struck something (DrivingService while racing): the truck's VehicleCollided, for the race car. */
+  RaceCarCollided: {
+    readonly impactSpeedMetersPerSecond: number;
   };
   /** Auto-drive took the wheel (`reason` null) or gave it back, and why (AutoDriveService). */
   AutoDriveChanged: {

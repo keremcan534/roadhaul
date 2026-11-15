@@ -13,6 +13,9 @@ import {
 import type { MapDefinition } from '../../../../src/data/definitions/MapDefinition';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
 import { contentFixture, mapFixture, vehicleFixture } from '../../../support/contentFixtures';
+import { RACE_CAR } from '../../../../src/data/content/raceCar';
+import { validateVehicleDefinition } from '../../../../src/data/definitions/VehicleDefinition';
+import { Validator } from '../../../../src/core/validation/Validator';
 import { input, STEP_SECONDS } from '../../../support/driving';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
@@ -34,7 +37,9 @@ function setup(mapOverrides: Partial<MapDefinition> = {}) {
     contentFixture({ maps: [map], vehicles: [vehicleFixture(), { ...bigTruck, body: { ...bigTruck.body, massKg: 12000 } }, RIG] }),
   );
   const driving = new DrivingService(content, events, logger);
-  return { driving, collisions, overturned };
+  const raceKnocks: number[] = [];
+  events.on('RaceCarCollided', ({ impactSpeedMetersPerSecond }) => raceKnocks.push(impactSpeedMetersPerSecond));
+  return { driving, collisions, overturned, raceKnocks };
 }
 
 /** A tractor unit with a semi-trailer: its axles 7 m behind the coupling, its back 4.3 m behind them. */
@@ -536,5 +541,47 @@ describe('DrivingService', () => {
     driving.start('test_truck', 'test_map');
     driving.dispose();
     expect(driving.isDriving).toBe(false);
+  });
+  describe('a street race', () => {
+    it('sets the truck aside for the race car, and brings it back as it stood', () => {
+      const { driving } = setup();
+      driving.start('test_truck', 'test_map');
+      driving.placeTruck(-60, 3, Math.PI / 2);
+      const truck = driving.definition.id;
+
+      driving.beginRace(RACE_CAR, 0, -2.5, Math.PI / 2);
+      expect(driving.racing).toBe(true);
+      expect(driving.definition.id).toBe('rh_sprint');
+      expect(driving.parkedTruck).toMatchObject({ x: -60, z: 3 });
+      expect(() => driving.beginRace(RACE_CAR, 0, 0, 0)).toThrow();
+      stepFor(driving, 3, input({ throttle: 1 }));
+      expect(driving.vehicle.x).toBeGreaterThan(5);
+      expect(driving.parkedTruck).toMatchObject({ x: -60, z: 3 });
+
+      driving.endRace();
+      expect(driving.racing).toBe(false);
+      expect(driving.parkedTruck).toBeNull();
+      expect(driving.definition.id).toBe(truck);
+      expect(driving.vehicle).toMatchObject({ x: -60, z: 3, speed: 0 });
+    });
+
+    it('keeps the race car\'s knocks off the truck: RaceCarCollided, not VehicleCollided', () => {
+      const { driving, collisions, raceKnocks } = setup();
+      driving.start('test_truck', 'test_map');
+      // Facing the building north of the road.
+      driving.beginRace(RACE_CAR, 0, 20, 0);
+
+      stepFor(driving, 4, input({ throttle: 1 }));
+
+      expect(raceKnocks.length).toBeGreaterThan(0);
+      expect(collisions).toEqual([]);
+    });
+
+    it('is a sound vehicle definition, and none of the dealer\'s', () => {
+      const validator = new Validator();
+      validateVehicleDefinition(RACE_CAR, 'raceCar', validator);
+
+      expect(validator.issues).toEqual([]);
+    });
   });
 });

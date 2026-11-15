@@ -166,6 +166,9 @@ interface DrivingSession {
 /** Engine, brake, tyre and body strength from one source (damage, upgrades): the service multiplies all sources. */
 export type PerformanceModifier = PerformanceFactors;
 
+/** The one source whose modifier a race car feels too: the weather on the road (WeatherService). */
+const RACE_MODIFIER_SOURCE = 'weather';
+
 /**
  * Owns the truck being driven and the world it drives in (roadmap steps 05
  * and 08). The browser entry calls step() every fixed step with the driver's
@@ -174,6 +177,8 @@ export type PerformanceModifier = PerformanceFactors;
  */
 export class DrivingService {
   private session: DrivingSession | null = null;
+  /** The truck's drive, set aside where it stood while a race car is driven (beginRace); null otherwise. */
+  private parked: DrivingSession | null = null;
   private drives = 0;
   private readonly modifiers = new Map<string, PerformanceModifier>();
   private engineRunning = true;
@@ -348,6 +353,68 @@ export class DrivingService {
     this.logger.info(`Driving ${vehicleId} on ${mapId}: ${world.trees.length} trees, ${world.buildings.length} buildings.`);
   }
 
+  /** A race car is being driven (beginRace): the truck waits where it stood. */
+  get racing(): boolean {
+    return this.parked !== null;
+  }
+
+  /** The truck waiting while a race car is driven, where it stands; null when not racing. */
+  get parkedTruck(): Readonly<VehicleRuntimeState> | null {
+    return this.parked?.state ?? null;
+  }
+
+  /** The waiting truck's semi-trailer where it stands; null when not racing or for a rigid truck. */
+  get parkedTrailer(): Readonly<TrailerPose> | null {
+    return this.parked?.rig?.pose ?? null;
+  }
+
+  /**
+   * Sets the truck aside where it stands, its drive untouched, and drives
+   * `car` from (x, z) facing `heading` on the same map (RaceService). While
+   * the car is driven its knocks are RaceCarCollided, not the truck's
+   * (VehicleCollided: damage, cargo), and only the weather changes how it
+   * performs (the truck's damage and upgrades are the truck's).
+   */
+  beginRace(car: VehicleDefinition, x: number, z: number, heading: number): void {
+    const truck = this.requireSession();
+    if (this.parked !== null) {
+      throw new Error('A race is under way already.');
+    }
+    const world = truck.world;
+    const dynamics = new VehicleDynamics(car);
+    const state = dynamics.createState(x, z, heading, world.groundAt(x, z, Number.POSITIVE_INFINITY));
+    const previousPose = createTruckPose();
+    keepPose(previousPose, state);
+    this.parked = truck;
+    this.session = {
+      definition: car,
+      dynamics,
+      footprint: createVehicleFootprint(car.body),
+      world,
+      state,
+      previousPose,
+      lastImpactSpeed: 0,
+      over: false,
+      cargoMassKg: 0,
+      surface: world.surfaceAt(x, z),
+      rig: null,
+    };
+    this.applyPerformance();
+    this.logger.info(`Racing ${car.id}.`);
+  }
+
+  /** The race car put away: the truck's drive back as it was, where it stood. */
+  endRace(): void {
+    if (this.parked === null) {
+      return;
+    }
+    this.session = this.parked;
+    this.parked = null;
+    keepPose(this.session.previousPose, this.session.state);
+    this.applyPerformance();
+    this.logger.info('Back in the truck.');
+  }
+
   /**
    * Swaps the truck being driven for `vehicleId`, standing where the old one
    * stood (GarageService). The world, pose, cargo and odometer stay; the new
@@ -377,6 +444,7 @@ export class DrivingService {
 
   stop(): void {
     this.session = null;
+    this.parked = null;
   }
 
   /** Loading and unloading change how the truck accelerates, brakes and corners. */
@@ -511,8 +579,10 @@ export class DrivingService {
     if (rig !== null) {
       impact = Math.max(impact, this.stepTrailer(session, rig, dt));
     }
+    // A race car's knocks are its own: the truck (its damage, its cargo) waits out of it.
+    const collided = this.parked === null ? 'VehicleCollided' : 'RaceCarCollided';
     if (impact >= COLLISION_EVENT_MIN_SPEED && impact >= session.lastImpactSpeed + COLLISION_EVENT_MIN_SPEED) {
-      this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: impact });
+      this.events.emit(collided, { impactSpeedMetersPerSecond: impact });
     }
     session.lastImpactSpeed = impact;
     if (!flat) {
@@ -520,14 +590,16 @@ export class DrivingService {
     }
     // The body slamming down is a blow too: each is a step's, so each counts once.
     if (state.groundImpact >= COLLISION_EVENT_MIN_SPEED) {
-      this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: state.groundImpact });
+      this.events.emit(collided, { impactSpeedMetersPerSecond: state.groundImpact });
     }
     if (session.over) {
       session.over = state.attitude !== 'wheels';
     } else if (state.attitude === 'overturned') {
       session.over = true;
-      this.events.emit('TruckOverturned', { speedMetersPerSecond: Math.hypot(state.speed, state.slipSpeed) });
-      this.events.emit('VehicleCollided', { impactSpeedMetersPerSecond: OVERTURN_BLOW_SPEED });
+      if (this.parked === null) {
+        this.events.emit('TruckOverturned', { speedMetersPerSecond: Math.hypot(state.speed, state.slipSpeed) });
+      }
+      this.events.emit(collided, { impactSpeedMetersPerSecond: OVERTURN_BLOW_SPEED });
     }
   }
 
@@ -586,7 +658,10 @@ export class DrivingService {
     let brakeFactor = 1;
     let gripFactor = 1;
     let stabilityFactor = 1;
-    for (const modifier of this.modifiers.values()) {
+    for (const [source, modifier] of this.modifiers) {
+      if (this.parked !== null && source !== RACE_MODIFIER_SOURCE) {
+        continue; // The truck's damage and upgrades are the truck's, not the race car's.
+      }
       torqueFactor *= modifier.torqueFactor;
       brakeFactor *= modifier.brakeFactor;
       gripFactor *= modifier.gripFactor;

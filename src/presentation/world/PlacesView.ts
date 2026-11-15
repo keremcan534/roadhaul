@@ -104,7 +104,49 @@ export function placeParts(place: PlaceDefinition, back: 1 | -1): BufferGeometry
       return truckWashParts(place.lot, back);
     case 'lookout':
       return lookoutParts(place.lot, back);
+    case 'raceClub':
+      return raceClubParts(place.lot, back);
   }
+}
+
+/** A race club: a garage hall with its doors, a little grandstand, and checkered flags by the road. */
+function raceClubParts(lot: RectangleDefinition, back: 1 | -1): BufferGeometry[] {
+  const box = (size: Size, at: At, color: number) => lotBox(lot, back, size, at, color);
+  const front = 6;
+  const depth = 8;
+  const middle = front + depth / 2;
+  const parts = [
+    box({ along: 18, across: depth, height: 5 }, { along: 6, across: middle, bottom: 0 }, 0xe8eaed),
+    box({ along: 18.1, across: depth + 0.1, height: 0.6 }, { along: 6, across: middle, bottom: 3.7 }, 0xd23c3c),
+    box({ along: 18.6, across: depth + 0.6, height: 0.3 }, { along: 6, across: middle, bottom: 5 }, 0x3a4048),
+  ];
+  for (const along of [0.5, 6, 11.5]) {
+    parts.push(box({ along: 4, across: 0.12, height: 3.2 }, { along, across: front - 0.04, bottom: 0 }, 0x59616a));
+  }
+  // The grandstand: three steps of seats, facing the road.
+  for (let step = 0; step < 3; step++) {
+    const at = { along: -12, across: 8 + step * 1.6, bottom: 0 };
+    parts.push(
+      box({ along: 9, across: 1.6, height: 0.6 + step * 0.6 }, at, 0x9aa3ab),
+      box({ along: 8.6, across: 0.5, height: 0.25 }, { along: -12, across: at.across - 0.4, bottom: 0.6 + step * 0.6 }, 0x2f6dff),
+    );
+  }
+  // Checkered flags on poles at the road end of the lot.
+  for (const along of [-19, 19]) {
+    parts.push(box({ along: 0.2, across: 0.2, height: 6 }, { along, across: -12.5, bottom: 0 }, POLE));
+    for (let row = 0; row < 2; row++) {
+      for (let column = 0; column < 3; column++) {
+        parts.push(
+          box(
+            { along: 0.06, across: 0.5, height: 0.5 },
+            { along, across: -12.25 + column * 0.5, bottom: 5.0 + row * 0.5 },
+            (row + column) % 2 === 0 ? 0x111111 : WHITE,
+          ),
+        );
+      }
+    }
+  }
+  return parts;
 }
 
 /** A roadside diner: cream walls, a teal band, a red roof's edge, big windows; a coffee cup high on a pole by the road; picnic tables. */

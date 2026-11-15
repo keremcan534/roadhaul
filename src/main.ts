@@ -148,6 +148,10 @@ import { YardJamDialog, type YardJamPuzzle } from './ui/menus/YardJamDialog';
 import { PlacePanel } from './ui/hud/PlacePanel';
 import { PlacesView } from './presentation/world/PlacesView';
 import { CabTablet } from './ui/menus/CabTablet';
+import { RaceCarsView } from './presentation/vehicles/RaceCarsView';
+import { RaceHud } from './ui/hud/RaceHud';
+import { RaceResultDialog } from './ui/menus/RaceResultDialog';
+import { RACE_CAR } from './data/content/raceCar';
 import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
@@ -436,6 +440,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const convoy = services.resolve(ServiceKeys.convoy);
   const places = services.resolve(ServiceKeys.places);
   const autoDrive = services.resolve(ServiceKeys.autoDrive);
+  const race = services.resolve(ServiceKeys.race);
   const requestedRoad = requestedRoadEvent(query);
   if (requestedRoad === 'stranded') {
     roadEvents.sendStrandedDriver();
@@ -723,6 +728,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky, light: environment.light });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body, driving.definition.trailer ?? null);
+  // A street race's cars: the player's while it is driven, and the club's rivals (RaceService).
+  const raceCars = new RaceCarsView(renderHost.scene, RACE_CAR.body, RACE_CAR.factoryColor);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
   const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
@@ -978,6 +985,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     }
     if (current !== 'driving') {
       autoDrive.disengage('switchedOff'); // Off the road: nobody drives.
+      race.quit(); // Nor races: the truck is driven again.
     }
   });
   // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
@@ -1371,8 +1379,49 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         });
       },
       onPhoto: () => openPhoto(true),
+      onRace: () => {
+        const club = places.current;
+        if (club === null) {
+          return;
+        }
+        const started = race.start(club);
+        if (!started.ok) {
+          toasts.show(strings.t(`race.refused.${started.error}`), 'warning');
+        }
+      },
+    },
+    {
+      get contractUnderWay() {
+        return missions.active !== null;
+      },
+      // A club's races run to the town whose depot is nearest its finish.
+      finishName: (club) => {
+        const to = club.raceTo ?? club.lot;
+        let nearest = driving.world.depots[0];
+        for (const depot of driving.world.depots) {
+          if (Math.hypot(depot.yard.x - to.x, depot.yard.z - to.z) < Math.hypot(nearest!.yard.x - to.x, nearest!.yard.z - to.z)) {
+            nearest = depot;
+          }
+        }
+        return nearest === undefined ? '' : strings.cityName(nearest.cityId);
+      },
     },
   );
+  // The street race over the road, and how it ended.
+  const raceHud = new RaceHud(ui, strings, race, () => race.quit());
+  const raceResult = new RaceResultDialog(ui, strings, () => raceResult.close());
+  events.on('RaceStarted', () => {
+    root.dataset.race = 'on';
+    cameraRig.setBody(RACE_CAR.body, null);
+  });
+  events.on('RaceEnded', (result) => {
+    root.dataset.race = 'off';
+    cameraRig.setBody(driving.definition.body, driving.definition.trailer ?? null);
+    // Given up by leaving the road (the main menu): nothing to show there.
+    if (gameState.current === 'driving') {
+      raceResult.open(result);
+    }
+  });
   // The cab's tablet, while auto-drive drives: Memory, and Yard Jam for fun (the drive goes on under it).
   const tablet = new CabTablet(ui, strings, Math.random, {
     onYardJam: () => openYardJam(false, false),
@@ -2441,7 +2490,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * was moving, traffic and weather wait with it, else the world goes on.
    */
   const openPanel = (tab: HqTab): void => {
-    if (!isDriving() || paused || result.isOpen) {
+    if (!isDriving() || paused || result.isOpen || race.active) {
       return;
     }
     if (hq.isOpen) {
@@ -2520,7 +2569,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * nowhere (menus, pause, a result, the cab's tablet, or the rest area's counter in its place).
    */
   const hintPlace = (): TutorialPlace | null => {
-    if (!isDriving() || paused || result.isOpen || tablet.isOpen) {
+    if (!isDriving() || paused || result.isOpen || tablet.isOpen || race.active) {
       return null;
     }
     if (hq.isOpen) {
@@ -3081,7 +3130,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area, G at the nearest place to
     // visit; F runs the fleet and the rivals 10 minutes on.
     window.addEventListener('keydown', (event) => {
-      if (event.repeat || !onRoad() || paused) {
+      if (event.repeat || !onRoad() || paused || race.active) {
         return;
       }
       if (event.code === 'KeyF') {
@@ -3141,6 +3190,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   /** The last frame's own work on the main thread (AdaptiveResolution: slow frames that are the CPU's keep their pixels). */
   let lastFrameWorkSeconds = 0;
   const pose = { x: 0, z: 0, heading: 0 };
+  /** The ground under a race's rival cars, near the player's car's level (no allocation per frame). */
+  const raceGround = (x: number, z: number): number => driving.world.groundAt(x, z, bodyPose.y);
   /** Where a tractor unit's semi-trailer stands between fixed steps (no allocation). */
   const trailerPose = createTrailerPose();
   /** How the truck's body stands between fixed steps (no allocation). */
@@ -3181,6 +3232,16 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         combineVehicleInputs(controlsInput, keyboard.state, touch.state);
         combineVehicleInputs(driverInput, controlsInput, tilt.state);
+        // A street race: the race car driven, the truck and its company's day waiting at the club.
+        if (race.active) {
+          race.update(stepSeconds, driverInput);
+          if (race.active) {
+            driving.step(stepSeconds, driverInput);
+            horn.update(stepSeconds);
+            crashes.update(stepSeconds);
+          }
+          return;
+        }
         // Auto-drive's hands on the wheel (a firm touch of the driver's takes it back).
         autoDrive.update(stepSeconds, driverInput);
         driving.step(stepSeconds, driverInput);
@@ -3317,7 +3378,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         truck.setDashboard(dashboard);
         truck.setNavigation(minimap.picture, minimap.paintCount);
         truck.setBuild(driving.build);
-        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
+        // Racing, the truck stands where it waits at the club; the race cars are drawn instead.
+        const parkedTruck = driving.parkedTruck;
+        if (parkedTruck !== null) {
+          truck.update(parkedTruck, parkedTruck, 0, parkedTruck, driving.parkedTrailer);
+        } else {
+          truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
+        }
+        raceCars.update(driving.racing, pose, bodyPose, race, raceGround, RACE_CAR.body.wheelbaseMeters);
+        raceHud.update(deltaSeconds);
         cameraRig.setTrailerPose(shownTrailer);
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
@@ -3460,11 +3529,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           hq.tick();
         }
         worldMap.frame();
-        restArea.visible = simulating;
+        restArea.visible = simulating && !race.active;
         restArea.update();
-        placePanel.visible = simulating;
+        placePanel.visible = simulating && !race.active;
         placePanel.update();
-        ferry.visible = simulating;
+        ferry.visible = simulating && !race.active;
         ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);

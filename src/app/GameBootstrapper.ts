@@ -61,6 +61,8 @@ import { FuelService } from '../systems/vehicles/FuelService';
 import { GarageService } from '../systems/vehicles/GarageService';
 import { UpgradeService } from '../systems/vehicles/UpgradeService';
 import { AutoDriveService } from '../systems/vehicles/AutoDriveService';
+import { RaceService } from '../systems/race/RaceService';
+import { RACE_CAR } from '../data/content/raceCar';
 import { ServiceKeys } from './ServiceKeys';
 
 export interface BootstrapOptions {
@@ -338,6 +340,11 @@ export class GameBootstrapper {
           events,
           logger.withCategory('Crates'),
         ),
+      );
+      // The race clubs' street races: the podium earns crates.
+      container.register(
+        ServiceKeys.race,
+        new RaceService(driving, places, missions, crates, RACE_CAR, config.races, events, logger.withCategory('Race')),
       );
       const levelRewards = container.register(
         ServiceKeys.levelRewards,

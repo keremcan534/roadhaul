@@ -49,6 +49,8 @@ export class PlaceService {
   private readonly foundIds = new Set<string>();
   private puzzleSolvedDay: number | null = null;
   private washedDay: number | null = null;
+  private raceDay: number | null = null;
+  private racesOnRaceDay = 0;
 
   constructor(
     private readonly driving: PlaceDriving,
@@ -89,6 +91,19 @@ export class PlaceService {
   /** The truck has been washed (and the tip paid) today. */
   get washedToday(): boolean {
     return this.washedDay === this.today();
+  }
+
+  /** Street races left today at the race clubs (GameConfig.places.racesPerDay). */
+  get racesLeftToday(): number {
+    const run = this.raceDay === this.today() ? this.racesOnRaceDay : 0;
+    return Math.max(0, this.config.racesPerDay - run);
+  }
+
+  /** A race started at a race club: one of today's. */
+  countRace(): void {
+    const today = this.today();
+    this.racesOnRaceDay = this.raceDay === today ? this.racesOnRaceDay + 1 : 1;
+    this.raceDay = today;
   }
 
   /** Every fixed step: the place the truck stands still on, a new one found and paid for. */
@@ -144,7 +159,12 @@ export class PlaceService {
   }
 
   snapshot(): PlacesSaveData {
-    return { found: [...this.foundIds].sort(), puzzleDay: this.puzzleSolvedDay, washDay: this.washedDay };
+    return {
+      found: [...this.foundIds].sort(),
+      puzzleDay: this.puzzleSolvedDay,
+      washDay: this.washedDay,
+      ...(this.raceDay === null ? {} : { raceDay: this.raceDay, racesToday: this.racesOnRaceDay }),
+    };
   }
 
   restore(saved: PlacesSaveData): void {
@@ -154,6 +174,8 @@ export class PlaceService {
     }
     this.puzzleSolvedDay = saved.puzzleDay;
     this.washedDay = saved.washDay;
+    this.raceDay = saved.raceDay ?? null;
+    this.racesOnRaceDay = saved.racesToday ?? 0;
     this.currentPlace = null;
   }
 

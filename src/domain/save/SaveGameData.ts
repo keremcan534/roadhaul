@@ -276,6 +276,9 @@ export interface PlacesSaveData {
   readonly puzzleDay: number | null;
   /** The day the truck was last washed clean, or null. */
   readonly washDay: number | null;
+  /** The day races were last run at a race club, and how many that day; absent for none. */
+  readonly raceDay?: number | null;
+  readonly racesToday?: number;
 }
 
 /** The warehouse's rent (RentService): the credits waiting, to the fraction, and the time it has grown from. */

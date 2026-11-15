@@ -11,6 +11,7 @@ import {
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 import { forestContains } from '../../../../src/domain/world/forests';
 import { createRouteGuidance } from '../../../../src/domain/world/roadRoute';
+import { createRouteTrace } from '../../../../src/domain/world/RoadNetwork';
 import { ASPHALT } from '../../../../src/domain/world/Surface';
 
 /** Checks the shipped maps with the real road geometry: things a field-by-field validator cannot see. */
@@ -486,12 +487,25 @@ describe.each(MAPS)('map $id', (map) => {
 });
 
 describe('places to visit', () => {
-  it('has a diner, a truck wash and a lookout in every region, each id once across the maps (saves keep them)', () => {
+  it('has a diner, a truck wash, a lookout and a race club in every region, each id once across the maps (saves keep them)', () => {
     const ids = MAPS.flatMap((map) => (map.places ?? []).map((place) => place.id));
 
     expect(new Set(ids).size).toBe(ids.length);
     for (const map of MAPS) {
-      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['diner', 'lookout', 'truckWash']);
+      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['diner', 'lookout', 'raceClub', 'truckWash']);
     }
+  });
+
+  it.each(MAPS)('races from $id\'s race club by road, 3 to 5 km to the line, with bends on the way', (map) => {
+    const world = new DrivingWorld(map);
+    const club = (map.places ?? []).find((place) => place.kind === 'raceClub')!;
+    const trace = createRouteTrace(world.network);
+    world.network.trace(club.lot.x, club.lot.z, club.raceTo!.x, club.raceTo!.z, new Float64Array(world.roads.length).fill(20), trace);
+
+    expect(trace.connected).toBe(true);
+    expect(trace.along[trace.count - 1]).toBeGreaterThan(3000);
+    expect(trace.along[trace.count - 1]).toBeLessThan(5000);
+    // The route starts on the road beside the club.
+    expect(Math.hypot(trace.x[0]! - club.lot.x, trace.z[0]! - club.lot.z)).toBeLessThan(30);
   });
 });

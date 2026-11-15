@@ -412,7 +412,8 @@ export class GameSessionService {
       specialEvents,
       tutorial,
     } = this.deps;
-    const vehicle = driving.vehicle;
+    // During a street race the truck waits at the club: it is the truck that is saved, where it stands.
+    const vehicle = driving.parkedTruck ?? driving.vehicle;
     const progress = company.levelProgress;
     return {
       version: CURRENT_SAVE_VERSION,

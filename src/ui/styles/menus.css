@@ -4191,3 +4191,47 @@ html[data-photo='on'] body > :not(#game-canvas, .photo-mode) {
     aspect-ratio: 1;
   }
 }
+
+/* ---- A street race's result (src/ui/menus/RaceResultDialog.ts) ---- */
+
+.race-result {
+  z-index: 12;
+  background: var(--rh-scrim);
+}
+
+.race-result__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 380px);
+  text-align: center;
+}
+
+.race-result__icon {
+  width: 40px;
+  height: 40px;
+  color: #d23c8c;
+  --rh-icon-accent: #ffd35a;
+}
+
+.race-result[data-position='1'] .race-result__title {
+  color: #ffd35a;
+}
+
+.race-result__time,
+.race-result__prize {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 500 14px/1.35 var(--rh-text);
+}
+
+.race-result__prize {
+  color: var(--rh-fg);
+  font-weight: 600;
+}
+
+.race-result__time[hidden],
+.race-result__prize[hidden] {
+  display: none;
+}

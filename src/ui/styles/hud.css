@@ -1509,6 +1509,105 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   --place-color: #2bb673;
 }
 
+.place-panel[data-kind='raceClub'] {
+  --place-color: #d23c8c;
+}
+
+/* ---- A street race (src/ui/hud/RaceHud.ts): the place, the clock and the way left at the top; the lights big ---- */
+
+/* While racing, the company's buttons and the contract's sign stand aside. */
+html[data-race='on'] .hud-dock,
+html[data-race='on'] .mission-hud {
+  display: none;
+}
+
+.race-hud[hidden],
+.race-hud__lights[hidden],
+.race-hud__warning[hidden] {
+  display: none;
+}
+
+.race-hud__bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--rh-plate-line);
+  border-top: 3px solid #d23c8c;
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg);
+  font: 600 15px/1.2 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.race-hud__place {
+  color: #ff8ac4;
+  font-family: var(--rh-display);
+  font-size: 17px;
+}
+
+.race-hud__left {
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.race-hud__quit {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.race-hud__lights {
+  position: fixed;
+  top: 32%;
+  left: 50%;
+  z-index: 3;
+  color: #ffd35a;
+  font: 700 84px/1 var(--rh-display);
+  text-shadow: 0 3px 12px rgb(0 0 0 / 55%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.race-hud__lights[data-light='go'] {
+  color: #3ddc84;
+}
+
+.race-hud__warning {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 66px);
+  left: 50%;
+  z-index: 3;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: rgb(210 60 60 / 85%);
+  color: #fff;
+  font: 600 14px/1.3 var(--rh-text);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+@media (orientation: portrait) {
+  .race-hud__bar {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    gap: 10px;
+    font-size: 14px;
+  }
+
+  .race-hud__warning {
+    top: calc(env(safe-area-inset-top, 0px) + 124px);
+  }
+}
+
 .place-panel__kind {
   margin: 0;
   color: var(--place-color);

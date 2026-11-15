@@ -595,6 +595,13 @@ export const MAPS: readonly MapDefinition[] = [
       { id: 'valley_diner', kind: 'diner', lot: { x: -593, z: -537, headingDegrees: 110, lengthMeters: 44, widthMeters: 30 } },
       { id: 'valley_truck_wash', kind: 'truckWash', lot: { x: -1700, z: 382, headingDegrees: 12, lengthMeters: 44, widthMeters: 30 } },
       { id: 'valley_lookout', kind: 'lookout', lot: { x: -1612, z: 1659, headingDegrees: 29, lengthMeters: 44, widthMeters: 30 } },
+      // The race club on the east road, clear of the villages: its races wind 4.4 km south to the depot by the coast.
+      {
+        id: 'valley_race_club',
+        kind: 'raceClub',
+        lot: { x: 2855, z: 737, headingDegrees: 7, lengthMeters: 44, widthMeters: 30 },
+        raceTo: { x: 2750, z: -2666 },
+      },
     ],
     restAreas: [
       {

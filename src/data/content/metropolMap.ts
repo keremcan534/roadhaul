@@ -356,6 +356,13 @@ const LAID_OUT: MapDefinition = {
     { id: 'metropol_diner', kind: 'diner', lot: { x: -2330, z: MOTORWAY_Z - 26.5, headingDegrees: 90, lengthMeters: 44, widthMeters: 30 } },
     { id: 'metropol_truck_wash', kind: 'truckWash', lot: { x: -2980, z: 469.5, headingDegrees: 91, lengthMeters: 44, widthMeters: 30 } },
     { id: 'metropol_lookout', kind: 'lookout', lot: { x: 80.5, z: 1420, headingDegrees: 0, lengthMeters: 44, widthMeters: 30 } },
+    // The race club on the east boulevard: its races run 4.4 km out to the depot in the north-east.
+    {
+      id: 'metropol_race_club',
+      kind: 'raceClub',
+      lot: { x: 1980, z: 100, headingDegrees: 0, lengthMeters: 44, widthMeters: 30 },
+      raceTo: { x: 3350, z: 3516 },
+    },
   ],
   restAreas: [
     {
@@ -545,7 +552,15 @@ function flipNorth(map: MapDefinition): MapDefinition {
     depots: map.depots.map((depot) => ({ ...depot, yard: flipRectangle(depot.yard), bay: flipRectangle(depot.bay) })),
     restAreas: map.restAreas.map((restArea) => ({ ...restArea, lot: flipRectangle(restArea.lot) })),
     ...(map.headOffice === undefined ? {} : { headOffice: flipRectangle(map.headOffice) }),
-    ...(map.places === undefined ? {} : { places: map.places.map((place) => ({ ...place, lot: flipRectangle(place.lot) })) }),
+    ...(map.places === undefined
+      ? {}
+      : {
+          places: map.places.map((place) => ({
+            ...place,
+            lot: flipRectangle(place.lot),
+            ...(place.raceTo === undefined ? {} : { raceTo: { x: place.raceTo.x, z: -place.raceTo.z } }),
+          })),
+        }),
     rivers: (map.rivers ?? []).map((river) => ({ ...river, points: river.points.map(flip) })),
     forests: (map.forests ?? []).map((forest) => ({ ...forest, outline: forest.outline.map(flip) })),
     terrain: { hills: (map.terrain?.hills ?? []).map((hill) => ({ ...hill, z: -hill.z })) },

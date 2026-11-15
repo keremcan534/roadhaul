@@ -8,6 +8,15 @@ export interface PlacePanelSource {
   readonly current: PlaceDefinition | null;
   readonly puzzleSolvedToday: boolean;
   readonly washedToday: boolean;
+  /** Street races left today at the race clubs. */
+  readonly racesLeftToday: number;
+}
+
+/** Whether a contract is under way (no racing with cargo), and the name of where a club's races finish. */
+export interface PlacePanelRaces {
+  readonly contractUnderWay: boolean;
+  /** The town a race club's races run to, by name. */
+  finishName(place: PlaceDefinition): string;
 }
 
 /** What the panel's buttons do. */
@@ -18,6 +27,8 @@ export interface PlacePanelActions {
   readonly onWash: () => void;
   /** The lookout: a photo of the view. */
   readonly onPhoto: () => void;
+  /** The race club: a street race. */
+  readonly onRace: () => void;
 }
 
 /** What the day's puzzle and the wash pay, for the panel's lines. */
@@ -44,8 +55,8 @@ export class PlacePanel {
   /** Continue was pressed at this place: stay closed until the truck leaves it. */
   private dismissedAt: PlaceDefinition | null = null;
   private shown: PlaceDefinition | null = null;
-  /** What the shown lines were written for: done today or not. */
-  private shownDone = false;
+  /** What the shown lines were written for: done today (or for a race club, whether it can race and how many left). */
+  private shownDone: boolean | number = false;
 
   constructor(
     parent: HTMLElement,
@@ -53,6 +64,7 @@ export class PlacePanel {
     private readonly places: PlacePanelSource,
     private readonly rewards: PlaceRewards,
     private readonly actions: PlacePanelActions,
+    private readonly races: PlacePanelRaces,
   ) {
     const document = parent.ownerDocument;
     this.root = element(document, 'div', 'place-panel');
@@ -118,12 +130,16 @@ export class PlacePanel {
     this.root.remove();
   }
 
-  private doneToday(place: PlaceDefinition): boolean {
+  /** What the lines depend on: done today, or for a race club its races left (−1 with a contract under way). */
+  private doneToday(place: PlaceDefinition): boolean | number {
+    if (place.kind === 'raceClub') {
+      return this.races.contractUnderWay ? -1 : this.places.racesLeftToday;
+    }
     return place.kind === 'diner' ? this.places.puzzleSolvedToday : place.kind === 'truckWash' ? this.places.washedToday : false;
   }
 
   /** The place's name, kind, what there is to do and its button. */
-  private write(place: PlaceDefinition, done: boolean): void {
+  private write(place: PlaceDefinition, done: boolean | number): void {
     const { strings, rewards } = this;
     this.root.dataset.kind = place.kind;
     setText(this.name, strings.t(`place.name.${place.id}`));
@@ -141,7 +157,19 @@ export class PlacePanel {
         setText(this.line, strings.t(`place.view.${place.id}`));
         setText(this.action, strings.t('place.lookout.photo'));
         break;
+      case 'raceClub':
+        setText(
+          this.line,
+          done === -1
+            ? strings.t('place.race.contract')
+            : done === 0
+              ? strings.t('place.race.none')
+              : strings.t('place.race.line', { city: this.races.finishName(place), count: Number(done) }),
+        );
+        setText(this.action, strings.t('place.race.start'));
+        break;
     }
+    this.action.disabled = place.kind === 'raceClub' && (done === -1 || done === 0);
   }
 
   private act(): void {
@@ -153,6 +181,8 @@ export class PlacePanel {
       this.actions.onPuzzle();
     } else if (place.kind === 'truckWash') {
       this.actions.onWash();
+    } else if (place.kind === 'raceClub') {
+      this.actions.onRace();
     } else {
       this.actions.onPhoto();
     }

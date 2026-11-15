@@ -79,6 +79,7 @@ const COLORS = {
   diner: '#e8663d',
   truckWash: '#2f9be8',
   lookout: '#2bb673',
+  raceClub: '#d23c8c',
   ferry: '#16a99c',
   ferryClosed: '#5b6b70',
   ferryGlow: 'rgb(22 169 156 / 35%)',
@@ -921,6 +922,15 @@ export function paintPlace(context: CanvasRenderingContext2D, x: number, y: numb
     context.arc(x, y + 1.6, 3.6, 0, Math.PI);
     context.quadraticCurveTo(x - 4.5, y, x, y - 5.5);
     context.fill();
+  } else if (kind === 'raceClub') {
+    // A checkered flag on its staff.
+    context.fillRect(x - 4.5, y - 5, 1.2, 10);
+    for (let row = 0; row < 3; row++) {
+      for (let column = 0; column < 3; column++) {
+        context.fillStyle = (row + column) % 2 === 0 ? '#ffffff' : '#1d2126';
+        context.fillRect(x - 3.3 + column * 2.6, y - 5 + row * 2.2, 2.6, 2.2);
+      }
+    }
   } else {
     context.moveTo(x - 5.5, y + 4);
     context.lineTo(x - 1.5, y - 3);
