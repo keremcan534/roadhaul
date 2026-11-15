@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Resources the release build's shrinker (shrinkResources) must keep although no code names them: Google Play
-     services reads Google libraries' Phenotype registrations (Play Billing's, AdMob's) from the app by name. -->
+<!-- Resources the release build's shrinker (shrinkResources) must keep although no code names them, as they are looked
+     up by name: Google Play services reads Google libraries' Phenotype registrations (Play Billing's, AdMob's) from the
+     app; Capacitor's Cordova layer reads res/xml/config.xml (ConfigXmlParser); and the reminders' small icon is named by
+     the game (src/platform/native/localNotifications.ts) and found by @capacitor/local-notifications with getIdentifier.
+     R8's optimized resource shrinking (android/gradle.properties) keeps only what the code it kept refers to. -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@xml/*_phenotype,@raw/*_heterodyne_info,@raw/*_registration_info*" />
+    tools:keep="@xml/*_phenotype,@raw/*_heterodyne_info,@raw/*_registration_info*,@xml/config,@drawable/ic_stat_roadhaul" />
