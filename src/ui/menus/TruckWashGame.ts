@@ -196,10 +196,18 @@ export class TruckWashGame {
     if (scrubbing === null || event.pointerId !== scrubbing.pointerId || this.finished) {
       return;
     }
-    const point = this.pointOf(event);
-    this.wipe(scrubbing.x, scrubbing.y, point.x, point.y);
-    scrubbing.x = point.x;
-    scrubbing.y = point.y;
+    // On a slow phone the moves of a whole frame come as one event: the brush follows each of them (the event's
+    // coalesced ones), not a straight line from the last to cut a zig-zag's corners and miss the truck's ends.
+    const moves = typeof event.getCoalescedEvents === 'function' ? event.getCoalescedEvents() : [];
+    for (const move of moves.length > 0 ? moves : [event]) {
+      const point = this.pointOf(move);
+      this.wipe(scrubbing.x, scrubbing.y, point.x, point.y);
+      scrubbing.x = point.x;
+      scrubbing.y = point.y;
+      if (this.finished) {
+        return;
+      }
+    }
   }
 
   private stopScrub(event: PointerEvent): void {
@@ -209,7 +217,7 @@ export class TruckWashGame {
   }
 
   /** The pointer on the dirt's canvas, in its pixels. */
-  private pointOf(event: PointerEvent): { x: number; y: number } {
+  private pointOf(event: MouseEvent): { x: number; y: number } {
     const box = this.dirt.getBoundingClientRect();
     return {
       x: ((event.clientX - box.left) / Math.max(1, box.width)) * this.dirt.width,
