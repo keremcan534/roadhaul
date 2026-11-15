@@ -16,7 +16,7 @@ function setup() {
   return { bus, tutorial, changes };
 }
 
-const REWARD = { basePay: 900, timeBonus: 0, latePenalty: 0, conditionBonus: 0, parkingBonus: 0, convoyBonus: 0, total: 900, onTime: true, lateSeconds: 0 };
+const REWARD = { basePay: 900, timeBonus: 0, latePenalty: 0, conditionBonus: 0, parkingBonus: 0, convoyBonus: 0, autoDriveDeduction: 0, total: 900, onTime: true, lateSeconds: 0 };
 
 function playContract(bus: EventBus<GameEvents>): void {
   const missionId = 'first_package';

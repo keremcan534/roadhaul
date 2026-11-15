@@ -40,6 +40,9 @@ export interface MissionInstance {
   failureReason: MissionFailureReason | null;
   /** A convoy contract's trucks lost to the convoy so far (ConvoyTrail); absent for none. */
   convoyTrucksLost?: number;
+  /** Meters driven with the cargo aboard, and of those, by auto-drive (its pay cut); absent for none. */
+  loadedMeters?: number;
+  autoDriveMeters?: number;
 }
 
 export function createMissionInstance(missionId: string): MissionInstance {

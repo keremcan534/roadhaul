@@ -176,6 +176,7 @@ export function requestedTimeOfDay(query: QueryParameters): RequestedTime | null
  *   first weather instead (requestedTimeOfDay sets the time).
  * - `?post=0` draws the scene straight to the screen, without the colour
  *   pass, its bloom and smoothing (`?post=1` turns it on over the preset).
+ * - `?autodrive=1` unlocks auto-drive without its research.
  */
 export function applyConfigOverrides(config: GameConfig, query: QueryParameters): GameConfig {
   const debug = query.has('debug');
@@ -210,6 +211,7 @@ export function applyConfigOverrides(config: GameConfig, query: QueryParameters)
     debug: {
       logLevel,
       showPerfOverlay: debug || config.debug.showPerfOverlay,
+      unlockAutoDrive: query.get('autodrive') === '1' || config.debug.unlockAutoDrive,
     },
   };
 }

@@ -476,6 +476,8 @@ export interface GameConfig {
     readonly logLevel: LogLevel;
     /** Shows FPS, draw calls and triangles (enable in the browser with `?debug`). */
     readonly showPerfOverlay: boolean;
+    /** Auto-drive without its research (`?autodrive=1`, for testing it). */
+    readonly unlockAutoDrive: boolean;
   };
 }
 
@@ -909,6 +911,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   debug: {
     logLevel: 'info',
     showPerfOverlay: false,
+    unlockAutoDrive: false,
   },
 });
 

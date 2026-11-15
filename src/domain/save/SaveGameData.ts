@@ -56,7 +56,8 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   (`variant`: a rush, a convoy), and a convoy's how many of its trucks
  *   were lost (`convoyTrucksLost`); one saved before is a plain one.
  * - v26: adds the places to visit: the ones found, and the days of the last
- *   puzzle solved and the last wash.
+ *   puzzle solved and the last wash; a contract under way may count the
+ *   meters it was driven loaded, and of those by auto-drive.
  */
 export const CURRENT_SAVE_VERSION = 26;
 
@@ -350,6 +351,9 @@ export interface ActiveMissionSaveData {
   readonly failureReason: MissionFailureReason | null;
   /** A convoy contract's trucks lost to the convoy so far (v25); absent for none. */
   readonly convoyTrucksLost?: number;
+  /** Meters driven loaded, and of those by auto-drive (v26); absent for none. */
+  readonly loadedMeters?: number;
+  readonly autoDriveMeters?: number;
   /**
    * A generated contract (a contract of the day) itself: the generator moves
    * on to new batches, so the save keeps it. Null for the game's own

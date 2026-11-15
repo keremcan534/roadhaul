@@ -4058,3 +4058,136 @@ html[data-photo='on'] body > :not(#game-canvas, .photo-mode) {
     grid-area: buttons;
   }
 }
+
+/* ---- The cab tablet (src/ui/menus/CabTablet.ts): beside the road while auto-drive drives ---- */
+
+/* In the middle of the screen, the road going on round it (the drive does not stop for it). */
+.cab-tablet {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  transform: translate(-50%, -50%);
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  box-sizing: border-box;
+  border: 6px solid #15181b;
+  border-radius: 18px;
+  background: #222830;
+  box-shadow: var(--rh-shadow-small);
+}
+
+.cab-tablet[hidden] {
+  display: none;
+}
+
+.cab-tablet__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.cab-tablet__title {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 500 12px/1.2 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.cab-tablet__close {
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.cab-tablet__app {
+  margin: 0;
+  color: var(--rh-fg);
+  font: 600 16px/1.2 var(--rh-display);
+}
+
+.cab-tablet__goal,
+.cab-tablet__status {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 400 12.5px/1.3 var(--rh-text);
+  text-align: center;
+}
+
+.cab-tablet__status {
+  color: var(--rh-fg);
+  font-weight: 600;
+}
+
+.cab-tablet.is-won .cab-tablet__status {
+  color: #3ddc84;
+}
+
+.cab-tablet__cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+
+/* A card: its back a pattern, its face the icon (turned up). */
+.cab-tablet__card {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 3 / 4;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid #3a4550;
+  border-radius: 6px;
+  background: repeating-linear-gradient(45deg, #2f6dff 0 6px, #2a5fd8 6px 12px);
+  touch-action: manipulation;
+}
+
+.cab-tablet__card.is-up {
+  background: #f4f6f2;
+  border-color: #f4f6f2;
+}
+
+.cab-tablet__card.is-paired {
+  background: #c9ffe0;
+  border-color: #3ddc84;
+}
+
+.cab-tablet__face {
+  width: 60%;
+  height: 60%;
+  color: #1d2126;
+  opacity: 0;
+  --rh-icon-accent: #e8663d;
+}
+
+.cab-tablet__card.is-up .cab-tablet__face {
+  opacity: 1;
+}
+
+.cab-tablet__again[hidden] {
+  display: none;
+}
+
+/* A phone on its side: the sixteen cards in two rows of eight, so the tablet fits the screen's height. */
+@media (orientation: landscape) and (max-height: 600px) {
+  .cab-tablet {
+    width: min(580px, calc(100vw - 24px));
+  }
+
+  .cab-tablet__cards {
+    grid-template-columns: repeat(8, 1fr);
+  }
+
+  .cab-tablet__card {
+    aspect-ratio: 1;
+  }
+}

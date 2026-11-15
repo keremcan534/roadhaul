@@ -454,6 +454,27 @@ describe('MissionService', () => {
     expect(DEFAULT_GAME_CONFIG.missions.loadingSeconds).toBe(3);
   });
 
+  it('counts the way driven loaded and auto-drive\'s share of it, for its pay cut, and saves both', () => {
+    const context = setup();
+    const { driving, missions, events, completed } = context;
+    acceptAndLoad(context);
+
+    events.emit('AutoDriveChanged', { engaged: true, reason: null });
+    run(driving, missions, 3, 1);
+    events.emit('AutoDriveChanged', { engaged: false, reason: 'switchedOff' });
+    run(driving, missions, 3, 1);
+    const saved = missions.snapshot()!;
+
+    expect(saved.loadedMeters).toBeGreaterThan(saved.autoDriveMeters!);
+    expect(saved.autoDriveMeters).toBeGreaterThan(5);
+    parkIn(driving, missions.target!.depot.bay);
+    run(driving, missions, LOADING_SECONDS + 0.1);
+    // The base pay 1000: 15% for all of the way, in step for the share auto-drive drove.
+    const share = saved.autoDriveMeters! / saved.loadedMeters!;
+    expect(completed[0]!.reward.autoDriveDeduction).toBe(Math.round(150 * share));
+    expect(completed[0]!.reward.autoDriveDeduction).toBeGreaterThan(0);
+  });
+
   describe('a convoy contract', () => {
     const convoyContent = { missions: [missionFixture({ variant: 'convoy' })] };
 

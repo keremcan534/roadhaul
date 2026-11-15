@@ -16,6 +16,7 @@ import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
 import type { CompanyTruckOwner } from './traffic/CompanyTraffic';
+import type { AutoDriveEnd } from './vehicles/AutoDriveService';
 
 /** What earned a crate. */
 export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass';
@@ -330,6 +331,11 @@ export interface GameEvents {
   /** The truck was scrubbed clean at a truck wash (PlaceService): the day's tip paid. */
   TruckWashed: {
     readonly credits: Credits;
+  };
+  /** Auto-drive took the wheel (`reason` null) or gave it back, and why (AutoDriveService). */
+  AutoDriveChanged: {
+    readonly engaged: boolean;
+    readonly reason: AutoDriveEnd | null;
   };
   /** The player collected the warehouse's rent at the head office (RentService): `credits` paid in. */
   RentCollected: {

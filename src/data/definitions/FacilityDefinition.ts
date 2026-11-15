@@ -19,6 +19,8 @@ import type { Credits } from '../units';
  * - loadingTimeReduction: share taken off loading and unloading.
  * - rentPerHour: whole credits an hour in rent, piling up whether the
  *   player drives or not (RentService), collected at the head office.
+ * - autoDrive: 1 once the truck can drive itself along a contract's route
+ *   (AutoDriveService): research only, never a facility or for sale.
  */
 export const FACILITY_EFFECTS = [
   'repairDiscount',
@@ -33,6 +35,7 @@ export const FACILITY_EFFECTS = [
   'fuelUseReduction',
   'loadingTimeReduction',
   'rentPerHour',
+  'autoDrive',
 ] as const;
 export type FacilityEffect = (typeof FACILITY_EFFECTS)[number];
 
@@ -45,7 +48,7 @@ const DISCOUNTS: readonly FacilityEffect[] = [
   'loadingTimeReduction',
 ];
 /** Effects that count things (trucks, contracts): whole numbers. */
-const COUNTS: readonly FacilityEffect[] = ['garageSlots', 'extraContracts'];
+const COUNTS: readonly FacilityEffect[] = ['garageSlots', 'extraContracts', 'autoDrive'];
 /** Effects that are sums of credits: whole numbers. */
 const AMOUNTS: readonly FacilityEffect[] = ['rentPerHour'];
 /** The most a counting effect may add, and a bonus may be (+200 %), and an amount of credits. */

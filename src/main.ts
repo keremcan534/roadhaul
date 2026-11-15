@@ -147,6 +147,7 @@ import { TruckWashGame } from './ui/menus/TruckWashGame';
 import { YardJamDialog, type YardJamPuzzle } from './ui/menus/YardJamDialog';
 import { PlacePanel } from './ui/hud/PlacePanel';
 import { PlacesView } from './presentation/world/PlacesView';
+import { CabTablet } from './ui/menus/CabTablet';
 import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
@@ -434,6 +435,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
   const convoy = services.resolve(ServiceKeys.convoy);
   const places = services.resolve(ServiceKeys.places);
+  const autoDrive = services.resolve(ServiceKeys.autoDrive);
   const requestedRoad = requestedRoadEvent(query);
   if (requestedRoad === 'stranded') {
     roadEvents.sendStrandedDriver();
@@ -830,7 +832,17 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     },
   });
   touch.size = settings.controlSize;
-  const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals);
+  // Auto-drive's switch on the sign, and the cab tablet's while it drives (toggleAutoDrive and the tablet, below).
+  const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals, {
+    get available() {
+      return autoDrive.available;
+    },
+    get engaged() {
+      return autoDrive.engaged;
+    },
+    onToggle: () => toggleAutoDrive(),
+    onTablet: () => (tablet.isOpen ? tablet.close() : tablet.open()),
+  });
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
   // The region driven, and the others across the water where they lie in the one world, with the ferry crossings.
   const mapSketch = sketchWorld(driving.world, content.maps.all);
@@ -963,6 +975,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'mainMenu' && current === 'driving') {
       delete root.dataset.cityIncident; // A new company's: the last one's incident is gone (CityIncidentService).
+    }
+    if (current !== 'driving') {
+      autoDrive.disengage('switchedOff'); // Off the road: nobody drives.
     }
   });
   // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
@@ -1305,7 +1320,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   };
   /** The day's yard, dealt once for the day (the deal takes a moment on a slow phone). */
   let dailyYard: { readonly day: number; readonly puzzle: YardJamPuzzle } | null = null;
-  const openYardJam = (daily: boolean): void => {
+  /** A yard: the day's at a diner, or one for fun; the drive waits unless auto-drive drives on (`hold` false). */
+  const openYardJam = (daily: boolean, hold = true): void => {
     const day = places.puzzleDay;
     if (daily && dailyYard?.day !== day) {
       dailyYard = { day, puzzle: generateYardJam(day, { minMoves: config.places.puzzleMinMoves }) };
@@ -1314,7 +1330,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       daily && dailyYard !== null
         ? dailyYard.puzzle
         : generateYardJam(Math.floor(Math.random() * 2 ** 31), { minMoves: config.places.puzzleMinMoves });
-    holdForPlace();
+    if (hold) {
+      holdForPlace();
+    }
     yardJam.open(puzzle, {
       daily,
       onCleared: (moves) => {
@@ -1324,7 +1342,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         const paid = places.solvePuzzle(day, moves);
         return paid.ok ? strings.t('puzzle.reward', { credits: strings.money(paid.value.credits), xp: paid.value.xp }) : null;
       },
-      onAnother: () => openYardJam(false),
+      onAnother: () => openYardJam(false, hold),
       onClose: () => {
         yardJam.close();
         releaseForPlace();
@@ -1355,6 +1373,37 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       onPhoto: () => openPhoto(true),
     },
   );
+  // The cab's tablet, while auto-drive drives: Memory, and Yard Jam for fun (the drive goes on under it).
+  const tablet = new CabTablet(ui, strings, Math.random, {
+    onYardJam: () => openYardJam(false, false),
+    onClose: () => tablet.close(),
+  });
+  /** Auto-drive on or off (V, or its switch on the sign); a toast says why it will not. */
+  const toggleAutoDrive = (): void => {
+    if (autoDrive.engaged) {
+      autoDrive.disengage('switchedOff');
+      return;
+    }
+    const engaged = autoDrive.engage();
+    if (!engaged.ok) {
+      toasts.show(strings.t(`autodrive.refused.${engaged.error}`), 'warning');
+    }
+  };
+  events.on('AutoDriveChanged', ({ engaged, reason }) => {
+    root.dataset.autoDrive = engaged ? 'on' : 'off';
+    if (engaged) {
+      toasts.show(strings.t('autodrive.on'), 'info');
+      return;
+    }
+    // The wheel is the driver's again: the tablet and a yard played on it are put away.
+    tablet.close();
+    if (yardJam.isOpen && !pausedForPlace) {
+      yardJam.close();
+    }
+    if (reason !== null) {
+      toasts.show(strings.t(`autodrive.off.${reason}`), reason === 'takeover' || reason === 'switchedOff' ? 'info' : 'warning');
+    }
+  });
   events.on('PlaceFound', ({ placeId, credits, xp }) => {
     toasts.show(strings.t('toast.placeFound', { place: strings.t(`place.name.${placeId}`), credits: strings.money(credits), xp }), 'success');
   });
@@ -1537,6 +1586,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onHazards: hazards,
     onParkingBrake: parkingBrake,
     onEngineBrake: engineBrake,
+    onAutoDrive: () => {
+      if (onRoad() && !paused) {
+        toggleAutoDrive();
+      }
+    },
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
@@ -2463,10 +2517,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
   /**
    * Where the tutorial's hint would show now: in the panel, over the road, or
-   * nowhere (menus, pause, a result, or the rest area's counter in its place).
+   * nowhere (menus, pause, a result, the cab's tablet, or the rest area's counter in its place).
    */
   const hintPlace = (): TutorialPlace | null => {
-    if (!isDriving() || paused || result.isOpen) {
+    if (!isDriving() || paused || result.isOpen || tablet.isOpen) {
       return null;
     }
     if (hq.isOpen) {
@@ -3127,6 +3181,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         combineVehicleInputs(controlsInput, keyboard.state, touch.state);
         combineVehicleInputs(driverInput, controlsInput, tilt.state);
+        // Auto-drive's hands on the wheel (a firm touch of the driver's takes it back).
+        autoDrive.update(stepSeconds, driverInput);
         driving.step(stepSeconds, driverInput);
         turnSignals.update(stepSeconds, driving.vehicle);
         horn.update(stepSeconds);

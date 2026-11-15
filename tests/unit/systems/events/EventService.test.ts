@@ -52,6 +52,7 @@ function deliver(
     conditionBonus: 0,
     parkingBonus: 0,
     convoyBonus: 0,
+    autoDriveDeduction: 0,
     total,
     onTime,
     lateSeconds: onTime ? 0 : deliverySeconds - 600,

@@ -33,8 +33,14 @@ describe('applyConfigOverrides', () => {
     const debug = applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?debug'));
     const quiet = applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?debug&log=warn'));
 
-    expect(debug.debug).toEqual({ logLevel: 'debug', showPerfOverlay: true });
+    expect(debug.debug).toEqual({ logLevel: 'debug', showPerfOverlay: true, unlockAutoDrive: false });
     expect(quiet.debug.logLevel).toBe('warn');
+  });
+
+  it('unlocks auto-drive without its research with ?autodrive=1, and only then', () => {
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?autodrive=1')).debug.unlockAutoDrive).toBe(true);
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?autodrive=yes')).debug.unlockAutoDrive).toBe(false);
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?debug')).debug.unlockAutoDrive).toBe(false);
   });
 
   it('scales fuel use with a positive ?fuelScale and ignores anything else', () => {

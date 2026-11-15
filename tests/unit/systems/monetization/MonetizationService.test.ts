@@ -91,6 +91,7 @@ const reward = (total: number): MissionReward => ({
   conditionBonus: 0,
   parkingBonus: 0,
   convoyBonus: 0,
+  autoDriveDeduction: 0,
   total,
   onTime: true,
   lateSeconds: 0,

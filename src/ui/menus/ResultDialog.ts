@@ -99,6 +99,9 @@ export class ResultDialog {
     if (reward.convoyBonus > 0) {
       line(strings.t('result.convoyBonus'), strings.signedMoney(reward.convoyBonus), 'is-bonus');
     }
+    if (reward.autoDriveDeduction > 0) {
+      line(strings.t('result.autoDrive'), strings.signedMoney(-reward.autoDriveDeduction), 'is-penalty');
+    }
     line(strings.t('result.total'), strings.money(reward.total), 'is-total');
     line(strings.t('result.xp'), `+${strings.t('format.xp', { value: delivery.xp })}`, 'is-progress');
     line(strings.t('result.reputation'), `+${delivery.reputation}`, 'is-progress');

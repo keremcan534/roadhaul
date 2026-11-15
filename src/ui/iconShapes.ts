@@ -149,6 +149,7 @@ const FACILITY_ICONS: Readonly<Record<FacilityEffect, IconName>> = {
   fuelUseReduction: 'engine',
   loadingTimeReduction: 'express',
   rentPerHour: 'cargo',
+  autoDrive: 'steering',
 };
 
 /** The icon of a facility at the head office, by its effect. */

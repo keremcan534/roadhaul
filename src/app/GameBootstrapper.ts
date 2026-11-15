@@ -60,6 +60,7 @@ import { DamageService } from '../systems/vehicles/DamageService';
 import { FuelService } from '../systems/vehicles/FuelService';
 import { GarageService } from '../systems/vehicles/GarageService';
 import { UpgradeService } from '../systems/vehicles/UpgradeService';
+import { AutoDriveService } from '../systems/vehicles/AutoDriveService';
 import { ServiceKeys } from './ServiceKeys';
 
 export interface BootstrapOptions {
@@ -284,7 +285,7 @@ export class GameBootstrapper {
         ServiceKeys.convoy,
         new ConvoyService(driving, economy, config.convoy, () => convoyLuck.next(), events, logger.withCategory('Convoy')),
       );
-      container.register(
+      const navigation = container.register(
         ServiceKeys.navigation,
         new NavigationService(
           driving,
@@ -292,6 +293,21 @@ export class GameBootstrapper {
           config.traffic.speedLimitsKmh,
           config.navigation,
           logger.withCategory('Navigation'),
+        ),
+      );
+      // Auto-drive along the contract's route: earned in research (the `autoDrive` perk), never sold.
+      container.register(
+        ServiceKeys.autoDrive,
+        new AutoDriveService(
+          driving,
+          navigation,
+          traffic,
+          roadEvents,
+          perks,
+          config.traffic.speedLimitsKmh,
+          config.debug.unlockAutoDrive,
+          events,
+          logger.withCategory('AutoDrive'),
         ),
       );
       const damage = container.register(

@@ -1065,6 +1065,48 @@ html[data-camera='cabin'] .signal-button {
   color: #ffb3a8;
 }
 
+/* Auto-drive on the sign (the sign's only buttons, so they take taps): its switch, and the tablet's while it drives. */
+.mission-hud__auto {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 5px 0 0;
+}
+
+.mission-hud__auto[hidden],
+.mission-hud__auto-button[hidden] {
+  display: none;
+}
+
+.mission-hud__auto-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 1px solid rgb(244 246 242 / 55%);
+  border-radius: 15px;
+  background: rgb(0 0 0 / 18%);
+  color: var(--rh-sign-white, #f4f6f2);
+  font: 500 12.5px/1 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.mission-hud__auto-button .icon {
+  width: 16px;
+  height: 16px;
+  --rh-icon-accent: currentColor;
+}
+
+.mission-hud__auto-button.is-on {
+  border-color: #3ddc84;
+  background: rgb(61 220 132 / 22%);
+  color: #c9ffe0;
+}
+
 /* A convoy contract on the sign: how many of its trucks are with the truck; amber while one falls behind. */
 .mission-hud__convoy {
   display: flex;

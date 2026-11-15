@@ -135,6 +135,10 @@ export function validateSaveGameData(
     }
     validator.fraction(active['cargoDamage'], 'missions.active.cargoDamage');
     validator.check(active['failureReason'] === null, 'missions.active.failureReason', 'must be null');
+    for (const key of ['loadedMeters', 'autoDriveMeters']) {
+      const meters = active[key];
+      validator.check(meters === undefined || (isFiniteNumber(meters) && meters >= 0), `missions.active.${key}`, 'must be 0 or more');
+    }
     const lost = active['convoyTrucksLost'];
     validator.check(
       lost === undefined || (Number.isInteger(lost) && (lost as number) >= 0 && (lost as number) <= CONVOY_FOLLOW_GAPS.length),

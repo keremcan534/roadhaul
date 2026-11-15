@@ -72,7 +72,7 @@ test('researches a step of the research tree with the points deliveries earned',
   const tree = page.locator('.hq__section--research');
   await expect(tree.locator('[data-value="research-points"]')).toHaveText('Research points: 5');
   await expect(tree.locator('.research__branch')).toHaveCount(3);
-  await expect(tree.locator('.research-node')).toHaveCount(12);
+  await expect(tree.locator('.research-node')).toHaveCount(13); // Engineering's fifth: Autopilot.
   await expect(tree.locator('.research-node[data-state="available"]')).toHaveCount(3);
   const rates = tree.locator('.research-node[data-research-id="better_rates"]');
   await expect(rates.locator('.research-node__name')).toHaveText('Better Rates');

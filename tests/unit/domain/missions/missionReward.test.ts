@@ -23,6 +23,7 @@ describe('calculateMissionReward', () => {
     expect(calculateMissionReward(input())).toEqual({
       parkingBonus: 0,
       convoyBonus: 0,
+      autoDriveDeduction: 0,
       basePay: 1000,
       timeBonus: 200, // 10% + 20% × 0.5 time sensitivity
       latePenalty: 0,
@@ -39,6 +40,18 @@ describe('calculateMissionReward', () => {
     expect(parked.parkingBonus).toBe(50);
     expect(parked.total).toBe(plain.total + 50);
     expect(calculateMissionReward(input({ perfectParking: false, cargoRewardMultiplier: 1.3 })).parkingBonus).toBe(0);
+  });
+
+  it('takes up to 15% of the base pay for the way auto-drive drove, in step with its share', () => {
+    const plain = calculateMissionReward(input());
+    const all = calculateMissionReward(input({ autoDriveShare: 1 }));
+    const half = calculateMissionReward(input({ autoDriveShare: 0.5 }));
+
+    expect(all.autoDriveDeduction).toBe(150);
+    expect(all.total).toBe(plain.total - 150);
+    expect(half.autoDriveDeduction).toBe(75);
+    expect(calculateMissionReward(input({ autoDriveShare: 3 })).autoDriveDeduction).toBe(150);
+    expect(calculateMissionReward(input({ autoDriveShare: -1 })).autoDriveDeduction).toBe(0);
   });
 
   it('multiplies the base pay by the cargo multiplier, in whole credits', () => {

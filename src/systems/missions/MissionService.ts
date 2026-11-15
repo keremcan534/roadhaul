@@ -99,6 +99,11 @@ export class MissionService {
   /** Share of collision damage the truck's suspension keeps away from the cargo. */
   private cargoProtection: Fraction = 0;
   private readonly unsubscribeCollisions: Unsubscribe;
+  private readonly unsubscribeAutoDrive: Unsubscribe;
+  /** Auto-drive has the wheel (AutoDriveChanged): the meters it drives loaded are counted apart. */
+  private autoDriving = false;
+  /** The odometer when the loaded way was last counted; NaN to start again. */
+  private countedOdometer = Number.NaN;
 
   constructor(
     private readonly content: ContentCatalog,
@@ -118,6 +123,9 @@ export class MissionService {
     this.unsubscribeCollisions = events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) =>
       this.damageCargo(impactSpeedMetersPerSecond),
     );
+    this.unsubscribeAutoDrive = events.on('AutoDriveChanged', ({ engaged }) => {
+      this.autoDriving = engaged;
+    });
   }
 
   /** The accepted contract until it is completed or failed; then null again. */
@@ -196,6 +204,7 @@ export class MissionService {
    */
   restore(saved: ActiveMissionSaveData | null): void {
     this.holdingInBay = false; // A new drive: its truck allows reverse.
+    this.countedOdometer = Number.NaN; // Its odometer starts again.
     this.mission = null;
     this.definition = null;
     this.generated = false;
@@ -263,6 +272,7 @@ export class MissionService {
         return;
       case 'loaded':
         this.stepConvoy(mission, dt);
+        this.countLoadedWay(mission);
         mission.deliverySeconds += dt;
         if (Math.abs(this.driving.vehicle.speed) >= STOPPED_SPEED_METERS_PER_SECOND) {
           this.changeState(mission, 'delivering');
@@ -270,6 +280,7 @@ export class MissionService {
         return;
       case 'delivering':
         this.stepConvoy(mission, dt);
+        this.countLoadedWay(mission);
         mission.deliverySeconds += dt;
         if (this.standsInTargetBay(mission, dt)) {
           this.complete(mission, definition);
@@ -283,6 +294,7 @@ export class MissionService {
 
   dispose(): void {
     this.unsubscribeCollisions();
+    this.unsubscribeAutoDrive();
     this.mission = null;
     this.definition = null;
     this.currentTarget = null;
@@ -430,6 +442,7 @@ export class MissionService {
       damageTolerance: definition.damageTolerance,
       perfectParking: this.parkedPerfectly(),
       convoyTrucks: this.convoyTrail?.trucksWithConvoy ?? 0,
+      autoDriveShare: (mission.loadedMeters ?? 0) > 0 ? (mission.autoDriveMeters ?? 0) / mission.loadedMeters! : 0,
     });
     const xp = Math.round(deliveryXp(reward, definition.difficulty) * (1 + this.perks.perks.xpBonus));
     const reputation = deliveryReputation(reward, mission.cargoDamage, definition.damageTolerance);
@@ -473,6 +486,19 @@ export class MissionService {
     this.convoyTrail = new ConvoyTrail(vehicle.x, vehicle.z, mission.convoyTrucksLost ?? 0);
   }
 
+  /** The way driven loaded since the last step (the odometer's), and auto-drive's share of it. */
+  private countLoadedWay(mission: MissionInstance): void {
+    const odometer = this.driving.vehicle.odometerMeters;
+    const moved = Number.isNaN(this.countedOdometer) ? 0 : Math.max(0, odometer - this.countedOdometer);
+    this.countedOdometer = odometer;
+    if (moved > 0) {
+      mission.loadedMeters = (mission.loadedMeters ?? 0) + moved;
+      if (this.autoDriving) {
+        mission.autoDriveMeters = (mission.autoDriveMeters ?? 0) + moved;
+      }
+    }
+  }
+
   /** The convoy follows on; one left too far behind is lost (ConvoyTruckLost), and stays lost in the save. */
   private stepConvoy(mission: MissionInstance, dt: number): void {
     if (this.convoyTrail === null) {
@@ -493,6 +519,7 @@ export class MissionService {
   private clear(): void {
     this.holdInBay(false);
     this.convoyTrail = null;
+    this.countedOdometer = Number.NaN;
     this.mission = null;
     this.definition = null;
     this.generated = false;

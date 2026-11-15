@@ -1,9 +1,10 @@
 import type { ResearchDefinition } from '../definitions/ResearchDefinition';
 
 /**
- * The research tree: three branches of four tiers. Logistics loads faster
- * and brings more contracts, engineering keeps the cargo whole and saves
- * diesel, business pays more and grows the company. A tier costs the same in
+ * The research tree: three branches of four tiers, and engineering's fifth.
+ * Logistics loads faster and brings more contracts, engineering keeps the
+ * cargo whole, saves diesel and at last drives itself (auto-drive), business
+ * pays more and grows the company. A tier costs the same in
  * every branch; the third needs company level 4, the fourth level 6. A
  * delivery earns a research point, a perfect one two (GameConfig.research),
  * so the first steps come in the first hour and the last in the late game.
@@ -53,6 +54,8 @@ export const RESEARCH: readonly ResearchDefinition[] = [
     cost: 15000,
     requiredCompanyLevel: 6,
   },
+  // Auto-drive: earned here, never sold (MonetizationService sells nothing that drives for the player).
+  { id: 'autopilot', branch: 'engineering', tier: 5, effect: 'autoDrive', value: 1, points: 18, cost: 18000, requiredCompanyLevel: 6 },
   { id: 'better_rates', branch: 'business', tier: 1, effect: 'deliveryPayBonus', value: 0.03, points: 3, cost: 2000 },
   { id: 'training_program', branch: 'business', tier: 2, effect: 'xpBonus', value: 0.05, points: 6, cost: 5000 },
   {
