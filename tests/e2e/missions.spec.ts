@@ -245,6 +245,9 @@ test('pausing stops the truck, and Escape resumes', async ({ page }) => {
   await page.keyboard.press('Escape');
   await page.keyboard.up('ArrowUp');
   await expect(page.locator('.pause-menu')).toBeVisible();
+  // The speed shown is refreshed ten times a second while it changes (TouchControls.showTelemetry): the speed the
+  // truck stopped at can show a frame after the pause menu, drawn in software a good part of a second later.
+  await page.waitForTimeout(1_000);
   const frozen = await page.locator('.dashboard__speed').textContent();
   await page.waitForTimeout(500);
   await expect(page.locator('.dashboard__speed')).toHaveText(frozen!);
