@@ -61,6 +61,11 @@ export class TimeOfDayService {
   private sunElevation = 90;
   private moonElevation = -90;
   private phaseValue = 0;
+  /** The moon's phase held (holdMoonPhase), or NaN for the calendar's. */
+  private heldPhase = Number.NaN;
+  /** The phase the moon is drawn to (drawMoonToPhase), and how far: an eclipse's. */
+  private drawnPhase = 0.5;
+  private drawnWeight = 0;
   private starTurnValue = 0;
   private readonly scratch: SkyDirection = { x: 0, y: 0, z: 0 };
 
@@ -120,6 +125,24 @@ export class TimeOfDayService {
   /** How far through its phases the moon is: 0 new, 0.5 full. */
   get moonPhase(): number {
     return this.phaseValue;
+  }
+
+  /**
+   * Holds the moon at `phase` (0 new, 0.5 full) whatever the calendar says, or lets it follow the calendar
+   * again (null): for a look at an eclipse (`?sky=solar|lunar`), which comes at a new or a full moon.
+   */
+  holdMoonPhase(phase: number | null): void {
+    this.heldPhase = phase === null || !Number.isFinite(phase) ? Number.NaN : ((phase % 1) + 1) % 1;
+    this.place();
+  }
+
+  /**
+   * Draws the moon `weight` (0..1) of the way from the calendar's phase to `phase`, the shorter way round,
+   * from the next update on: an eclipse of the moon brings it exactly full. Allocation-free.
+   */
+  drawMoonToPhase(phase: number, weight: number): void {
+    this.drawnPhase = phase;
+    this.drawnWeight = Math.min(1, Math.max(0, weight));
   }
 
   /** How bright the moon is: its lit share, and how far it is up. */
@@ -213,7 +236,7 @@ export class TimeOfDayService {
     skyDirection(sunDeclination(day), sunHour, this.latitude, this.sun);
     this.sunElevation = elevationOf(this.sun);
     this.rising = Math.sin(sunHour) < 0;
-    this.phaseValue = moonPhase(now);
+    this.phaseValue = Number.isNaN(this.heldPhase) ? drawnTo(moonPhase(now), this.drawnPhase, this.drawnWeight) : this.heldPhase;
     skyDirection(moonDeclination(day, this.phaseValue), moonHourAngle(sunHour, this.phaseValue), this.latitude, this.moon);
     this.moonElevation = elevationOf(this.moon);
     this.starTurnValue = starTurn(this.minutesValue, day, this.config.solarNoonHours);
@@ -247,6 +270,15 @@ export class TimeOfDayService {
     }
     return (far + near) / 2;
   }
+}
+
+/** `phase` drawn `weight` of the way to `toward`, the shorter way round the month, in 0..1. */
+function drawnTo(phase: number, toward: number, weight: number): number {
+  if (weight <= 0) {
+    return phase;
+  }
+  const difference = ((((toward - phase + 0.5) % 1) + 1) % 1) - 0.5;
+  return (((phase + difference * weight) % 1) + 1) % 1;
 }
 
 function elevationOf(direction: SkyDirection): number {

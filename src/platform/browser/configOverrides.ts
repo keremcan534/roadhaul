@@ -59,12 +59,14 @@ export function requestedMist(query: QueryParameters): number | null {
 
 /**
  * `?sky=aurora` brings the northern lights out every night, `?sky=meteors`
- * a shooting star every few seconds, for a look at them. Null when the URL
- * does not say, or says something else.
+ * a shooting star every few seconds, `?sky=solar` an eclipse of the sun
+ * and `?sky=lunar` one of the full moon every day, its middle at the
+ * clock's time as the game starts (`?time=` holds it there), for a look at
+ * them. Null when the URL does not say, or says something else.
  */
-export function requestedSkyWonder(query: QueryParameters): 'aurora' | 'meteors' | null {
+export function requestedSkyWonder(query: QueryParameters): 'aurora' | 'meteors' | 'solar' | 'lunar' | null {
   const text = query.get('sky')?.trim() ?? '';
-  return text === 'aurora' || text === 'meteors' ? text : null;
+  return text === 'aurora' || text === 'meteors' || text === 'solar' || text === 'lunar' ? text : null;
 }
 
 /**

@@ -19,6 +19,7 @@ import { bayParkingPose } from './domain/missions/loadingBay';
 import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrailer';
 import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
+import { eclipseMoonlight, eclipseSky } from './domain/sky/eclipses';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { pastFirstDelivery } from './domain/tutorial/tutorialSteps';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
@@ -202,6 +203,8 @@ const PANEL_STANDSTILL_SPEED = 0.5;
 /** The northern lights and a rainbow count as seen once they show this strongly on the sky (0..1). */
 const AURORA_SEEN = 0.35;
 const RAINBOW_SEEN = 0.45;
+/** An eclipse counts as seen once its totality shows this well (EnvironmentView.eclipseShown). */
+const ECLIPSE_SEEN = 0.4;
 /**
  * Drawn in software (RenderHost.softwareRendering): the shadow map at most
  * this size. The plainer world (drawn in software, or on the low preset by an
@@ -412,6 +415,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   /** The sky's wonders brought out for a look (`?sky=`). */
   const shownWonder = requestedSkyWonder(query);
   skyWonders.forceAurora(shownWonder === 'aurora');
+  // An eclipse every day for a look (`?sky=solar|lunar`), its middle at the clock's time (`?time=` holds it at
+  // totality), with the moon new or full as it must be for one.
+  if (shownWonder === 'solar' || shownWonder === 'lunar') {
+    skyWonders.forceEclipse(shownWonder, timeOfDay.minutes);
+    timeOfDay.holdMoonPhase(shownWonder === 'solar' ? 0 : 0.5);
+  }
   /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
   const clearDay = content.weather.get(config.weather.clearWeatherId).look;
   const weatherLook = createSkyLook();
@@ -3307,10 +3316,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           timeOfDay.nightLook.look,
           timeOfDay.weights,
           timeOfDay.sunUp,
-          timeOfDay.moonlit,
+          // In an eclipse of the moon the earth's shadow takes its light.
+          timeOfDay.moonlit * eclipseMoonlight(skyWonders.eclipse),
           weatherLook,
           skyLook,
         );
+        // In an eclipse of the sun the day darkens, to a deep twilight with the lamps lit at totality.
+        eclipseSky(skyLook, skyWonders.eclipse);
         const lamps = skyLook.lamps;
         // The roads stay wet a while after the rain: they shine, and a low sun shows a rainbow in the drops still about.
         const wetness = keptWetness ?? weather.wetness;
@@ -3450,6 +3462,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         environment.setMist(mist);
         showMist(mist);
         environment.setAurora(skyWonders.aurora);
+        environment.setEclipse(skyWonders.eclipse);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
@@ -3459,6 +3472,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         skyWonders.observe('aurora', environment.auroraShown > AURORA_SEEN, watchingSky);
         skyWonders.observe('rainbow', environment.rainbowShown > RAINBOW_SEEN, watchingSky);
         skyWonders.observe('meteor', shootingStars.streaking, watchingSky);
+        const eclipseKind = skyWonders.eclipse.kind;
+        skyWonders.observe('solarEclipse', eclipseKind === 'solar' && environment.eclipseShown > ECLIPSE_SEEN, watchingSky);
+        skyWonders.observe('lunarEclipse', eclipseKind === 'lunar' && environment.eclipseShown > ECLIPSE_SEEN, watchingSky);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
         // What lies far off in the haze is not drawn, nor whole tiles out of view (but where the sun's shadow map

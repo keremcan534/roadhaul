@@ -171,7 +171,7 @@ function weigh(a: number, wa: number, b: number, wb: number, c: number, wc: numb
 }
 
 /** Two 0xRRGGBB colours mixed channel by channel. */
-function mixColor(from: number, to: number, t: number): number {
+export function mixColor(from: number, to: number, t: number): number {
   return pack(
     mix((from >> 16) & 0xff, (to >> 16) & 0xff, t),
     mix((from >> 8) & 0xff, (to >> 8) & 0xff, t),

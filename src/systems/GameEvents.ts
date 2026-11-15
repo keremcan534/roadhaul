@@ -10,6 +10,7 @@ import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
+import type { EclipseKind } from '../domain/sky/eclipses';
 import type { SkyWonder } from '../domain/sky/skyWonders';
 import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
@@ -249,9 +250,14 @@ export interface GameEvents {
     readonly credits: Credits;
     readonly crate: CrateTier;
   };
-  /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow. */
+  /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow, an eclipse. */
   SkyWonderSighted: {
     readonly kind: SkyWonder;
+  };
+  /** An eclipse has begun on the sky (SkyWonderService): of the sun or the moon; totality comes at this minute of the game's clock. */
+  EclipseBegan: {
+    readonly kind: EclipseKind;
+    readonly totalityMinutes: number;
   };
   /** XP or reputation changed. */
   CompanyProgressed: {

@@ -20,10 +20,12 @@ import {
   SphereGeometry,
   Vector2,
   Vector3,
+  Vector4,
   type Scene,
 } from 'three';
 import { clamp, degreesToRadians, smoothstep } from '../../core/math/scalar';
 import { SeededRandom } from '../../core/random/SeededRandom';
+import { eclipseDaylight, LUNAR_PATH_MISS, MOON_OVER_SUN, PENUMBRA_RADIUS, UMBRA_RADIUS, type EclipseState } from '../../domain/sky/eclipses';
 import type { SkyLook } from '../../domain/sky/skyLook';
 import type { SkyDirection } from '../../domain/sky/solar';
 import { createColorGrade, type ColorGrade } from '../PostProcessing';
@@ -286,6 +288,59 @@ const AURORA = /* glsl */ `
   }
 `;
 /**
+ * An eclipse of the sun (setEclipse): while one is under way the sun's disc
+ * is drawn sharp, ECLIPSE_SUN_RADIUS wide (a sine: 2.4°), as bright as
+ * ever however little of it shows, and the moon's disc, MOON_OVER_SUN as
+ * wide, hides it from where it stands on its path (tilted ECLIPSE_PATH_TILT
+ * off the sun's way east). At totality the corona shines round the moon:
+ * pearly white, its streamers reaching out unevenly, a thin pink rim (the
+ * chromosphere) at the moon's edge. The moon itself only hides the sun:
+ * the sky's light before it stays. Costs nothing without one (a branch).
+ */
+const ECLIPSE_SUN_RADIUS = Math.sin(degreesToRadians(2.4));
+const ECLIPSE_MOON_RADIUS = Math.sin(degreesToRadians(2.4) * MOON_OVER_SUN);
+const ECLIPSE_PATH_TILT = degreesToRadians(25);
+/** The sun's disc is drawn sharp once the moon hides this share of it, soft before (as without an eclipse). */
+const ECLIPSE_SHARP_COVER = 0.06;
+/** The eclipsed sun's disc keeps its brightness however dark the day gets, up to this many times its light. */
+const ECLIPSE_MAX_BOOST = 40;
+const ECLIPSE = /* glsl */ `
+  uniform vec4 eclipseMoon;
+  uniform vec3 eclipseSun;
+  float eclipsedDisc( float disc, vec3 direction, float toSun ) {
+    float fromSun = length( cross( direction, sunDirection ) );
+    float sharp = ( 1.0 - smoothstep( ${(ECLIPSE_SUN_RADIUS - 0.0009).toFixed(5)}, ${(ECLIPSE_SUN_RADIUS + 0.0009).toFixed(5)}, fromSun ) )
+      * 3.0 * step( 0.0, toSun ) * smoothstep( -0.01, 0.01, sunDirection.y );
+    float fromMoon = length( cross( direction, eclipseMoon.xyz ) );
+    float hidden = ( 1.0 - smoothstep( eclipseMoon.w - 0.0009, eclipseMoon.w + 0.0009, fromMoon ) )
+      * step( 0.0, dot( direction, eclipseMoon.xyz ) );
+    return mix( disc, sharp, eclipseSun.x ) * ( 1.0 - hidden ) * eclipseSun.y;
+  }
+  vec3 coronaOver( vec3 sky, vec3 direction ) {
+    vec3 moon = eclipseMoon.xyz;
+    if ( dot( direction, moon ) <= 0.0 ) return sky;
+    float r = length( cross( direction, moon ) ) / eclipseMoon.w;
+    if ( r > 8.0 ) return sky;
+    vec3 across = normalize( cross( moon, vec3( 0.0, 1.0, 0.0 ) ) );
+    vec3 up = cross( across, moon );
+    float around = atan( dot( direction, up ), dot( direction, across ) );
+    float streamers = 0.55 + 0.25 * sin( around * 2.0 + 0.6 ) + 0.2 * sin( around * 5.0 + 1.9 ) * sin( around * 3.0 );
+    float outside = max( r - 1.0, 0.0 );
+    float corona = step( 1.0, r ) * exp( -outside * ( 6.0 - 3.5 * streamers ) ) * ( 0.45 + 0.55 * streamers );
+    float rim = smoothstep( 0.99, 1.01, r ) * ( 1.0 - smoothstep( 1.01, 1.07, r ) );
+    // Against the corona the moon's face shows black.
+    sky *= 1.0 - 0.7 * ( 1.0 - smoothstep( 0.99, 1.0, r ) ) * eclipseSun.z;
+    return sky + ( vec3( 0.93, 0.95, 1.0 ) * corona * 1.4 + vec3( 1.0, 0.32, 0.42 ) * rim * 1.1 ) * eclipseSun.z;
+  }
+`;
+/**
+ * An eclipse of the moon (setEclipse): the earth's full shadow over the
+ * moon's face (its middle and radius in the face's radii, `moonShadow`),
+ * a soft edge, copper red inside, darkest deep in it; the half shadow
+ * round it greys the face a little.
+ */
+const LUNAR_COPPER = '0.78, 0.33, 0.16';
+/**
  * Lightning's flash (setLightning, 0..1) lights up the sky and the haze in
  * this bluish white, the clouds by this much of their full brightness, and
  * the world by this much of a clear day's light from the sky.
@@ -434,6 +489,12 @@ export class EnvironmentView implements ShadowReach {
     /** How strongly the northern lights show, 0..1, and their time (AURORA). */
     readonly aurora: { value: number };
     readonly auroraTime: { value: number };
+    /**
+     * An eclipse of the sun (ECLIPSE): toward the moon's middle and its radius (a sine; 0 for none), and the
+     * sun's disc's sharpness, the brightness it keeps and the corona's strength.
+     */
+    readonly eclipseMoon: { value: Vector4 };
+    readonly eclipseSun: { value: Vector3 };
   };
   /**
    * The morning mist over the land (setMist): its uniforms, shared by the
@@ -454,6 +515,14 @@ export class EnvironmentView implements ShadowReach {
   private wetness = 0;
   /** How strongly the northern lights are out (setAurora), before the clouds and the sky's light. */
   private auroraOut = 0;
+  /** The eclipse under way (setEclipse), as it stands; and how well it shows (eclipseShown). */
+  private readonly eclipse: EclipseState = { kind: null, offset: 0, cover: 0, penumbra: 0, totality: 0, fullMoon: 0 };
+  private eclipseVisible = 0;
+  private readonly eclipseEast = new Vector3();
+  private readonly eclipseAcross = new Vector3();
+  private readonly eclipseTo = new Vector3();
+  /** The earth's shadow on the moon's face (an eclipse of the moon): its middle, its radius and whether it is there. */
+  private readonly moonShadow = { value: new Vector4(0, 0, UMBRA_RADIUS, 0) };
   /** How bright lightning flashes now (setLightning), and its light in the sky as it adds to the sky's colours. */
   private lightning = 0;
   private readonly lightningSky = new Color();
@@ -544,6 +613,8 @@ export class EnvironmentView implements ShadowReach {
       rainbow: { value: 0 },
       aurora: { value: 0 },
       auroraTime: { value: 0 },
+      eclipseMoon: { value: new Vector4(0, 1, 0, 0) },
+      eclipseSun: { value: new Vector3(0, 1, 0) },
     };
     this.cloudGeometry = this.track(new InstancedBufferGeometry());
     this.clouds = this.createClouds(this.cloudGeometry);
@@ -652,6 +723,7 @@ export class EnvironmentView implements ShadowReach {
       (1 - smoothstep(RAINBOW_LOW_SUN, RAINBOW_HIGHEST_SUN, elevation));
     // The northern lights, where the sky is dark and clear enough for the stars.
     uniforms.aurora.value = this.auroraOut * smoothstep(0.25, 0.75, look.stars) * (1 - look.rain);
+    this.showEclipse(look, sky);
     // The sun glares while it is up and bright: less through haze and cloud, not at all in the rain.
     this.towardSun.set(sun.x, sun.y, sun.z).normalize();
     this.glare = Math.min(1, look.sunlight) * smoothstep(-0.01, 0.04, sun.y) * (1 - look.rain) * (1 - 0.7 * look.cloudCover);
@@ -762,6 +834,21 @@ export class EnvironmentView implements ShadowReach {
   }
 
   /**
+   * The eclipse under way (SkyWonderService.eclipse, its kind null for
+   * none): the moon's disc over the sun's and the corona round it, or the
+   * earth's shadow on the moon. Takes effect at the next applySky(); the
+   * day's darkening is the sky's look's (eclipseSky).
+   */
+  setEclipse(eclipse: Readonly<EclipseState>): void {
+    const shown = this.eclipse;
+    shown.kind = eclipse.kind;
+    shown.offset = eclipse.offset;
+    shown.cover = eclipse.cover;
+    shown.penumbra = eclipse.penumbra;
+    shown.totality = eclipse.totality;
+  }
+
+  /**
    * How thick the morning mist lies, 0..1 (morningMist): over the land, the
    * sky's horizon and the hills, and the sun's shafts through it. Takes
    * effect at the next applySky().
@@ -798,6 +885,14 @@ export class EnvironmentView implements ShadowReach {
   /** How strongly the northern lights show on the sky now, 0..1. */
   get auroraShown(): number {
     return this.skyUniforms.aurora.value;
+  }
+
+  /**
+   * How well an eclipse's totality shows now, 0..1: the sun's corona where the sun is up and the sky clear
+   * enough, the copper moon where the moon is up and shows. 0 without one.
+   */
+  get eclipseShown(): number {
+    return this.eclipseVisible;
   }
 
   /** How strongly a rainbow shows on the sky now, 0..1. */
@@ -912,6 +1007,7 @@ export class EnvironmentView implements ShadowReach {
           ${TOWNS_GLOW}
           ${RAINBOW}
           ${AURORA}
+          ${ECLIPSE}
           ${MIST_GLSL}
           varying vec3 vDirection;
           void main() {
@@ -922,7 +1018,14 @@ export class EnvironmentView implements ShadowReach {
             float toSun = max(dot(direction, sunDirection), 0.0);
             // The disc only above the horizon; the halo and the glow stay a while after sunset.
             float disc = pow(toSun, 900.0) * 3.0 * smoothstep(-0.01, 0.01, sunDirection.y);
+            // In an eclipse the moon hides the sun's disc; at totality its corona shines round it.
+            if (eclipseMoon.w > 0.0) {
+              disc = eclipsedDisc(disc, direction, toSun);
+            }
             sky += sunColor * (disc + pow(toSun, 24.0) * (0.18 + 0.4 * sunLow));
+            if (eclipseSun.z > 0.0) {
+              sky = coronaOver(sky, direction);
+            }
             // A low sun sets the sky along the horizon aglow on its side.
             vec2 bearing = normalize(direction.xz + vec2(1e-5));
             vec2 sunBearing = normalize(sunDirection.xz + vec2(1e-5));
@@ -1210,19 +1313,70 @@ export class EnvironmentView implements ShadowReach {
    */
   private showMoonPhase(material: MeshBasicMaterial): void {
     const moonLit = this.moonLit;
+    const moonShadow = this.moonShadow;
     material.onBeforeCompile = (shader) => {
       shader.uniforms['moonLit'] = moonLit;
+      shader.uniforms['moonShadow'] = moonShadow;
       shader.fragmentShader = shader.fragmentShader
-        .replace('#include <common>', '#include <common>\nuniform vec3 moonLit;')
+        .replace('#include <common>', '#include <common>\nuniform vec3 moonLit;\nuniform vec4 moonShadow;')
         .replace(
           '#include <map_fragment>',
           `#include <map_fragment>
           vec2 face = vMapUv * 2.0 - 1.0;
           vec3 ball = vec3(face, sqrt(max(1.0 - dot(face, face), 0.0)));
-          diffuseColor.rgb *= mix(0.06, 1.0, smoothstep(-0.06, 0.12, dot(ball, moonLit)));`,
+          diffuseColor.rgb *= mix(0.06, 1.0, smoothstep(-0.06, 0.12, dot(ball, moonLit)));
+          if (moonShadow.w > 0.0) {
+            float fromShadow = length(face - moonShadow.xy);
+            float umbra = (1.0 - smoothstep(moonShadow.z - 0.1, moonShadow.z + 0.1, fromShadow)) * moonShadow.w;
+            float halfShadow = (1.0 - smoothstep(moonShadow.z, ${PENUMBRA_RADIUS.toFixed(2)}, fromShadow)) * moonShadow.w;
+            float deep = 1.0 - smoothstep(0.0, moonShadow.z, fromShadow);
+            vec3 copper = vec3(${LUNAR_COPPER}) * mix(0.75, 0.32, deep);
+            diffuseColor.rgb *= mix(vec3(1.0 - 0.45 * halfShadow), copper, umbra);
+          }`,
         );
     };
     material.customProgramCacheKey = () => 'moon-phase';
+  }
+
+  /**
+   * The eclipse's uniforms for the sky as it stands (applySky): the moon's
+   * disc on its path over the sun's, rotated the offset off the sun along
+   * the path, the disc's sharpness and brightness and the corona; or the
+   * earth's shadow on the moon's face. Allocation-free.
+   */
+  private showEclipse(look: Readonly<SkyLook>, sky: SkyPlacement): void {
+    const eclipse = this.eclipse;
+    const moon = this.skyUniforms.eclipseMoon.value;
+    const sun = this.skyUniforms.eclipseSun.value;
+    this.moonShadow.value.w = 0;
+    moon.w = 0;
+    sun.set(0, 1, 0);
+    this.eclipseVisible = 0;
+    if (eclipse.kind === 'solar') {
+      const toSun = this.eclipseTo.set(sky.sun.x, sky.sun.y, sky.sun.z).normalize();
+      // The sun's way east across the sky there, tilted: the moon comes in from the west and leaves to the east.
+      const east = this.eclipseEast.set(1, 0, 0).addScaledVector(toSun, -toSun.x);
+      if (east.lengthSq() < 1e-6) {
+        east.set(0, 0, 1).addScaledVector(toSun, -toSun.z);
+      }
+      east.normalize();
+      const across = this.eclipseAcross.crossVectors(east, toSun);
+      across.multiplyScalar(Math.sin(ECLIPSE_PATH_TILT)).addScaledVector(east, Math.cos(ECLIPSE_PATH_TILT)).normalize();
+      const angle = eclipse.offset * Math.asin(ECLIPSE_SUN_RADIUS);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      moon.set(toSun.x * cos + across.x * sin, toSun.y * cos + across.y * sin, toSun.z * cos + across.z * sin, ECLIPSE_MOON_RADIUS);
+      this.eclipseVisible = (1 - look.rain) * (1 - 0.7 * look.cloudCover) * smoothstep(0, 0.05, sky.sun.y);
+      sun.set(
+        smoothstep(0, ECLIPSE_SHARP_COVER, eclipse.cover),
+        Math.min(ECLIPSE_MAX_BOOST, 1 / Math.max(eclipseDaylight(eclipse.cover), 1e-3)),
+        eclipse.totality * this.eclipseVisible,
+      );
+      this.eclipseVisible *= eclipse.totality;
+    } else if (eclipse.kind === 'lunar') {
+      this.moonShadow.value.set(eclipse.offset, LUNAR_PATH_MISS, UMBRA_RADIUS, 1);
+      this.eclipseVisible = sky.moon.y > MOON_SHOWS ? look.moon * eclipse.totality : 0;
+    }
   }
 
   /**

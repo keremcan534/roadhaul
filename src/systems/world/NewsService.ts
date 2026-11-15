@@ -1,6 +1,7 @@
 import type { EventBus, Unsubscribe } from '../../core/events/EventBus';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
+import type { EclipseOfDay } from '../../domain/sky/eclipses';
 import type { GameEvents } from '../GameEvents';
 
 /** The most headlines kept: the oldest goes as a new one comes. */
@@ -17,7 +18,7 @@ export interface NewsItem {
   readonly key: string;
   readonly cityId: string | null;
   readonly rivalId: string | null;
-  /** A level or a count it tells of; 0 for none. */
+  /** A level or a count it tells of (for an eclipse, the minute of the game's clock its totality begins); 0 for none. */
   readonly count: number;
   /** The game clock's minute of the day it came at, 0 to 1439. */
   readonly minuteOfDay: number;
@@ -29,6 +30,12 @@ export interface NewsItem {
 export interface NewsClock {
   /** Minutes after midnight, 0 to under 1440. */
   readonly minutes: number;
+}
+
+/** The eclipses coming (SkyWonderService), for the morning paper. */
+export interface NewsEclipses {
+  /** The eclipse on the calendar's day `daysAhead` from today (0 today, 1 tomorrow), or null. */
+  eclipseOn(daysAhead: number): EclipseOfDay | null;
 }
 
 /**
@@ -56,6 +63,8 @@ export class NewsService {
     /** Uniform in [0, 1): a seeded generator in tests. */
     private readonly random: () => number,
     private readonly events: EventBus<GameEvents>,
+    /** The eclipses coming, for the morning paper; none without. */
+    private readonly eclipses: NewsEclipses | null = null,
   ) {
     this.unsubscribe = [
       // A company started or continued from the main menu: the last one's news goes, a morning paper comes.
@@ -110,6 +119,7 @@ export class NewsService {
           this.add('news.aurora', {});
         }
       }),
+      events.on('EclipseBegan', ({ kind, totalityMinutes }) => this.add(`news.eclipse.${kind}`, { count: totalityMinutes, breaking: true })),
     ];
   }
 
@@ -143,11 +153,32 @@ export class NewsService {
   }
 
   private morningPaper(older: boolean): void {
+    // An eclipse today, or tomorrow, with when its totality comes: on top of the paper (pushed first under what
+    // is there, or added last over it).
+    if (older) {
+      this.eclipseNews(true);
+    }
     const cities = this.content.cities.all;
     for (let i = 0; i < MORNING_HEADLINES; i++) {
       const headline = 1 + Math.min(FLAVOR_HEADLINES - 1, Math.floor(this.random() * FLAVOR_HEADLINES));
       const city = cities[Math.min(cities.length - 1, Math.floor(this.random() * cities.length))];
       this.add(`news.flavor.${headline}`, { cityId: city?.id ?? null, older });
+    }
+    if (!older) {
+      this.eclipseNews(false);
+    }
+  }
+
+  /** Today's eclipse or else tomorrow's, if any, in the paper. */
+  private eclipseNews(older: boolean): void {
+    const today = this.eclipses?.eclipseOn(0) ?? null;
+    if (today !== null) {
+      this.add(`news.eclipseToday.${today.kind}`, { count: today.totalityMinutes, older });
+      return;
+    }
+    const tomorrow = this.eclipses?.eclipseOn(1) ?? null;
+    if (tomorrow !== null) {
+      this.add(`news.eclipseTomorrow.${tomorrow.kind}`, { count: tomorrow.totalityMinutes, older });
     }
   }
 

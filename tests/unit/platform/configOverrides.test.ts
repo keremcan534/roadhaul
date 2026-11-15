@@ -139,9 +139,11 @@ describe('requestedCityIncident', () => {
 });
 
 describe('requestedSkyWonder', () => {
-  it('brings out the northern lights or the shooting stars the URL names, and nothing else', () => {
+  it('brings out the northern lights, the shooting stars or an eclipse the URL names, and nothing else', () => {
     expect(requestedSkyWonder(query('?sky=aurora'))).toBe('aurora');
     expect(requestedSkyWonder(query('?sky=meteors'))).toBe('meteors');
+    expect(requestedSkyWonder(query('?sky=solar'))).toBe('solar');
+    expect(requestedSkyWonder(query('?sky=lunar'))).toBe('lunar');
     for (const search of ['', '?sky=', '?sky=rainbow', '?sky=1']) {
       expect(requestedSkyWonder(query(search)), search).toBeNull();
     }

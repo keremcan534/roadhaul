@@ -309,6 +309,26 @@ export interface GameConfig {
     readonly auroraChance: Readonly<Record<Season, Fraction>>;
     /** A shooting star counts as a sighting at most once in this many seconds of play (they fall often at night). */
     readonly meteorCountSeconds: number;
+    /**
+     * The eclipses (domain/sky/eclipses): on the calendar's days of the new and the full moons, some of them,
+     * at an hour of the game's clock; their phases short, so one is seen through in a few minutes.
+     */
+    readonly eclipses: {
+      /** The share of the new moons with an eclipse of the sun on their day… */
+      readonly solarChance: Fraction;
+      /** …and of the full moons with one of the moon. */
+      readonly lunarChance: Fraction;
+      /** Game minutes from the moon's first touch of the sun to totality, and from its end to the last touch. */
+      readonly solarPartialMinutes: number;
+      /** Game minutes of the sun's totality. */
+      readonly solarTotalMinutes: number;
+      /** Game minutes of the earth's half shadow dimming the moon before its full shadow touches it, and after. */
+      readonly lunarPenumbralMinutes: number;
+      /** Game minutes from the full shadow's first touch to totality, and from its end to its last. */
+      readonly lunarPartialMinutes: number;
+      /** Game minutes of the moon's totality. */
+      readonly lunarTotalMinutes: number;
+    };
   };
   /**
    * The region's rare happenings (CityIncidentService): one at a time, near the truck while it drives, a few
@@ -795,6 +815,16 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   skyWonders: {
     auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
     meteorCountSeconds: 300,
+    // About one of each a month; at 20 game seconds a second, the sun's lasts under six minutes, the moon's ten.
+    eclipses: {
+      solarChance: 0.5,
+      lunarChance: 0.5,
+      solarPartialMinutes: 50,
+      solarTotalMinutes: 12,
+      lunarPenumbralMinutes: 30,
+      lunarPartialMinutes: 50,
+      lunarTotalMinutes: 40,
+    },
   },
   research: {
     pointsPerDelivery: 1,
@@ -1274,6 +1304,24 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
   }
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
+  const eclipses = skyWonders.eclipses;
+  validator.fraction(eclipses.solarChance, 'skyWonders.eclipses.solarChance');
+  validator.fraction(eclipses.lunarChance, 'skyWonders.eclipses.lunarChance');
+  for (const key of [
+    'solarPartialMinutes',
+    'solarTotalMinutes',
+    'lunarPenumbralMinutes',
+    'lunarPartialMinutes',
+    'lunarTotalMinutes',
+  ] as const) {
+    validator.positiveNumber(eclipses[key], `skyWonders.eclipses.${key}`);
+  }
+  validator.check(
+    eclipses.solarPartialMinutes * 2 + eclipses.solarTotalMinutes <= 240 &&
+      (eclipses.lunarPenumbralMinutes + eclipses.lunarPartialMinutes) * 2 + eclipses.lunarTotalMinutes <= 360,
+    'skyWonders.eclipses',
+    'must fit the sun\'s within four hours and the moon\'s within six, so the sun and the full moon stay up through them',
+  );
   validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
   validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
   validator.nonNegativeInteger(roadPass.firstSeasonDay, 'roadPass.firstSeasonDay');

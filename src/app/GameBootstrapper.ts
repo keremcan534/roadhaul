@@ -155,9 +155,22 @@ export class GameBootstrapper {
       const season = container.register(ServiceKeys.season, new SeasonService(clock, events));
       // The sky's wonders: each night's draw from a run of its own.
       const skyLuck = new SeededRandom((clock.now() * 3 + 7) % 2_147_483_647);
-      container.register(
+      const skyWonders = container.register(
         ServiceKeys.skyWonders,
-        new SkyWonderService(config.skyWonders, timeOfDay, season, () => skyLuck.next(), events, logger.withCategory('Sky')),
+        new SkyWonderService(
+          config.skyWonders,
+          timeOfDay,
+          season,
+          {
+            clock,
+            offsetMinutes: this.options.localTimeOffsetMinutes ?? 0,
+            latitudeDegrees: config.timeOfDay.latitudeDegrees,
+            solarNoonHours: config.timeOfDay.solarNoonHours,
+          },
+          () => skyLuck.next(),
+          events,
+          logger.withCategory('Sky'),
+        ),
       );
       // The region's rare happenings near the truck, and its news: each with a run of its own.
       const incidentLuck = new SeededRandom((clock.now() * 5 + 29) % 2_147_483_647);
@@ -184,7 +197,7 @@ export class GameBootstrapper {
         ),
       );
       const newsLuck = new SeededRandom((clock.now() * 11 + 3) % 2_147_483_647);
-      container.register(ServiceKeys.news, new NewsService(catalog, timeOfDay, () => newsLuck.next(), events));
+      container.register(ServiceKeys.news, new NewsService(catalog, timeOfDay, () => newsLuck.next(), events, skyWonders));
       container.register(
         ServiceKeys.weather,
         new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),
