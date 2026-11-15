@@ -151,7 +151,9 @@ import { PlacePanel } from './ui/hud/PlacePanel';
 import { PlacesView } from './presentation/world/PlacesView';
 import { CabTablet } from './ui/menus/CabTablet';
 import { RaceCarsView } from './presentation/vehicles/RaceCarsView';
+import { DriverFigureView } from './presentation/vehicles/DriverFigureView';
 import { RaceHud } from './ui/hud/RaceHud';
+import { OnFootButton } from './ui/hud/OnFootButton';
 import { RaceResultDialog } from './ui/menus/RaceResultDialog';
 import { RACE_CAR } from './data/content/raceCar';
 import { generateYardJam } from './domain/puzzles/yardJam';
@@ -386,6 +388,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const season = services.resolve(ServiceKeys.season);
   const skyWonders = services.resolve(ServiceKeys.skyWonders);
   const roadDirt = services.resolve(ServiceKeys.roadDirt);
+  const onFoot = services.resolve(ServiceKeys.onFoot);
   const cityIncidents = services.resolve(ServiceKeys.cityIncidents);
   const news = services.resolve(ServiceKeys.news);
   const shownIncident = requestedCityIncident(query);
@@ -743,6 +746,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body, driving.definition.trailer ?? null);
   // A street race's cars: the player's while it is driven, and the club's rivals (RaceService).
   const raceCars = new RaceCarsView(renderHost.scene, RACE_CAR.body, RACE_CAR.factoryColor);
+  /** The driver on foot, out of the truck (OnFootService). */
+  const driverFigure = new DriverFigureView(renderHost.scene);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
   const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
@@ -762,11 +767,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    */
   const showCamera = (drivingNow: boolean): void => {
     const mode = cameraRig.shownMode;
-    const inCab = drivingNow && mode === 'cabin';
+    // On foot the camera follows the driver outside, whatever the camera picked for the drive.
+    const inCab = drivingNow && mode === 'cabin' && !onFoot.active;
     truck.setCabinView(inCab);
     rain.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
     snowfall.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
-    renderHost.mirrored = drivingNow && mode === 'rear';
+    renderHost.mirrored = drivingNow && mode === 'rear' && !onFoot.active;
     root.dataset.camera = mode;
   };
   /** The camera button (or C): the next camera, named for a moment, and kept for next time. */
@@ -1447,6 +1453,40 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onClose: () => tablet.close(),
   });
   /** Auto-drive on or off (V, or its switch on the sign); a toast says why it will not. */
+  /** Out of the truck standing still, or back in at the cab's door (Enter, or the HUD's button). */
+  const stepOutOrIn = (): void => {
+    if (!onRoad() || paused || race.active) {
+      return;
+    }
+    if (onFoot.active) {
+      const stepped = onFoot.stepIn();
+      if (!stepped.ok) {
+        toasts.show(strings.t('onFoot.tooFar'), 'info');
+      }
+      return;
+    }
+    if (autoDrive.engaged) {
+      autoDrive.disengage('switchedOff');
+    }
+    const stepped = onFoot.stepOut();
+    if (!stepped.ok) {
+      toasts.show(strings.t(`onFoot.refused.${stepped.error}`), 'warning');
+    }
+  };
+  const onFootButton = new OnFootButton(ui, strings, onFoot, stepOutOrIn);
+  events.on('DriverSteppedOut', () => {
+    root.dataset.onFoot = 'on';
+    cameraRig.snap();
+    lookAround.reset();
+    showCamera(true);
+    toasts.show(strings.t('onFoot.hint'), 'info');
+  });
+  events.on('DriverSteppedIn', () => {
+    root.dataset.onFoot = 'off';
+    cameraRig.snap();
+    lookAround.reset();
+    showCamera(isDriving());
+  });
   const toggleAutoDrive = (): void => {
     if (autoDrive.engaged) {
       autoDrive.disengage('switchedOff');
@@ -1659,6 +1699,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         toggleAutoDrive();
       }
     },
+    onStepOut: stepOutOrIn,
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
@@ -3263,6 +3304,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           }
           return;
         }
+        // On foot, the controls walk the driver; the truck waits, its controls let go.
+        onFoot.update(stepSeconds, driverInput);
         // Auto-drive's hands on the wheel (a firm touch of the driver's takes it back).
         autoDrive.update(stepSeconds, driverInput);
         driving.step(stepSeconds, driverInput);
@@ -3448,7 +3491,21 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           if (cameraRig.shownMode !== root.dataset.camera) {
             showCamera(onRoad());
           }
-          cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
+          if (onFoot.active) {
+            // On foot: the camera over the driver's shoulder, the driver drawn where they walk between the steps.
+            const walker = onFoot.walker;
+            const from = onFoot.previous;
+            const t = simulating ? alpha : 1;
+            const footX = from.x + (walker.x - from.x) * t;
+            const footZ = from.z + (walker.z - from.z) * t;
+            const footHeading = from.heading + (walker.heading - from.heading) * t;
+            const footY = driving.world.groundAt(footX, footZ, bodyPose.y);
+            driverFigure.update(true, footX, footY, footZ, footHeading, walker.cycle, Math.min(1, Math.abs(walker.speed) / 1.2), weather.rain > 0.25 ? 1 : 0);
+            cameraRig.followOnFoot(footX, footY, footZ, footHeading, deltaSeconds);
+          } else {
+            driverFigure.update(false, 0, 0, 0, 0, 0, 0, 0);
+            cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
+          }
         }
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
@@ -3558,11 +3615,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           hq.tick();
         }
         worldMap.frame();
-        restArea.visible = simulating && !race.active;
+        restArea.visible = simulating && !race.active && !onFoot.active;
         restArea.update();
-        placePanel.visible = simulating && !race.active;
+        placePanel.visible = simulating && !race.active && !onFoot.active;
+        onFootButton.visible = simulating && !race.active;
+        onFootButton.update(deltaSeconds);
         placePanel.update();
-        ferry.visible = simulating && !race.active;
+        ferry.visible = simulating && !race.active && !onFoot.active;
         ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);

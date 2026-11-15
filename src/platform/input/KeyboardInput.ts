@@ -15,6 +15,7 @@ const HAZARDS = 'KeyX';
 const PARKING_BRAKE = 'KeyB';
 const ENGINE_BRAKE = 'KeyJ';
 const AUTO_DRIVE = 'KeyV';
+const STEP_OUT = new Set(['Enter', 'NumpadEnter']);
 
 export interface KeyboardActions {
   readonly onToggleCamera: () => void;
@@ -35,13 +36,15 @@ export interface KeyboardActions {
   readonly onEngineBrake: () => void;
   /** V: auto-drive, on or off. */
   readonly onAutoDrive: () => void;
+  /** Enter: out of the truck, or back in. */
+  readonly onStepOut: () => void;
 }
 
 /**
  * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
  * H sounds the horn, M opens the map, R tunes the radio, Q and E the turn
  * signals, X the hazard lights, B the parking brake, J the engine brake,
- * V auto-drive, Escape or P pauses. Uses physical key codes, so it
+ * V auto-drive, Enter out of the truck and back in, Escape or P pauses. Uses physical key codes, so it
  * works the same on Turkish Q/F and other layouts. The truck's steering rate
  * smooths the digital steering.
  */
@@ -68,6 +71,17 @@ export class KeyboardInput {
   private readonly onKeyDown = (event: KeyboardEvent): void => {
     if (isTyping(event)) {
       return; // Letters typed into a form (the company name) are not driving.
+    }
+    if (STEP_OUT.has(event.code)) {
+      // A button on the screen with the focus takes Enter for itself. One hidden with a closed dialog (focus
+      // lingers there) must not be pressed behind the player's back: the game takes Enter.
+      if (!isShownButton(event.target)) {
+        event.preventDefault();
+        if (!event.repeat) {
+          this.actions.onStepOut();
+        }
+      }
+      return;
     }
     if (isSwitchKey(event.code)) {
       if (!event.repeat) {
@@ -148,6 +162,12 @@ function isSwitchKey(code: string): boolean {
 
 function isDrivingKey(code: string): boolean {
   return STEER_LEFT.has(code) || STEER_RIGHT.has(code) || THROTTLE.has(code) || BRAKE.has(code);
+}
+
+/** A button the player can see (laid out on the page), with the focus. */
+function isShownButton(target: EventTarget | null): boolean {
+  const element = target as { tagName?: string; getClientRects?: () => { length: number } } | null;
+  return element !== null && element.tagName === 'BUTTON' && (element.getClientRects?.().length ?? 0) > 0;
 }
 
 /** True while the player types into a text field. */

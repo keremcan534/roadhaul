@@ -255,6 +255,10 @@ export interface GameEvents {
   SkyWonderSighted: {
     readonly kind: SkyWonder;
   };
+  /** The driver got out of the truck (OnFootService). */
+  DriverSteppedOut: Record<string, never>;
+  /** The driver got back in. */
+  DriverSteppedIn: Record<string, never>;
   /** The truck the player drives looks dirtier, or cleaner (RoadDirtService). */
   TruckDirtChanged: {
     readonly level: DirtLevel;

@@ -78,6 +78,17 @@ const LOOK_LIMITS: Readonly<Record<CameraMode, readonly [number, number]>> = {
   rear: [Math.PI * 0.35, 0.25],
   top: [Math.PI, 0],
 };
+/**
+ * On foot (followOnFoot): the camera this far behind the driver and this
+ * high over their feet (lower as they look up), looking past them this far
+ * ahead at this height; it follows at this rate (1/s).
+ */
+const ON_FOOT_BEHIND_METERS = 3.6;
+const ON_FOOT_HEIGHT_METERS = 2.1;
+const ON_FOOT_HEIGHT_PER_PITCH = 2;
+const ON_FOOT_LOOK_AHEAD_METERS = 2;
+const ON_FOOT_LOOK_HEIGHT_METERS = 1.3;
+const ON_FOOT_FOLLOW_RATE = 8;
 /** Menus show the parked truck from a camera circling it slowly. */
 const SHOWCASE_DISTANCE_METERS = 14;
 /** Framed beside a panel (frameBeside), the showcase stands back this much more per share of the screen covered. */
@@ -418,6 +429,47 @@ export class CameraRig {
     this.camera.position.copy(this.position);
     this.addShake(deltaSeconds);
     this.camera.lookAt(this.target);
+  }
+
+  /**
+   * Follows the driver on foot (OnFootService): behind and over their
+   * shoulder at (x, y, z), turned round them by the drag, looking past them
+   * a little ahead. Allocation-free.
+   */
+  followOnFoot(x: number, y: number, z: number, heading: number, deltaSeconds: number): void {
+    const view = heading - this.lookYaw;
+    const sin = Math.sin(view);
+    const cos = Math.cos(view);
+    const back = ON_FOOT_BEHIND_METERS;
+    const height = y + ON_FOOT_HEIGHT_METERS - this.lookPitch * ON_FOOT_HEIGHT_PER_PITCH;
+    const desiredX = x - sin * back;
+    const desiredZ = z - cos * back;
+    const lookX = x + sin * ON_FOOT_LOOK_AHEAD_METERS;
+    const lookZ = z + cos * ON_FOOT_LOOK_AHEAD_METERS;
+    const lookY = y + ON_FOOT_LOOK_HEIGHT_METERS;
+    this.camera.up.set(0, 1, 0);
+    if (this.snapNextFrame) {
+      this.position.set(desiredX, height, desiredZ);
+      this.target.set(lookX, lookY, lookZ);
+    } else {
+      const follow = dampFactor(ON_FOOT_FOLLOW_RATE, deltaSeconds);
+      this.position.x += (desiredX - this.position.x) * follow;
+      this.position.y += (height - this.position.y) * follow;
+      this.position.z += (desiredZ - this.position.z) * follow;
+      this.target.x += (lookX - this.target.x) * follow;
+      this.target.y += (lookY - this.target.y) * follow;
+      this.target.z += (lookZ - this.target.z) * follow;
+    }
+    this.widenForSpeed(0, deltaSeconds);
+    this.snapNextFrame = false;
+    this.camera.position.copy(this.position);
+    this.addShake(deltaSeconds);
+    this.camera.lookAt(this.target);
+  }
+
+  /** The next frame jumps to where the camera should be (a cut: the driver got out, or back in). */
+  snap(): void {
+    this.snapNextFrame = true;
   }
 
   /** Puts the camera at the point (x left, y up, z ahead) of the truck's model as the truck stands. */

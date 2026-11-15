@@ -224,16 +224,7 @@ export class PedestrianView {
       DynamicDrawUsage,
     );
     geometry.setAttribute('person', this.person);
-    const material = new MeshLambertMaterial({ vertexColors: true });
-    const uniforms = this.uniforms;
-    material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\n${PERSON_PARS}`)
-        .replace('#include <begin_vertex>', `#include <begin_vertex>\n${PERSON_VERTEX}`)
-        .replace('#include <color_vertex>', PERSON_COLOR);
-    };
-    material.customProgramCacheKey = () => 'pedestrians';
+    const material = personMaterial(this.uniforms);
     this.mesh = new InstancedMesh(geometry, material, this.capacity);
     this.mesh.name = 'pedestrians';
     this.mesh.count = 0;
@@ -404,6 +395,30 @@ export class PedestrianView {
     const reach = REACH_METERS + this.reachOf[index * 3 + 2]!;
     return dx * dx + dz * dz <= reach * reach;
   }
+}
+
+/** The people's uniforms: their time (the stride's pace is each one's own), and how far their umbrellas are open. */
+export interface PersonUniforms {
+  readonly time: { value: number };
+  readonly umbrella: { value: number };
+}
+
+/**
+ * The material that dresses and walks people (personGeometry, with a
+ * `person` attribute per instance: the stride's cycle, walking or not,
+ * their look), lit as the world is.
+ */
+export function personMaterial(uniforms: PersonUniforms): MeshLambertMaterial {
+  const material = new MeshLambertMaterial({ vertexColors: true });
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${PERSON_PARS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${PERSON_VERTEX}`)
+      .replace('#include <color_vertex>', PERSON_COLOR);
+  };
+  material.customProgramCacheKey = () => 'pedestrians';
+  return material;
 }
 
 /**

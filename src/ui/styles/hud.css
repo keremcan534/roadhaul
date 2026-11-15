@@ -2021,3 +2021,29 @@ html[data-race='on'] .mission-hud {
   width: 24px;
   height: 24px;
 }
+
+/* Out of the truck and back in (OnFootButton): under the hazard lights' and the horn's buttons. */
+.on-foot-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 128px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  z-index: 2;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--rh-plate-line);
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg-1, #fff);
+  font-size: 15px;
+  touch-action: manipulation;
+}
+
+.on-foot-button[hidden] {
+  display: none;
+}
+
+/* Away from the cab's door: greyed until the driver is back there. */
+.on-foot-button[data-state='walkBack'] {
+  color: var(--rh-fg-2);
+  opacity: 0.8;
+}

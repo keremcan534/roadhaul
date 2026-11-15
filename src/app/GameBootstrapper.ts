@@ -28,6 +28,7 @@ import { SupplyService } from '../systems/rewards/SupplyService';
 import { LiveryService } from '../systems/vehicles/LiveryService';
 import { SkyWonderService } from '../systems/weather/SkyWonderService';
 import { RoadDirtService } from '../systems/vehicles/RoadDirtService';
+import { OnFootService } from '../systems/driving/OnFootService';
 import { LevelRewardService } from '../systems/company/LevelRewardService';
 import { ReminderService } from '../systems/reminders/ReminderService';
 import { ReviewService } from '../systems/review/ReviewService';
@@ -203,6 +204,8 @@ export class GameBootstrapper {
         ServiceKeys.weather,
         new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),
       );
+      // The driver on foot, out of the truck standing still.
+      container.register(ServiceKeys.onFoot, new OnFootService(driving, events, logger.withCategory('OnFoot')));
       // The road's dirt on the truck the player drives: what it drives throws it up, the truck wash cleans it.
       const roadDirt = container.register(
         ServiceKeys.roadDirt,

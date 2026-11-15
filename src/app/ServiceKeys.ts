@@ -25,6 +25,7 @@ import type { SupplyService } from '../systems/rewards/SupplyService';
 import type { LiveryService } from '../systems/vehicles/LiveryService';
 import type { SkyWonderService } from '../systems/weather/SkyWonderService';
 import type { RoadDirtService } from '../systems/vehicles/RoadDirtService';
+import type { OnFootService } from '../systems/driving/OnFootService';
 import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
@@ -76,6 +77,7 @@ export const ServiceKeys = Object.freeze({
   /** The northern lights some nights, and the sky's wonders the player has seen. */
   skyWonders: serviceKey<SkyWonderService>('SkyWonderService'),
   roadDirt: serviceKey<RoadDirtService>('RoadDirtService'),
+  onFoot: serviceKey<OnFootService>('OnFootService'),
   /** The timed events of spec §22 (not the event bus: that is `events`). */
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),
