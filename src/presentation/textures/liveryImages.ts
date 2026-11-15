@@ -37,6 +37,23 @@ export function liveryImage(
   return image;
 }
 
+/**
+ * Whether a design glows at night (its neon, its traces, its sky): the
+ * truck lights its picture as the lamps come on (TruckView.setLamps).
+ */
+export function liveryGlows(pattern: LiveryPattern): boolean {
+  return PATTERNS[pattern].glows === true;
+}
+
+/**
+ * The design on the cab's lower sides, `width` × `height` pixels: its look
+ * without seams or lettering, as on the box (the classic leaves the cab in
+ * its paint). Made once per truck.
+ */
+export function liveryCabImage(accent: Rgb, pattern: LiveryPattern, width = 320, height = 128): PixelImage {
+  return liveryThumbnail(accent, pattern, width, height);
+}
+
 /** A design's small picture for the garage: its look in the truck's colour, without seams or lettering. */
 export function liveryThumbnail(accent: Rgb, pattern: LiveryPattern, width = 192, height = 96): PixelImage {
   const draw = PATTERNS[pattern];
@@ -48,6 +65,8 @@ export function liveryThumbnail(accent: Rgb, pattern: LiveryPattern, width = 192
 interface PatternDrawing {
   /** A dark body: white lettering, no grime. */
   readonly dark?: boolean;
+  /** Its lights glow at night: the picture lights itself (liveryGlows). */
+  readonly glows?: boolean;
   /** Where the lettering's foot stands, a share of the height. */
   readonly textAt?: number;
   readonly paint: (image: PixelImage, accent: Rgb) => void;
@@ -106,6 +125,45 @@ function star(image: PixelImage, cx: number, cy: number, radius: number, color: 
       color,
       alpha,
     );
+  }
+}
+
+/** A filled disc centred on (cx, cy), its edge anti-aliased. */
+function disc(image: PixelImage, cx: number, cy: number, radius: number, color: Rgb): void {
+  for (let y = Math.floor(cy - radius - 1); y <= cy + radius + 1; y++) {
+    for (let x = Math.floor(cx - radius - 1); x <= cx + radius + 1; x++) {
+      const d = Math.sqrt((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2);
+      blendPixel(image, x, y, color, Math.max(0, Math.min(1, radius - d + 0.5)));
+    }
+  }
+}
+
+/**
+ * A blade sweeping from (u0, v0) to its point at (u1, v1) (shares of the
+ * width and height), bowed `bend` (a share of the height) to its left
+ * going, swelling from a narrow root to `thickness` (a share of the
+ * height) and tapering to its point: drawn as convex slices.
+ */
+function blade(image: PixelImage, from: readonly [number, number], to: readonly [number, number], bend: number, thickness: number, color: Rgb): void {
+  const { width, height } = image;
+  const x0 = from[0] * width;
+  const y0 = from[1] * height;
+  const x1 = to[0] * width;
+  const y1 = to[1] * height;
+  const length = Math.sqrt((x1 - x0) ** 2 + (y1 - y0) ** 2) || 1;
+  const nx = -(y1 - y0) / length;
+  const ny = (x1 - x0) / length;
+  const steps = 28;
+  const edge = (t: number, side: number): [number, number] => {
+    const bow = Math.sin(Math.PI * t) * bend * height;
+    const half = ((thickness * height) / 2) * (1 - t) ** 0.85 * (0.2 + 0.8 * smoothstep(0, 0.22, t));
+    return [x0 + (x1 - x0) * t + nx * (bow + side * half), y0 + (y1 - y0) * t + ny * (bow + side * half)];
+  };
+  for (let i = 0; i < steps; i++) {
+    // Each slice reaches a little into the next, so no seam shows between them.
+    const a = i / steps;
+    const b = Math.min(1, (i + 1.6) / steps);
+    polygon(image, [edge(a, 1), edge(b, 1), edge(b, -1), edge(a, -1)], color, 255);
   }
 }
 
@@ -358,6 +416,7 @@ const PATTERNS: Readonly<Record<LiveryPattern, PatternDrawing>> = {
   // Neon tubes in the colour, glowing on black.
   neon: {
     dark: true,
+    glows: true,
     paint: (image, accent) => {
       const { width, height } = image;
       const glow = lighter(accent, 0.15);
@@ -379,6 +438,7 @@ const PATTERNS: Readonly<Record<LiveryPattern, PatternDrawing>> = {
   // A circuit board: traces and pads in the colour on dark green.
   circuit: {
     dark: true,
+    glows: true,
     paint: (image, accent) => {
       const { width, height } = image;
       paintEach(image, (u, v) => mixRgb([8, 30, 22], [14, 44, 32], fractalNoise(u, v, 12, 1, 7)));
@@ -408,6 +468,7 @@ const PATTERNS: Readonly<Record<LiveryPattern, PatternDrawing>> = {
   // Synthwave: a striped sun over a glowing grid, under a sky in the colour.
   synthwave: {
     dark: true,
+    glows: true,
     textAt: 0.72,
     paint: (image, accent) => {
       const { width, height } = image;
@@ -430,6 +491,165 @@ const PATTERNS: Readonly<Record<LiveryPattern, PatternDrawing>> = {
       for (let i = -16; i <= 16; i++) {
         line(image, width / 2 + i * width * 0.035, height * horizon, width / 2 + i * width * 0.16, 0, 3, grid, 255);
       }
+    },
+  },
+  // Carbon fibre: a twill weave catching the light tow by tow, a gloss stripe in the colour pinstriped white.
+  carbon: {
+    dark: true,
+    textAt: 0.44,
+    paint: (image, accent) => {
+      const { width, height } = image;
+      const cell = Math.max(2, height / 40);
+      paintEach(image, (u, v) => {
+        const across = (u * width) / cell;
+        const up = (v * height) / cell;
+        const along = (Math.floor(across) + Math.floor(up)) % 4 < 2;
+        const sheen = 0.5 + 0.5 * Math.sin((along ? up % 1 : across % 1) * Math.PI);
+        const level = along ? 30 + 22 * sheen : 22 + 12 * sheen;
+        return [level, level + 2, level + 6];
+      });
+      const pin: Rgb = [235, 238, 242];
+      fillRect(image, 0, height * 0.14, width, height * 0.27, accent);
+      fillRect(image, 0, height * 0.115, width, height * 0.13, pin);
+      fillRect(image, 0, height * 0.28, width, height * 0.295, pin);
+      fillRect(image, 0, height * 0.87, width, height * 0.9, accent);
+    },
+  },
+  // Rally: the front in the colour cut back on a slant, stripes following the cut, a roundel with a star and a
+  // chequered strip along the foot.
+  rally: {
+    textAt: 0.3,
+    paint: (image, accent) => {
+      const { width, height } = image;
+      paintEach(image, (u, v) => {
+        const cut = 0.3 + 0.14 * v;
+        if (u < cut) {
+          return accent;
+        }
+        for (let i = 0; i < 3; i++) {
+          const from = cut + 0.025 + i * 0.04;
+          if (u >= from && u < from + 0.02) {
+            return i === 1 ? INK : accent;
+          }
+        }
+        return null;
+      });
+      const cell = height * 0.05;
+      for (let row = 0; row < 2; row++) {
+        for (let column = 0; column * cell < width; column++) {
+          if ((row + column) % 2 === 0) {
+            fillRect(image, column * cell, height * 0.04 + row * cell, (column + 1) * cell, height * 0.04 + (row + 1) * cell, INK);
+          }
+        }
+      }
+      const cx = width * 0.1;
+      const cy = height * 0.74;
+      const r = height * 0.15;
+      disc(image, cx, cy, r, INK);
+      disc(image, cx, cy, r * 0.84, WHITE_BODY);
+      star(image, cx, cy, r * 0.7, accent);
+    },
+  },
+  // Pixels: an 8-bit mosaic in shades of the colour, thick at the front and scattering toward the rear, a clear
+  // band left for the lettering.
+  pixel: {
+    textAt: 0.4,
+    paint: (image, accent) => {
+      const { width, height } = image;
+      const cell = height / 12;
+      const tones: readonly Rgb[] = [darker(accent, 0.35), accent, lighter(accent, 0.3), lighter(accent, 0.6)];
+      const random = new SeededRandom(71);
+      for (let row = 0; row * cell < height; row++) {
+        const v = ((row + 0.5) * cell) / height;
+        for (let column = 0; column * cell < width; column++) {
+          const keep = 1.2 - ((column + 0.5) * cell * 1.15) / width - Math.abs(v - 0.5) * 0.3;
+          const roll = random.next();
+          const tone = tones[Math.floor(random.next() * tones.length)]!;
+          if (roll < keep && (v < 0.36 || v > 0.64)) {
+            fillRect(image, column * cell + 1, row * cell + 1, (column + 1) * cell - 1, (row + 1) * cell - 1, tone);
+          }
+        }
+      }
+    },
+  },
+  // Tribal: black blades sweeping back from the front along the top and the foot, edged in the colour.
+  tribal: {
+    textAt: 0.42,
+    paint: (image, accent) => {
+      const blades: readonly (readonly [readonly [number, number], readonly [number, number], number, number])[] = [
+        [[0.0, 0.8], [0.72, 0.94], 0.1, 0.18],
+        [[0.0, 0.2], [0.72, 0.06], -0.1, 0.18],
+        [[0.28, 0.8], [0.98, 0.7], -0.07, 0.11],
+        [[0.28, 0.2], [0.98, 0.3], 0.07, 0.11],
+      ];
+      for (const [from, to, bend, thickness] of blades) {
+        blade(image, from, to, bend, thickness * 1.25, accent);
+      }
+      for (const [from, to, bend, thickness] of blades) {
+        blade(image, from, to, bend, thickness, INK);
+      }
+    },
+  },
+  // The northern lights: curtains, green low and violet high, folding over a starry night above dark hills.
+  aurora: {
+    dark: true,
+    glows: true,
+    textAt: 0.14,
+    paint: (image, accent) => {
+      const { width, height } = image;
+      const high = mixRgb([170, 70, 240], accent, 0.35);
+      paintEach(image, (u, v) => {
+        const sky = mixRgb([4, 8, 22], [16, 28, 64], v);
+        const foot = 0.42 + 0.08 * Math.sin(u * 7 + 0.4) + 0.04 * Math.sin(u * 17 + 1.3);
+        const h = v - foot;
+        const body = smoothstep(-0.02, 0.03, h) * Math.exp(-Math.max(h, 0) * 3.4);
+        const rays = 0.55 + 0.45 * Math.sin(u * 90 + 3 * Math.sin(u * 13));
+        const folds = Math.max(0.15, 0.45 + 0.55 * Math.sin(u * 5 + 1) * Math.sin(u * 2.3));
+        const glow = Math.min(1, body * (0.5 + 0.5 * rays) * folds * 1.3);
+        return mixRgb(sky, mixRgb([40, 255, 140], high, smoothstep(0.05, 0.4, h)), glow);
+      });
+      const random = new SeededRandom(83);
+      for (let i = 0; i < 300; i++) {
+        blendPixel(image, Math.floor(random.next() * width), Math.floor(height * (0.3 + random.next() * 0.7)), [235, 240, 255], 0.35 + random.next() * 0.5);
+      }
+      paintEach(image, (u, v) => {
+        const hills = 0.1 + 0.035 * Math.sin(u * 11 + 2) + 0.02 * Math.sin(u * 29);
+        return v < hills ? [6, 10, 18] : null;
+      });
+    },
+  },
+  // An eclipse: the corona round the black moon high over a sunset's glow all round the horizon, the stars out.
+  eclipse: {
+    dark: true,
+    glows: true,
+    textAt: 0.1,
+    paint: (image, accent) => {
+      const { width, height } = image;
+      paintEach(image, (_u, v) => mixRgb(mixRgb([226, 120, 70], [60, 36, 70], smoothstep(0, 0.22, v)), [10, 12, 30], smoothstep(0.18, 0.6, v)));
+      const random = new SeededRandom(89);
+      for (let i = 0; i < 220; i++) {
+        blendPixel(image, Math.floor(random.next() * width), Math.floor(height * (0.35 + random.next() * 0.65)), [235, 240, 255], 0.3 + random.next() * 0.6);
+      }
+      const cx = width * 0.5;
+      const cy = height * 0.66;
+      const r = height * 0.15;
+      const ring = lighter(accent, 0.65);
+      for (let y = Math.floor(cy - r * 3.5); y <= cy + r * 3.5; y++) {
+        for (let x = Math.floor(cx - r * 3.5); x <= cx + r * 3.5; x++) {
+          const dx = x + 0.5 - cx;
+          const dy = y + 0.5 - cy;
+          const d = Math.sqrt(dx * dx + dy * dy) / r;
+          if (d < 1) {
+            continue;
+          }
+          const around = Math.atan2(dy, dx);
+          const streamers = 0.55 + 0.25 * Math.sin(around * 2 + 0.6) + 0.2 * Math.sin(around * 5 + 1.9) * Math.sin(around * 3);
+          const corona = Math.exp(-(d - 1) * (5.5 - 3.2 * streamers)) * (0.45 + 0.55 * streamers);
+          blendPixel(image, x, y, ring, Math.min(1, corona * 1.3));
+        }
+      }
+      disc(image, cx, cy, r * 1.04, [255, 120, 150]);
+      disc(image, cx, cy, r, [4, 4, 8]);
     },
   },
 };

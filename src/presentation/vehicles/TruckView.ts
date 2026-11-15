@@ -29,8 +29,8 @@ import { createTrailerPose, straightenTrailer, trailerFrontAhead, type TrailerPo
 import type { TruckLooks } from '../../domain/vehicles/upgradeBonuses';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { BodyPose, VehiclePose } from '../../systems/driving/DrivingService';
-import type { Rgb } from '../textures/pixelImage';
-import { DEFAULT_TRAILER_TEXT, liveryImage } from '../textures/liveryImages';
+import type { PixelImage, Rgb } from '../textures/pixelImage';
+import { DEFAULT_TRAILER_TEXT, liveryCabImage, liveryGlows, liveryImage } from '../textures/liveryImages';
 import { grilleImage, rearDoorsImage, rimImage, softBoxShadowImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import type { SceneLight, SkyUniforms } from '../world/EnvironmentView';
@@ -92,6 +92,8 @@ const STRAP_COLOR = 0xffa21c;
 /** The colour of a tipper's load, a heap of gravel or ore. */
 const GRAVEL_COLOR = 0x8b8178;
 
+/** A design that glows (liveryGlows) lights its picture this strongly at night (setLamps(1)); not at all by day. */
+const LIVERY_GLOW = 0.85;
 /** The lamps shine this much brighter at night (setLamps(1)) than by day. */
 const LAMP_NIGHT_BOOST = 1.5;
 const HEADLIGHT_GLOW = 0xfff1cf;
@@ -151,6 +153,7 @@ type PartMaterial =
   | 'grille'
   | 'panels'
   | 'livery'
+  | 'cabLivery'
   | 'doors'
   | 'deck'
   | 'chrome'
@@ -258,6 +261,8 @@ export class TruckView {
   /** Scratch for mirrorLamps(). */
   private readonly lampAt = new Vector3();
   private lamps = 0;
+  /** The design's pictures that glow at night (liveryGlows): the box's and the cab's. */
+  private readonly glowingDesign: MeshPhongMaterial[] = [];
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
   /** In the model: the exhaust stack's outlet, and just behind the last rear wheel on the left (+x) side. */
@@ -384,14 +389,24 @@ export class TruckView {
     // up to it ahead of the front wheel.
     const doorFront = frontZ - 0.2;
     const doorRear = doorFront - Math.min(1.25, cabLength * 0.62);
+    // A design (all but the classic) dresses the cab's lower sides too, between their rounded corners: every
+    // truck wears it, whatever its body. The door's seams and handle stand over it.
+    const designOnCab = options.livery !== undefined && options.livery !== 'classic';
+    if (designOnCab) {
+      const from = cabRear + CAB_REAR_CORNER_RADIUS + 0.01;
+      const to = frontZ - CAB_CORNER_RADIUS - 0.01;
+      for (const side of [1, -1] as const) {
+        add('cabLivery', sideQuad(side, side * (halfW + 0.004), cabBottom + 0.015, beltY - cabBottom - 0.03, from, to - from));
+      }
+    }
     for (const side of [1, -1] as const) {
       const seam = (x: number, y0: number, height: number, z0: number, length: number): void =>
         add('dark', sideQuad(side, side * x, y0, height, z0, length));
       for (const z of [doorFront, doorRear]) {
-        seam(halfW + 0.002, cabBottom + 0.03, beltY - cabBottom - 0.03, z - 0.009, 0.018);
+        seam(halfW + 0.007, cabBottom + 0.03, beltY - cabBottom - 0.03, z - 0.009, 0.018);
         seam(glassHalf + 0.002, beltY, cabTop - 0.1 - beltY, z - 0.009, 0.018);
       }
-      seam(halfW + 0.002, cabBottom + 0.03, 0.018, doorRear, doorFront - doorRear);
+      seam(halfW + 0.007, cabBottom + 0.03, 0.018, doorRear, doorFront - doorRear);
       seam(glassHalf + 0.002, cabTop - 0.118, 0.018, doorRear, doorFront - doorRear);
       box('chrome', [0.025, 0.045, 0.2], [side * (halfW + 0.012), beltY - 0.13, doorRear + 0.16]);
       add(
@@ -492,7 +507,7 @@ export class TruckView {
           'chrome',
           new CylinderGeometry(0.03, 0.03, barY - bumperTop, 8).translate(side * (grilleWidth / 2 + 0.1), (barY + bumperTop) / 2, frontZ + 0.105),
         );
-        add('chrome', sideQuad(side, side * (halfW + 0.004), beltY - 0.09, 0.04, cabRear + 0.2, cabLength - 0.4));
+        add('chrome', sideQuad(side, side * (halfW + 0.008), beltY - 0.09, 0.04, cabRear + 0.2, cabLength - 0.4));
       }
     }
     if (stance === 3) {
@@ -780,8 +795,22 @@ export class TruckView {
     // Glossy paint and glass mirror the sky the flatter they are seen; chrome and metal mirror it in their colour.
     const shiny = (material: MeshPhongMaterial, reflection: SkyReflectionOptions): MeshPhongMaterial =>
       options.sky === undefined ? material : reflectSky(material, options.sky, reflection);
+    const pattern = options.livery ?? 'classic';
+    /** A design's picture as a material: glossy as the box's panels or the cab's paint, glowing at night if it does. */
+    const design = (image: PixelImage, onCab: boolean): MeshPhongMaterial => {
+      const map = this.texture(toTexture(image));
+      const material = new MeshPhongMaterial({ map, shininess: onCab ? 80 : 25, specular: onCab ? 0x404040 : 0x222222 });
+      if (liveryGlows(pattern)) {
+        material.emissiveMap = map;
+        material.emissive.setHex(0xffffff);
+        material.emissiveIntensity = LIVERY_GLOW * this.lamps;
+        this.glowingDesign.push(material);
+      }
+      return this.track(shiny(material, onCab ? { facing: 0.05 } : { facing: 0.03, strength: 0.5 }));
+    };
+    const paintMaterial = this.track(shiny(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 }), { facing: 0.05 }));
     const materials: Readonly<Record<PartMaterial, Material>> = {
-      paint: this.track(shiny(new MeshPhongMaterial({ color: paint, shininess: 80, specular: 0x404040 }), { facing: 0.05 })),
+      paint: paintMaterial,
       dark: this.track(new MeshLambertMaterial({ color: 0x2b2e33 })),
       metal: this.track(
         shiny(new MeshPhongMaterial({ color: 0xa9b0b8, shininess: 100, specular: 0xdddddd }), { facing: 0.5, metal: true }),
@@ -792,16 +821,9 @@ export class TruckView {
       panels: this.track(
         shiny(new MeshPhongMaterial({ color: 0xf2f2ee, shininess: 25, specular: 0x222222 }), { facing: 0.03, strength: 0.5 }),
       ),
-      livery: this.track(
-        shiny(
-          new MeshPhongMaterial({
-            map: this.texture(toTexture(liveryImage(accentRgb, options.livery ?? 'classic', options.trailerText ?? DEFAULT_TRAILER_TEXT))),
-            shininess: 25,
-            specular: 0x222222,
-          }),
-          { facing: 0.03, strength: 0.5 },
-        ),
-      ),
+      livery: design(liveryImage(accentRgb, pattern, options.trailerText ?? DEFAULT_TRAILER_TEXT), false),
+      // Only made for a design that dresses the cab; the classic leaves it in its paint.
+      cabLivery: designOnCab ? design(liveryCabImage(accentRgb, pattern), true) : paintMaterial,
       doors: this.track(
         shiny(
           new MeshPhongMaterial({
@@ -1142,6 +1164,9 @@ export class TruckView {
     }
     this.lamps = level;
     this.lampMaterial.color.setScalar(1 + level * LAMP_NIGHT_BOOST);
+    for (const material of this.glowingDesign) {
+      material.emissiveIntensity = LIVERY_GLOW * level;
+    }
     this.interior?.setLamps(level);
     this.glows.setLevel(this.options.lampGlows === false ? 0 : level);
     this.trailerGlows?.setLevel(this.options.lampGlows === false ? 0 : level);

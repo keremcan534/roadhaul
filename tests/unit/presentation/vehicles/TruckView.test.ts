@@ -480,6 +480,43 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(visibleMeshes()).toBe(empty);
   });
 
+  it('dresses the cab in its design (all but the classic), and lights a glowing design at night', () => {
+    const meshes = (scene: Scene): number => {
+      let count = 0;
+      scene.traverse((object) => {
+        count += object instanceof Mesh ? 1 : 0;
+      });
+      return count;
+    };
+    const glowing = (scene: Scene): number[] => {
+      const levels: number[] = [];
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.material instanceof MeshPhongMaterial && object.material.emissiveMap !== null) {
+          levels.push(object.material.emissiveIntensity);
+        }
+      });
+      return levels;
+    };
+    const classic = new Scene();
+    new TruckView(classic, truck);
+    const speed = new Scene();
+    new TruckView(speed, truck, { livery: 'speed' });
+    // The cab's lower sides: one mesh more; a plain design never glows.
+    expect(meshes(speed)).toBe(meshes(classic) + 1);
+    expect(glowing(speed)).toEqual([]);
+
+    const auroraScene = new Scene();
+    const aurora = new TruckView(auroraScene, truck, { livery: 'aurora' });
+    // The cab's picture and the box's, dark by day…
+    expect(glowing(auroraScene).length).toBeGreaterThanOrEqual(1);
+    expect(glowing(auroraScene).every((level) => level === 0)).toBe(true);
+    // …lit at night.
+    aurora.setLamps(1);
+    expect(glowing(auroraScene).every((level) => level > 0.5)).toBe(true);
+    aurora.setLamps(0);
+    expect(glowing(auroraScene).every((level) => level === 0)).toBe(true);
+  });
+
   it('makes its lamps glow at night, and not by day', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
