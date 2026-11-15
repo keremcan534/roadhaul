@@ -28,6 +28,7 @@ export async function bootGame(storage = new MemoryStorage(), nowMs = 1_000, con
     company: services.resolve(ServiceKeys.company),
     fuel: services.resolve(ServiceKeys.fuel),
     damage: services.resolve(ServiceKeys.damage),
+    roadDirt: services.resolve(ServiceKeys.roadDirt),
     garage: services.resolve(ServiceKeys.garage),
     usedTrucks: services.resolve(ServiceKeys.usedTrucks),
     monetization: services.resolve(ServiceKeys.monetization),

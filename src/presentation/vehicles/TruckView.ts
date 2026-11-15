@@ -53,6 +53,7 @@ import {
   type Point2,
 } from './truckShapes';
 import { Wipers } from './Wipers';
+import { shadeRoadDirt } from './roadDirtShading';
 import type { LiveryPattern } from '../../data/definitions/LiveryDefinition';
 
 const TIRE_WIDTH = 0.36;
@@ -263,6 +264,8 @@ export class TruckView {
   private lamps = 0;
   /** The design's pictures that glow at night (liveryGlows): the box's and the cab's. */
   private readonly glowingDesign: MeshPhongMaterial[] = [];
+  /** How dirty the truck is (setDirt): the body's and the rims' grime read it. */
+  private readonly dirt = { value: 0 };
   private readonly resources: { dispose(): void }[] = [];
   private readonly wheelPositions: readonly (readonly [number, number, number])[];
   /** In the model: the exhaust stack's outlet, and just behind the last rear wheel on the left (+x) side. */
@@ -840,6 +843,16 @@ export class TruckView {
       ),
       mudflap: this.track(new MeshLambertMaterial({ color: MUDFLAP_COLOR })),
     };
+    // The road's grime on the painted and bare parts (setDirt), each material once (the classic's cab is its paint).
+    const dirtied = new Set<PartMaterial>(['paint', 'panels', 'livery', 'cabLivery', 'doors', 'metal', 'chrome', 'deck']);
+    const shaded = new Set<Material>();
+    for (const part of dirtied) {
+      const material = materials[part];
+      if (!shaded.has(material) && (material instanceof MeshPhongMaterial || material instanceof MeshLambertMaterial)) {
+        shaded.add(material);
+        shadeRoadDirt(material, this.dirt, 'body');
+      }
+    }
     for (const [material, geometries] of parts) {
       this.body.add(new Mesh(this.track(mergeGeometries(geometries)), materials[material]));
       for (const geometry of geometries) {
@@ -1153,6 +1166,11 @@ export class TruckView {
     }
   }
 
+  /** How dirty the truck is, 0 clean to 1 caked (RoadDirtService): its grime. Cheap to call every frame. */
+  setDirt(dirt: number): void {
+    this.dirt.value = dirt > 0 ? Math.min(1, dirt) : 0;
+  }
+
   /**
    * How brightly the lamps shine, 0..1 (the weather: 0 by day, 1 at night):
    * brighter lamps and a glow round them. Their light on the world is
@@ -1306,6 +1324,7 @@ export class TruckView {
     if (this.options.sky !== undefined) {
       reflectSky(rim, this.options.sky, { facing: finish.mirror, metal: true });
     }
+    shadeRoadDirt(rim, this.dirt, 'rim');
     return this.track(
       new InstancedMesh(this.track(wheel), [this.track(new MeshLambertMaterial({ color: 0x1d1d1f })), rim, rim], count),
     );

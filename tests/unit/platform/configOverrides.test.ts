@@ -11,6 +11,7 @@ import {
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
+  requestedDirt,
   type QueryParameters,
 } from '../../../src/platform/browser/configOverrides';
 
@@ -134,6 +135,16 @@ describe('requestedCityIncident', () => {
     expect(requestedCityIncident(query('?city=fireworks'))).toBe('fireworks');
     for (const search of ['', '?city=', '?city=flood', '?city=building_fire']) {
       expect(requestedCityIncident(query(search)), search).toBeNull();
+    }
+  });
+});
+
+describe('requestedDirt', () => {
+  it('keeps the truck as dirty as the URL says, from clean to caked, and nothing else', () => {
+    expect(requestedDirt(query('?dirt=0.8'))).toBe(0.8);
+    expect(requestedDirt(query('?dirt=0'))).toBe(0);
+    for (const search of ['', '?dirt=', '?dirt=2', '?dirt=-1', '?dirt=mud']) {
+      expect(requestedDirt(query(search)), search).toBeNull();
     }
   });
 });

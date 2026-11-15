@@ -728,6 +728,7 @@ function validateGarage(garage: Json, content: ContentCatalog, validator: Valida
       'must be from 0 to the tank capacity',
     );
     validator.fraction(vehicle['damage'], `${path}.damage`);
+    validator.fraction(vehicle['dirt'], `${path}.dirt`);
     const paintId = vehicle['paintId'];
     validator.check(
       paintId === null || (typeof paintId === 'string' && content.paints.has(paintId)),

@@ -480,6 +480,39 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(visibleMeshes()).toBe(empty);
   });
 
+  it('shows the road\'s grime on its body and rims as dirty as it is told', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const dirtied = new Set<string>();
+    scene.traverse((object) => {
+      if (object instanceof Mesh) {
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          const key = material.customProgramCacheKey();
+          if (key.includes('road-dirt')) {
+            dirtied.add(key.slice(key.lastIndexOf('road-dirt')));
+          }
+        }
+      }
+    });
+    // The body's parts by their height, the rims all over.
+    expect([...dirtied].sort()).toEqual(['road-dirt-body', 'road-dirt-rim']);
+    const shader = { uniforms: {} as Record<string, { value: number }>, vertexShader: ShaderLib.phong.vertexShader, fragmentShader: ShaderLib.phong.fragmentShader };
+    let body: MeshPhongMaterial | undefined;
+    scene.traverse((object) => {
+      if (body === undefined && object instanceof Mesh && object.material instanceof MeshPhongMaterial && object.material.customProgramCacheKey().endsWith('road-dirt-body')) {
+        body = object.material;
+      }
+    });
+    body!.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.fragmentShader).toContain('uniform float roadDirt;');
+    view.setDirt(0.7);
+    expect(shader.uniforms['roadDirt']!.value).toBe(0.7);
+    view.setDirt(3);
+    expect(shader.uniforms['roadDirt']!.value).toBe(1);
+    view.setDirt(-1);
+    expect(shader.uniforms['roadDirt']!.value).toBe(0);
+  });
+
   it('dresses the cab in its design (all but the classic), and lights a glowing design at night', () => {
     const meshes = (scene: Scene): number => {
       let count = 0;

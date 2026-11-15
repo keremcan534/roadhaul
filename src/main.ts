@@ -48,6 +48,7 @@ import {
   requestedHills,
   requestedTimeOfDay,
   requestedWetness,
+  requestedDirt,
 } from './platform/browser/configOverrides';
 import { chooseQuality, detectQuality, deviceHints, isEntryGpu, qualitySetting } from './platform/browser/deviceQuality';
 import { gpuName } from './platform/browser/gpuName';
@@ -384,6 +385,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
   const season = services.resolve(ServiceKeys.season);
   const skyWonders = services.resolve(ServiceKeys.skyWonders);
+  const roadDirt = services.resolve(ServiceKeys.roadDirt);
   const cityIncidents = services.resolve(ServiceKeys.cityIncidents);
   const news = services.resolve(ServiceKeys.news);
   const shownIncident = requestedCityIncident(query);
@@ -410,6 +412,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   }
   /** How wet the roads are: the weather's, or as the address keeps them (`?wet=`). */
   const keptWetness = requestedWetness(query);
+  /** How dirty the truck looks: the road's, or as the address keeps it (`?dirt=`). */
+  const keptDirt = requestedDirt(query);
   /** How thick the morning mist lies: the morning's, or as the address keeps it (`?mist=`). */
   const keptMist = requestedMist(query);
   /** The sky's wonders brought out for a look (`?sky=`). */
@@ -1378,8 +1382,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         const paint = garage.activeTruck?.paint?.color ?? driving.definition.factoryColor;
         truckWash.open(`#${paint.toString(16).padStart(6, '0')}`, config.places.washSeconds, config.places.washCleanShare, {
           onFinished: (share) => {
+            // The scrub cleans the truck itself by the share of it washed, tip or not.
+            roadDirt.wash(share);
             const paid = places.finishWash(share);
-            return paid.ok ? strings.t('wash.tip', { credits: strings.money(paid.value) }) : null;
+            return paid.ok
+              ? strings.t('wash.tip', { credits: strings.money(paid.value) })
+              : roadDirt.level === 'clean'
+                ? strings.t('wash.truckClean')
+                : null;
           },
           onClose: () => {
             truckWash.close();
@@ -2265,6 +2275,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       supplies,
       liveries,
       liveryPicture,
+      roadDirt,
     },
     {
       onAbandon: () => {
@@ -3226,6 +3237,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         timeOfDay.update(stepSeconds);
         season.update(stepSeconds);
         skyWonders.update(stepSeconds);
+        roadDirt.update(stepSeconds);
         cityIncidents.update(stepSeconds);
         news.update();
         weather.update(stepSeconds);
@@ -3378,6 +3390,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         );
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
+        truck.setDirt(keptDirt ?? roadDirt.dirt);
         truck.setIndicators(turnSignals.leftLit, turnSignals.rightLit);
         // The wipers sweep the snow off the glass too.
         truck.setRain(Math.max(weather.rain, weather.snow * 0.35));

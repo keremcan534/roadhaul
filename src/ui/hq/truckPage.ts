@@ -1,4 +1,5 @@
 import type { ContentCatalog } from '../../data/ContentCatalog';
+import type { Fraction } from '../../data/units';
 import { isCargoAboard } from '../../domain/missions/MissionInstance';
 import type { ServicePoint } from '../../domain/world/DrivingWorld';
 import { FULL_DAMAGE_EXTRA } from '../../domain/vehicles/fuelConsumption';
@@ -16,6 +17,7 @@ import { cargoIcon, icon, upgradeIcon, type IconName } from '../icons';
 import { serviceTokens } from '../serviceTokens';
 import { serviceDiscounts, type ServiceDiscountSource } from '../serviceDiscounts';
 import { truckSilhouette } from './truckSilhouette';
+import type { DirtLevel } from '../../domain/vehicles/roadDirt';
 
 /** What the truck page reads. It only reads them; changes go through the actions. */
 export interface TruckPageServices {
@@ -31,6 +33,8 @@ export interface TruckPageServices {
   readonly monetization: ServiceDiscountSource;
   /** The crates' free fill-up and repair tokens. */
   readonly supplies: TokenCounts;
+  /** The truck's road dirt (RoadDirtService). */
+  readonly roadDirt: { readonly dirt: Fraction; readonly level: DirtLevel };
 }
 
 /** How many of a crate's free service tokens are held: SupplyService. */
@@ -52,8 +56,8 @@ export interface TruckPageActions {
 /**
  * The truck being driven, in the game (tester feedback: its state belongs in
  * the game): which truck, where it stands, its fuel and damage with the pump
- * and the workshop where it stands at one, what it carries, and the parts
- * its upgrades have fitted.
+ * and the workshop where it stands at one, its road dirt (the truck wash
+ * cleans it), what it carries, and the parts its upgrades have fitted.
  */
 export function truckPage(
   document: Document,
@@ -148,7 +152,22 @@ export function truckPage(
         })}${damage.atWorkshop ? '' : ` · ${strings.t('hq.serviceAway')}`}`,
   );
   damageRow.append(effects);
-  gauges.append(fuelRow, damageRow);
+  // The road's dirt: only its look; the truck wash on the map cleans it.
+  const dirt = services.roadDirt;
+  const dirtRow = el('div', 'truck-gauge truck-gauge--dirt');
+  const dirtTop = el('div', 'truck-gauge__top');
+  dirtTop.append(
+    icon(document, 'wash'),
+    el('span', 'truck-gauge__title', strings.t('hq.dirt')),
+    el('span', 'truck-gauge__value', `${strings.percent(dirt.dirt)} · ${strings.t(`dirt.${dirt.level}`)}`),
+  );
+  const dirtMeter = el('div', 'meter meter--big meter--dirt');
+  const dirtFill = el('div', 'meter__fill');
+  dirtFill.style.transform = `scaleX(${dirt.dirt})`;
+  dirtMeter.append(dirtFill);
+  dirtRow.dataset.level = dirt.level;
+  dirtRow.append(dirtTop, dirtMeter, el('p', 'truck-gauge__note', strings.t(dirt.level === 'clean' ? 'hq.dirtClean' : 'hq.dirtWash')));
+  gauges.append(fuelRow, damageRow, dirtRow);
   // Half price after a rewarded ad, for what the pump and the workshop where the truck stands can do now.
   const discounts = serviceDiscounts(document, strings, services.monetization, {
     refuel:

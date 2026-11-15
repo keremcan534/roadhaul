@@ -284,7 +284,7 @@ describe('validateSaveGameData', () => {
         fleet: { drivers, jobsPlanned: 7 },
       };
     };
-    const second = { instanceId: 'truck_002', definitionId: 'test_truck', fuelLiters: 300, damage: 0.2, upgrades: {}, paintId: null };
+    const second = { instanceId: 'truck_002', definitionId: 'test_truck', fuelLiters: 300, damage: 0.2, upgrades: {}, paintId: null, dirt: 0 };
     const driver = {
       driverId: 'test_driver',
       truckInstanceId: 'truck_002',

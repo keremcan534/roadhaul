@@ -303,6 +303,20 @@ export interface GameConfig {
       readonly weights: Readonly<Record<BoosterKind, number>>;
     };
   };
+  /**
+   * Road dirt (RoadDirtService): driving dirties the truck, faster on a wet road, in the snow and off the road;
+   * the truck wash cleans it. Its look only.
+   */
+  readonly roadDirt: {
+    /** Kilometres from clean to caked on a dry road. */
+    readonly dryKilometers: number;
+    /** How many times faster on a soaked road (its spray), in proportion to how wet it is… */
+    readonly wetFactor: number;
+    /** …in falling snow's slush… */
+    readonly snowFactor: number;
+    /** …and off the road. */
+    readonly offRoadFactor: number;
+  };
   /** The sky's wonders (SkyWonderService): the northern lights some nights, and what counts as seeing them. */
   readonly skyWonders: {
     /** The share of the nights with the northern lights, by season (they also need a clear, dark sky). */
@@ -812,6 +826,13 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
       weights: { pay_boost: 3, xp_boost: 3, free_refuel: 2, free_repair: 2 },
     },
   },
+  roadDirt: {
+    // Dusty after a long dry run, caked after a rainy evening's work; a field in an hour.
+    dryKilometers: 60,
+    wetFactor: 3,
+    snowFactor: 3.5,
+    offRoadFactor: 6,
+  },
   skyWonders: {
     auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
     meteorCountSeconds: 300,
@@ -1304,6 +1325,10 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
   }
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
+  validator.positiveNumber(config.roadDirt.dryKilometers, 'roadDirt.dryKilometers');
+  for (const key of ['wetFactor', 'snowFactor', 'offRoadFactor'] as const) {
+    validator.check(Number.isFinite(config.roadDirt[key]) && config.roadDirt[key] >= 1, `roadDirt.${key}`, 'must be 1 or more');
+  }
   const eclipses = skyWonders.eclipses;
   validator.fraction(eclipses.solarChance, 'skyWonders.eclipses.solarChance');
   validator.fraction(eclipses.lunarChance, 'skyWonders.eclipses.lunarChance');

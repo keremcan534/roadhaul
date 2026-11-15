@@ -59,7 +59,7 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   puzzle solved and the last wash; a contract under way may count the
  *   meters it was driven loaded, and of those by auto-drive.
  */
-export const CURRENT_SAVE_VERSION = 26;
+export const CURRENT_SAVE_VERSION = 27;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -321,6 +321,8 @@ export interface VehicleSaveData {
   readonly upgrades: Readonly<Record<string, number>>;
   /** PaintDefinition id; null for the model's factory colour. */
   readonly paintId: string | null;
+  /** How much road dirt it carries (RoadDirtService), 0 clean to 1 caked; from v27. */
+  readonly dirt: Fraction;
 }
 
 export interface WorldSaveData {

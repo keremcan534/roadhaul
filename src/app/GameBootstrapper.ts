@@ -27,6 +27,7 @@ import { QuestService } from '../systems/rewards/QuestService';
 import { SupplyService } from '../systems/rewards/SupplyService';
 import { LiveryService } from '../systems/vehicles/LiveryService';
 import { SkyWonderService } from '../systems/weather/SkyWonderService';
+import { RoadDirtService } from '../systems/vehicles/RoadDirtService';
 import { LevelRewardService } from '../systems/company/LevelRewardService';
 import { ReminderService } from '../systems/reminders/ReminderService';
 import { ReviewService } from '../systems/review/ReviewService';
@@ -198,9 +199,34 @@ export class GameBootstrapper {
       );
       const newsLuck = new SeededRandom((clock.now() * 11 + 3) % 2_147_483_647);
       container.register(ServiceKeys.news, new NewsService(catalog, timeOfDay, () => newsLuck.next(), events, skyWonders));
-      container.register(
+      const weather = container.register(
         ServiceKeys.weather,
         new WeatherService(catalog, driving, traffic, events, config.weather, logger.withCategory('Weather'), timeOfDay, season),
+      );
+      // The road's dirt on the truck the player drives: what it drives throws it up, the truck wash cleans it.
+      const roadDirt = container.register(
+        ServiceKeys.roadDirt,
+        new RoadDirtService(
+          config.roadDirt,
+          {
+            get driving() {
+              return gameState.current === 'driving' && driving.isDriving && !driving.racing;
+            },
+            get speedMetersPerSecond() {
+              return driving.vehicle.speed;
+            },
+            get wetness() {
+              return weather.wetness;
+            },
+            get snowy() {
+              return weather.current.id === 'snow';
+            },
+            get offRoad() {
+              return driving.surface.name !== 'asphalt';
+            },
+          },
+          events,
+        ),
       );
       // Subscription order matters: the economy and the company apply a delivery before the session saves it,
       // and the garage must be created after the services it drives (missions, damage, fuel).
@@ -421,6 +447,7 @@ export class GameBootstrapper {
           missions,
           fuel,
           damage,
+          roadDirt,
           economy,
           company,
           events,

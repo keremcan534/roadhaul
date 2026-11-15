@@ -125,6 +125,22 @@ describe('GarageService', () => {
     expect(game.damage.damage).toBe(h1.damage);
   });
 
+  it('keeps each truck\'s road dirt: the active one\'s as it is driven, the others\' as they were, and saves them', async () => {
+    const game = await newCompany(2);
+    game.garage.buy('rh_h2');
+    game.roadDirt.restore(0.6);
+
+    expect(game.garage.switchTo('truck_002').ok).toBe(true);
+    expect(game.roadDirt.dirt).toBe(0);
+    game.roadDirt.restore(0.2);
+    expect(game.garage.trucks.map((truck) => truck.dirt)).toEqual([0.6, 0.2]);
+    expect(game.garage.snapshot().vehicles.map((vehicle) => vehicle.dirt)).toEqual([0.6, 0.2]);
+
+    game.garage.switchTo('truck_001');
+    expect(game.roadDirt.dirt).toBe(0.6);
+    expect(game.garage.trucks[1]!.dirt).toBe(0.2);
+  });
+
   it('never switches in the middle of a contract, nor to a truck it does not own', async () => {
     const game = await newCompany(2);
     game.garage.buy('rh_h2');

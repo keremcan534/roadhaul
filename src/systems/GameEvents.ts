@@ -13,6 +13,7 @@ import type { MissionReward } from '../domain/missions/missionReward';
 import type { EclipseKind } from '../domain/sky/eclipses';
 import type { SkyWonder } from '../domain/sky/skyWonders';
 import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
+import type { DirtLevel } from '../domain/vehicles/roadDirt';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
@@ -253,6 +254,14 @@ export interface GameEvents {
   /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow, an eclipse. */
   SkyWonderSighted: {
     readonly kind: SkyWonder;
+  };
+  /** The truck the player drives looks dirtier, or cleaner (RoadDirtService). */
+  TruckDirtChanged: {
+    readonly level: DirtLevel;
+  };
+  /** The truck wash scrubbed the truck: this much dirt is left (RoadDirtService). */
+  TruckCleaned: {
+    readonly dirt: Fraction;
   };
   /** An eclipse has begun on the sky (SkyWonderService): of the sun or the moon; totality comes at this minute of the game's clock. */
   EclipseBegan: {

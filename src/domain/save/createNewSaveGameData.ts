@@ -50,6 +50,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
           damage: 0,
           upgrades: {},
           paintId: null,
+          dirt: 0,
         },
       ],
     },

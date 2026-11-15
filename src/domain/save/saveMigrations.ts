@@ -237,6 +237,18 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
     from: 25,
     migrate: (save) => ({ ...save, version: 26, places: { found: [], puzzleDay: null, washDay: null } }),
   },
+  {
+    // v27 lets the road dirty each truck: every truck saved before is clean.
+    from: 26,
+    migrate: (save) => {
+      const garage = save['garage'];
+      if (!isJsonObject(garage) || !Array.isArray(garage['vehicles'])) {
+        return { ...save, version: 27 };
+      }
+      const vehicles = (garage['vehicles'] as unknown[]).map((vehicle) => (isJsonObject(vehicle) ? { ...vehicle, dirt: 0 } : vehicle));
+      return { ...save, version: 27, garage: { ...garage, vehicles } };
+    },
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

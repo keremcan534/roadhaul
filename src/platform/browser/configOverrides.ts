@@ -46,6 +46,17 @@ export function requestedWetness(query: QueryParameters): number | null {
 }
 
 /**
+ * `?dirt=0.8` shows the truck that dirty (0 clean … 1 caked) whatever the
+ * road has done to it, for a look at its grime. Null when the URL does not
+ * say, or says something out of range.
+ */
+export function requestedDirt(query: QueryParameters): number | null {
+  const text = query.get('dirt')?.trim() ?? '';
+  const dirt = text === '' ? Number.NaN : Number(text);
+  return dirt >= 0 && dirt <= 1 ? dirt : null;
+}
+
+/**
  * `?mist=1` keeps the morning mist that thick (0 none … 1 a morning's full
  * mist) whatever the time and the weather: with `?time=` any hour, to look
  * at it (with a low sun ahead, `?time=07:40`, its glow and the sun's shafts

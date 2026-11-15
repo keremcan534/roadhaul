@@ -43,6 +43,7 @@ import { upgradeCard } from './upgradeCards';
 import type { SupplyService } from '../../systems/rewards/SupplyService';
 import type { LiveryPattern } from '../../data/definitions/LiveryDefinition';
 import type { LiveryService } from '../../systems/vehicles/LiveryService';
+import type { RoadDirtService } from '../../systems/vehicles/RoadDirtService';
 import { liveryPicker } from './liveryPicker';
 
 /** What the panel shows. It only reads them; changes go through the actions. */
@@ -77,6 +78,8 @@ export interface CompanyHqServices {
   readonly monetization: MonetizationService;
   /** The crates' parts and boosters: the free fill-up and repair tokens. */
   readonly supplies: SupplyService;
+  /** The truck's road dirt, on the truck page. */
+  readonly roadDirt: RoadDirtService;
   /** The trucks' designs and the trailer text. */
   readonly liveries: LiveryService;
   /** A design's small picture in a colour (0xRRGGBB), as an image URL (the presentation draws it). */
