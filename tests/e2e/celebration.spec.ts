@@ -22,6 +22,8 @@ test('celebrates a delivery: its stars land, what it earned counts up, and the p
   await expect(stars).toHaveAttribute('data-stars', '3');
   await expect(stars.locator('.result-star.is-lit')).toHaveCount(3);
   await expect(result.locator('.result-dialog__perfect')).toHaveText('Perfect delivery!');
+  // Parked squarely in the middle of the bay (the debug key's park): the parking bonus.
+  await expect(result.locator('.result-dialog__line', { hasText: 'Perfect parking' })).toBeVisible();
   // The tally ends on the receipt's total.
   const total = (await result.locator('.result-dialog__line.is-total dd').textContent())!;
   await expect(result.locator('.result-dialog__tally')).toHaveText(`+${total}`);

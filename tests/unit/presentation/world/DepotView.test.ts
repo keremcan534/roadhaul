@@ -1,5 +1,6 @@
 import { Box3, Mesh, MeshBasicMaterial, Scene, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
+import { BAY_SLACK_ACROSS_METERS, BAY_SLACK_ALONG_METERS } from '../../../../src/domain/missions/loadingBay';
 import { MAPS } from '../../../../src/data/content/maps';
 import { rectangleContains } from '../../../../src/data/definitions/MapDefinition';
 import { BEACON_COLORS, DepotView } from '../../../../src/presentation/world/DepotView';
@@ -60,10 +61,12 @@ describe('DepotView', () => {
     }
     // See-through from both sides, in one draw call each: not back, then front, with the shader set up for each.
     expect(beacon.map((mesh) => drawCallCount(mesh))).toEqual([1, 1]);
-    // The beacon stands over the origin bay.
+    // The beacon stands over the origin bay, round all the room a truck may park in (its lines and their slack).
     const walls = new Box3().setFromObject(beacon[0]!);
     expect((walls.min.x + walls.max.x) / 2).toBeCloseTo(-100, 6);
     expect((walls.min.z + walls.max.z) / 2).toBeCloseTo(-17, 6);
+    expect(walls.max.x - walls.min.x).toBeCloseTo(16 + 2 * BAY_SLACK_ALONG_METERS, 4);
+    expect(walls.max.z - walls.min.z).toBeCloseTo(4.6 + 2 * BAY_SLACK_ACROSS_METERS, 4);
 
     view.setTarget('test_destination_depot', 'delivery');
     expect(view.targetDepotId).toBe('test_destination_depot');

@@ -2,6 +2,7 @@ import {
   ACESFilmicToneMapping,
   Frustum,
   Matrix4,
+  type Object3D,
   PCFShadowMap,
   PerspectiveCamera,
   Scene,
@@ -10,6 +11,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { compilePieces } from './compilePieces';
+import { GpuFrameGate, type GpuFences } from './GpuFrameGate';
 import { opaqueByProgram } from './opaqueByProgram';
 import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
 
@@ -65,6 +67,10 @@ export class RenderHost {
   readonly gpu: string;
   /** The colour pass, or null where the scene goes straight to the screen (the low preset, older devices). */
   private readonly post: PostProcessing | null;
+  /** No more than two frames on the GPU at once (GpuFrameGate): a fence after each frame drawn. */
+  private readonly gpuGate: GpuFrameGate<WebGLSync>;
+  /** A lost context's fences are no more: dropped, not asked about in the context restored. */
+  private readonly forgetFences = (): void => this.gpuGate.forget();
   private readonly bufferSize = new Vector2();
   /** Scratch: where the sun is, as the camera sees it (setSun). */
   private readonly sunPoint = new Vector3();
@@ -89,6 +95,11 @@ export class RenderHost {
     this.renderer.toneMappingExposure = 1.05;
     this.gpu = rendererName(this.renderer.getContext());
     this.softwareRendering = SOFTWARE_RENDERER.test(this.gpu);
+    // On a GPU, no more than two frames on it at once. Drawn in software, the browser holds each frame back until the
+    // one before is drawn already (the end-to-end tests run there), and the gate would only change their pace.
+    this.gpuGate = new GpuFrameGate(this.softwareRendering ? NO_FENCES : webglFences(this.renderer.getContext()));
+    canvas.addEventListener('webglcontextlost', this.forgetFences);
+    canvas.addEventListener('webglcontextrestored', this.forgetFences);
     // A frame is several passes: render() starts the counts of draw calls and triangles once per frame.
     this.renderer.info.autoReset = false;
     // The scene's root never moves: left to update itself, it would make every object under it work out its matrix
@@ -214,24 +225,55 @@ export class RenderHost {
   async precompileGradually(pause: () => Promise<void>): Promise<void> {
     let compiling: Promise<unknown>[] = [];
     let sincePause = this.programCount();
-    for (const piece of compilePieces(this.scene)) {
-      const before = this.programCount();
-      const ready =
-        this.post === null
-          ? this.renderer.compileAsync(piece, this.camera, this.scene)
-          : this.post.compileObject(piece, this.scene, this.camera);
-      if (this.programCount() > before) {
-        compiling.push(ready);
+    // For every piece three.js gathers the lights of the whole scene (the programs depend on them), walking every
+    // object shown: hundreds of pieces walked the scene hundreds of times. Meanwhile the scene's parts without a
+    // light in them are hidden, so the walk finds the lights at once. What is shown makes no program differ.
+    const hidden = this.scene.children.filter((child) => child.visible && !holdsLight(child));
+    for (const child of hidden) {
+      child.visible = false;
+    }
+    try {
+      for (const piece of compilePieces(this.scene)) {
+        const before = this.programCount();
+        const ready =
+          this.post === null
+            ? this.renderer.compileAsync(piece, this.camera, this.scene)
+            : this.post.compileObject(piece, this.scene, this.camera);
+        if (this.programCount() > before) {
+          compiling.push(ready);
+        }
+        if (this.programCount() - sincePause >= SHADERS_PER_PAUSE) {
+          this.renderer.getContext().flush();
+          await Promise.all(compiling);
+          compiling = [];
+          await pause();
+          sincePause = this.programCount();
+        }
       }
-      if (this.programCount() - sincePause >= SHADERS_PER_PAUSE) {
-        this.renderer.getContext().flush();
-        await Promise.all(compiling);
-        compiling = [];
-        await pause();
-        sincePause = this.programCount();
+    } finally {
+      for (const child of hidden) {
+        child.visible = true;
       }
     }
     this.precompile();
+  }
+
+  /**
+   * Reads in every shader program made so far: where its uniforms and
+   * attributes are, which three.js asks the GPU for the first time a
+   * program draws, waiting on it (each program's link, then a question per
+   * uniform). Asked at the end of the boot, behind the loading screen, not
+   * on the road the first time the guard rails or a glow come into view.
+   */
+  readPrograms(): void {
+    const programs = this.renderer.info.programs;
+    if (programs === null) {
+      return;
+    }
+    for (const program of programs) {
+      program.getUniforms();
+      program.getAttributes();
+    }
   }
 
   /** Whether the preset draws shadow maps: then things out of view can still cast shadows into it. */
@@ -264,6 +306,22 @@ export class RenderHost {
   shadowsEveryOtherFrame = false;
   private shadowFrames = 0;
 
+  /**
+   * Whether a frame may be drawn now (GpuFrameGate): the GPU is done with
+   * the frame before last, or has had `waitedSeconds` (since the last frame
+   * drawn) too long for it. Until then the picture waits and the game runs
+   * on: a weak GPU handed frames faster than it draws them would queue them
+   * up behind Android's own drawing. Allocation-free.
+   */
+  gpuReady(waitedSeconds: number): boolean {
+    return this.gpuGate.ready(waitedSeconds);
+  }
+
+  /** Frames held back for the GPU since the start (gpuReady), for the performance display. */
+  get framesHeldBack(): number {
+    return this.gpuGate.heldBack;
+  }
+
   render(): void {
     this.renderer.info.reset();
     const shadows = this.renderer.shadowMap;
@@ -276,6 +334,8 @@ export class RenderHost {
     } else {
       this.post.render(this.scene, this.camera);
     }
+    // The fence after the frame: gpuReady() waits for it two frames on.
+    this.gpuGate.drawn();
   }
 
   /**
@@ -332,9 +392,41 @@ export class RenderHost {
   }
 
   dispose(): void {
+    const canvas = this.renderer.domElement;
+    canvas.removeEventListener('webglcontextlost', this.forgetFences);
+    canvas.removeEventListener('webglcontextrestored', this.forgetFences);
+    this.gpuGate.dispose();
     this.post?.dispose();
     this.renderer.dispose();
   }
+}
+
+/** No fences: the gate lets every frame through. */
+const NO_FENCES: GpuFences<WebGLSync> = { place: () => null, passed: () => true, remove: () => undefined };
+
+/**
+ * WebGL2's sync objects as the gate's fences (WebGLSync: one small object a
+ * frame drawn). Without them (WebGL 1) none is placed and every frame is
+ * drawn, as before; a lost context draws nothing, so nothing waits for it.
+ */
+function webglFences(gl: WebGLRenderingContext | WebGL2RenderingContext): GpuFences<WebGLSync> {
+  if (!('fenceSync' in gl)) {
+    return NO_FENCES;
+  }
+  return {
+    place: () => gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0),
+    passed: (fence) => gl.isContextLost() || gl.getSyncParameter(fence, gl.SYNC_STATUS) === gl.SIGNALED,
+    remove: (fence) => gl.deleteSync(fence),
+  };
+}
+
+/** Whether `object` is a light or holds one. */
+function holdsLight(object: Object3D): boolean {
+  let found = false;
+  object.traverse((child) => {
+    found ||= (child as { isLight?: boolean }).isLight === true;
+  });
+  return found;
 }
 
 /** The GPU's name. Browsers that hide it behind a generic name report it through a debug extension. */

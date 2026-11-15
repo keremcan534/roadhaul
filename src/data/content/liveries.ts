@@ -1,8 +1,8 @@
 import type { LiveryDefinition } from '../definitions/LiveryDefinition';
 
 /**
- * The trucks' designs: the classic for free; five for credits as the company
- * grows; five only crates give, the rarer the bolder; and two packs of three
+ * The trucks' designs: the classic for free; seven for credits as the company
+ * grows; nine only crates give, the rarer the bolder; and two packs of three
  * in the shop (cosmetic only).
  */
 export const LIVERIES: readonly LiveryDefinition[] = [
@@ -23,4 +23,10 @@ export const LIVERIES: readonly LiveryDefinition[] = [
   { id: 'neon', pattern: 'neon', price: 0, pack: 'designs_neon' },
   { id: 'circuit', pattern: 'circuit', price: 0, pack: 'designs_neon' },
   { id: 'synthwave', pattern: 'synthwave', price: 0, pack: 'designs_neon' },
+  { id: 'carbon', pattern: 'carbon', price: 6500, requiredCompanyLevel: 5 },
+  { id: 'rally', pattern: 'rally', price: 8000, requiredCompanyLevel: 6 },
+  { id: 'pixel', pattern: 'pixel', price: 0, crate: 'rare' },
+  { id: 'tribal', pattern: 'tribal', price: 0, crate: 'epic' },
+  { id: 'aurora', pattern: 'aurora', price: 0, crate: 'epic' },
+  { id: 'eclipse', pattern: 'eclipse', price: 0, crate: 'legendary' },
 ];

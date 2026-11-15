@@ -11,6 +11,7 @@ import {
   requestedSpawn,
   requestedTimeOfDay,
   requestedWetness,
+  requestedDirt,
   type QueryParameters,
 } from '../../../src/platform/browser/configOverrides';
 
@@ -33,8 +34,14 @@ describe('applyConfigOverrides', () => {
     const debug = applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?debug'));
     const quiet = applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?debug&log=warn'));
 
-    expect(debug.debug).toEqual({ logLevel: 'debug', showPerfOverlay: true });
+    expect(debug.debug).toEqual({ logLevel: 'debug', showPerfOverlay: true, unlockAutoDrive: false });
     expect(quiet.debug.logLevel).toBe('warn');
+  });
+
+  it('unlocks auto-drive without its research with ?autodrive=1, and only then', () => {
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?autodrive=1')).debug.unlockAutoDrive).toBe(true);
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?autodrive=yes')).debug.unlockAutoDrive).toBe(false);
+    expect(applyConfigOverrides(DEFAULT_GAME_CONFIG, query('?debug')).debug.unlockAutoDrive).toBe(false);
   });
 
   it('scales fuel use with a positive ?fuelScale and ignores anything else', () => {
@@ -132,10 +139,22 @@ describe('requestedCityIncident', () => {
   });
 });
 
+describe('requestedDirt', () => {
+  it('keeps the truck as dirty as the URL says, from clean to caked, and nothing else', () => {
+    expect(requestedDirt(query('?dirt=0.8'))).toBe(0.8);
+    expect(requestedDirt(query('?dirt=0'))).toBe(0);
+    for (const search of ['', '?dirt=', '?dirt=2', '?dirt=-1', '?dirt=mud']) {
+      expect(requestedDirt(query(search)), search).toBeNull();
+    }
+  });
+});
+
 describe('requestedSkyWonder', () => {
-  it('brings out the northern lights or the shooting stars the URL names, and nothing else', () => {
+  it('brings out the northern lights, the shooting stars or an eclipse the URL names, and nothing else', () => {
     expect(requestedSkyWonder(query('?sky=aurora'))).toBe('aurora');
     expect(requestedSkyWonder(query('?sky=meteors'))).toBe('meteors');
+    expect(requestedSkyWonder(query('?sky=solar'))).toBe('solar');
+    expect(requestedSkyWonder(query('?sky=lunar'))).toBe('lunar');
     for (const search of ['', '?sky=', '?sky=rainbow', '?sky=1']) {
       expect(requestedSkyWonder(query(search)), search).toBeNull();
     }

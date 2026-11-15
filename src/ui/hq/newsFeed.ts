@@ -3,7 +3,7 @@ import { element } from '../dom';
 import type { Strings } from '../i18n';
 import { icon } from '../icons';
 
-/** A headline's text, with the city, the rival and its boss, the company and the count it names filled in. */
+/** A headline's text, with the city, the rival and its boss, the company and the count (or the time) it names filled in. */
 export function newsText(strings: Strings, item: NewsItem, companyName: string): string {
   return strings.t(item.key, {
     city: item.cityId === null ? '' : strings.cityName(item.cityId),
@@ -11,6 +11,8 @@ export function newsText(strings: Strings, item: NewsItem, companyName: string):
     boss: item.rivalId === null ? '' : strings.t(`rival.${item.rivalId}.boss`),
     company: companyName,
     count: strings.number(item.count),
+    // An eclipse's headline tells the minute of the game's clock its totality begins.
+    time: clockText(item.count),
   });
 }
 

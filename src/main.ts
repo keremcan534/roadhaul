@@ -14,10 +14,12 @@ import { PLAYER_COMPANY_ID } from './data/definitions/RivalCompanyDefinition';
 import type { Credits } from './data/units';
 import { validateCompanyName } from './domain/company/companyName';
 import type { KnockableKind } from './domain/crash/knockables';
+import { CONVOY_FOLLOW_GAPS } from './domain/missions/convoyTrail';
 import { bayParkingPose } from './domain/missions/loadingBay';
 import { createTrailerPose, type TrailerPose } from './domain/vehicles/semiTrailer';
 import type { SaveSummary } from './domain/save/saveSummary';
 import { morningMist } from './domain/sky/mist';
+import { eclipseMoonlight, eclipseSky } from './domain/sky/eclipses';
 import { composeSky, createSkyLook, mixWeather } from './domain/sky/skyLook';
 import { pastFirstDelivery } from './domain/tutorial/tutorialSteps';
 import { truckLooks } from './domain/vehicles/upgradeBonuses';
@@ -46,8 +48,9 @@ import {
   requestedHills,
   requestedTimeOfDay,
   requestedWetness,
+  requestedDirt,
 } from './platform/browser/configOverrides';
-import { chooseQuality, detectQuality, deviceHints, qualitySetting } from './platform/browser/deviceQuality';
+import { chooseQuality, detectQuality, deviceHints, isEntryGpu, qualitySetting } from './platform/browser/deviceQuality';
 import { gpuName } from './platform/browser/gpuName';
 import { loadSettings, saveSettings } from './platform/browser/deviceSettings';
 import { MirroredStorage, restoreMirror, type MirrorFiles } from './platform/native/mirroredStorage';
@@ -65,6 +68,7 @@ import { PhotoCamera } from './presentation/cameras/PhotoCamera';
 import { CabRadio } from './presentation/audio/CabRadio';
 import { RoadEventsView } from './presentation/world/RoadEventsView';
 import { AdaptiveResolution } from './presentation/AdaptiveResolution';
+import { FramePacing } from './presentation/FramePacing';
 import { createSoundState, GameAudio } from './presentation/audio/GameAudio';
 import { loadEngineLoops } from './presentation/audio/engineLoops';
 import { RenderHost, SOFTWARE_MIN_RESOLUTION_SCALE, isSoftwareRenderer } from './presentation/RenderHost';
@@ -76,6 +80,7 @@ import { CrashEffects } from './presentation/effects/CrashEffects';
 import { SlowMotion } from './presentation/effects/SlowMotion';
 import { createTruckEffectsState, TruckEffects } from './presentation/vehicles/TruckEffects';
 import { DepotView } from './presentation/world/DepotView';
+import { HeadOfficeView } from './presentation/world/HeadOfficeView';
 import { EnvironmentView } from './presentation/world/EnvironmentView';
 import { ShootingStars } from './presentation/world/ShootingStars';
 import { GpsRouteView } from './presentation/navigation/GpsRouteView';
@@ -117,6 +122,7 @@ import type { GameState } from './systems/gameState/GameState';
 import type { BoostError } from './systems/monetization/MonetizationService';
 import type { RepairError } from './systems/vehicles/DamageService';
 import type { RefuelError, Refuelled } from './systems/vehicles/FuelService';
+import { TurnSignalService } from './systems/vehicles/TurnSignalService';
 import { LookAround } from './ui/controls/LookAround';
 import { TouchControls } from './ui/controls/TouchControls';
 import { PerfOverlay } from './ui/debug/PerfOverlay';
@@ -139,6 +145,18 @@ import { MapPainter } from './ui/map/MapPainter';
 import { sketchWorld } from './ui/map/mapSketch';
 import { WorldMap } from './ui/map/WorldMap';
 import { backAction } from './ui/menus/backAction';
+import { TruckWashGame } from './ui/menus/TruckWashGame';
+import { YardJamDialog, type YardJamPuzzle } from './ui/menus/YardJamDialog';
+import { PlacePanel } from './ui/hud/PlacePanel';
+import { PlacesView } from './presentation/world/PlacesView';
+import { CabTablet } from './ui/menus/CabTablet';
+import { RaceCarsView } from './presentation/vehicles/RaceCarsView';
+import { DriverFigureView } from './presentation/vehicles/DriverFigureView';
+import { RaceHud } from './ui/hud/RaceHud';
+import { OnFootButton } from './ui/hud/OnFootButton';
+import { RaceResultDialog } from './ui/menus/RaceResultDialog';
+import { RACE_CAR } from './data/content/raceCar';
+import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
 import { FerryCrossing } from './ui/menus/FerryCrossing';
@@ -157,6 +175,8 @@ import { photoFileName } from './ui/photo/photoFileName';
 import { photoPicture } from './ui/photo/photoPicture';
 import { ResultDialog } from './ui/menus/ResultDialog';
 import { ShopDialog } from './ui/menus/ShopDialog';
+import { WhatsNewDialog } from './ui/menus/WhatsNewDialog';
+import { DEVELOPMENT_BUILD, notesIn, notesToShow } from './ui/menus/whatsNew';
 import { DailyRewardDialog } from './ui/menus/DailyRewardDialog';
 import { reminderText } from './ui/menus/reminderText';
 import { AchievementsDialog } from './ui/menus/AchievementsDialog';
@@ -186,13 +206,28 @@ const PANEL_STANDSTILL_SPEED = 0.5;
 /** The northern lights and a rainbow count as seen once they show this strongly on the sky (0..1). */
 const AURORA_SEEN = 0.35;
 const RAINBOW_SEEN = 0.45;
+/** An eclipse counts as seen once its totality shows this well (EnvironmentView.eclipseShown). */
+const ECLIPSE_SEEN = 0.4;
 /**
  * Drawn in software (RenderHost.softwareRendering): the shadow map at most
- * this size, and this share of the plants and of the clouds.
+ * this size. The plainer world (drawn in software, or on the low preset by an
+ * entry GPU: isEntryGpu): this share of the plants and of the clouds.
  */
 const SOFTWARE_SHADOW_MAP_SIZE = 1024;
-const SOFTWARE_VEGETATION_SHARE = 0.5;
-const SOFTWARE_CLOUD_SHARE = 0.5;
+const PLAINER_VEGETATION_SHARE = 0.5;
+const PLAINER_CLOUD_SHARE = 0.5;
+/**
+ * The plainer world's forests wear their simpler far crowns, without their
+ * inner trunks and shadows, past this far, meters (TrackView: 450), and its
+ * scenery's props (benches, poles, fences, pavements) are drawn this far
+ * (SceneryView: 1 km, the world's tiles' reach): both deep in the haze.
+ */
+const PLAINER_TREE_DETAIL_METERS = 300;
+const PLAINER_SCENERY_METERS = 600;
+/** The plainer world's street lamps are drawn this far, meters (StreetLampView: 700); their glows at night further. */
+const PLAINER_LAMP_POST_METERS = 450;
+/** The plainer world's people on the pavements near the camera, at most. */
+const PLAINER_PEDESTRIANS = 24;
 /**
  * Drawn in software, a frame takes 200 ms or more, half a second on a slow
  * machine; a fixed step, well under a millisecond. Frames simulated up to
@@ -201,6 +236,11 @@ const SOFTWARE_CLOUD_SHARE = 0.5;
  */
 const SOFTWARE_MAX_SIMULATION_DELTA_SECONDS = 0.5;
 const SOFTWARE_MAX_STEPS_PER_FRAME = 30;
+/** The engine brake's switch is lit while it works at least this hard (VehicleRuntimeState.engineBraking). */
+const ENGINE_BRAKE_SHOWN_FROM = 0.15;
+/** The gas held this long against the parking brake, the player is told to release it; at most this often, seconds. */
+const PARKING_BRAKE_HINT_AFTER_SECONDS = 1.2;
+const PARKING_BRAKE_HINT_EVERY_SECONDS = 20;
 /**
  * How many lamps light the night (LampLighting), per graphics preset: the
  * nearest street lamps and vehicles. Drawn in software (with ?lamps=1), as
@@ -258,6 +298,8 @@ const THICK_MIST = 0.5;
 /** The game's version (package.json) and its build number (CI; `dev` on a desktop): vite.config.ts sets them. */
 declare const __APP_VERSION__: string;
 declare const __APP_BUILD__: string;
+/** This build's release notes in each language (vite.config.ts: the store listing's changelogs), for What's New. */
+declare const __RELEASE_NOTES__: Readonly<Record<string, string>>;
 /** The ads this build shows (vite.config.ts, from ROADHAUL_ADS; docs/RELEASE.md): none, Google's test ads, or the game's own. */
 declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly rewarded: string; readonly interstitial: string };
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
@@ -338,11 +380,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const events = services.resolve(ServiceKeys.events);
   const gameState = services.resolve(ServiceKeys.gameState);
   const driving = services.resolve(ServiceKeys.driving);
+  const horn = services.resolve(ServiceKeys.horn);
+  driving.setEngineBrake(settings.engineBrake);
   const traffic = services.resolve(ServiceKeys.traffic);
   const weather = services.resolve(ServiceKeys.weather);
   const timeOfDay = services.resolve(ServiceKeys.timeOfDay);
   const season = services.resolve(ServiceKeys.season);
   const skyWonders = services.resolve(ServiceKeys.skyWonders);
+  const roadDirt = services.resolve(ServiceKeys.roadDirt);
+  const onFoot = services.resolve(ServiceKeys.onFoot);
   const cityIncidents = services.resolve(ServiceKeys.cityIncidents);
   const news = services.resolve(ServiceKeys.news);
   const shownIncident = requestedCityIncident(query);
@@ -369,11 +415,19 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   }
   /** How wet the roads are: the weather's, or as the address keeps them (`?wet=`). */
   const keptWetness = requestedWetness(query);
+  /** How dirty the truck looks: the road's, or as the address keeps it (`?dirt=`). */
+  const keptDirt = requestedDirt(query);
   /** How thick the morning mist lies: the morning's, or as the address keeps it (`?mist=`). */
   const keptMist = requestedMist(query);
   /** The sky's wonders brought out for a look (`?sky=`). */
   const shownWonder = requestedSkyWonder(query);
   skyWonders.forceAurora(shownWonder === 'aurora');
+  // An eclipse every day for a look (`?sky=solar|lunar`), its middle at the clock's time (`?time=` holds it at
+  // totality), with the moon new or full as it must be for one.
+  if (shownWonder === 'solar' || shownWonder === 'lunar') {
+    skyWonders.forceEclipse(shownWonder, timeOfDay.minutes);
+    timeOfDay.holdMoonPhase(shownWonder === 'solar' ? 0 : 0.5);
+  }
   /** The sky for the time of day with the weather over it, worked out every frame (composeSky). */
   const clearDay = content.weather.get(config.weather.clearWeatherId).look;
   const weatherLook = createSkyLook();
@@ -395,10 +449,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const fleet = services.resolve(ServiceKeys.fleet);
   const rivals = services.resolve(ServiceKeys.rivals);
   const facilities = services.resolve(ServiceKeys.facilities);
+  const rent = services.resolve(ServiceKeys.rent);
   const research = services.resolve(ServiceKeys.research);
   const career = services.resolve(ServiceKeys.career);
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
   const convoy = services.resolve(ServiceKeys.convoy);
+  const places = services.resolve(ServiceKeys.places);
+  const autoDrive = services.resolve(ServiceKeys.autoDrive);
+  const race = services.resolve(ServiceKeys.race);
   const requestedRoad = requestedRoadEvent(query);
   if (requestedRoad === 'stranded') {
     roadEvents.sendStrandedDriver();
@@ -439,6 +497,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const castShadows = config.rendering.shadowMapSize > 0;
   // Drawn in software (no GPU), every pixel is dear: coarser shadows, half the plants and clouds, a plainer ground.
   const software = renderHost.softwareRendering;
+  // An entry GPU (a Galaxy J7 Prime's Mali-T830, a PowerVR GE8320, an Adreno 506: half an entry Mali-G52's drawing
+  // or less) on the low preset draws the plainer world too: half the plants and clouds, the grass read once, no clouds'
+  // shadows or mist on the land, the forests' far crowns nearer, the scenery's props and the people fewer. Its
+  // lamps still light the night.
+  const plainer = software || (config.rendering.quality === 'low' && device.gpu !== undefined && isEntryGpu(device.gpu));
   // A phone's GPU gets the shaders a few at a time (RenderHost.precompileGradually): all at once, a weak one stays
   // busy so long that Android reports the game not responding.
   const gradualCompile = device.mobile && !software;
@@ -466,18 +529,18 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const environment = new EnvironmentView(renderHost.scene, {
     hdr: renderHost.postProcessing,
     shadowMapSize: software ? Math.min(SOFTWARE_SHADOW_MAP_SIZE, config.rendering.shadowMapSize) : config.rendering.shadowMapSize,
-    cloudShare: software ? SOFTWARE_CLOUD_SHARE : 1,
+    cloudShare: plainer ? PLAINER_CLOUD_SHARE : 1,
     seasons: seasonShading,
     // The ranges round the region stand still in the world, coming down to the sea where its coast meets the edges.
     mountains: { halfSizeMeters: driving.world.halfSizeMeters, coastX: coastAtEdges(driving.world) },
   });
   /**
    * Shades what is in the scene so far, each material once: the clouds' shadows and the morning mist on the land (not
-   * drawn in software, where every pixel's instructions count: the sky and its hills still show the mist), the lamps'
-   * light on everything, and the seasons. Before its shaders compile.
+   * in the plainer world, where every pixel's instructions count: the sky and its hills still show the mist), the
+   * lamps' light on everything, and the seasons. Before its shaders compile.
    */
   const shadeScene = (): void => {
-    if (!software) {
+    if (!plainer) {
       cloudShadows.shadeScene(renderHost.scene, prelit);
       environment.mist.shadeScene(renderHost.scene);
     }
@@ -490,11 +553,20 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     anisotropy: renderHost.anisotropy,
     prelit,
     sky: environment.sky,
-    groundDetail: !software,
+    groundDetail: !plainer,
     seasons: seasonShading,
+    treeDetailMeters: plainer ? PLAINER_TREE_DETAIL_METERS : undefined,
   });
   const depots = new DepotView(renderHost.scene, driving.world.depots, { anisotropy: renderHost.anisotropy, prelit });
+  // The company's head office: its buildings rise as the facilities are built (showHeadOffice, below).
+  const headOfficeSite = driving.world.headOffice;
+  const headOffice =
+    headOfficeSite === null
+      ? null
+      : new HeadOfficeView(renderHost.scene, headOfficeSite, driving.world.terrain.heightAt(headOfficeSite.x, headOfficeSite.z));
   new RestAreaView(renderHost.scene, driving.world, { anisotropy: renderHost.anisotropy, prelit });
+  // The places to visit: a diner, a truck wash and a lookout beside the roads, drawn only near one.
+  const placesView = new PlacesView(renderHost.scene, driving.world, { prelit });
   const lampGlows = config.rendering.lampGlows;
   // What the truck knocks over leaves its place and tumbles about with the debris (CrashService): the views know
   // each thing's circle in the world (the same in every drive of the map) and draw it lying about.
@@ -508,6 +580,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     shadowReach: environment,
     circles: circlesOf(driving.world.streetLamps),
     debrisCapacity,
+    reachMeters: plainer ? PLAINER_LAMP_POST_METERS : undefined,
   });
   lampLighting.setStreetLamps(streetLamps.lampLights());
   lampLighting.setStreetLampsDark(streetLamps.dark);
@@ -532,10 +605,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     driving.world.roads,
     driving.world.sidewalks,
     driving.world.streetFurniture,
-    { capacity: PEDESTRIANS[config.rendering.quality] },
+    { capacity: plainer ? Math.min(PLAINER_PEDESTRIANS, PEDESTRIANS[config.rendering.quality]) : PEDESTRIANS[config.rendering.quality] },
   );
   const roadside = new RoadsideView(renderHost.scene, driving.world, {
-    density: config.rendering.vegetationDensity * (software ? SOFTWARE_VEGETATION_SHARE : 1),
+    density: config.rendering.vegetationDensity * (plainer ? PLAINER_VEGETATION_SHARE : 1),
     prelit,
     seasons: seasonShading,
   });
@@ -557,6 +630,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     shadowReach: environment,
     anisotropy: renderHost.anisotropy,
     debrisCapacity,
+    reachMeters: plainer ? PLAINER_SCENERY_METERS : undefined,
   });
   // The sea mirrors the sky, so it follows the weather with it.
   const coast = driving.world.sea;
@@ -634,11 +708,25 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   // What flies off in a crash: bits, sparks and dust; a big one is seen in slow motion.
   const crashEffects = new CrashEffects(renderHost.scene, config.rendering.particleDensity, prelit);
   const slowMotion = new SlowMotion();
+  // The indicators: the stalk (Q and E, the dashboard's arrows) and the hazard switch (X, its button). They flash on
+  // the truck and on the dashboard, the relay ticking; a drive starts with them off.
+  const turnSignals = new TurnSignalService();
+  /** Whether the indicators were lit at the last frame: the relay ticks as they come on and go off. */
+  let relayLit = false;
+  /**
+   * Seconds the gas has been pressed against the parking brake, the truck going nowhere, and since the player was
+   * last told so: after a moment it says to release it, at most every PARKING_BRAKE_HINT_EVERY_SECONDS.
+   */
+  let gasAgainstParkingBrakeSeconds = 0;
+  let sinceParkingBrakeHintSeconds = Number.POSITIVE_INFINITY;
   const effectsState = createTruckEffectsState();
   // Drawn in software, fewer pixels are the only speed to be had (RenderHost sets no floor there): down to 60%.
   const adaptiveResolution = new AdaptiveResolution(
     isSoftwareRenderer(renderHost.gpu) ? Math.min(SOFTWARE_MIN_RESOLUTION_SCALE, config.rendering.minResolutionScale) : config.rendering.minResolutionScale,
   );
+  // A phone that cannot keep up with its screen shows its frames evenly, at its rate halved (or a third…): an even 30
+  // on a 60 Hz screen judders less than 40 to 50 shown one for one beat and the next for two, and runs cooler.
+  const framePacing = new FramePacing();
   /** Vehicles on the road, as last written to the page (e2e tests read it). */
   let shownTraffic = -1;
   /** Company trucks in the traffic, as last written to the page (e2e tests read it). */
@@ -656,6 +744,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   // Rebuilt whenever the player drives another truck (showActiveTruck).
   let truck = new TruckView(renderHost.scene, driving.definition, { lampGlows, castShadows, sky: environment.sky, light: environment.light });
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body, driving.definition.trailer ?? null);
+  // A street race's cars: the player's while it is driven, and the club's rivals (RaceService).
+  const raceCars = new RaceCarsView(renderHost.scene, RACE_CAR.body, RACE_CAR.factoryColor);
+  /** The driver on foot, out of the truck (OnFootService). */
+  const driverFigure = new DriverFigureView(renderHost.scene);
   cameraRig.currentMode = settings.camera;
   // Dragging across the road looks round, within what the current camera allows.
   const lookAround = new LookAround(canvas, () => cameraRig.lookLimits);
@@ -675,11 +767,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    */
   const showCamera = (drivingNow: boolean): void => {
     const mode = cameraRig.shownMode;
-    const inCab = drivingNow && mode === 'cabin';
+    // On foot the camera follows the driver outside, whatever the camera picked for the drive.
+    const inCab = drivingNow && mode === 'cabin' && !onFoot.active;
     truck.setCabinView(inCab);
     rain.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
     snowfall.setClearance(inCab ? CAB_RAIN_CLEARANCE_METERS : 0);
-    renderHost.mirrored = drivingNow && mode === 'rear';
+    renderHost.mirrored = drivingNow && mode === 'rear' && !onFoot.active;
     root.dataset.camera = mode;
   };
   /** The camera button (or C): the next camera, named for a moment, and kept for next time. */
@@ -718,19 +811,64 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   // The screen stays on while the truck is driven: steering by tilting the phone touches nothing.
   const screenWake = new ScreenWake(navigator);
   const soundState = createSoundState();
-  const honk = (pressed: boolean): void => audio.setHorn(pressed);
+  // The horn sounds; on the road it also hurries the traffic ahead and startles what is near (HornService).
+  const honk = (pressed: boolean): void => {
+    audio.setHorn(pressed);
+    horn.press(pressed && onRoad() && !paused);
+  };
+  const signal = (side: 'left' | 'right'): void => {
+    if (onRoad() && !paused) {
+      turnSignals.toggle(side);
+    }
+  };
+  const hazards = (): void => {
+    if (onRoad() && !paused) {
+      turnSignals.toggleHazard();
+    }
+  };
+  // The brakes' switches: the parking brake (its air heard) and the engine brake (the player's choice, kept).
+  const parkingBrake = (): void => {
+    if (onRoad() && !paused) {
+      const applied = !driving.parkingBrake;
+      driving.setParkingBrake(applied);
+      audio.parkingBrake(applied);
+    }
+  };
+  const engineBrake = (): void => {
+    if (onRoad() && !paused) {
+      const on = !driving.engineBrake;
+      driving.setEngineBrake(on);
+      settings = { ...settings, engineBrake: on };
+      saveSettings(storage, settings);
+      toasts.show(strings.t(on ? 'toast.engineBrakeOn' : 'toast.engineBrakeOff'), 'info');
+    }
+  };
   // Steering by turning the phone reads the motion sensor while it is the picked way of steering (applySteering).
   const tilt = new TiltInput(window, settings.tiltSensitivity, (status) => showTilt(status));
   const touch = new TouchControls(ui, {
     onToggleCamera: toggleCamera,
     onHorn: honk,
+    onSignal: signal,
+    onHazards: hazards,
+    onParkingBrake: parkingBrake,
+    onEngineBrake: engineBrake,
     onTilt: () => {
       tilt.unlock();
       tilt.recenter();
     },
   });
   touch.size = settings.controlSize;
-  const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals);
+  // Auto-drive's switch on the sign, and the cab tablet's while it drives (toggleAutoDrive and the tablet, below).
+  const hud = new MissionHud(ui, strings, missions, navigation, driving, rivals, {
+    get available() {
+      return autoDrive.available;
+    },
+    get engaged() {
+      return autoDrive.engaged;
+    },
+    onToggle: () => toggleAutoDrive(),
+    onTablet: () => (tablet.isOpen ? tablet.close() : tablet.open()),
+  });
   // The 2D maps: the region drawn once into paths, the minimap on the road and the full map (openMap, below).
   // The region driven, and the others across the water where they lie in the one world, with the ferry crossings.
   const mapSketch = sketchWorld(driving.world, content.maps.all);
@@ -863,6 +1001,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'mainMenu' && current === 'driving') {
       delete root.dataset.cityIncident; // A new company's: the last one's incident is gone (CityIncidentService).
+    }
+    if (current !== 'driving') {
+      autoDrive.disengage('switchedOff'); // Off the road: nobody drives.
+      race.quit(); // Nor races: the truck is driven again.
     }
   });
   // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
@@ -1186,6 +1328,193 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       onRepairToken: repairToken,
     },
   );
+  // The places to visit: the counter on a place's lot, the diner's Yard Jam and the truck wash's scrub. The drive
+  // waits while one of those is open.
+  const yardJam = new YardJamDialog(ui, strings);
+  const truckWash = new TruckWashGame(ui, strings, () => performance.now(), Math.random);
+  let pausedForPlace = false;
+  const holdForPlace = (): void => {
+    if (!paused) {
+      paused = true;
+      pausedForPlace = true;
+    }
+  };
+  const releaseForPlace = (): void => {
+    if (pausedForPlace) {
+      pausedForPlace = false;
+      paused = false;
+    }
+  };
+  /** The day's yard, dealt once for the day (the deal takes a moment on a slow phone). */
+  let dailyYard: { readonly day: number; readonly puzzle: YardJamPuzzle } | null = null;
+  /** A yard: the day's at a diner, or one for fun; the drive waits unless auto-drive drives on (`hold` false). */
+  const openYardJam = (daily: boolean, hold = true): void => {
+    const day = places.puzzleDay;
+    if (daily && dailyYard?.day !== day) {
+      dailyYard = { day, puzzle: generateYardJam(day, { minMoves: config.places.puzzleMinMoves }) };
+    }
+    const puzzle =
+      daily && dailyYard !== null
+        ? dailyYard.puzzle
+        : generateYardJam(Math.floor(Math.random() * 2 ** 31), { minMoves: config.places.puzzleMinMoves });
+    if (hold) {
+      holdForPlace();
+    }
+    yardJam.open(puzzle, {
+      daily,
+      onCleared: (moves) => {
+        if (!daily) {
+          return null;
+        }
+        const paid = places.solvePuzzle(day, moves);
+        return paid.ok ? strings.t('puzzle.reward', { credits: strings.money(paid.value.credits), xp: paid.value.xp }) : null;
+      },
+      onAnother: () => openYardJam(false, hold),
+      onClose: () => {
+        yardJam.close();
+        releaseForPlace();
+      },
+    });
+  };
+  const placePanel = new PlacePanel(
+    ui,
+    strings,
+    places,
+    { puzzleCredits: config.places.puzzleCredits, washCredits: config.places.washCredits },
+    {
+      onPuzzle: () => openYardJam(!places.puzzleSolvedToday),
+      onWash: () => {
+        holdForPlace();
+        const paint = garage.activeTruck?.paint?.color ?? driving.definition.factoryColor;
+        truckWash.open(`#${paint.toString(16).padStart(6, '0')}`, config.places.washSeconds, config.places.washCleanShare, {
+          onFinished: (share) => {
+            // The scrub cleans the truck itself by the share of it washed, tip or not.
+            roadDirt.wash(share);
+            const paid = places.finishWash(share);
+            return paid.ok
+              ? strings.t('wash.tip', { credits: strings.money(paid.value) })
+              : roadDirt.level === 'clean'
+                ? strings.t('wash.truckClean')
+                : null;
+          },
+          onClose: () => {
+            truckWash.close();
+            releaseForPlace();
+          },
+        });
+      },
+      onPhoto: () => openPhoto(true),
+      onRace: () => {
+        const club = places.current;
+        if (club === null) {
+          return;
+        }
+        const started = race.start(club);
+        if (!started.ok) {
+          toasts.show(strings.t(`race.refused.${started.error}`), 'warning');
+        }
+      },
+    },
+    {
+      get contractUnderWay() {
+        return missions.active !== null;
+      },
+      // A club's races run to the town whose depot is nearest its finish.
+      finishName: (club) => {
+        const to = club.raceTo ?? club.lot;
+        let nearest = driving.world.depots[0];
+        for (const depot of driving.world.depots) {
+          if (Math.hypot(depot.yard.x - to.x, depot.yard.z - to.z) < Math.hypot(nearest!.yard.x - to.x, nearest!.yard.z - to.z)) {
+            nearest = depot;
+          }
+        }
+        return nearest === undefined ? '' : strings.cityName(nearest.cityId);
+      },
+    },
+  );
+  // The street race over the road, and how it ended.
+  const raceHud = new RaceHud(ui, strings, race, () => race.quit());
+  const raceResult = new RaceResultDialog(ui, strings, () => raceResult.close());
+  events.on('RaceStarted', () => {
+    root.dataset.race = 'on';
+    cameraRig.setBody(RACE_CAR.body, null);
+  });
+  events.on('RaceEnded', (result) => {
+    root.dataset.race = 'off';
+    cameraRig.setBody(driving.definition.body, driving.definition.trailer ?? null);
+    // Given up by leaving the road (the main menu): nothing to show there.
+    if (gameState.current === 'driving') {
+      raceResult.open(result);
+    }
+  });
+  // The cab's tablet, while auto-drive drives: Memory, and Yard Jam for fun (the drive goes on under it).
+  const tablet = new CabTablet(ui, strings, Math.random, {
+    onYardJam: () => openYardJam(false, false),
+    onClose: () => tablet.close(),
+  });
+  /** Auto-drive on or off (V, or its switch on the sign); a toast says why it will not. */
+  /** Out of the truck standing still, or back in at the cab's door (Enter, or the HUD's button). */
+  const stepOutOrIn = (): void => {
+    if (!onRoad() || paused || race.active) {
+      return;
+    }
+    if (onFoot.active) {
+      const stepped = onFoot.stepIn();
+      if (!stepped.ok) {
+        toasts.show(strings.t('onFoot.tooFar'), 'info');
+      }
+      return;
+    }
+    if (autoDrive.engaged) {
+      autoDrive.disengage('switchedOff');
+    }
+    const stepped = onFoot.stepOut();
+    if (!stepped.ok) {
+      toasts.show(strings.t(`onFoot.refused.${stepped.error}`), 'warning');
+    }
+  };
+  const onFootButton = new OnFootButton(ui, strings, onFoot, stepOutOrIn);
+  events.on('DriverSteppedOut', () => {
+    root.dataset.onFoot = 'on';
+    cameraRig.snap();
+    lookAround.reset();
+    showCamera(true);
+    toasts.show(strings.t('onFoot.hint'), 'info');
+  });
+  events.on('DriverSteppedIn', () => {
+    root.dataset.onFoot = 'off';
+    cameraRig.snap();
+    lookAround.reset();
+    showCamera(isDriving());
+  });
+  const toggleAutoDrive = (): void => {
+    if (autoDrive.engaged) {
+      autoDrive.disengage('switchedOff');
+      return;
+    }
+    const engaged = autoDrive.engage();
+    if (!engaged.ok) {
+      toasts.show(strings.t(`autodrive.refused.${engaged.error}`), 'warning');
+    }
+  };
+  events.on('AutoDriveChanged', ({ engaged, reason }) => {
+    root.dataset.autoDrive = engaged ? 'on' : 'off';
+    if (engaged) {
+      toasts.show(strings.t('autodrive.on'), 'info');
+      return;
+    }
+    // The wheel is the driver's again: the tablet and a yard played on it are put away.
+    tablet.close();
+    if (yardJam.isOpen && !pausedForPlace) {
+      yardJam.close();
+    }
+    if (reason !== null) {
+      toasts.show(strings.t(`autodrive.off.${reason}`), reason === 'takeover' || reason === 'switchedOff' ? 'info' : 'warning');
+    }
+  });
+  events.on('PlaceFound', ({ placeId, credits, xp }) => {
+    toasts.show(strings.t('toast.placeFound', { place: strings.t(`place.name.${placeId}`), credits: strings.money(credits), xp }), 'success');
+  });
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   // The road's events: a camera or road works ahead, under the minimap; a camera's flash over the screen.
   const roadAlert = new RoadAlert(ui, strings);
@@ -1308,10 +1637,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     },
     onClose: () => closePhoto(),
   });
-  const openPhoto = (): void => {
+  /** The photo was taken at a lookout: closing it goes back to the road, not to the pause menu. */
+  let photoFromPlace = false;
+  const openPhoto = (fromPlace = false): void => {
     if (!isDriving() || photoMode.isOpen) {
       return;
     }
+    photoFromPlace = fromPlace;
     paused = true;
     pauseMenu.close();
     photoCamera.setBody(driving.definition.body);
@@ -1328,7 +1660,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     photoMode.close();
     delete root.dataset.photo;
     showCamera(onRoad());
-    if (isDriving()) {
+    if (photoFromPlace) {
+      photoFromPlace = false;
+      paused = false;
+    } else if (isDriving()) {
       pauseMenu.open(missions.active !== null, roadsideFuelOffer());
     }
   };
@@ -1355,6 +1690,16 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     onToggleCamera: toggleCamera,
     onRadio: tuneRadio,
     onHorn: honk,
+    onSignal: signal,
+    onHazards: hazards,
+    onParkingBrake: parkingBrake,
+    onEngineBrake: engineBrake,
+    onAutoDrive: () => {
+      if (onRoad() && !paused) {
+        toggleAutoDrive();
+      }
+    },
+    onStepOut: stepOutOrIn,
     onMap: () => {
       if (worldMap.isOpen) {
         closeMap();
@@ -1404,6 +1749,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * what the garage previews on it: another look gets its own view, and the
    * camera follows it.
    */
+  /** The head office as the company has built it, in the colour of the truck it drives. */
+  const showHeadOffice = (): void => {
+    const active = session.isActive ? garage.activeTruck : null;
+    const companyColor = active?.paint?.color ?? driving.definition.factoryColor;
+    headOffice?.setLevels((facilityId) => (session.isActive ? facilities.levelOf(facilityId) : 0), companyColor);
+    // A convoy contract's trucks are the company's: in its colour too.
+    roadEventsView.setFollowerPaint(companyColor);
+  };
+  showHeadOffice();
   const showTruck = (): void => {
     // Before a company is loaded (the main menu at the start), the truck behind the menu wears its factory colour.
     const active = session.isActive ? garage.activeTruck : null;
@@ -1454,6 +1808,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     truckPreview = null;
     menuPreview = null;
     showTruck();
+    showHeadOffice();
     syncMissionView();
     root.dataset.tutorialStep = tutorial.step;
     gameState.transitionTo('driving');
@@ -1496,6 +1851,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         showMainMenu(strings.t(`menu.problem.${continued.error}`));
         return;
       }
+      // What the warehouse's rent took while the game was closed: waiting at the head office.
+      if (rent.waiting > 0) {
+        toasts.show(strings.t('toast.rentWaiting', { money: strings.money(rent.waiting) }), 'info');
+      }
       // The region over the water picked: straight on board its ferry, without the drive to the terminal.
       const gate = regionId === null ? undefined : driving.world.gates.find((candidate) => candidate.toMapId === regionId);
       if (gate === undefined || !crossBy(gate)) {
@@ -1520,6 +1879,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     },
     onSettings: () => openSettings(),
     onShop: () => openShop(),
+    onWhatsNew: () => openWhatsNew(),
     onEarningsBoost: () => startEarningsBoost(),
     onMap: () => openMap(true),
   });
@@ -1841,6 +2201,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     shop.open();
     fillShop();
   };
+  // What's New: the update's release notes (the store's own words), once after each update and from the main menu.
+  const whatsNew = new WhatsNewDialog(ui, strings, { onClose: () => whatsNew.close() });
+  const openWhatsNew = (): void => {
+    const notes = notesIn(__RELEASE_NOTES__, strings.language);
+    if (notes !== null) {
+      whatsNew.open(notes, __APP_BUILD__ === DEVELOPMENT_BUILD ? __APP_VERSION__ : `${__APP_VERSION__} (${__APP_BUILD__})`);
+    }
+  };
   const restorePurchases = (): void => {
     shop.busy = true;
     void monetization.restorePurchases().then((restored) => {
@@ -1922,6 +2290,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       content,
       driving,
       missions,
+      rent,
       economy,
       company,
       fuel,
@@ -1947,6 +2316,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       supplies,
       liveries,
       liveryPicture,
+      roadDirt,
     },
     {
       onAbandon: () => {
@@ -2120,6 +2490,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           logger.warn(`Could not buy ${rivalId} out: ${bought.error}.`);
         }
       },
+      onCollectRent: () => {
+        const collected = rent.collect();
+        if (collected.ok) {
+          audio.chime();
+          toasts.show(strings.t('toast.rentCollected', { money: strings.money(collected.value) }), 'success');
+        }
+      },
       onBuildFacility: (facilityId) => {
         const built = facilities.build(facilityId);
         if (built.ok) {
@@ -2174,7 +2551,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * was moving, traffic and weather wait with it, else the world goes on.
    */
   const openPanel = (tab: HqTab): void => {
-    if (!isDriving() || paused || result.isOpen) {
+    if (!isDriving() || paused || result.isOpen || race.active) {
       return;
     }
     if (hq.isOpen) {
@@ -2250,16 +2627,16 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const tutorialHint = new TutorialHint(ui, hq.hintSlot, strings, () => tutorial.skip());
   /**
    * Where the tutorial's hint would show now: in the panel, over the road, or
-   * nowhere (menus, pause, a result, or the rest area's counter in its place).
+   * nowhere (menus, pause, a result, the cab's tablet, or the rest area's counter in its place).
    */
   const hintPlace = (): TutorialPlace | null => {
-    if (!isDriving() || paused || result.isOpen) {
+    if (!isDriving() || paused || result.isOpen || tablet.isOpen || race.active) {
       return null;
     }
     if (hq.isOpen) {
       return 'panel';
     }
-    return restArea.isOpen ? null : 'road';
+    return restArea.isOpen || placePanel.isOpen ? null : 'road';
   };
 
   /** Points the depot beacon and the test hook at the contract under way, and shows a flatbed's load. */
@@ -2437,6 +2814,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   events.on('VehicleSold', refreshHq);
   // Paid for first, built after: the panel shows the new level (and the garage, the job board, what it brings).
   events.on('FacilityBuilt', refreshHq);
+  events.on('FacilityBuilt', showHeadOffice);
+  events.on('RentCollected', refreshHq);
   events.on('ResearchCompleted', refreshHq);
   // A dot on the company page's tab while a research step is within reach (points and credits).
   const showResearchReady = (): void => {
@@ -2513,6 +2892,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     events.on(name, () => {
       refreshHq();
       showTruck();
+      // The head office and a convoy's trucks wear the truck's colour.
+      showHeadOffice();
     });
   }
 
@@ -2575,11 +2956,33 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   };
   events.on('GameStateChanged', ({ previous, current }) => {
     if (previous === 'driving') {
-      // Parked where it was left: the next drive starts from there, at rest.
+      // Parked where it was left: the next drive starts from there, at rest, its indicators off.
       const { x, z, heading } = driving.vehicle;
       driving.placeTruck(x, z, heading);
+      turnSignals.reset();
+      horn.reset();
     }
     showState(current);
+  });
+  // The horn on the road: the people near it flinch and the animals startle; a company truck near it hoots back (a
+  // driver of the company's own says so).
+  events.on('HornSounded', ({ x, z }) => {
+    pedestrians.startle(x, z);
+    scenery.startle(x, z);
+  });
+  events.on('HornAnswered', ({ owner, key, x, z }) => {
+    const vehicle = driving.vehicle;
+    audio.hootBack(Math.hypot(x - vehicle.x, z - vehicle.z));
+    if (owner === 'fleet') {
+      toasts.show(strings.t('toast.hootBack', { driver: driverName(strings, { id: key }) }), 'info');
+    }
+  });
+  // A convoy contract's truck left too far behind drives on alone: its bonus is lost.
+  events.on('ConvoyTruckLost', ({ remaining }) => {
+    toasts.show(
+      remaining > 0 ? strings.t('toast.convoyTruckLost', { count: remaining, total: CONVOY_FOLLOW_GAPS.length }) : strings.t('toast.convoyLost'),
+      'warning',
+    );
   });
   root.dataset.missionState = 'none';
   root.dataset.vehicle = driving.definition.id;
@@ -2614,6 +3017,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     } else {
       returned();
       adaptiveResolution.restart();
+      framePacing.restart();
       audio.resume();
       screenWake.resume();
     }
@@ -2632,7 +3036,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   });
   // Sound may start once the page has been touched or typed on: a touch counts when the finger lifts. Starting it
   // earlier would only be refused, with a warning. iOS shares the motion sensor (tilt steering) only from a tap too.
-  // A button pressed clicks (not the pedals, steering buttons or the horn: they are held).
+  // A button pressed clicks (not the pedals, steering buttons or the horn: they are held; nor the indicators' switches:
+  // their relay ticks).
   const unlockSound = (): void => {
     // Browsers without navigator.userActivation (older Safari and Firefox) get their chance at every gesture.
     if ((navigator.userActivation as UserActivation | undefined)?.hasBeenActive ?? true) {
@@ -2644,7 +3049,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   window.addEventListener('pointerup', unlockSound, { capture: true });
   window.addEventListener('keydown', unlockSound, { capture: true });
   document.addEventListener('click', (event) => {
-    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button)') !== null) {
+    if (event.target instanceof Element && event.target.closest('button:not(.pedal, .horn-button, .steer-button, .signal-button, .hazard-button, .brake-switch--parking)') !== null) {
       audio.click();
     }
   });
@@ -2655,12 +3060,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     const action = backAction({
       gameState: gameState.current,
       menuDialogOpen:
+        whatsNew.isOpen ||
         settingsDialog.isOpen ||
         controlsDialog.isOpen ||
         newCompany.isOpen ||
         worldMap.isOpen ||
         goalsDialog.isOpen ||
-        photoMode.isOpen,
+        photoMode.isOpen ||
+        yardJam.isOpen ||
+        truckWash.isOpen,
       panelOpen: hq.isOpen,
       pauseMenuOpen: pauseMenu.isOpen,
       resultOpen: result.isOpen,
@@ -2671,8 +3079,22 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           closePhoto();
           break;
         }
+        if (yardJam.isOpen) {
+          yardJam.close();
+          releaseForPlace();
+          break;
+        }
+        if (truckWash.isOpen) {
+          truckWash.close();
+          releaseForPlace();
+          break;
+        }
         if (goalsDialog.isOpen) {
           goalsDialog.close();
+          break;
+        }
+        if (whatsNew.isOpen) {
+          whatsNew.close();
           break;
         }
         settingsDialog.stepBack();
@@ -2729,7 +3151,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     import('./platform/native/localNotifications')
       .then(({ localNotifications }) => localNotifications(strings.t('reminder.channel')))
       .then(async (notifier) => {
-        await reminders.attach(notifier, (reminder) => reminderText(strings, reminder));
+        await reminders.attach(notifier, (reminder) => reminderText(strings, reminder), {
+          title: strings.t('reminder.updated.title'),
+          body: strings.t('reminder.updated.body'),
+        });
         settingsDialog.showReminders(reminders.on);
       })
       .catch((error: unknown) => logger.warn('The reminders did not start.', error));
@@ -2763,10 +3188,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   }
 
   if (config.debug.showPerfOverlay) {
-    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area; F runs the fleet and the rivals
-    // 10 minutes on.
+    // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area, G at the nearest place to
+    // visit; F runs the fleet and the rivals 10 minutes on.
     window.addEventListener('keydown', (event) => {
-      if (event.repeat || !onRoad() || paused) {
+      if (event.repeat || !onRoad() || paused || race.active) {
         return;
       }
       if (event.code === 'KeyF') {
@@ -2776,7 +3201,22 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       }
       const target = missions.target;
       const restArea = driving.world.restAreas[0];
-      const spot = event.code === 'KeyT' ? target?.depot.bay : event.code === 'KeyY' ? restArea?.lot : undefined;
+      // G: the nearest place to visit.
+      let nearestPlace = driving.world.places[0];
+      for (const place of driving.world.places) {
+        const distance = Math.hypot(place.lot.x - driving.vehicle.x, place.lot.z - driving.vehicle.z);
+        if (distance < Math.hypot(nearestPlace!.lot.x - driving.vehicle.x, nearestPlace!.lot.z - driving.vehicle.z)) {
+          nearestPlace = place;
+        }
+      }
+      const spot =
+        event.code === 'KeyT'
+          ? target?.depot.bay
+          : event.code === 'KeyY'
+            ? restArea?.lot
+            : event.code === 'KeyG'
+              ? nearestPlace?.lot
+              : undefined;
       if (spot !== undefined) {
         const parked = bayParkingPose(spot, driving.definition.body, driving.definition.trailer);
         driving.placeTruck(parked.x, parked.z, parked.heading);
@@ -2810,7 +3250,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   let menuFrames = 0;
   /** The last frame's own work on the main thread (AdaptiveResolution: slow frames that are the CPU's keep their pixels). */
   let lastFrameWorkSeconds = 0;
+  /**
+   * Real time and the main thread's own work since the last frame drawn: a frame waits while the GPU is behind
+   * (RenderHost.gpuReady), so the frame rate and the pixels are measured from drawn frame to drawn frame.
+   */
+  let sinceDrawnSeconds = 0;
+  let workSinceDrawnSeconds = 0;
   const pose = { x: 0, z: 0, heading: 0 };
+  /** The ground under a race's rival cars, near the player's car's level (no allocation per frame). */
+  const raceGround = (x: number, z: number): number => driving.world.groundAt(x, z, bodyPose.y);
   /** Where a tractor unit's semi-trailer stands between fixed steps (no allocation). */
   const trailerPose = createTrailerPose();
   /** How the truck's body stands between fixed steps (no allocation). */
@@ -2836,6 +3284,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         timeOfDay.update(stepSeconds);
         season.update(stepSeconds);
         skyWonders.update(stepSeconds);
+        roadDirt.update(stepSeconds);
         cityIncidents.update(stepSeconds);
         news.update();
         weather.update(stepSeconds);
@@ -2851,7 +3300,23 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         combineVehicleInputs(controlsInput, keyboard.state, touch.state);
         combineVehicleInputs(driverInput, controlsInput, tilt.state);
+        // A street race: the race car driven, the truck and its company's day waiting at the club.
+        if (race.active) {
+          race.update(stepSeconds, driverInput);
+          if (race.active) {
+            driving.step(stepSeconds, driverInput);
+            horn.update(stepSeconds);
+            crashes.update(stepSeconds);
+          }
+          return;
+        }
+        // On foot, the controls walk the driver; the truck waits, its controls let go.
+        onFoot.update(stepSeconds, driverInput);
+        // Auto-drive's hands on the wheel (a firm touch of the driver's takes it back).
+        autoDrive.update(stepSeconds, driverInput);
         driving.step(stepSeconds, driverInput);
+        turnSignals.update(stepSeconds, driving.vehicle);
+        horn.update(stepSeconds);
         // What the truck knocked over goes flying, and the debris tumbles on.
         crashes.update(stepSeconds);
         missions.update(stepSeconds);
@@ -2860,7 +3325,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         session.update(stepSeconds);
         career.update(stepSeconds);
         roadEvents.update(stepSeconds);
-        convoy.update(stepSeconds);
+        places.update();
+        // A convoy contract's own trucks follow the truck: no other convoy sets off meanwhile (one under way drives on).
+        if (convoy.active || missions.convoy === null) {
+          convoy.update(stepSeconds);
+        }
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -2908,10 +3377,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           timeOfDay.nightLook.look,
           timeOfDay.weights,
           timeOfDay.sunUp,
-          timeOfDay.moonlit,
+          // In an eclipse of the moon the earth's shadow takes its light.
+          timeOfDay.moonlit * eclipseMoonlight(skyWonders.eclipse),
           weatherLook,
           skyLook,
         );
+        // In an eclipse of the sun the day darkens, to a deep twilight with the lamps lit at totality.
+        eclipseSky(skyLook, skyWonders.eclipse);
         const lamps = skyLook.lamps;
         // The roads stay wet a while after the rain: they shine, and a low sun shows a rainbow in the drops still about.
         const wetness = keptWetness ?? weather.wetness;
@@ -2955,7 +3427,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         birds.update(paused ? 0 : deltaSeconds, lamps, weather.rain);
         cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
         roadEventsView.setWorld(driving.world);
-        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy);
+        roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy, missions.convoy);
         if (cityLife.sounds.bursts > 0) {
           audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
         }
@@ -2967,6 +3439,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         );
         trafficView.setLamps(lamps);
         truck.setLamps(lamps);
+        truck.setDirt(keptDirt ?? roadDirt.dirt);
+        truck.setIndicators(turnSignals.leftLit, turnSignals.rightLit);
         // The wipers sweep the snow off the glass too.
         truck.setRain(Math.max(weather.rain, weather.snow * 0.35));
         // The pedals as the truck reads them (VehicleDynamics): on auto they swap roles in reverse.
@@ -2978,7 +3452,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         truck.setDashboard(dashboard);
         truck.setNavigation(minimap.picture, minimap.paintCount);
         truck.setBuild(driving.build);
-        truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
+        // Racing, the truck stands where it waits at the club; the race cars are drawn instead.
+        const parkedTruck = driving.parkedTruck;
+        if (parkedTruck !== null) {
+          truck.update(parkedTruck, parkedTruck, 0, parkedTruck, driving.parkedTrailer);
+        } else {
+          truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
+        }
+        raceCars.update(driving.racing, pose, bodyPose, race, raceGround, RACE_CAR.body.wheelbaseMeters);
+        raceHud.update(deltaSeconds);
         cameraRig.setTrailerPose(shownTrailer);
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
@@ -3015,7 +3497,21 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           if (cameraRig.shownMode !== root.dataset.camera) {
             showCamera(onRoad());
           }
-          cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
+          if (onFoot.active) {
+            // On foot: the camera over the driver's shoulder, the driver drawn where they walk between the steps.
+            const walker = onFoot.walker;
+            const from = onFoot.previous;
+            const t = simulating ? alpha : 1;
+            const footX = from.x + (walker.x - from.x) * t;
+            const footZ = from.z + (walker.z - from.z) * t;
+            const footHeading = from.heading + (walker.heading - from.heading) * t;
+            const footY = driving.world.groundAt(footX, footZ, bodyPose.y);
+            driverFigure.update(true, footX, footY, footZ, footHeading, walker.cycle, Math.min(1, Math.abs(walker.speed) / 1.2), weather.rain > 0.25 ? 1 : 0);
+            cameraRig.followOnFoot(footX, footY, footZ, footHeading, deltaSeconds);
+          } else {
+            driverFigure.update(false, 0, 0, 0, 0, 0, 0, 0);
+            cameraRig.update(pose, vehicle, deltaSeconds, bodyPose);
+          }
         }
         lampLighting.setWetness(wetness);
         lampLighting.update(truck, trafficView, renderHost.camera, lamps);
@@ -3042,6 +3538,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         environment.setMist(mist);
         showMist(mist);
         environment.setAurora(skyWonders.aurora);
+        environment.setEclipse(skyWonders.eclipse);
         environment.applySky(skyLook, timeOfDay, prelit);
         cloudShadows.setClouds(skyLook.cloudCover, environment.sunShare);
         environment.update(renderHost.camera.position, paused ? 0 : deltaSeconds);
@@ -3051,6 +3548,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         skyWonders.observe('aurora', environment.auroraShown > AURORA_SEEN, watchingSky);
         skyWonders.observe('rainbow', environment.rainbowShown > RAINBOW_SEEN, watchingSky);
         skyWonders.observe('meteor', shootingStars.streaking, watchingSky);
+        const eclipseKind = skyWonders.eclipse.kind;
+        skyWonders.observe('solarEclipse', eclipseKind === 'solar' && environment.eclipseShown > ECLIPSE_SEEN, watchingSky);
+        skyWonders.observe('lunarEclipse', eclipseKind === 'lunar' && environment.eclipseShown > ECLIPSE_SEEN, watchingSky);
         environment.focusShadows(pose.x, pose.z);
         const eye = renderHost.camera.position;
         // What lies far off in the haze is not drawn, nor whole tiles out of view (but where the sun's shadow map
@@ -3063,6 +3563,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         streetLamps.showAround(eye.x, eye.z);
         trafficSignals?.showAround(eye.x, eye.z);
         farmland.showAround(eye.x, eye.z);
+        parkView?.showAround(eye.x, eye.z);
+        roadEventsView.showAround(eye.x, eye.z, view, eyeView);
         roadside.update(eye.x, eye.z, paused ? 0 : deltaSeconds);
         // On a map's hills the drops fall round the camera from the ground under it (at the truck's level: a deck).
         const fallsFrom = driving.world.flat ? 0 : Math.min(eye.y - 1, driving.world.groundAt(eye.x, eye.z, bodyPose.y + 1));
@@ -3099,6 +3601,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         }
         crashEffects.update(paused ? 0 : deltaSeconds, renderHost.camera);
         depots.update(deltaSeconds, renderHost.camera.position.x, renderHost.camera.position.z);
+        headOffice?.showAround(renderHost.camera.position.x, renderHost.camera.position.z);
+        placesView.showAround(renderHost.camera.position.x, renderHost.camera.position.z);
         hud.update(deltaSeconds);
         minimap.update(deltaSeconds);
         const clockMinute = Math.floor(timeOfDay.minutes);
@@ -3117,9 +3621,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           hq.tick();
         }
         worldMap.frame();
-        restArea.visible = simulating;
+        restArea.visible = simulating && !race.active && !onFoot.active;
         restArea.update();
-        ferry.visible = simulating;
+        placePanel.visible = simulating && !race.active && !onFoot.active;
+        onFootButton.visible = simulating && !race.active;
+        onFootButton.update(deltaSeconds);
+        placePanel.update();
+        ferry.visible = simulating && !race.active && !onFoot.active;
         ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);
@@ -3149,24 +3657,57 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         // At 120 Hz and more the sun's shadows are drawn every other frame: still 60 times a second or more.
         renderHost.shadowsEveryOtherFrame = adaptiveResolution.targetFps >= 120;
         // Measured in real time: a moment of slow motion's short game frames are not a quicker screen.
-        if (simulating && adaptiveResolution.frame(loop.realFrameSeconds, lastFrameWorkSeconds)) {
-          renderHost.setResolutionScale(adaptiveResolution.scale);
-          fitPixelSizes();
-        }
+        sinceDrawnSeconds += loop.realFrameSeconds;
+        workSinceDrawnSeconds += lastFrameWorkSeconds;
         // Behind the menus, the panel and the pause menu the scene is a backdrop: every other frame is enough, and
         // saves the battery. The full map hides it all.
         // Photo mode is the picture itself: every frame.
         menuFrames = (onRoad() && !paused) || photoMode.isOpen ? 0 : menuFrames + 1;
-        if ((menuFrames & 1) === 0 && !worldMap.isOpen) {
+        // A frame is drawn once the GPU is done with the one before last (RenderHost.gpuReady): a weak phone's GPU
+        // handed frames faster than it draws them queues them up, Android's own drawing waits behind them, and a touch
+        // meanwhile goes unanswered (Play's ANRs). Meanwhile the game runs on; only the picture waits.
+        const draw = (menuFrames & 1) === 0 && !worldMap.isOpen && renderHost.gpuReady(sinceDrawnSeconds);
+        if (draw) {
+          // Frames on the road the phone cannot show as fast as its screen are capped evenly (FramePacing); the
+          // dynamic resolution then aims at the rate paced at. Both count the frames drawn.
+          if (simulating && framePacing.frame(sinceDrawnSeconds, loop.screenFrameSeconds)) {
+            loop.maxFramesPerSecond = framePacing.cap;
+            adaptiveResolution.setFrameCap(framePacing.steadyCap);
+          }
+          if (simulating && adaptiveResolution.frame(sinceDrawnSeconds, workSinceDrawnSeconds)) {
+            renderHost.setResolutionScale(adaptiveResolution.scale);
+            fitPixelSizes();
+          }
           renderHost.setGrade(environment.grade);
           renderHost.setSun(environment.sunTowards, environment.sunGlare, environment.sunShafts);
           renderHost.render();
         }
         touch.showTelemetry(metersPerSecondToKmh(vehicle.speed), vehicle.gear, deltaSeconds);
         touch.showCondition(fuel.fraction, fuel.isLow, damage.damage);
+        touch.showSignals(turnSignals.mode, turnSignals.leftLit, turnSignals.rightLit);
+        if (turnSignals.leftLit || turnSignals.rightLit) {
+          if (!relayLit) {
+            relayLit = true;
+            audio.relay(true);
+          }
+        } else if (relayLit) {
+          relayLit = false;
+          audio.relay(false);
+        }
+        touch.showBrakes(driving.parkingBrake, driving.engineBrake, vehicle.engineBraking > ENGINE_BRAKE_SHOWN_FROM);
+        sinceParkingBrakeHintSeconds += deltaSeconds;
+        gasAgainstParkingBrakeSeconds =
+          simulating && driving.parkingBrake && driverInput.throttle > 0.5 && Math.abs(vehicle.speed) < 0.3
+            ? gasAgainstParkingBrakeSeconds + deltaSeconds
+            : 0;
+        if (gasAgainstParkingBrakeSeconds > PARKING_BRAKE_HINT_AFTER_SECONDS && sinceParkingBrakeHintSeconds > PARKING_BRAKE_HINT_EVERY_SECONDS) {
+          sinceParkingBrakeHintSeconds = 0;
+          toasts.show(strings.t('toast.parkingBrakeOn'), 'warning');
+        }
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
         soundState.engineRpm = vehicle.engineRpm;
+        soundState.engineBraking = vehicle.engineBraking;
         soundState.idleRpm = driving.definition.powertrain.idleRpm;
         soundState.maxRpm = driving.definition.powertrain.maxRpm;
         soundState.engineLoad = dashboard.drivePedal * vehicle.driveEngagement;
@@ -3180,8 +3721,19 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           shownSound = audio.status;
           root.dataset.sound = shownSound;
         }
-        if (perfOverlay.visible) {
-          perfOverlay.frame(loop.realFrameSeconds, renderHost.renderStats, renderHost.pixelRatio, pose);
+        if (draw) {
+          if (perfOverlay.visible) {
+            perfOverlay.frame(
+              sinceDrawnSeconds,
+              renderHost.renderStats,
+              renderHost.pixelRatio,
+              pose,
+              framePacing.paced ? framePacing.steadyCap : 0,
+              renderHost.framesHeldBack,
+            );
+          }
+          sinceDrawnSeconds = 0;
+          workSinceDrawnSeconds = 0;
         }
         lastFrameWorkSeconds = (performance.now() - workStarted) / 1000;
       },
@@ -3205,8 +3757,10 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    */
   const applyFrameRate = (choice: FrameRateChoice): void => {
     const cap = frameRateCap(choice);
-    loop.maxFramesPerSecond = cap;
-    adaptiveResolution.setFrameCap(cap);
+    // The most the frames are paced at (FramePacing): fewer where the phone cannot keep up.
+    framePacing.setCeiling(cap);
+    loop.maxFramesPerSecond = framePacing.cap;
+    adaptiveResolution.setFrameCap(framePacing.steadyCap);
     if (isNativeApp(window)) {
       void import('./platform/native/displayRate').then(({ preferRefreshRate }) => preferRefreshRate(cap === 0 ? 240 : 60));
     }
@@ -3218,6 +3772,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   } else {
     renderHost.precompile();
   }
+  renderHost.readPrograms();
   applyFrameRate(settings.frameRate);
   loop.start();
   root.dataset.bootState = 'ready';
@@ -3234,6 +3789,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     if (founded.ok) {
       enterCompany();
     }
+  }
+  // An update's notes, once, at the main menu, to a player who played before; a new player's first build is noted
+  // without them, so the next update's are shown (whatsNew.ts). A development build notes nothing.
+  if (gameState.current === 'mainMenu' && notesToShow(__APP_BUILD__, settings.seenNotesBuild, session.hasSavedGame(), query.get('news') === '1')) {
+    openWhatsNew();
+  }
+  if (__APP_BUILD__ !== DEVELOPMENT_BUILD && settings.seenNotesBuild !== __APP_BUILD__) {
+    settings = { ...settings, seenNotesBuild: __APP_BUILD__ };
+    saveSettings(storage, settings);
   }
 }
 

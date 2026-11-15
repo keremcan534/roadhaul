@@ -1,9 +1,11 @@
+import { missionVariant, type MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { MissionService } from '../../systems/missions/MissionService';
 import type { NavigationService } from '../../systems/navigation/NavigationService';
 import type { RivalService } from '../../systems/rivals/RivalService';
 import { element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { icon } from '../icons';
 import { arrowRotationDegrees } from './arrowRotation';
 
 /** The HUD redraws at most this often; the DOM is touched only when a shown value changes. */
@@ -21,12 +23,24 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 /** Where the HUD learns of a tender's race (RivalService). */
 export type RaceSource = Pick<RivalService, 'racing' | 'raceSeconds' | 'colorOf'>;
 
+/** Auto-drive as the sign shows it (AutoDriveService), and what its buttons do. */
+export interface MissionHudAutoDrive {
+  /** The company has it: the row shows. */
+  readonly available: boolean;
+  /** It has the wheel: its button is lit, and the tablet's shows. */
+  readonly engaged: boolean;
+  readonly onToggle: () => void;
+  readonly onTablet: () => void;
+}
+
 /**
  * The mission part of the HUD (spec §12, §30, §63): where to go (an arrow
  * towards the route ahead and the distance by road), the next turn, the
  * arrival time, the stop-in-the-bay hint and loading progress, the delivery
- * clock and the cargo's condition, and in a tender, how the race with the
- * rival stands. The speed readout stays on the touch controls. It reads
+ * clock and the cargo's condition, in a tender, how the race with the
+ * rival stands, and in a convoy contract, how many of its trucks are with
+ * the truck; and with auto-drive researched, its switch and, while it
+ * drives, the cab tablet's button. The speed readout stays on the touch controls. It reads
  * MissionService, NavigationService, DrivingService and RivalService and
  * never changes them.
  */
@@ -46,6 +60,13 @@ export class MissionHud {
   private readonly race: HTMLParagraphElement;
   private readonly raceText: HTMLSpanElement;
   private readonly raceFill: HTMLSpanElement;
+  private readonly convoyLine: HTMLParagraphElement;
+  private readonly convoyText: HTMLSpanElement;
+  private readonly autoRow: HTMLDivElement;
+  private readonly autoButton: HTMLButtonElement;
+  private readonly tabletButton: HTMLButtonElement;
+  /** What the auto-drive row shows: 0 nothing, 1 the switch off, 2 on (with the tablet). */
+  private shownAutoKey = -1;
   private sinceRefresh = REFRESH_INTERVAL_SECONDS;
   private flashSeconds = 0;
   private shownArrowDegrees = Number.NaN;
@@ -64,6 +85,8 @@ export class MissionHud {
   private shownRaceKey = '';
   private shownRaceClock = Number.NaN;
   private shownRaceProgress = -1;
+  /** The convoy shown (convoyKey): 0 for none. */
+  private shownConvoyKey = -1;
   private enabled = false;
 
   constructor(
@@ -73,6 +96,7 @@ export class MissionHud {
     private readonly navigation: NavigationService,
     private readonly driving: DrivingService,
     private readonly rivals: RaceSource | null = null,
+    private readonly autoDrive: MissionHudAutoDrive | null = null,
   ) {
     const document = parent.ownerDocument;
     this.root = element(document, 'div', 'mission-hud');
@@ -114,7 +138,26 @@ export class MissionHud {
     this.raceFill = element(document, 'span', 'mission-hud__race-fill');
     raceBar.append(this.raceFill);
     this.race.append(element(document, 'span', 'company-swatch'), this.raceText, raceBar);
-    text.append(this.objective, this.turn, this.hint, this.progress, this.race);
+    // A convoy contract: its trucks with the truck, or a word to slow down.
+    this.convoyLine = element(document, 'p', 'mission-hud__convoy');
+    this.convoyLine.hidden = true;
+    this.convoyText = element(document, 'span', 'mission-hud__convoy-text');
+    this.convoyLine.append(icon(document, 'fleet'), this.convoyText);
+    // Auto-drive's switch, and the tablet's while it drives: the sign's only buttons.
+    this.autoRow = element(document, 'div', 'mission-hud__auto');
+    this.autoRow.hidden = true;
+    this.autoButton = element(document, 'button', 'mission-hud__auto-button');
+    this.autoButton.type = 'button';
+    this.autoButton.dataset.action = 'auto-drive';
+    this.autoButton.append(icon(document, 'steering'), element(document, 'span', '', strings.t('autodrive.button')));
+    this.autoButton.addEventListener('click', () => this.autoDrive?.onToggle());
+    this.tabletButton = element(document, 'button', 'mission-hud__auto-button mission-hud__tablet-button');
+    this.tabletButton.type = 'button';
+    this.tabletButton.dataset.action = 'tablet';
+    this.tabletButton.append(icon(document, 'controls'), element(document, 'span', '', strings.t('tablet.open')));
+    this.tabletButton.addEventListener('click', () => this.autoDrive?.onTablet());
+    this.autoRow.append(this.autoButton, this.tabletButton);
+    text.append(this.objective, this.turn, this.hint, this.progress, this.race, this.convoyLine, this.autoRow);
 
     const stats = element(document, 'div', 'mission-hud__stats');
     this.timer = element(document, 'span', 'mission-hud__timer');
@@ -141,6 +184,8 @@ export class MissionHud {
     this.shownRaceKey = '';
     this.shownRaceClock = Number.NaN;
     this.shownRaceProgress = -1;
+    this.shownConvoyKey = -1;
+    this.shownAutoKey = -1;
     if (!visible) {
       this.root.hidden = true;
     }
@@ -242,6 +287,8 @@ export class MissionHud {
     }
 
     this.updateRace(mission.state);
+    this.updateConvoy(definition);
+    this.updateAutoDrive();
 
     if (!pickup) {
       const clock = Math.ceil(secondsLeft);
@@ -260,6 +307,49 @@ export class MissionHud {
         setText(this.cargo, `${strings.t('hud.cargo')} ${strings.percent(1 - mission.cargoDamage)}`);
       }
     }
+  }
+
+  /**
+   * A convoy contract's trucks: forming at the pickup, then how many are with
+   * the truck, and a word to slow down while one falls behind. The key is a
+   * number (none, forming, and trucks × lagging), so nothing is built unless it changes.
+   */
+  private updateConvoy(definition: MissionDefinition): void {
+    const trail = this.missions.convoy;
+    const key =
+      missionVariant(definition) !== 'convoy' ? 0 : trail === null ? 1 : 2 + trail.trucksWithConvoy * 2 + (trail.lagging ? 1 : 0);
+    if (key === this.shownConvoyKey) {
+      return;
+    }
+    this.shownConvoyKey = key;
+    this.convoyLine.hidden = key === 0;
+    if (key === 0) {
+      return;
+    }
+    const strings = this.strings;
+    const lagging = trail !== null && trail.lagging;
+    this.convoyLine.classList.toggle('is-lagging', lagging);
+    this.convoyLine.classList.toggle('is-lost', trail !== null && trail.trucksWithConvoy === 0);
+    setText(
+      this.convoyText,
+      trail === null
+        ? strings.t('hud.convoy.forming')
+        : strings.t(lagging ? 'hud.convoy.lagging' : 'hud.convoy.with', { count: trail.trucksWithConvoy, total: trail.size }),
+    );
+  }
+
+  /** Auto-drive's switch (lit while it drives) and the tablet's button with it. */
+  private updateAutoDrive(): void {
+    const autoDrive = this.autoDrive;
+    const key = autoDrive === null || !autoDrive.available ? 0 : autoDrive.engaged ? 2 : 1;
+    if (key === this.shownAutoKey) {
+      return;
+    }
+    this.shownAutoKey = key;
+    this.autoRow.hidden = key === 0;
+    this.autoButton.setAttribute('aria-pressed', String(key === 2));
+    this.autoButton.classList.toggle('is-on', key === 2);
+    this.tabletButton.hidden = key !== 2;
   }
 
   /** How the race for a tender stands: waiting for the load, the rival's time left, or lost. */

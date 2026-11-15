@@ -17,6 +17,7 @@ import {
   type Point2,
   type QuayDefinition,
   type RectangleDefinition,
+  type PlaceDefinition,
   type RestAreaDefinition,
   type SeaDefinition,
   type DistrictKind,
@@ -327,6 +328,9 @@ const GROWN_ROAD_TREE_SHARE = 0.5;
 const TREE_BUILDING_CLEARANCE = 4;
 /** Trees keep this far from depot yards and rest area lots, so trucks can manoeuvre. */
 const TREE_YARD_CLEARANCE = 6;
+/** The head office's fence posts (headOfficeFencePosts): this far apart and this thick, too close for a truck to pass. */
+const HEAD_OFFICE_POST_SPACING_METERS = 2.4;
+const HEAD_OFFICE_POST_RADIUS_METERS = 0.45;
 const TREE_SPAWN_CLEARANCE = 20;
 const TREE_BOUNDARY_MARGIN = 8;
 const LAMP_POST_RADIUS = 0.18;
@@ -480,6 +484,12 @@ export class DrivingWorld implements DebrisSolids {
   readonly depots: readonly DepotDefinition[];
   /** Paved lots beside the road where the truck can refuel and be repaired. */
   readonly restAreas: readonly RestAreaDefinition[];
+  /** The company's head office site (MapDefinition.headOffice), fenced; null on a map without one. */
+  readonly headOffice: RectangleDefinition | null;
+  /** Places to visit beside the roads (MapDefinition.places): a diner, a truck wash, a lookout. */
+  readonly places: readonly PlaceDefinition[];
+  /** The head office's site and the places' lots: kept clear of scenery like a yard. */
+  private readonly sites: readonly RectangleDefinition[];
   /** Rear axle position and heading (radians) where the truck starts. */
   readonly spawn: { readonly x: number; readonly z: number; readonly heading: number };
   /** The ways to the other regions (MapDefinition.gates): ferry terminals, borders. */
@@ -621,6 +631,9 @@ export class DrivingWorld implements DebrisSolids {
     const mapBuildings = map.buildings.map(buildingObstacle);
     this.depots = map.depots;
     this.restAreas = map.restAreas;
+    this.headOffice = map.headOffice ?? null;
+    this.places = map.places ?? [];
+    this.sites = [...(map.headOffice === undefined ? [] : [map.headOffice]), ...this.places.map((place) => place.lot)];
     this.servicePoints = [
       ...map.depots.map((depot): ServicePoint => ({ kind: 'depot', depot })),
       ...map.restAreas.map((restArea): ServicePoint => ({ kind: 'restArea', restArea })),
@@ -642,7 +655,11 @@ export class DrivingWorld implements DebrisSolids {
       forests: this.forests,
       parks: mapParks,
       fields: mapFields,
-      yards: [...map.depots.map((depot) => depot.yard), ...map.restAreas.map((restArea) => restArea.lot)],
+      yards: [
+        ...map.depots.map((depot) => depot.yard),
+        ...map.restAreas.map((restArea) => restArea.lot),
+        ...this.sites,
+      ],
       buildings: mapBuildings,
       windTurbines: this.windTurbines,
       citySigns: this.citySigns,
@@ -657,7 +674,13 @@ export class DrivingWorld implements DebrisSolids {
     growSideRoads(plan, countrySeed + 1, map.scenery.sideRoadsPerKilometer ?? 0);
     layFarmland(plan, countrySeed + 2);
     const depotYards = map.depots.map((depot) => depot.yard);
-    stackContainers(plan, depotYards, [...depotYards, ...map.restAreas.map((area) => area.lot)], map.buildings, countrySeed + 3);
+    stackContainers(
+      plan,
+      depotYards,
+      [...depotYards, ...map.restAreas.map((area) => area.lot), ...this.sites],
+      map.buildings,
+      countrySeed + 3,
+    );
     this.roads = plan.roads;
     // The ground's hills, and every road (the map's and the country's) graded through them.
     this.terrain = gradeTerrain(map.terrain, map.halfSizeMeters, this.roads);
@@ -923,6 +946,7 @@ export class DrivingWorld implements DebrisSolids {
     add(this.speedSigns, () => 'speedSign');
     add(this.roadSigns, () => 'roadSign');
     add(this.speedCameras.flatMap(speedCameraPosts));
+    add(this.headOffice === null ? [] : headOfficeFencePosts(this.headOffice));
     add(this.directionBoards.flatMap(directionBoardLegs));
     add(this.farmGates.flatMap((gate) => gate.pillars));
     add(
@@ -976,7 +1000,22 @@ export class DrivingWorld implements DebrisSolids {
         return ASPHALT;
       }
     }
+    for (let i = 0; i < this.places.length; i++) {
+      if (rectangleContains(this.places[i]!.lot, x, z)) {
+        return ASPHALT;
+      }
+    }
     return GRASS;
+  }
+
+  /** The place to visit whose lot (x, z) lies on, or null. Allocation-free. */
+  placeAt(x: number, z: number): PlaceDefinition | null {
+    for (let i = 0; i < this.places.length; i++) {
+      if (rectangleContains(this.places[i]!.lot, x, z)) {
+        return this.places[i]!;
+      }
+    }
+    return null;
   }
 
   /** The depot yard or rest area lot that (x, z) lies in, or null. Allocation-free. */
@@ -1814,7 +1853,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.network.junctions.some((junction) => Math.hypot(x - junction.x, z - junction.z) < LAMP_JUNCTION_CLEARANCE)) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, LAMP_YARD_CLEARANCE))) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, LAMP_YARD_CLEARANCE)) || this.onSite(x, z, LAMP_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, LAMP_YARD_CLEARANCE))) {
@@ -1850,7 +1889,7 @@ export class DrivingWorld implements DebrisSolids {
     if (Math.hypot(x - this.spawn.x, z - this.spawn.z) < RAIL_SPAWN_CLEARANCE) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, RAIL_YARD_CLEARANCE))) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, RAIL_YARD_CLEARANCE)) || this.onSite(x, z, RAIL_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, RAIL_YARD_CLEARANCE))) {
@@ -1913,7 +1952,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.hidesCitySign(x, z) || this.roadGrid.nearRoad(x, z, ROAD_SIGN_ROAD_CLEARANCE)) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, ROAD_SIGN_YARD_CLEARANCE))) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, ROAD_SIGN_YARD_CLEARANCE)) || this.onSite(x, z, ROAD_SIGN_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, ROAD_SIGN_YARD_CLEARANCE))) {
@@ -1943,7 +1982,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.isWater(x, z, 1) || this.isOnQuay(x, z, WALK_YARD_CLEARANCE)) {
       return false;
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, WALK_YARD_CLEARANCE))) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, WALK_YARD_CLEARANCE)) || this.onSite(x, z, WALK_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, WALK_YARD_CLEARANCE))) {
@@ -1953,6 +1992,16 @@ export class DrivingWorld implements DebrisSolids {
       return false;
     }
     return this.isClearOfBuildings(x, z, WALK_BUILDING_CLEARANCE);
+  }
+
+  /** Whether (x, z) lies on the head office's site or a place's lot, or within `margin` meters of one. */
+  private onSite(x: number, z: number, margin: number): boolean {
+    for (let i = 0; i < this.sites.length; i++) {
+      if (rectangleContains(this.sites[i]!, x, z, margin)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -2014,7 +2063,7 @@ export class DrivingWorld implements DebrisSolids {
     if (this.roadGrid.nearRoad(x, z, TREE_ROAD_CLEARANCE - 0.5)) {
       return false; // Another stretch of road passes close by.
     }
-    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE))) {
+    if (this.depots.some((depot) => rectangleContains(depot.yard, x, z, TREE_YARD_CLEARANCE)) || this.onSite(x, z, TREE_YARD_CLEARANCE)) {
       return false;
     }
     if (this.restAreas.some((restArea) => rectangleContains(restArea.lot, x, z, TREE_YARD_CLEARANCE))) {
@@ -2248,4 +2297,28 @@ function barrierWalls(runs: readonly (readonly (readonly [number, number, number
     }
   }
   return { pieces, heights };
+}
+
+/** The head office's fence: a post every HEAD_OFFICE_POST_SPACING_METERS round its site, solid (a wall to the truck). */
+export function headOfficeFencePosts(site: RectangleDefinition): { readonly x: number; readonly z: number; readonly radius: number }[] {
+  const heading = (site.headingDegrees * Math.PI) / 180;
+  const alongX = Math.sin(heading);
+  const alongZ = Math.cos(heading);
+  const halfLength = site.lengthMeters / 2;
+  const halfWidth = site.widthMeters / 2;
+  const posts: { x: number; z: number; radius: number }[] = [];
+  const side = (fromA: number, fromW: number, toA: number, toW: number): void => {
+    const length = Math.hypot(toA - fromA, toW - fromW);
+    const steps = Math.max(1, Math.ceil(length / HEAD_OFFICE_POST_SPACING_METERS));
+    for (let i = 0; i < steps; i++) {
+      const a = fromA + ((toA - fromA) * i) / steps;
+      const w = fromW + ((toW - fromW) * i) / steps;
+      posts.push({ x: site.x + alongX * a + alongZ * w, z: site.z + alongZ * a - alongX * w, radius: HEAD_OFFICE_POST_RADIUS_METERS });
+    }
+  };
+  side(-halfLength, -halfWidth, halfLength, -halfWidth);
+  side(halfLength, -halfWidth, halfLength, halfWidth);
+  side(halfLength, halfWidth, -halfLength, halfWidth);
+  side(-halfLength, halfWidth, -halfLength, -halfWidth);
+  return posts;
 }

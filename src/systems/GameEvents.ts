@@ -4,19 +4,24 @@ import type { CrateTier } from '../data/config/GameConfig';
 import type { ProductId } from '../data/config/products';
 import type { EventReward } from '../data/definitions/EventDefinition';
 import type { KnockableKind } from '../domain/crash/knockables';
+import type { PlaceKind } from '../data/definitions/MapDefinition';
 import type { MissionDefinition } from '../data/definitions/MissionDefinition';
 import type { Season } from '../data/definitions/Season';
 import type { Credits, Fraction } from '../data/units';
 import type { MissionFailureReason, MissionState } from '../domain/missions/MissionInstance';
 import type { MissionReward } from '../domain/missions/missionReward';
+import type { EclipseKind } from '../domain/sky/eclipses';
 import type { SkyWonder } from '../domain/sky/skyWonders';
 import type { TutorialStep } from '../domain/tutorial/tutorialSteps';
+import type { DirtLevel } from '../domain/vehicles/roadDirt';
 import type { DamageBand } from '../domain/vehicles/vehicleDamage';
 import type { MoneyReason } from './economy/EconomyService';
 import type { GameState } from './gameState/GameState';
+import type { CompanyTruckOwner } from './traffic/CompanyTraffic';
+import type { AutoDriveEnd } from './vehicles/AutoDriveService';
 
 /** What earned a crate. */
-export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass';
+export type CrateSource = 'perfectStreak' | 'level' | 'dailyStreak' | 'daily' | 'free' | 'quest' | 'ad' | 'cup' | 'roadPass' | 'race';
 
 /**
  * Every event that crosses system boundaries, keyed by name (spec §57).
@@ -246,9 +251,26 @@ export interface GameEvents {
     readonly credits: Credits;
     readonly crate: CrateTier;
   };
-  /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow. */
+  /** The player saw one of the sky's wonders (SkyWonderService): the northern lights, a shooting star, a rainbow, an eclipse. */
   SkyWonderSighted: {
     readonly kind: SkyWonder;
+  };
+  /** The driver got out of the truck (OnFootService). */
+  DriverSteppedOut: Record<string, never>;
+  /** The driver got back in. */
+  DriverSteppedIn: Record<string, never>;
+  /** The truck the player drives looks dirtier, or cleaner (RoadDirtService). */
+  TruckDirtChanged: {
+    readonly level: DirtLevel;
+  };
+  /** The truck wash scrubbed the truck: this much dirt is left (RoadDirtService). */
+  TruckCleaned: {
+    readonly dirt: Fraction;
+  };
+  /** An eclipse has begun on the sky (SkyWonderService): of the sun or the moon; totality comes at this minute of the game's clock. */
+  EclipseBegan: {
+    readonly kind: EclipseKind;
+    readonly totalityMinutes: number;
   };
   /** XP or reputation changed. */
   CompanyProgressed: {
@@ -306,6 +328,57 @@ export interface GameEvents {
   WorkZonesChanged: {
     readonly count: number;
   };
+  /** A convoy contract's truck fell too far behind the player's and is lost to the convoy: `remaining` still with it. */
+  ConvoyTruckLost: {
+    readonly missionId: string;
+    readonly remaining: number;
+  };
+  /** The truck stopped at a place to visit for the first time (PlaceService): the finder's reward paid. */
+  PlaceFound: {
+    readonly placeId: string;
+    readonly kind: PlaceKind;
+    readonly credits: Credits;
+    readonly xp: number;
+  };
+  /** The diner's Yard Jam of the day was solved (PlaceService), in `moves`: paid once a day. */
+  PuzzleSolved: {
+    readonly day: number;
+    readonly moves: number;
+    readonly credits: Credits;
+    readonly xp: number;
+  };
+  /** The truck was scrubbed clean at a truck wash (PlaceService): the day's tip paid. */
+  TruckWashed: {
+    readonly credits: Credits;
+  };
+  /** A street race at a race club started (RaceService): the lights count down. */
+  RaceStarted: {
+    readonly placeId: string;
+  };
+  /**
+   * A street race ended (RaceService): the player's place (null: they gave up), their time, and the crate the
+   * podium earned (null for none). The truck is driven again.
+   */
+  RaceEnded: {
+    readonly placeId: string;
+    readonly position: number | null;
+    readonly of: number;
+    readonly seconds: number;
+    readonly crate: CrateTier | null;
+  };
+  /** The race car struck something (DrivingService while racing): the truck's VehicleCollided, for the race car. */
+  RaceCarCollided: {
+    readonly impactSpeedMetersPerSecond: number;
+  };
+  /** Auto-drive took the wheel (`reason` null) or gave it back, and why (AutoDriveService). */
+  AutoDriveChanged: {
+    readonly engaged: boolean;
+    readonly reason: AutoDriveEnd | null;
+  };
+  /** The player collected the warehouse's rent at the head office (RentService): `credits` paid in. */
+  RentCollected: {
+    readonly credits: Credits;
+  };
   /** A stranded driver waits ahead with their hazard lights on (RoadEventService.stranded). */
   StrandedDriverAppeared: {
     readonly x: number;
@@ -314,6 +387,24 @@ export interface GameEvents {
   /** The truck stopped and helped the stranded driver: `reward` paid. */
   RoadsideHelped: {
     readonly reward: Credits;
+  };
+  /**
+   * The truck's horn sounded (HornService), the truck at (x, z) facing
+   * `heading`: the traffic going its way ahead hurried on (`hurried` of
+   * them), and the people and the animals near it startle (presentation).
+   */
+  HornSounded: {
+    readonly x: number;
+    readonly z: number;
+    readonly heading: number;
+    readonly hurried: number;
+  };
+  /** A company truck in the traffic near the truck hooted back (HornService): the fleet's (`key`: its driver's id) or a rival's. */
+  HornAnswered: {
+    readonly owner: CompanyTruckOwner;
+    readonly key: string;
+    readonly x: number;
+    readonly z: number;
   };
   /** Something rare began near the truck (CityIncidentService): a fire, a police chase, fireworks. */
   CityIncidentStarted: {

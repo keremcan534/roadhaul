@@ -2,6 +2,7 @@ import { ACHIEVEMENT_METRICS } from '../../data/definitions/AchievementDefinitio
 import { isCrateTier } from '../../data/config/GameConfig';
 import { isBoosterKind } from '../../data/definitions/BoosterKind';
 import { TRAILER_TEXT_MAX } from '../vehicles/trailerText';
+import { CONVOY_FOLLOW_GAPS } from '../missions/convoyTrail';
 import { QUEST_METRICS } from '../../data/definitions/QuestDefinition';
 import { Validator, type ValidationIssue } from '../../core/validation/Validator';
 import type { ContentCatalog } from '../../data/ContentCatalog';
@@ -134,6 +135,16 @@ export function validateSaveGameData(
     }
     validator.fraction(active['cargoDamage'], 'missions.active.cargoDamage');
     validator.check(active['failureReason'] === null, 'missions.active.failureReason', 'must be null');
+    for (const key of ['loadedMeters', 'autoDriveMeters']) {
+      const meters = active[key];
+      validator.check(meters === undefined || (isFiniteNumber(meters) && meters >= 0), `missions.active.${key}`, 'must be 0 or more');
+    }
+    const lost = active['convoyTrucksLost'];
+    validator.check(
+      lost === undefined || (Number.isInteger(lost) && (lost as number) >= 0 && (lost as number) <= CONVOY_FOLLOW_GAPS.length),
+      'missions.active.convoyTrucksLost',
+      `must be a whole number from 0 to ${CONVOY_FOLLOW_GAPS.length}`,
+    );
   });
   section('stats', (stats) => {
     validator.nonNegativeInteger(stats['deliveriesCompleted'], 'stats.deliveriesCompleted');
@@ -339,6 +350,31 @@ export function validateSaveGameData(
       // A colour the content no longer has is dropped on loading (RoadPassService.restore), not refused.
       (paints as unknown[]).forEach((id, index) => validator.check(typeof id === 'string', `roadPass.paints[${index}]`, 'must be an id'));
     }
+  });
+  section('rent', (rent) => {
+    const stored = rent['storedCredits'];
+    const since = rent['sinceMs'];
+    validator.check(typeof stored === 'number' && Number.isFinite(stored) && stored >= 0, 'rent.storedCredits', 'must be a number of at least 0');
+    validator.check(typeof since === 'number' && Number.isFinite(since) && since >= 0, 'rent.sinceMs', 'must be a number of at least 0');
+  });
+  section('places', (places) => {
+    const found = places['found'];
+    if (validator.check(Array.isArray(found), 'places.found', 'must be a list')) {
+      const known = new Set(content.maps.all.flatMap((map) => (map.places ?? []).map((place) => place.id)));
+      const seen = new Set<unknown>();
+      (found as unknown[]).forEach((id, index) => {
+        validator.check(typeof id === 'string' && known.has(id) && !seen.has(id), `places.found[${index}]`, 'must be a known place, once');
+        seen.add(id);
+      });
+    }
+    for (const key of ['puzzleDay', 'washDay'] as const) {
+      const day = places[key];
+      validator.check(day === null || Number.isInteger(day), `places.${key}`, 'must be null or a whole number');
+    }
+    const raceDay = places['raceDay'];
+    validator.check(raceDay === undefined || raceDay === null || Number.isInteger(raceDay), 'places.raceDay', 'must be null or a whole number');
+    const races = places['racesToday'];
+    validator.check(races === undefined || (Number.isInteger(races) && (races as number) >= 0), 'places.racesToday', 'must be 0 or more');
   });
   return validator.issues;
 }
@@ -692,6 +728,7 @@ function validateGarage(garage: Json, content: ContentCatalog, validator: Valida
       'must be from 0 to the tank capacity',
     );
     validator.fraction(vehicle['damage'], `${path}.damage`);
+    validator.fraction(vehicle['dirt'], `${path}.dirt`);
     const paintId = vehicle['paintId'];
     validator.check(
       paintId === null || (typeof paintId === 'string' && content.paints.has(paintId)),

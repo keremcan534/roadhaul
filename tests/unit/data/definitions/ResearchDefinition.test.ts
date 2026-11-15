@@ -24,10 +24,10 @@ describe('validateResearchDefinition', () => {
     }
   });
 
-  it('ships three branches of four tiers, dearer and later as they go', () => {
+  it('ships three branches of four tiers, and engineering a fifth (auto-drive), dearer and later as they go', () => {
     for (const branch of RESEARCH_BRANCHES) {
       const steps = RESEARCH.filter((research) => research.branch === branch);
-      expect(steps.map((research) => research.tier), branch).toEqual([1, 2, 3, 4]);
+      expect(steps.map((research) => research.tier), branch).toEqual(branch === 'engineering' ? [1, 2, 3, 4, 5] : [1, 2, 3, 4]);
       for (let index = 1; index < steps.length; index++) {
         expect(steps[index]!.points, steps[index]!.id).toBeGreaterThan(steps[index - 1]!.points);
         expect(steps[index]!.cost, steps[index]!.id).toBeGreaterThan(steps[index - 1]!.cost);
@@ -35,6 +35,7 @@ describe('validateResearchDefinition', () => {
       // Its first step within a new company's reach.
       expect(steps[0]!.requiredCompanyLevel ?? 1, branch).toBe(1);
     }
+    expect(RESEARCH.filter((research) => research.effect === 'autoDrive').map((research) => research.id)).toEqual(['autopilot']);
   });
 
   it('wants a known branch and effect, a whole tier and points, and a value its effect allows', () => {

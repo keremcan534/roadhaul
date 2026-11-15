@@ -9,6 +9,12 @@ export const ON_TIME_BONUS_PER_TIME_SENSITIVITY: Fraction = 0.2;
 export const LATE_PENALTY_MAX: Fraction = 0.5;
 /** Condition bonus for pristine cargo, as a share of the base pay. It shrinks to 0 at the damage tolerance. */
 export const CONDITION_BONUS_MAX: Fraction = 0.2;
+/** A convoy contract: each of the company's trucks still with the convoy at the drop-off earns this share of the base pay. */
+export const CONVOY_BONUS_PER_TRUCK: Fraction = 0.2;
+/** A delivery driven all the way by auto-drive is paid this share of the base pay less; part of the way, in step. */
+export const AUTO_DRIVE_PAY_CUT: Fraction = 0.15;
+/** A perfect park at the drop-off (loadingBay.isParkedPerfectly) earns this share of the base pay. */
+export const PARKING_BONUS: Fraction = 0.05;
 /** Deliveries up to this late still count as on time: nobody should lose a bonus to a frame. */
 export const LATE_GRACE_SECONDS = 1;
 
@@ -22,6 +28,12 @@ export interface MissionRewardInput {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly damageTolerance: Fraction;
+  /** Parked perfectly at the drop-off: the parking bonus. Absent counts as not. */
+  readonly perfectParking?: boolean;
+  /** A convoy contract's trucks still with the convoy at the drop-off. Absent counts as none. */
+  readonly convoyTrucks?: number;
+  /** The share of the loaded way auto-drive drove (0..1). Absent counts as none. */
+  readonly autoDriveShare?: Fraction;
 }
 
 /** The pay for a contract before bonuses and penalties: its reward times the cargo multiplier, in whole credits. */
@@ -38,7 +50,13 @@ export interface MissionReward {
   readonly latePenalty: Credits;
   /** Paid for careful driving: the less cargo damage, the more. */
   readonly conditionBonus: Credits;
-  /** basePay + timeBonus + conditionBonus - latePenalty. Always positive for a paid job. */
+  /** Paid for a perfect park at the drop-off (PARKING_BONUS); 0 otherwise. */
+  readonly parkingBonus: Credits;
+  /** Paid for the convoy's trucks still with it at the drop-off (CONVOY_BONUS_PER_TRUCK each); 0 otherwise. */
+  readonly convoyBonus: Credits;
+  /** Taken for the way auto-drive drove (AUTO_DRIVE_PAY_CUT for all of it); 0 otherwise. */
+  readonly autoDriveDeduction: Credits;
+  /** basePay + timeBonus + conditionBonus + parkingBonus + convoyBonus - latePenalty - autoDriveDeduction. Always positive for a paid job. */
   readonly total: Credits;
   readonly onTime: boolean;
   /** Seconds over the time limit; 0 when on time (including the grace second). */
@@ -69,13 +87,19 @@ export function calculateMissionReward(input: MissionRewardInput): MissionReward
     : Math.min(Math.round(basePay * lateShare), Math.floor(basePay * LATE_PENALTY_MAX));
 
   const conditionBonus = Math.round(basePay * CONDITION_BONUS_MAX * cargoCondition(input.cargoDamage, input.damageTolerance));
+  const parkingBonus = input.perfectParking === true ? Math.round(basePay * PARKING_BONUS) : 0;
+  const convoyBonus = Math.round(basePay * CONVOY_BONUS_PER_TRUCK * Math.max(0, Math.floor(input.convoyTrucks ?? 0)));
+  const autoDriveDeduction = Math.round(basePay * AUTO_DRIVE_PAY_CUT * Math.min(1, Math.max(0, input.autoDriveShare ?? 0)));
 
   return {
     basePay,
     timeBonus,
     latePenalty,
     conditionBonus,
-    total: basePay + timeBonus + conditionBonus - latePenalty,
+    parkingBonus,
+    convoyBonus,
+    autoDriveDeduction,
+    total: basePay + timeBonus + conditionBonus + parkingBonus + convoyBonus - latePenalty - autoDriveDeduction,
     onTime,
     lateSeconds,
   };

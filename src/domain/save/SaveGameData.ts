@@ -48,8 +48,18 @@ import type { TutorialStep } from '../tutorial/tutorialSteps';
  *   one it played ended).
  * - v22: adds the Road Pass (the season, its points, the tiers collected on
  *   each track, the pass colours the company has).
+ * - v23: the road's events note whether the red light cameras' first
+ *   warning was given.
+ * - v24: adds the warehouse's rent (what waits to be collected, and since
+ *   when it has grown).
+ * - v25: a generated contract under way may say what kind of job it is
+ *   (`variant`: a rush, a convoy), and a convoy's how many of its trucks
+ *   were lost (`convoyTrucksLost`); one saved before is a plain one.
+ * - v26: adds the places to visit: the ones found, and the days of the last
+ *   puzzle solved and the last wash; a contract under way may count the
+ *   meters it was driven loaded, and of those by auto-drive.
  */
-export const CURRENT_SAVE_VERSION = 23;
+export const CURRENT_SAVE_VERSION = 27;
 
 /**
  * Root of the persisted game state. Plain JSON data only, with no classes,
@@ -87,6 +97,9 @@ export interface SaveGameData {
   readonly usedTrucks: UsedTrucksSaveData;
   readonly weeklyCup: WeeklyCupSaveData;
   readonly roadPass: RoadPassSaveData;
+  readonly rent: RentSaveData;
+  /** The places to visit (PlaceService), from v26. */
+  readonly places: PlacesSaveData;
 }
 
 /** The Road Pass (RoadPassService): the season the points are for (null before any), tiers collected, colours kept. */
@@ -255,6 +268,25 @@ export interface FacilitiesSaveData {
   readonly levels: Readonly<Record<string, number>>;
 }
 
+/** The places to visit (PlaceService): the ones found, and the player's days of the last puzzle and wash paid. */
+export interface PlacesSaveData {
+  /** PlaceDefinition ids, each once. */
+  readonly found: readonly string[];
+  /** The day (dailyReward.localDay) the diner's puzzle was last solved, or null. */
+  readonly puzzleDay: number | null;
+  /** The day the truck was last washed clean, or null. */
+  readonly washDay: number | null;
+  /** The day races were last run at a race club, and how many that day; absent for none. */
+  readonly raceDay?: number | null;
+  readonly racesToday?: number;
+}
+
+/** The warehouse's rent (RentService): the credits waiting, to the fraction, and the time it has grown from. */
+export interface RentSaveData {
+  readonly storedCredits: number;
+  readonly sinceMs: number;
+}
+
 export interface ProfileSaveData {
   readonly companyName: string;
 }
@@ -289,6 +321,8 @@ export interface VehicleSaveData {
   readonly upgrades: Readonly<Record<string, number>>;
   /** PaintDefinition id; null for the model's factory colour. */
   readonly paintId: string | null;
+  /** How much road dirt it carries (RoadDirtService), 0 clean to 1 caked; from v27. */
+  readonly dirt: Fraction;
 }
 
 export interface WorldSaveData {
@@ -320,6 +354,11 @@ export interface ActiveMissionSaveData {
   readonly deliverySeconds: number;
   readonly cargoDamage: Fraction;
   readonly failureReason: MissionFailureReason | null;
+  /** A convoy contract's trucks lost to the convoy so far (v25); absent for none. */
+  readonly convoyTrucksLost?: number;
+  /** Meters driven loaded, and of those by auto-drive (v26); absent for none. */
+  readonly loadedMeters?: number;
+  readonly autoDriveMeters?: number;
   /**
    * A generated contract (a contract of the day) itself: the generator moves
    * on to new batches, so the save keeps it. Null for the game's own

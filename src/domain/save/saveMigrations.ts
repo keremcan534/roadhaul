@@ -222,6 +222,33 @@ export const SAVE_MIGRATIONS: readonly SaveMigration[] = [
           : save['roadEvents'],
     }),
   },
+  {
+    // v24 adds the warehouse's rent: nothing waiting (no company had a warehouse before).
+    from: 23,
+    migrate: (save) => ({ ...save, version: 24, rent: { storedCredits: 0, sinceMs: 0 } }),
+  },
+  {
+    // v25 lets a generated contract say what kind of job it is; one saved before names none, a plain one.
+    from: 24,
+    migrate: (save) => ({ ...save, version: 25 }),
+  },
+  {
+    // v26 adds the places to visit: none found yet, no puzzle solved, no wash.
+    from: 25,
+    migrate: (save) => ({ ...save, version: 26, places: { found: [], puzzleDay: null, washDay: null } }),
+  },
+  {
+    // v27 lets the road dirty each truck: every truck saved before is clean.
+    from: 26,
+    migrate: (save) => {
+      const garage = save['garage'];
+      if (!isJsonObject(garage) || !Array.isArray(garage['vehicles'])) {
+        return { ...save, version: 27 };
+      }
+      const vehicles = (garage['vehicles'] as unknown[]).map((vehicle) => (isJsonObject(vehicle) ? { ...vehicle, dirt: 0 } : vehicle));
+      return { ...save, version: 27, garage: { ...garage, vehicles } };
+    },
+  },
 ];
 
 /** The company level a v13 save holds, or 1. */

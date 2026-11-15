@@ -84,3 +84,28 @@ test('keeps the start where the truck is while a contract is under way, and says
   await expect(html(page)).not.toHaveAttribute('data-mission-state', 'none');
   expect(problems).toEqual([]);
 });
+
+test("shows what the update brought, in the player's language, and again from the main menu", async ({ page }) => {
+  const problems = watchForProblems(page);
+  // A development build tells no one by itself: ?news=1 opens it as an update would, once.
+  await openMainMenu(page, '?lang=tr&news=1');
+  const dialog = page.locator('.whats-new');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.whats-new__title')).toHaveText('Yenilikler');
+  // Google Play's own release notes for the build, in Turkish.
+  await expect(dialog.locator('[data-value="release-notes"]')).toContainText('akıcı');
+  await page.locator('[data-action="close-whats-new"]').click();
+  await expect(dialog).toBeHidden();
+
+  // Its button on the main menu brings it back.
+  await page.locator('[data-action="whats-new"]').click();
+  await expect(dialog).toBeVisible();
+  await page.locator('[data-action="close-whats-new"]').click();
+  await expect(dialog).toBeHidden();
+  expect(problems).toEqual([]);
+});
+
+test('tells a new player nothing about updates', async ({ page }) => {
+  await openMainMenu(page, '?lang=en');
+  await expect(page.locator('.whats-new')).toBeHidden();
+});

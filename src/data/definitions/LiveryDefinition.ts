@@ -7,7 +7,8 @@ import { isPaintRarity, type PaintRarity } from './PaintDefinition';
  * The designs a truck's body can wear (the presentation draws each:
  * liveryImages' liveryImage), in the truck's own colour with the
  * company's trailer text: the RoadHaul classic every truck leaves the
- * dealer in, stripes and checks, flames and tigers, neon and galaxies.
+ * dealer in, stripes and checks, flames and tigers, neon and galaxies,
+ * carbon and rally, the northern lights and an eclipse.
  */
 export const LIVERY_PATTERNS = [
   'classic',
@@ -27,6 +28,12 @@ export const LIVERY_PATTERNS = [
   'neon',
   'circuit',
   'synthwave',
+  'carbon',
+  'rally',
+  'pixel',
+  'tribal',
+  'aurora',
+  'eclipse',
 ] as const;
 export type LiveryPattern = (typeof LIVERY_PATTERNS)[number];
 

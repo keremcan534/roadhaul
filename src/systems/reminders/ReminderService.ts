@@ -21,6 +21,16 @@ export interface LocalNotice {
   readonly body: string;
 }
 
+/**
+ * The notice the phone shows by itself once Google Play has updated the game
+ * (the Android app's update receiver), in the player's language: the game
+ * leaves its words with the phone beforehand, as it cannot run then.
+ */
+export interface UpdateNotice {
+  readonly title: string;
+  readonly body: string;
+}
+
 /** The phone's own notifications (the Android app's local notifications): nothing goes through a server. */
 export interface LocalNotifier {
   permission(): Promise<NoticePermission>;
@@ -29,6 +39,8 @@ export interface LocalNotifier {
   schedule(notices: readonly LocalNotice[]): Promise<void>;
   /** Takes back every notification the game left that has not been shown yet. */
   cancelAll(): Promise<void>;
+  /** Leaves the update notice with the phone, shown after the next update from Google Play; null takes it back. */
+  armUpdateNotice(notice: UpdateNotice | null): Promise<void>;
 }
 
 /** A reminder's words, in the player's language (the UI's string tables). */
@@ -52,11 +64,13 @@ const PREFS_KEY = 'roadhaul.reminders';
  * planned as the player leaves (`away`) and taken back as they come back (`back`), so the ones waiting always match
  * the game. Nothing comes until the player says yes, on any phone: "Remind me" on the daily reward (`ask`), or
  * Settings (`setOn`); the phone may still refuse. Only in the Android app (`attach`); what the player chose stays on the phone, out of the
- * save.
+ * save. With them, the phone tells the player when Google Play has updated the game (`UpdateNotice`), armed while the
+ * reminders are on and allowed.
  */
 export class ReminderService {
   private notifier: LocalNotifier | null = null;
   private text: ReminderText | null = null;
+  private updateNotice: UpdateNotice | null = null;
   private allowed: NoticePermission = 'prompt';
   private prefs: ReminderPrefs;
   /** The phone's calls, one after the other: a leave and a return close together keep their order. */
@@ -75,10 +89,11 @@ export class ReminderService {
     this.prefs = this.load();
   }
 
-  /** The phone's notifications, once they are up (the Android app), and the words for each reminder. */
-  attach(notifier: LocalNotifier, text: ReminderText): Promise<void> {
+  /** The phone's notifications, once they are up (the Android app), the words for each reminder, and the update notice's. */
+  attach(notifier: LocalNotifier, text: ReminderText, updateNotice: UpdateNotice): Promise<void> {
     this.notifier = notifier;
     this.text = text;
+    this.updateNotice = updateNotice;
     return this.back();
   }
 
@@ -109,12 +124,14 @@ export class ReminderService {
     return this.enqueue(async (notifier) => {
       if (!on) {
         await notifier.cancelAll();
+        await notifier.armUpdateNotice(null);
         return false;
       }
       if (this.allowed !== 'granted') {
         this.allowed = await notifier.requestPermission();
         this.logger.info(`Notifications ${this.allowed}.`);
       }
+      await notifier.armUpdateNotice(this.wantedUpdateNotice);
       return this.allowed === 'granted';
     }, false);
   }
@@ -123,6 +140,7 @@ export class ReminderService {
   away(): Promise<void> {
     return this.enqueue(async (notifier) => {
       await notifier.cancelAll();
+      await notifier.armUpdateNotice(this.wantedUpdateNotice);
       if (!this.prefs.on || this.allowed !== 'granted' || this.text === null) {
         return;
       }
@@ -141,12 +159,22 @@ export class ReminderService {
     }, undefined);
   }
 
-  /** The player is back: the reminders waiting go (they were for a game left alone), and the phone's answer is read again. */
+  /**
+   * The player is back: the reminders waiting go (they were for a game left
+   * alone), the phone's answer is read again, and the update notice is left
+   * in the language played in, or taken back.
+   */
   back(): Promise<void> {
     return this.enqueue(async (notifier) => {
       this.allowed = await notifier.permission();
       await notifier.cancelAll();
+      await notifier.armUpdateNotice(this.wantedUpdateNotice);
     }, undefined);
+  }
+
+  /** The update notice while the player wants reminders and the phone allows them; else none. */
+  private get wantedUpdateNotice(): UpdateNotice | null {
+    return this.prefs.on && this.allowed === 'granted' ? this.updateNotice : null;
   }
 
   /** Runs `task` with the phone's notifications after the calls before it; `fallback` without them, or if it fails. */

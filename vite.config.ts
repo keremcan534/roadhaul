@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
@@ -23,6 +23,40 @@ function adsBuild(): { readonly mode: 'off' | 'test' | 'live'; readonly rewarded
 }
 
 const ADS = adsBuild();
+
+/** The build's number: CI numbers each one (the Android app's versionCode); a build on a desktop is `dev`. */
+const BUILD = process.env.ROADHAUL_VERSION_CODE ?? 'dev';
+
+/** The store listing's locale for each of the game's languages (fastlane/metadata/android). */
+const LISTING_LOCALES = {
+  de: 'de-DE',
+  en: 'en-US',
+  es: 'es-ES',
+  fr: 'fr-FR',
+  id: 'id',
+  it: 'it-IT',
+  pl: 'pl-PL',
+  pt: 'pt-BR',
+  ru: 'ru-RU',
+  tr: 'tr-TR',
+} as const;
+
+/**
+ * This build's release notes in each language, as Google Play shows them (the store listing's changelogs: the build's
+ * own file, else `default.txt`; docs/RELEASE.md): the game's What's New shows the same words once after an update.
+ */
+function releaseNotes(build: string): Record<string, string> {
+  const notes: Record<string, string> = {};
+  for (const [language, locale] of Object.entries(LISTING_LOCALES)) {
+    const folder = new URL(`./fastlane/metadata/android/${locale}/changelogs/`, import.meta.url);
+    const own = new URL(`${build}.txt`, folder);
+    const file = existsSync(own) ? own : new URL('default.txt', folder);
+    if (existsSync(file)) {
+      notes[language] = readFileSync(file, 'utf8').trim();
+    }
+  }
+  return notes;
+}
 
 /** The packages the game ships (to the browser and in the Android app): their licences go with it. */
 const SHIPPED_PACKAGES = [
@@ -108,7 +142,8 @@ export default defineConfig({
   // app's versionCode too); a build on a desktop is `dev`.
   define: {
     __APP_VERSION__: JSON.stringify(packageJson.version),
-    __APP_BUILD__: JSON.stringify(process.env.ROADHAUL_VERSION_CODE ?? 'dev'),
+    __APP_BUILD__: JSON.stringify(BUILD),
+    __RELEASE_NOTES__: JSON.stringify(releaseNotes(BUILD)),
     __ADS__: JSON.stringify(ADS),
   },
   plugins: [openSourceLicenses(), buildInfo()],

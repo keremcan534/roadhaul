@@ -160,6 +160,8 @@ export interface GameConfig {
     readonly levelXp: readonly number[];
     /** What each level from the second brings when the player collects it (LevelRewardService), level 2 first. */
     readonly levelRewards: readonly LevelRewardConfig[];
+    /** The warehouse's rent piles up for at most this many hours before the player collects it (RentService). */
+    readonly rentCapHours: number;
   };
   /** The fleet (spec §27): the company's other trucks, on contracts of their own with hired drivers. */
   readonly fleet: {
@@ -301,12 +303,46 @@ export interface GameConfig {
       readonly weights: Readonly<Record<BoosterKind, number>>;
     };
   };
+  /**
+   * Road dirt (RoadDirtService): driving dirties the truck, faster on a wet road, in the snow and off the road;
+   * the truck wash cleans it. Its look only.
+   */
+  readonly roadDirt: {
+    /** Kilometres from clean to caked on a dry road. */
+    readonly dryKilometers: number;
+    /** How many times faster on a soaked road (its spray), in proportion to how wet it is… */
+    readonly wetFactor: number;
+    /** …in falling snow's slush… */
+    readonly snowFactor: number;
+    /** …and off the road. */
+    readonly offRoadFactor: number;
+  };
   /** The sky's wonders (SkyWonderService): the northern lights some nights, and what counts as seeing them. */
   readonly skyWonders: {
     /** The share of the nights with the northern lights, by season (they also need a clear, dark sky). */
     readonly auroraChance: Readonly<Record<Season, Fraction>>;
     /** A shooting star counts as a sighting at most once in this many seconds of play (they fall often at night). */
     readonly meteorCountSeconds: number;
+    /**
+     * The eclipses (domain/sky/eclipses): on the calendar's days of the new and the full moons, some of them,
+     * at an hour of the game's clock; their phases short, so one is seen through in a few minutes.
+     */
+    readonly eclipses: {
+      /** The share of the new moons with an eclipse of the sun on their day… */
+      readonly solarChance: Fraction;
+      /** …and of the full moons with one of the moon. */
+      readonly lunarChance: Fraction;
+      /** Game minutes from the moon's first touch of the sun to totality, and from its end to the last touch. */
+      readonly solarPartialMinutes: number;
+      /** Game minutes of the sun's totality. */
+      readonly solarTotalMinutes: number;
+      /** Game minutes of the earth's half shadow dimming the moon before its full shadow touches it, and after. */
+      readonly lunarPenumbralMinutes: number;
+      /** Game minutes from the full shadow's first touch to totality, and from its end to its last. */
+      readonly lunarPartialMinutes: number;
+      /** Game minutes of the moon's totality. */
+      readonly lunarTotalMinutes: number;
+    };
   };
   /**
    * The region's rare happenings (CityIncidentService): one at a time, near the truck while it drives, a few
@@ -361,6 +397,34 @@ export interface GameConfig {
     /** Riding with it pays this a kilometre, in tens, if at least this far. */
     readonly creditsPerKm: Credits;
     readonly leastRiddenMeters: number;
+  };
+  /** The places to visit (PlaceService): finding one, the diner's puzzle of the day and the truck wash's scrub. */
+  readonly places: {
+    /** The first stop at each place pays this, and this much XP. */
+    readonly findCredits: Credits;
+    readonly findXp: number;
+    /** The day's Yard Jam at a diner pays this and this much XP, once a day… */
+    readonly puzzleCredits: Credits;
+    readonly puzzleXp: number;
+    /** …and takes at least this many moves (the hardest of some tries if none does). */
+    readonly puzzleMinMoves: number;
+    /** A truck scrubbed this clean (a share of its dirt) within this long, seconds, earns the wash's tip, once a day. */
+    readonly washCleanShare: Fraction;
+    readonly washSeconds: number;
+    readonly washCredits: Credits;
+    /** Street races at the race clubs a company may run a day. */
+    readonly racesPerDay: number;
+  };
+  /** The race clubs' street races (RaceService). */
+  readonly races: {
+    /** The lights count down this long before the start, seconds. */
+    readonly countdownSeconds: number;
+    /** The rivals, each a share of the club's best: its top speed, cornering and speeding up. */
+    readonly rivalSkills: readonly number[];
+    /** The club's best on the route: top speed (m/s), the side pull it corners at and how hard it speeds up and brakes (m/s²). */
+    readonly pace: { readonly topSpeed: number; readonly corner: number; readonly accelerate: number; readonly brake: number };
+    /** The crates for the podium, first place first. */
+    readonly podiumCrates: readonly CrateTier[];
   };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
@@ -459,6 +523,8 @@ export interface GameConfig {
     readonly logLevel: LogLevel;
     /** Shows FPS, draw calls and triangles (enable in the browser with `?debug`). */
     readonly showPerfOverlay: boolean;
+    /** Auto-drive without its research (`?autodrive=1`, for testing it). */
+    readonly unlockAutoDrive: boolean;
   };
 }
 
@@ -662,6 +728,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
       { credits: 15000, crate: 'gold' },
       { credits: 25000, crate: 'gold' },
     ],
+    rentCapHours: 8,
   },
   fleet: {
     garageSlots: [2, 3, 4, 6, 8, 8, 9, 9, 10, 10],
@@ -759,9 +826,26 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
       weights: { pay_boost: 3, xp_boost: 3, free_refuel: 2, free_repair: 2 },
     },
   },
+  roadDirt: {
+    // Dusty after a long dry run, caked after a rainy evening's work; a field in an hour.
+    dryKilometers: 60,
+    wetFactor: 3,
+    snowFactor: 3.5,
+    offRoadFactor: 6,
+  },
   skyWonders: {
     auroraChance: { spring: 0.15, summer: 0.08, autumn: 0.25, winter: 0.5 },
     meteorCountSeconds: 300,
+    // About one of each a month; at 20 game seconds a second, the sun's lasts under six minutes, the moon's ten.
+    eclipses: {
+      solarChance: 0.5,
+      lunarChance: 0.5,
+      solarPartialMinutes: 50,
+      solarTotalMinutes: 12,
+      lunarPenumbralMinutes: 30,
+      lunarPartialMinutes: 50,
+      lunarTotalMinutes: 40,
+    },
   },
   research: {
     pointsPerDelivery: 1,
@@ -810,6 +894,25 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     leastSpeed: 5,
     creditsPerKm: 160,
     leastRiddenMeters: 300,
+  },
+  places: {
+    findCredits: 500,
+    findXp: 60,
+    puzzleCredits: 1200,
+    puzzleXp: 100,
+    puzzleMinMoves: 9,
+    washCleanShare: 0.9,
+    washSeconds: 30,
+    washCredits: 300,
+    racesPerDay: 3,
+  },
+  races: {
+    countdownSeconds: 3,
+    // The club's best is near what its car can do (RACE_CAR: about 5 m/s² off the line, 0.95 g round bends); its rivals
+    // a little under, the quickest close to it, so a clean race through the traffic is needed to win.
+    rivalSkills: [0.8, 0.88, 0.96],
+    pace: { topSpeed: 50, corner: 8.5, accelerate: 4.6, brake: 7 },
+    podiumCrates: ['gold', 'silver', 'bronze'],
   },
   weeklyCup: {
     creditsPerPoint: 100,
@@ -881,6 +984,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
   debug: {
     logLevel: 'info',
     showPerfOverlay: false,
+    unlockAutoDrive: false,
   },
 });
 
@@ -959,6 +1063,8 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     research,
     roadPass,
     convoy,
+    places,
+    races,
     weeklyCup,
     usedTrucks,
     roadEvents,
@@ -1210,10 +1316,37 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.positiveInteger(reward.credits, `company.levelRewards[${index}].credits`);
     validator.check(isCrateTier(reward.crate), `company.levelRewards[${index}].crate`, `unknown crate "${String(reward.crate)}"`);
   });
+  validator.check(
+    Number.isFinite(company.rentCapHours) && company.rentCapHours > 0 && company.rentCapHours <= 72,
+    'company.rentCapHours',
+    'must be above 0 and at most 72',
+  );
   for (const season of SEASONS) {
     validator.fraction(skyWonders.auroraChance[season], `skyWonders.auroraChance.${season}`);
   }
   validator.positiveNumber(skyWonders.meteorCountSeconds, 'skyWonders.meteorCountSeconds');
+  validator.positiveNumber(config.roadDirt.dryKilometers, 'roadDirt.dryKilometers');
+  for (const key of ['wetFactor', 'snowFactor', 'offRoadFactor'] as const) {
+    validator.check(Number.isFinite(config.roadDirt[key]) && config.roadDirt[key] >= 1, `roadDirt.${key}`, 'must be 1 or more');
+  }
+  const eclipses = skyWonders.eclipses;
+  validator.fraction(eclipses.solarChance, 'skyWonders.eclipses.solarChance');
+  validator.fraction(eclipses.lunarChance, 'skyWonders.eclipses.lunarChance');
+  for (const key of [
+    'solarPartialMinutes',
+    'solarTotalMinutes',
+    'lunarPenumbralMinutes',
+    'lunarPartialMinutes',
+    'lunarTotalMinutes',
+  ] as const) {
+    validator.positiveNumber(eclipses[key], `skyWonders.eclipses.${key}`);
+  }
+  validator.check(
+    eclipses.solarPartialMinutes * 2 + eclipses.solarTotalMinutes <= 240 &&
+      (eclipses.lunarPenumbralMinutes + eclipses.lunarPartialMinutes) * 2 + eclipses.lunarTotalMinutes <= 360,
+    'skyWonders.eclipses',
+    'must fit the sun\'s within four hours and the moon\'s within six, so the sun and the full moon stay up through them',
+  );
   validator.positiveInteger(research.pointsPerDelivery, 'research.pointsPerDelivery');
   validator.nonNegativeInteger(research.perfectBonusPoints, 'research.perfectBonusPoints');
   validator.nonNegativeInteger(roadPass.firstSeasonDay, 'roadPass.firstSeasonDay');
@@ -1253,6 +1386,25 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     const [least, most] = convoy[key];
     validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
   }
+  validator.positiveNumber(races.countdownSeconds, 'races.countdownSeconds');
+  validator.check(
+    races.rivalSkills.length > 0 && races.rivalSkills.every((skill) => skill > 0 && skill <= 1.5),
+    'races.rivalSkills',
+    'must be shares of the pace, above 0',
+  );
+  for (const key of ['topSpeed', 'corner', 'accelerate', 'brake'] as const) {
+    validator.positiveNumber(races.pace[key], `races.pace.${key}`);
+  }
+  validator.check(
+    races.podiumCrates.length <= races.rivalSkills.length + 1 && races.podiumCrates.every(isCrateTier),
+    'races.podiumCrates',
+    'must be crate tiers, no more than the places in a race',
+  );
+  for (const key of ['findCredits', 'findXp', 'puzzleCredits', 'puzzleXp', 'puzzleMinMoves', 'washCredits', 'racesPerDay'] as const) {
+    validator.check(Number.isInteger(places[key]) && places[key] > 0, `places.${key}`, 'must be a whole number above 0');
+  }
+  validator.positiveNumber(places.washSeconds, 'places.washSeconds');
+  validator.check(places.washCleanShare > 0 && places.washCleanShare <= 1, 'places.washCleanShare', 'must be above 0, at most 1');
   for (const key of ['creditsPerPoint', 'fleetCreditsPerPoint', 'rivalPointsPerTruck'] as const) {
     validator.positiveNumber(weeklyCup[key], `weeklyCup.${key}`);
   }

@@ -96,6 +96,8 @@ interface AwayTally {
 export class FleetService {
   private drivers: HiredDriver[] = [];
   private jobsPlanned = 0;
+  /** Its trucks are the company's own, on the maps and in the traffic (CompanyTraffic). */
+  readonly truckOwner = 'fleet';
   /** Reused markers, one per driver, filled by updateMarkers(). */
   readonly markers: FleetMarker[] = [];
   private away: AwayTally | null = null;

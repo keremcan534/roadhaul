@@ -6,7 +6,7 @@ import {
   vehicleCanHaul,
   type MissionDefinition,
 } from '../../../../src/data/definitions/MissionDefinition';
-import { generateContracts, type ContractMarket } from '../../../../src/domain/missions/contractGenerator';
+import { generateContracts, withVariant, type ContractMarket } from '../../../../src/domain/missions/contractGenerator';
 
 const { cargo, vehicles } = GAME_CONTENT;
 /** The cities with a depot on the starting map (North Valley's): the market the contracts below are dealt on. */
@@ -99,7 +99,9 @@ describe('generateContracts', () => {
     for (const mission of all) {
       expect(mission.requiredCompanyLevel ?? 1).toBeGreaterThanOrEqual(levelOf[mission.difficulty]);
       const meters = market.distanceMeters(mission.originCityId, mission.destinationCityId);
-      expect((meters / mission.timeLimitSeconds) * 3.6, mission.id).toBeLessThanOrEqual(fastestAverageKmh[mission.difficulty]);
+      // A rush is a quarter faster than its difficulty's pace, no more.
+      const fastest = fastestAverageKmh[mission.difficulty] * (mission.variant === 'rush' ? 1.25 : 1);
+      expect((meters / mission.timeLimitSeconds) * 3.6, mission.id).toBeLessThanOrEqual(fastest);
     }
     expect(new Set(all.map((mission) => mission.difficulty))).toEqual(new Set(['easy', 'normal', 'hard', 'expert']));
   });
@@ -125,6 +127,40 @@ describe('generateContracts', () => {
       ['agriculture', 'food', 'frozenFood'].includes(cargoOf(mission).category),
     );
     expect(farmGoods.length / fromFarms.length).toBeGreaterThan((farmGoodsElsewhere.length / fromElsewhere.length) * 1.3);
+  });
+
+  it('deals a rush or a convoy now and then after the two easy openers, never an easy convoy, and never for a tender', () => {
+    const later = batches.flatMap((batch) => batch.slice(2));
+    const kinds = (variant: string) => later.filter((mission) => (mission.variant ?? 'standard') === variant);
+
+    for (const batch of batches) {
+      expect(batch.slice(0, 2).every((mission) => mission.variant === undefined)).toBe(true);
+    }
+    // Tenders draw negative batches.
+    for (let tender = 1; tender < 100; tender++) {
+      expect(generateContracts(market, -tender, 4).every((mission) => mission.variant === undefined)).toBe(true);
+    }
+    // About a fifth each (18% rushes, 20% convoys above easy), drawn apart from the rest of the batch.
+    expect(kinds('rush').length / later.length).toBeGreaterThan(0.1);
+    expect(kinds('rush').length / later.length).toBeLessThan(0.28);
+    expect(kinds('convoy').length / later.length).toBeGreaterThan(0.1);
+    expect(kinds('convoy').length / later.length).toBeLessThan(0.3);
+    expect(kinds('convoy').some((mission) => mission.difficulty === 'easy')).toBe(false);
+  });
+
+  it('makes a rush of a job on four fifths of its clock for half as much again, and a convoy of it as it is', () => {
+    const plain = generateContracts(market, -5, 4)[3]!; // A hard one, of a tender's batch: a plain one.
+
+    const rush = withVariant(plain, 'rush');
+    const convoy = withVariant(plain, 'convoy');
+
+    expect(rush).toEqual({
+      ...plain,
+      variant: 'rush',
+      timeLimitSeconds: Math.ceil((plain.timeLimitSeconds * 0.8) / 10) * 10,
+      baseReward: Math.round((plain.baseReward * 1.5) / 50) * 50,
+    });
+    expect(convoy).toEqual({ ...plain, variant: 'convoy' });
   });
 
   it('deals nothing without two cities to drive between', () => {

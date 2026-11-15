@@ -13,6 +13,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { DepotDefinition, RectangleDefinition } from '../../data/definitions/MapDefinition';
+import { BAY_SLACK_ACROSS_METERS, BAY_SLACK_ALONG_METERS } from '../../domain/missions/loadingBay';
 import { concreteImage } from '../textures/proceduralImages';
 import { toTexture } from '../textures/toTexture';
 import { pavedRectangle, placeFlat } from './groundDecals';
@@ -210,13 +211,17 @@ function bayLinesGeometry(bay: RectangleDefinition): BufferGeometry {
   return placeFlat(outline, bay, BAY_LINE_Y);
 }
 
-/** Four open walls around the bay, fading from the ground up. */
+/**
+ * Four open walls around the bay, fading from the ground up: round all the
+ * room a truck may park in (the bay's lines and their slack, loadingBay.ts),
+ * the painted lines inside them for a perfect park.
+ */
 function beaconWallsGeometry(bay: RectangleDefinition): BufferGeometry {
   const heading = (bay.headingDegrees * Math.PI) / 180;
   const alongX = Math.sin(heading);
   const alongZ = Math.cos(heading);
-  const halfLength = bay.lengthMeters / 2;
-  const halfWidth = bay.widthMeters / 2;
+  const halfLength = bay.lengthMeters / 2 + BAY_SLACK_ALONG_METERS;
+  const halfWidth = bay.widthMeters / 2 + BAY_SLACK_ACROSS_METERS;
   const corners = [
     [1, 1],
     [1, -1],

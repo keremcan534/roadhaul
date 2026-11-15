@@ -52,6 +52,8 @@ export interface StreetLampViewOptions {
    */
   readonly circles?: readonly number[];
   readonly debrisCapacity?: number;
+  /** How far from the camera the posts are drawn, meters. Default: POST_REACH_METERS. */
+  readonly reachMeters?: number | undefined;
 }
 
 /** A lamp knocked over (showKnocked) stands nowhere: its copies shrunk to nothing. */
@@ -142,7 +144,8 @@ export class StreetLampView {
     this.lenses = lenses;
     // Every lamp's posts and lenses are kept out of the scene: those near the camera are drawn.
     // Within POST_REACH_METERS: a lamp further off is a few pixels tall (its glow at night still shows far).
-    this.near = [this.track(new NearInstances(posts, POST_REACH_METERS)), this.track(new NearInstances(lenses, POST_REACH_METERS))];
+    const reach = options.reachMeters ?? POST_REACH_METERS;
+    this.near = [this.track(new NearInstances(posts, reach)), this.track(new NearInstances(lenses, reach))];
     this.root.add(...this.near.map((near) => near.mesh));
     if (this.circles.length === lamps.length && (options.debrisCapacity ?? 0) > 0) {
       const { shape, centreZ } = KNOCKABLES.lamp;

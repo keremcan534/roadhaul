@@ -3,6 +3,7 @@ import { EventBus } from '../../../../src/core/events/EventBus';
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { GAME_CONTENT } from '../../../../src/data/content';
 import type { GameEvents } from '../../../../src/systems/GameEvents';
+import type { EclipseOfDay } from '../../../../src/domain/sky/eclipses';
 import { FLAVOR_HEADLINES, NEWS_LIMIT, NewsService } from '../../../../src/systems/world/NewsService';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
@@ -86,6 +87,32 @@ describe('NewsService', () => {
 
     expect(published).toEqual(['news.levelUp', 'news.weather.snow', 'news.aurora']);
     expect(news.items[2]).toMatchObject({ key: 'news.levelUp', count: 5 });
+  });
+
+  it('breaks the news of an eclipse beginning, with when its totality comes', () => {
+    const { news, events, published } = setup();
+    events.emit('EclipseBegan', { kind: 'solar', totalityMinutes: 764 });
+
+    expect(published).toEqual(['news.eclipse.solar']);
+    expect(news.items[0]).toMatchObject({ key: 'news.eclipse.solar', count: 764, breaking: true });
+  });
+
+  it("puts today's eclipse on top of the morning paper, or else tomorrow's", () => {
+    const events = new EventBus<GameEvents>(new MemoryLogger());
+    const clock = { minutes: 5 * 60 };
+    const coming: (EclipseOfDay | null)[] = [null, { kind: 'lunar', centreMinutes: 50, totalityMinutes: 30 }];
+    const news = new NewsService(ContentCatalog.create(GAME_CONTENT), clock, () => 0.3, events, {
+      eclipseOn: (daysAhead) => coming[daysAhead] ?? null,
+    });
+    news.update();
+    expect(news.items.map((item) => item.key)).toEqual(['news.eclipseTomorrow.lunar', 'news.flavor.3', 'news.flavor.3']);
+    expect(news.items[0]!.count).toBe(30);
+
+    coming[0] = { kind: 'solar', centreMinutes: 770, totalityMinutes: 764 };
+    clock.minutes = 6 * 60 + 1;
+    news.update();
+    expect(news.items[0]).toMatchObject({ key: 'news.eclipseToday.solar', count: 764 });
+    expect(news.items.filter((item) => item.key.startsWith('news.eclipseTomorrow'))).toHaveLength(1);
   });
 
   it('breaks the news of the ferry to Metropol at the level it opens, on top', () => {

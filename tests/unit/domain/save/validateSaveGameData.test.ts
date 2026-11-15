@@ -4,7 +4,7 @@ import { createNewSaveGameData } from '../../../../src/domain/save/createNewSave
 import { emptyCareer } from '../../../../src/domain/career/careerRecords';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
 import { validateSaveGameData } from '../../../../src/domain/save/validateSaveGameData';
-import { contentFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
+import { contentFixture, mapFixture, missionFixture, vehicleFixture } from '../../../support/contentFixtures';
 
 const content = ContentCatalog.create(contentFixture());
 const MAX_LEVEL = 5;
@@ -89,6 +89,38 @@ describe('validateSaveGameData', () => {
       'usedTrucks',
       'weeklyCup',
       'roadPass',
+      'rent',
+      'places',
+    ]);
+  });
+
+  it('keeps the places found, known ones once, and whole days', () => {
+    const lot = { x: 0, z: 60, headingDegrees: 90, lengthMeters: 44, widthMeters: 30 };
+    const withPlaces = ContentCatalog.create(
+      contentFixture({
+        maps: [
+          mapFixture({
+            places: [
+              { id: 'test_diner', kind: 'diner', lot },
+              { id: 'test_lookout', kind: 'lookout', lot: { ...lot, z: -60 } },
+            ],
+          }),
+        ],
+      }),
+    );
+    const placePaths = (data: unknown) => validateSaveGameData(data, withPlaces, MAX_LEVEL).map((issue) => issue.path);
+    const places = { found: ['test_diner', 'test_lookout'], puzzleDay: 20_400, washDay: null };
+
+    expect(placePaths(withPart('places', places))).toEqual([]);
+    expect(placePaths(withPart('places', { ...places, found: ['test_diner', 'test_diner', 'moon_base', 7] }))).toEqual([
+      'places.found[1]',
+      'places.found[2]',
+      'places.found[3]',
+    ]);
+    expect(placePaths(withPart('places', { found: 'all', puzzleDay: 1.5, washDay: '2' }))).toEqual([
+      'places.found',
+      'places.puzzleDay',
+      'places.washDay',
     ]);
   });
 
@@ -252,7 +284,7 @@ describe('validateSaveGameData', () => {
         fleet: { drivers, jobsPlanned: 7 },
       };
     };
-    const second = { instanceId: 'truck_002', definitionId: 'test_truck', fuelLiters: 300, damage: 0.2, upgrades: {}, paintId: null };
+    const second = { instanceId: 'truck_002', definitionId: 'test_truck', fuelLiters: 300, damage: 0.2, upgrades: {}, paintId: null, dirt: 0 };
     const driver = {
       driverId: 'test_driver',
       truckInstanceId: 'truck_002',
@@ -461,6 +493,43 @@ describe('validateSaveGameData', () => {
     ]);
     expect(paths(withPart('missions.active', { ...active, failureReason: 'abandoned' }))).toEqual([
       'missions.active.failureReason',
+    ]);
+  });
+
+  it('counts a convoy\'s lost trucks in whole numbers up to the convoy\'s size', () => {
+    const active = {
+      missionId: 'test_mission',
+      state: 'loaded',
+      handlingSeconds: 0,
+      deliverySeconds: 3,
+      cargoDamage: 0,
+      failureReason: null,
+      contract: null,
+    };
+
+    for (const lost of [0, 1, 2]) {
+      expect(paths(withPart('missions.active', { ...active, convoyTrucksLost: lost }))).toEqual([]);
+    }
+    for (const lost of [-1, 3, 0.5, '1', null]) {
+      expect(paths(withPart('missions.active', { ...active, convoyTrucksLost: lost }))).toEqual(['missions.active.convoyTrucksLost']);
+    }
+  });
+
+  it('keeps a generated contract\'s kind, and only a known one', () => {
+    const contract = missionFixture({ id: 'daily_7_2', variant: 'convoy' });
+    const active = {
+      missionId: 'daily_7_2',
+      state: 'loaded',
+      handlingSeconds: 0,
+      deliverySeconds: 3,
+      cargoDamage: 0,
+      failureReason: null,
+      contract,
+    };
+
+    expect(paths(withPart('missions.active', active))).toEqual([]);
+    expect(paths(withPart('missions.active', { ...active, contract: { ...contract, variant: 'parade' } }))).toEqual([
+      'missions.active.contract.variant',
     ]);
   });
 

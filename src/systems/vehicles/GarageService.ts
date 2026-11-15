@@ -57,6 +57,8 @@ export interface OwnedTruck {
   readonly definition: VehicleDefinition;
   readonly fuelLiters: number;
   readonly damage: Fraction;
+  /** Its road dirt, 0 clean to 1 caked (RoadDirtService while it is driven). */
+  readonly dirt: Fraction;
   readonly upgrades: FittedUpgrades;
   /** Its colour; null for its model's factory colour. */
   readonly paint: PaintDefinition | null;
@@ -113,10 +115,17 @@ interface TruckRecord {
   readonly definition: VehicleDefinition;
   fuelLiters: number;
   damage: Fraction;
+  dirt: Fraction;
   upgrades: Record<string, number>;
   paintId: string | null;
   /** The hired driver who has it out, or null. */
   driverId: string | null;
+}
+
+/** The active truck's road dirt while it is driven: RoadDirtService. */
+export interface TruckDirtKeeper {
+  readonly dirt: Fraction;
+  restore(dirt: Fraction): void;
 }
 
 /** Where the upgrades' effects go: the systems that drive the active truck. */
@@ -145,6 +154,8 @@ export class GarageService {
     private readonly missions: MissionService,
     private readonly fuel: FuelService,
     private readonly damage: DamageService,
+    /** The active truck's road dirt. */
+    private readonly roadDirt: TruckDirtKeeper,
     private readonly economy: EconomyService,
     private readonly company: CompanyLevelSource,
     private readonly events: EventBus<GameEvents>,
@@ -290,6 +301,7 @@ export class GarageService {
     const previous = this.requireActive();
     previous.fuelLiters = this.fuel.fuelLiters;
     previous.damage = this.damage.damage;
+    previous.dirt = this.roadDirt.dirt;
     this.activeId = instanceId;
     this.driving.switchVehicle(next.definition.id);
     this.takeOver(next);
@@ -404,6 +416,7 @@ export class GarageService {
       definition: this.content.vehicles.get(vehicle.definitionId),
       fuelLiters: vehicle.fuelLiters,
       damage: vehicle.damage,
+      dirt: vehicle.dirt,
       upgrades: { ...vehicle.upgrades },
       paintId: vehicle.paintId,
       driverId: null,
@@ -429,6 +442,7 @@ export class GarageService {
           damage: truck.damage,
           upgrades: { ...truck.upgrades },
           paintId: truck.paint?.id ?? null,
+          dirt: truck.dirt,
         };
       }),
     };
@@ -439,6 +453,7 @@ export class GarageService {
     this.applyUpgrades();
     this.damage.restore(record.damage);
     this.fuel.restore(record.fuelLiters);
+    this.roadDirt.restore(record.dirt);
   }
 
   private applyUpgrades(): void {
@@ -455,6 +470,7 @@ export class GarageService {
       definition: record.definition,
       fuelLiters: active ? this.fuel.fuelLiters : record.fuelLiters,
       damage: active ? this.damage.damage : record.damage,
+      dirt: active ? this.roadDirt.dirt : record.dirt,
       upgrades: { ...record.upgrades },
       paint: record.paintId === null ? null : this.content.paints.get(record.paintId),
       active,
@@ -476,6 +492,7 @@ export class GarageService {
       definition: truck.definition,
       fuelLiters: truck.definition.fuelCapacityLiters,
       damage: truck.damage,
+      dirt: 0,
       upgrades: { ...truck.upgrades },
       paintId: truck.paintId,
       driverId: null,

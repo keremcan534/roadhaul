@@ -10,6 +10,7 @@ import {
   Quaternion,
   Raycaster,
   Scene,
+  ShaderLib,
   Vector3,
   type Object3D,
 } from 'three';
@@ -479,6 +480,76 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
     expect(visibleMeshes()).toBe(empty);
   });
 
+  it('shows the road\'s grime on its body and rims as dirty as it is told', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const dirtied = new Set<string>();
+    scene.traverse((object) => {
+      if (object instanceof Mesh) {
+        for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+          const key = material.customProgramCacheKey();
+          if (key.includes('road-dirt')) {
+            dirtied.add(key.slice(key.lastIndexOf('road-dirt')));
+          }
+        }
+      }
+    });
+    // The body's parts by their height, the rims all over.
+    expect([...dirtied].sort()).toEqual(['road-dirt-body', 'road-dirt-rim']);
+    const shader = { uniforms: {} as Record<string, { value: number }>, vertexShader: ShaderLib.phong.vertexShader, fragmentShader: ShaderLib.phong.fragmentShader };
+    let body: MeshPhongMaterial | undefined;
+    scene.traverse((object) => {
+      if (body === undefined && object instanceof Mesh && object.material instanceof MeshPhongMaterial && object.material.customProgramCacheKey().endsWith('road-dirt-body')) {
+        body = object.material;
+      }
+    });
+    body!.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.fragmentShader).toContain('uniform float roadDirt;');
+    view.setDirt(0.7);
+    expect(shader.uniforms['roadDirt']!.value).toBe(0.7);
+    view.setDirt(3);
+    expect(shader.uniforms['roadDirt']!.value).toBe(1);
+    view.setDirt(-1);
+    expect(shader.uniforms['roadDirt']!.value).toBe(0);
+  });
+
+  it('dresses the cab in its design (all but the classic), and lights a glowing design at night', () => {
+    const meshes = (scene: Scene): number => {
+      let count = 0;
+      scene.traverse((object) => {
+        count += object instanceof Mesh ? 1 : 0;
+      });
+      return count;
+    };
+    const glowing = (scene: Scene): number[] => {
+      const levels: number[] = [];
+      scene.traverse((object) => {
+        if (object instanceof Mesh && object.material instanceof MeshPhongMaterial && object.material.emissiveMap !== null) {
+          levels.push(object.material.emissiveIntensity);
+        }
+      });
+      return levels;
+    };
+    const classic = new Scene();
+    new TruckView(classic, truck);
+    const speed = new Scene();
+    new TruckView(speed, truck, { livery: 'speed' });
+    // The cab's lower sides: one mesh more; a plain design never glows.
+    expect(meshes(speed)).toBe(meshes(classic) + 1);
+    expect(glowing(speed)).toEqual([]);
+
+    const auroraScene = new Scene();
+    const aurora = new TruckView(auroraScene, truck, { livery: 'aurora' });
+    // The cab's picture and the box's, dark by day…
+    expect(glowing(auroraScene).length).toBeGreaterThanOrEqual(1);
+    expect(glowing(auroraScene).every((level) => level === 0)).toBe(true);
+    // …lit at night.
+    aurora.setLamps(1);
+    expect(glowing(auroraScene).every((level) => level > 0.5)).toBe(true);
+    aurora.setLamps(0);
+    expect(glowing(auroraScene).every((level) => level === 0)).toBe(true);
+  });
+
   it('makes its lamps glow at night, and not by day', () => {
     const scene = new Scene();
     const view = new TruckView(scene, truck);
@@ -516,6 +587,58 @@ describe.each(VEHICLES)('TruckView of $id', (truck) => {
 
     expect(glows.visible).toBe(false);
     expect(lamps.color.r).toBe(dayBrightness);
+  });
+
+  it('flashes the indicators on the side asked: their lenses, either side alike, and at night a glow on each', () => {
+    const scene = new Scene();
+    const view = new TruckView(scene, truck);
+    const lamps = lampMaterialOf(scene);
+    // Every lens marked: as many left indicators' (+1) as right ones' (-1), the other lamps neither.
+    const marks = new Map<number, number>();
+    scene.traverse((object) => {
+      if (object instanceof Mesh && object.material === lamps) {
+        const indicator = (object as Mesh).geometry.getAttribute('indicator');
+        for (let i = 0; i < indicator.count; i++) {
+          marks.set(indicator.getX(i), (marks.get(indicator.getX(i)) ?? 0) + 1);
+        }
+      }
+    });
+    expect([...marks.keys()].sort()).toEqual([-1, 0, 1]);
+    expect(marks.get(1)).toBe(marks.get(-1));
+    // The lamps' shader takes the flashers: three.js's chunks it hooks onto are there.
+    const shader = { uniforms: {} as Record<string, unknown>, vertexShader: ShaderLib.basic.vertexShader, fragmentShader: ShaderLib.basic.fragmentShader };
+    lamps.onBeforeCompile(shader as never, undefined as never);
+    expect(shader.uniforms['indicators']).toBeDefined();
+    expect(shader.vertexShader).toContain('vIndicator = indicator;');
+    expect(shader.fragmentShader).toContain('indicators.x');
+    expect(lamps.customProgramCacheKey()).toBe('truck-lamps');
+
+    const glows = glowsOf(scene);
+    const steady = truck.trailer === undefined ? 4 : 2;
+    view.setLamps(1);
+    view.setIndicators(true, false);
+
+    expect(view.indicatorLevels).toMatchObject({ x: 1, y: 0 });
+    // Its own glows: the front indicators' after the steady lamps' (and a rigid truck's rear ones'), the left one
+    // amber, the right one adding nothing.
+    expect(glows.geometry.drawRange.count).toBe(truck.trailer === undefined ? 8 : 4);
+    const positions = glows.geometry.getAttribute('position');
+    const colors = glows.geometry.getAttribute('color');
+    const front = truck.body.wheelbaseMeters / 2 + truck.body.lengthMeters / 2;
+    expect(positions.getX(steady)).toBeGreaterThan(0);
+    expect(positions.getZ(steady)).toBeGreaterThan(front);
+    expect(positions.getX(steady + 1)).toBeCloseTo(-positions.getX(steady), 6);
+    expect(colors.getX(steady) - colors.getZ(steady)).toBeGreaterThan(0.8);
+    expect(colors.getY(steady)).toBeGreaterThan(colors.getZ(steady));
+    expect([colors.getX(steady + 1), colors.getY(steady + 1), colors.getZ(steady + 1)]).toEqual([0, 0, 0]);
+
+    view.setIndicators(true, true);
+    expect(view.indicatorLevels).toMatchObject({ x: 1, y: 1 });
+    expect(colors.getX(steady + 1)).toBeGreaterThan(0.8);
+
+    view.setIndicators(false, false);
+    expect(view.indicatorLevels).toMatchObject({ x: 0, y: 0 });
+    expect(glows.geometry.drawRange.count).toBe(steady);
   });
 
   it('says where its headlamps light the road from: either side of the nose, level, following the truck round', () => {
@@ -805,6 +928,16 @@ describe.each(VEHICLES.filter((vehicle) => vehicle.trailer !== undefined))('the 
     expect(glows!.visible).toBe(true);
     expect(glows!.geometry.drawRange.count).toBe(2);
     expect(glows!.geometry.getAttribute('position').getZ(0)).toBeLessThan(front - trailer.lengthMeters);
+    // Its rear indicators glow after its tail lights: the right one amber here, the left one adding nothing.
+    view.setIndicators(false, true);
+    expect(glows!.geometry.drawRange.count).toBe(4);
+    const colors = glows!.geometry.getAttribute('color');
+    expect([colors.getX(2), colors.getY(2), colors.getZ(2)]).toEqual([0, 0, 0]);
+    expect(colors.getX(3) - colors.getZ(3)).toBeGreaterThan(0.8);
+    expect(glows!.geometry.getAttribute('position').getX(3)).toBeLessThan(0);
+    expect(glows!.geometry.getAttribute('position').getZ(3)).toBeLessThan(front - trailer.lengthMeters);
+    view.setIndicators(false, false);
+    expect(glows!.geometry.drawRange.count).toBe(2);
   });
 });
 

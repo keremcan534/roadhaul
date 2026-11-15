@@ -158,6 +158,27 @@ export interface RestAreaDefinition {
   readonly lot: RectangleDefinition;
 }
 
+/** What there is to do at a place to visit (PlaceDefinition). */
+export const PLACE_KINDS = ['diner', 'truckWash', 'lookout', 'raceClub'] as const;
+export type PlaceKind = (typeof PLACE_KINDS)[number];
+
+/**
+ * A place to visit beside a road (the owner's request): a paved lot with a
+ * building of its kind on its back half. Stopping on it the first time pays
+ * a finder's reward; the diner serves the day's Yard Jam puzzle, the truck
+ * wash a scrub, the lookout a view, the race club a street race to
+ * `raceTo`. Ids end up in saves (the places found).
+ */
+export interface PlaceDefinition {
+  /** Stable snake_case id, unique across the maps. */
+  readonly id: string;
+  readonly kind: PlaceKind;
+  /** The paved lot: drives like asphalt. One long side should open onto a road. */
+  readonly lot: RectangleDefinition;
+  /** A race club's: where its races finish (the road nearest it), raced to by road from the club. Only a race club's. */
+  readonly raceTo?: { readonly x: number; readonly z: number };
+}
+
 /** Which way along a road: toward its last control point, or back toward its first. */
 export const ROAD_DIRECTIONS = ['forward', 'backward'] as const;
 export type RoadDirection = (typeof ROAD_DIRECTIONS)[number];
@@ -367,6 +388,14 @@ export interface MapDefinition {
   readonly buildings: readonly BuildingDefinition[];
   readonly depots: readonly DepotDefinition[];
   readonly restAreas: readonly RestAreaDefinition[];
+  /**
+   * Where the company's head office stands (HeadOfficeView): a fenced site
+   * near the region's first depot, its buildings rising as the facilities
+   * are built. Its fence is solid; nothing else is placed on it.
+   */
+  readonly headOffice?: RectangleDefinition;
+  /** Places to visit beside the roads (PlaceDefinition); absent: none. */
+  readonly places?: readonly PlaceDefinition[];
   /** Name boards where roads enter the cities. */
   readonly citySigns: readonly CitySignDefinition[];
   readonly fields: readonly FieldDefinition[];
@@ -487,6 +516,34 @@ export function validateMapDefinition(map: MapDefinition, path: string, validato
         seen.add(restArea.id);
       }
       validateRectangle(restArea.lot, `${restAreaPath}.lot`, validator, inside);
+    });
+  }
+  if (map.headOffice !== undefined) {
+    validateRectangle(map.headOffice, `${path}.headOffice`, validator, inside);
+  }
+  if (map.places !== undefined && validator.check(Array.isArray(map.places), `${path}.places`, 'must be a list')) {
+    const seen = new Set<string>();
+    map.places.forEach((place, index) => {
+      const placePath = `${path}.places[${index}]`;
+      if (!validator.check(typeof place === 'object' && place !== null, placePath, 'must be an object')) {
+        return;
+      }
+      if (validator.id(place.id, `${placePath}.id`)) {
+        validator.check(!seen.has(place.id), `${placePath}.id`, `duplicate place id "${place.id}"`);
+        seen.add(place.id);
+      }
+      validator.oneOf(place.kind, PLACE_KINDS, `${placePath}.kind`);
+      validateRectangle(place.lot, `${placePath}.lot`, validator, inside);
+      const raceTo = place.raceTo;
+      if (place.kind === 'raceClub') {
+        validator.check(
+          raceTo !== undefined && Number.isFinite(raceTo.x) && Number.isFinite(raceTo.z) && inside(raceTo.x, raceTo.z),
+          `${placePath}.raceTo`,
+          'a race club needs where its races finish, on the map',
+        );
+      } else {
+        validator.check(raceTo === undefined, `${placePath}.raceTo`, "is a race club's only");
+      }
     });
   }
   const roadIds = new Set(

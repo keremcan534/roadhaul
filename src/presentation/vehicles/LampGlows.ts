@@ -103,6 +103,7 @@ export class LampGlows {
   setCount(count: number): void {
     if (this.geometry.drawRange.count !== count) {
       this.geometry.setDrawRange(0, count);
+      this.points.visible = this.level > 0.01 && count > 0;
     }
   }
 
@@ -134,11 +135,13 @@ export class LampGlows {
     }
     this.level = level;
     this.material.opacity = level * FULL_OPACITY;
-    this.points.visible = level > 0.01;
+    // None to show (the drawn range empty), no draw: three.js sets an empty one up all the same.
+    this.points.visible = level > 0.01 && this.geometry.drawRange.count > 0;
   }
 
+  /** Whether the lamps shine at all (setLevel); their glows are drawn only while some are counted (setCount). */
   get visible(): boolean {
-    return this.points.visible;
+    return this.level > 0.01;
   }
 
   dispose(): void {

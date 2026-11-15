@@ -106,6 +106,17 @@ describe('CompanyTraffic', () => {
     expect(shown.x).toBe(where.x);
   });
 
+  it('finds the company truck in the traffic nearest a point, and whose it is (the horn\'s answer)', async () => {
+    const { game, marker } = await rivalOnTheRoad();
+    standFrom(game, marker, 300, 'away');
+    const where = lookUntilInTraffic(game, marker.key)!;
+    const nearby = { key: '', owner: 'fleet' as 'fleet' | 'rival', x: 0, z: 0 };
+
+    expect(game.companyTraffic.nearestInTraffic(where.x + 30, where.z, 80, nearby)).toBe(true);
+    expect(nearby).toEqual({ key: marker.key, owner: 'rival', x: where.x, z: where.z });
+    expect(game.companyTraffic.nearestInTraffic(where.x + 300, where.z, 80, nearby)).toBe(false);
+  });
+
   it('leaves the ones in sight and those beyond the traffic\'s reach on the maps', async () => {
     const { game, marker } = await rivalOnTheRoad();
     standFrom(game, marker, 300, 'towards');

@@ -32,7 +32,7 @@ describe('createNewSaveGameData', () => {
       economy: { credits: 5000 },
       garage: {
         activeVehicleInstanceId: 'truck_001',
-        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150, damage: 0, upgrades: {}, paintId: null }],
+        vehicles: [{ instanceId: 'truck_001', definitionId: 'rh_h1', fuelLiters: 150, damage: 0, upgrades: {}, paintId: null, dirt: 0 }],
       },
       world: { mapId: 'north_valley', truck: null },
       missions: { active: null },
@@ -65,6 +65,8 @@ describe('createNewSaveGameData', () => {
       usedTrucks: { period: null, sold: [] },
       weeklyCup: { week: null, points: 0, last: null },
       roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
+      rent: { storedCredits: 0, sinceMs: 0 },
+      places: { found: [], puzzleDay: null, washDay: null },
     });
   });
 

@@ -1,4 +1,4 @@
-import { FIELD_CROPS, type FieldCrop, type RoadKind } from '../../data/definitions/MapDefinition';
+import { FIELD_CROPS, type FieldCrop, type PlaceKind, type RoadKind } from '../../data/definitions/MapDefinition';
 import { PLAYER_COMPANY_ID } from '../../data/definitions/RivalCompanyDefinition';
 import type { DrivingService } from '../../systems/driving/DrivingService';
 import type { FleetService } from '../../systems/fleet/FleetService';
@@ -76,6 +76,10 @@ const COLORS = {
   delivery: '#3ddc84',
   depot: '#c9d3dc',
   restArea: '#4aa3ff',
+  diner: '#e8663d',
+  truckWash: '#2f9be8',
+  lookout: '#2bb673',
+  raceClub: '#d23c8c',
   ferry: '#16a99c',
   ferryClosed: '#5b6b70',
   ferryGlow: 'rgb(22 169 156 / 35%)',
@@ -196,6 +200,8 @@ export class MapPainter {
   private readonly driverInitials: ReadonlyMap<string, string>;
   /** Each company's colour as CSS: its trucks' arrows, and its territory's tint and rim. */
   private readonly companyColors: ReadonlyMap<string, { readonly solid: string; readonly tint: string; readonly rim: string }>;
+  /** Each company's number, for groundVersion: who leads each city, without allocating. */
+  private readonly companyCodes: ReadonlyMap<string, number>;
   /** How many of the fleet's and the rivals' markers the last paint drew (for pick). */
   private fleetPainted = 0;
   private rivalsPainted = 0;
@@ -295,6 +301,7 @@ export class MapPainter {
       colors.set(rival.id, companyColor(rival.color));
     }
     this.companyColors = colors;
+    this.companyCodes = new Map([...colors.keys()].map((id, index) => [id, index + 1] as const));
   }
 
   /** Paints the whole picture onto `context`, whose canvas is the viewport's size times `pixelRatio`. */
@@ -323,12 +330,44 @@ export class MapPainter {
   }
 
   paint(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, options: PaintOptions): void {
+    this.paintSea(context);
+    this.paintGround(context, view, pixelRatio);
+    this.paintMarks(context, view, pixelRatio, options);
+  }
+
+  /** Fills the whole canvas with the sea: all that is not land. */
+  paintSea(context: CanvasRenderingContext2D): void {
     const canvas = context.canvas;
     context.setTransform(1, 0, 0, 1, 0, 0);
-    // The sea is all that is not land.
     context.fillStyle = COLORS.sea;
     context.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
+  /**
+   * What changes the ground (paintGround) as it is drawn: a land's relief
+   * coming in, or another company coming to lead a city. The same number,
+   * the same ground. Allocation-free.
+   */
+  get groundVersion(): number {
+    const cities = this.sketch.cities;
+    let leaders = 0;
+    for (let i = 0; i < cities.length; i++) {
+      const leader = this.sources.rivals.leaderOf(cities[i]!.cityId);
+      leaders = (Math.imul(leaders, 31) + (leader === null ? 0 : (this.companyCodes.get(leader) ?? 0))) | 0;
+    }
+    return this.terrain.version * 4294967296 + (leaders >>> 0);
+  }
+
+  /**
+   * The ground under the marks, in world meters: the shallows, the lands and
+   * their relief, the beaches, forests, parks, rivers, fields, yards and
+   * buildings, who leads each city, the roads and the ferry crossings. It
+   * changes only with `groundVersion`, so the minimap draws it once into a
+   * larger picture and turns that onto itself (MapGroundCache). The forests'
+   * canopy keeps its size in device pixels at `patternPixelRatio` (the
+   * screen's, where the picture is drawn at more pixels than it).
+   */
+  paintGround(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, patternPixelRatio = pixelRatio): void {
     // World meters from here on.
     const t = view.canvasTransform(this.transform, pixelRatio);
     context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
@@ -349,7 +388,7 @@ export class MapPainter {
     context.stroke(this.lands);
     context.fillStyle = COLORS.forest;
     context.fill(this.forests);
-    this.paintCanopy(context, view, pixelRatio);
+    this.paintCanopy(context, view, patternPixelRatio);
     context.fillStyle = COLORS.park;
     context.fill(this.parks);
     // The rivers and the straits in the sea's own blue, over the land only (a strait runs on out to the sea through
@@ -383,6 +422,18 @@ export class MapPainter {
       context.stroke(this.crossings);
       context.setLineDash(NO_DASH);
     }
+  }
+
+  /**
+   * What moves or changes over the ground: the route, in world meters, then
+   * in screen pixels whatever the zoom the places, the rivals' and the
+   * fleet's trucks, the truck and north.
+   */
+  paintMarks(context: CanvasRenderingContext2D, view: MapViewport, pixelRatio: number, options: PaintOptions): void {
+    const t = view.canvasTransform(this.transform, pixelRatio);
+    context.setTransform(t.a, t.b, t.c, t.d, t.e, t.f);
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
     this.paintRoute(context, view);
 
     // Screen pixels from here on: marks keep their size whatever the zoom.
@@ -501,6 +552,13 @@ export class MapPainter {
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         context.fillText('P', x, y + 0.5);
+      }
+    }
+    // The places to visit: a cup, a drop or hills on the place's colour.
+    for (let i = 0; i < sketch.places.length; i++) {
+      const place = sketch.places[i]!;
+      if (view.sees(this.around(place.x, place.z), 12)) {
+        paintPlace(context, view.screenX(place.x, place.z), view.screenY(place.x, place.z), place.kind);
       }
     }
     // The headquarters: a house on the company's amber, where a new company starts and "Home" on the main menu.
@@ -842,6 +900,46 @@ export function paintHome(context: CanvasRenderingContext2D, x: number, y: numbe
   context.lineTo(x - 5.5, y - 0.5);
   context.closePath();
   context.fill();
+}
+
+/** A place's pin at (x, y): a cup for a diner, a drop for a truck wash, two hills for a lookout, white on the place's colour. */
+export function paintPlace(context: CanvasRenderingContext2D, x: number, y: number, kind: PlaceKind): void {
+  disc(context, x, y, 9.5, COLORS.truckEdge);
+  disc(context, x, y, 8, COLORS[kind]);
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = '#ffffff';
+  context.lineWidth = 1.4;
+  context.beginPath();
+  if (kind === 'diner') {
+    context.rect(x - 4, y - 3, 6, 6);
+    context.fill();
+    context.beginPath();
+    context.arc(x + 2.6, y, 2.2, -Math.PI / 2, Math.PI / 2);
+    context.stroke();
+  } else if (kind === 'truckWash') {
+    context.moveTo(x, y - 5.5);
+    context.quadraticCurveTo(x + 4.5, y, x + 3.6, y + 1.8);
+    context.arc(x, y + 1.6, 3.6, 0, Math.PI);
+    context.quadraticCurveTo(x - 4.5, y, x, y - 5.5);
+    context.fill();
+  } else if (kind === 'raceClub') {
+    // A checkered flag on its staff.
+    context.fillRect(x - 4.5, y - 5, 1.2, 10);
+    for (let row = 0; row < 3; row++) {
+      for (let column = 0; column < 3; column++) {
+        context.fillStyle = (row + column) % 2 === 0 ? '#ffffff' : '#1d2126';
+        context.fillRect(x - 3.3 + column * 2.6, y - 5 + row * 2.2, 2.6, 2.2);
+      }
+    }
+  } else {
+    context.moveTo(x - 5.5, y + 4);
+    context.lineTo(x - 1.5, y - 3);
+    context.lineTo(x + 0.5, y);
+    context.lineTo(x + 2.5, y - 4);
+    context.lineTo(x + 6, y + 4);
+    context.closePath();
+    context.fill();
+  }
 }
 
 function disc(context: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string): void {

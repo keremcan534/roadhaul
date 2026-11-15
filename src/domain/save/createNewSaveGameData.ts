@@ -50,6 +50,7 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
           damage: 0,
           upgrades: {},
           paintId: null,
+          dirt: 0,
         },
       ],
     },
@@ -74,6 +75,8 @@ export function createNewSaveGameData(params: NewGameParams): SaveGameData {
     usedTrucks: { period: null, sold: [] },
     weeklyCup: { week: null, points: 0, last: null },
     roadPass: { season: null, points: 0, freeClaimed: [], premiumClaimed: [], paints: [] },
+    rent: { storedCredits: 0, sinceMs: 0 },
+    places: { found: [], puzzleDay: null, washDay: null },
   };
 }
 

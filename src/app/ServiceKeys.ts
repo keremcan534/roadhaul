@@ -24,6 +24,8 @@ import type { QuestService } from '../systems/rewards/QuestService';
 import type { SupplyService } from '../systems/rewards/SupplyService';
 import type { LiveryService } from '../systems/vehicles/LiveryService';
 import type { SkyWonderService } from '../systems/weather/SkyWonderService';
+import type { RoadDirtService } from '../systems/vehicles/RoadDirtService';
+import type { OnFootService } from '../systems/driving/OnFootService';
 import type { LevelRewardService } from '../systems/company/LevelRewardService';
 import type { CrashService } from '../systems/crash/CrashService';
 import type { DrivingService } from '../systems/driving/DrivingService';
@@ -41,6 +43,11 @@ import type { RivalService } from '../systems/rivals/RivalService';
 import type { SaveService } from '../systems/save/SaveService';
 import type { GameSessionService } from '../systems/session/GameSessionService';
 import type { CompanyTraffic } from '../systems/traffic/CompanyTraffic';
+import type { HornService } from '../systems/vehicles/HornService';
+import type { RentService } from '../systems/company/RentService';
+import type { PlaceService } from '../systems/world/PlaceService';
+import type { AutoDriveService } from '../systems/vehicles/AutoDriveService';
+import type { RaceService } from '../systems/race/RaceService';
 import type { TrafficService } from '../systems/traffic/TrafficService';
 import type { TutorialService } from '../systems/tutorial/TutorialService';
 import type { SeasonService } from '../systems/weather/SeasonService';
@@ -69,6 +76,8 @@ export const ServiceKeys = Object.freeze({
   season: serviceKey<SeasonService>('SeasonService'),
   /** The northern lights some nights, and the sky's wonders the player has seen. */
   skyWonders: serviceKey<SkyWonderService>('SkyWonderService'),
+  roadDirt: serviceKey<RoadDirtService>('RoadDirtService'),
+  onFoot: serviceKey<OnFootService>('OnFootService'),
   /** The timed events of spec §22 (not the event bus: that is `events`). */
   specialEvents: serviceKey<EventService>('EventService'),
   tutorial: serviceKey<TutorialService>('TutorialService'),
@@ -130,6 +139,16 @@ export const ServiceKeys = Object.freeze({
   roadPass: serviceKey<RoadPassService>('RoadPassService'),
   /** The fleet's and the rivals' trucks in the traffic around the truck. */
   companyTraffic: serviceKey<CompanyTraffic>('CompanyTraffic'),
+  /** The warehouse's rent: money that piles up without driving. */
+  rent: serviceKey<RentService>('RentService'),
+  /** The places to visit: finds, the diner's puzzle of the day, the truck wash. */
+  places: serviceKey<PlaceService>('PlaceService'),
+  /** Auto-drive along the contract's route. */
+  autoDrive: serviceKey<AutoDriveService>('AutoDriveService'),
+  /** The race clubs' street races. */
+  race: serviceKey<RaceService>('RaceService'),
+  /** What the truck's horn does on the road: the traffic ahead hurries, company trucks hoot back. */
+  horn: serviceKey<HornService>('HornService'),
   saves: serviceKey<SaveService>('SaveService'),
   session: serviceKey<GameSessionService>('GameSessionService'),
 });

@@ -29,6 +29,8 @@ export interface MainMenuActions {
   readonly onEarningsBoost: () => void;
   /** Opens the map on the place picked (the truck is shown there). */
   readonly onMap: () => void;
+  /** Opens What's New: what this build brought. */
+  readonly onWhatsNew: () => void;
 }
 
 /** The earnings boost, as the main menu offers it. */
@@ -200,11 +202,16 @@ export class MainMenu {
     const small = element(document, 'div', 'main-menu__small');
     this.shopButton = withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.shop'), 'shop', actions.onShop), 'coins');
     this.shopButton.hidden = true;
+    // What's New as its picture alone: the row stays one line on a phone on its side.
+    const whatsNew = withIcon(button(document, 'button--ghost main-menu__language main-menu__news', '', 'whats-new', actions.onWhatsNew), 'news');
+    whatsNew.setAttribute('aria-label', strings.t('whatsNew.title'));
+    whatsNew.title = strings.t('whatsNew.title');
     small.append(
       withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.controls'), 'controls', actions.onControls), 'controls'),
       withIcon(button(document, 'button--ghost main-menu__language', strings.t('menu.settings'), 'settings', actions.onSettings), 'settings'),
       this.shopButton,
       this.languageButton(document, strings, actions),
+      whatsNew,
     );
 
     const side = element(document, 'div', 'main-menu__side');

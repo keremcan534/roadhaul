@@ -6,12 +6,19 @@ import type { GameConfig } from '../../data/config/GameConfig';
 import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { CargoDefinition } from '../../data/definitions/CargoDefinition';
 import type { DepotDefinition } from '../../data/definitions/MapDefinition';
-import { vehicleCanHaul, type MissionDefinition } from '../../data/definitions/MissionDefinition';
+import { missionVariant, vehicleCanHaul, type MissionDefinition } from '../../data/definitions/MissionDefinition';
 import type { RectangleDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits, Fraction } from '../../data/units';
 import { addCargoDamage, cargoDamageFromImpact, isWithinTolerance } from '../../domain/missions/cargoDamage';
-import { isParkedInBay, isTrailerInsideBay, STOPPED_SPEED_METERS_PER_SECOND } from '../../domain/missions/loadingBay';
+import { ConvoyTrail } from '../../domain/missions/convoyTrail';
+import {
+  isParkedInBay,
+  isParkedPerfectly,
+  isTrailerParkedInBay,
+  isTrailerParkedPerfectly,
+  STOPPED_SPEED_METERS_PER_SECOND,
+} from '../../domain/missions/loadingBay';
 import {
   createMissionInstance,
   failMission,
@@ -87,9 +94,16 @@ export class MissionService {
   private currentTarget: MissionTarget | null = null;
   /** The truck stands in the target bay: the brake holds it instead of engaging reverse. */
   private holdingInBay = false;
+  /** A convoy contract's trucks following the truck, from the pickup to the drop-off. */
+  private convoyTrail: ConvoyTrail | null = null;
   /** Share of collision damage the truck's suspension keeps away from the cargo. */
   private cargoProtection: Fraction = 0;
   private readonly unsubscribeCollisions: Unsubscribe;
+  private readonly unsubscribeAutoDrive: Unsubscribe;
+  /** Auto-drive has the wheel (AutoDriveChanged): the meters it drives loaded are counted apart. */
+  private autoDriving = false;
+  /** The odometer when the loaded way was last counted; NaN to start again. */
+  private countedOdometer = Number.NaN;
 
   constructor(
     private readonly content: ContentCatalog,
@@ -109,6 +123,9 @@ export class MissionService {
     this.unsubscribeCollisions = events.on('VehicleCollided', ({ impactSpeedMetersPerSecond }) =>
       this.damageCargo(impactSpeedMetersPerSecond),
     );
+    this.unsubscribeAutoDrive = events.on('AutoDriveChanged', ({ engaged }) => {
+      this.autoDriving = engaged;
+    });
   }
 
   /** The accepted contract until it is completed or failed; then null again. */
@@ -187,6 +204,7 @@ export class MissionService {
    */
   restore(saved: ActiveMissionSaveData | null): void {
     this.holdingInBay = false; // A new drive: its truck allows reverse.
+    this.countedOdometer = Number.NaN; // Its odometer starts again.
     this.mission = null;
     this.definition = null;
     this.generated = false;
@@ -204,7 +222,17 @@ export class MissionService {
     this.generated = contract !== null;
     this.updateTarget();
     this.driving.setCargoMass(isCargoAboard(this.mission) ? definition.cargoWeightTons * 1000 : 0);
+    // A convoy under way forms again behind the truck (where it was is not saved, only how many were lost).
+    this.convoyTrail = null;
+    if (isCargoAboard(this.mission)) {
+      this.startConvoy(this.mission);
+    }
     this.logger.info(`Resumed ${saved.missionId} (${saved.state}).`);
+  }
+
+  /** A convoy contract's trucks following the truck once it is loaded (ConvoyTrail); null otherwise. */
+  get convoy(): Readonly<ConvoyTrail> | null {
+    return this.convoyTrail;
   }
 
   /** The active contract as save data, or null. A generated contract comes along whole. */
@@ -239,15 +267,20 @@ export class MissionService {
         if (this.standsInTargetBay(mission, dt)) {
           this.driving.setCargoMass(definition.cargoWeightTons * 1000);
           this.changeState(mission, 'loaded');
+          this.startConvoy(mission);
         }
         return;
       case 'loaded':
+        this.stepConvoy(mission, dt);
+        this.countLoadedWay(mission);
         mission.deliverySeconds += dt;
         if (Math.abs(this.driving.vehicle.speed) >= STOPPED_SPEED_METERS_PER_SECOND) {
           this.changeState(mission, 'delivering');
         }
         return;
       case 'delivering':
+        this.stepConvoy(mission, dt);
+        this.countLoadedWay(mission);
         mission.deliverySeconds += dt;
         if (this.standsInTargetBay(mission, dt)) {
           this.complete(mission, definition);
@@ -261,6 +294,7 @@ export class MissionService {
 
   dispose(): void {
     this.unsubscribeCollisions();
+    this.unsubscribeAutoDrive();
     this.mission = null;
     this.definition = null;
     this.currentTarget = null;
@@ -323,7 +357,8 @@ export class MissionService {
   }
 
   /**
-   * Whether the truck stands still in `bay`: all of it, or a tractor unit's
+   * Whether the truck stands still in `bay` (a little over its lines or
+   * askew will do: isParkedInBay): all of it, or a tractor unit's
    * semi-trailer, which carries the load (the tractor may stand out of it).
    */
   private parkedIn(bay: RectangleDefinition): boolean {
@@ -331,7 +366,24 @@ export class MissionService {
     if (definition.trailer === undefined || trailer === null) {
       return isParkedInBay(bay, vehicle, definition.body);
     }
-    return Math.abs(vehicle.speed) < STOPPED_SPEED_METERS_PER_SECOND && isTrailerInsideBay(bay, trailer, definition.trailer, definition.body.widthMeters);
+    return (
+      Math.abs(vehicle.speed) < STOPPED_SPEED_METERS_PER_SECOND &&
+      isTrailerParkedInBay(bay, trailer, definition.trailer, definition.body.widthMeters)
+    );
+  }
+
+  /** Whether the truck (or its semi-trailer) stands perfectly in the target bay: within the lines, square, in the middle. */
+  private parkedPerfectly(): boolean {
+    const target = this.currentTarget;
+    if (target === null) {
+      return false;
+    }
+    const bay = target.depot.bay;
+    const { vehicle, definition, trailer } = this.driving;
+    if (definition.trailer === undefined || trailer === null) {
+      return isParkedPerfectly(bay, vehicle, definition.body);
+    }
+    return isTrailerParkedPerfectly(bay, trailer, definition.trailer, definition.body.widthMeters);
   }
 
   /** How long loading or unloading takes: research takes a share off. */
@@ -388,6 +440,9 @@ export class MissionService {
       deliverySeconds: mission.deliverySeconds,
       cargoDamage: mission.cargoDamage,
       damageTolerance: definition.damageTolerance,
+      perfectParking: this.parkedPerfectly(),
+      convoyTrucks: this.convoyTrail?.trucksWithConvoy ?? 0,
+      autoDriveShare: (mission.loadedMeters ?? 0) > 0 ? (mission.autoDriveMeters ?? 0) / mission.loadedMeters! : 0,
     });
     const xp = Math.round(deliveryXp(reward, definition.difficulty) * (1 + this.perks.perks.xpBonus));
     const reputation = deliveryReputation(reward, mission.cargoDamage, definition.damageTolerance);
@@ -422,9 +477,49 @@ export class MissionService {
     });
   }
 
+  /** A convoy contract loaded: the company's trucks form up at the truck and follow it out (ConvoyTrail). */
+  private startConvoy(mission: MissionInstance): void {
+    if (this.definition === null || missionVariant(this.definition) !== 'convoy' || !this.driving.isDriving) {
+      return;
+    }
+    const vehicle = this.driving.vehicle;
+    this.convoyTrail = new ConvoyTrail(vehicle.x, vehicle.z, mission.convoyTrucksLost ?? 0);
+  }
+
+  /** The way driven loaded since the last step (the odometer's), and auto-drive's share of it. */
+  private countLoadedWay(mission: MissionInstance): void {
+    const odometer = this.driving.vehicle.odometerMeters;
+    const moved = Number.isNaN(this.countedOdometer) ? 0 : Math.max(0, odometer - this.countedOdometer);
+    this.countedOdometer = odometer;
+    if (moved > 0) {
+      mission.loadedMeters = (mission.loadedMeters ?? 0) + moved;
+      if (this.autoDriving) {
+        mission.autoDriveMeters = (mission.autoDriveMeters ?? 0) + moved;
+      }
+    }
+  }
+
+  /** The convoy follows on; one left too far behind is lost (ConvoyTruckLost), and stays lost in the save. */
+  private stepConvoy(mission: MissionInstance, dt: number): void {
+    if (this.convoyTrail === null) {
+      this.startConvoy(mission);
+    }
+    const trail = this.convoyTrail;
+    if (trail === null) {
+      return;
+    }
+    const vehicle = this.driving.vehicle;
+    if (trail.step(dt, vehicle.x, vehicle.z, vehicle.heading) >= 0) {
+      mission.convoyTrucksLost = trail.size - trail.trucksWithConvoy;
+      this.events.emit('ConvoyTruckLost', { missionId: mission.missionId, remaining: trail.trucksWithConvoy });
+    }
+  }
+
   /** Ends the active mission: no contract, no target, no cargo on the truck. */
   private clear(): void {
     this.holdInBay(false);
+    this.convoyTrail = null;
+    this.countedOdometer = Number.NaN;
     this.mission = null;
     this.definition = null;
     this.generated = false;

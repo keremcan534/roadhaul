@@ -152,6 +152,66 @@
   transform: scale(0.96);
 }
 
+/*
+ * The brakes' switches, over the brake pedal beside the D/R switch: the engine brake (amber while switched on, lit
+ * while it works) and the parking brake (red while applied).
+ */
+.brake-switches {
+  --rh-switch-size: calc(42px * var(--rh-control-scale));
+  position: absolute;
+  right: calc(env(safe-area-inset-right, 0px) + 20px + var(--rh-pedal-width) + 14px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px + var(--rh-pedal-width) * 1.2 + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.brake-switch {
+  display: grid;
+  place-items: center;
+  width: var(--rh-switch-size);
+  min-height: var(--rh-switch-size);
+  height: var(--rh-switch-size);
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-control-line);
+  pointer-events: auto;
+  touch-action: manipulation;
+  transition:
+    transform var(--rh-quick) var(--rh-ease),
+    border-color var(--rh-quick) var(--rh-ease);
+}
+
+.brake-switch:active {
+  transform: scale(0.95);
+}
+
+.brake-switch__icon {
+  width: 62%;
+  height: 62%;
+  --rh-icon-accent: currentColor;
+}
+
+.brake-switch--parking[aria-pressed='true'] {
+  border-color: #e2483b;
+  box-shadow: 0 0 10px rgb(255 80 60 / 45%);
+  color: #ff5a45;
+}
+
+.brake-switch--engine[aria-pressed='true'] {
+  border-color: #a8812f;
+  color: #c9973c;
+}
+
+.brake-switch--engine.is-working {
+  box-shadow: 0 0 10px rgb(255 190 80 / 45%);
+  color: #ffc95c;
+}
+
 /* Steering by tilt: both thumbs are free, so the brake moves under the left one, the tilt button beside it. */
 .touch-controls[data-steering='tilt'] .pedals {
   left: calc(env(safe-area-inset-left, 0px) + 20px);
@@ -256,7 +316,8 @@
   bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
   display: flex;
   align-items: center;
-  gap: 12px;
+  /* Closer on narrow upright phones, where the indicators' arrows either side would leave the plate wider than them. */
+  gap: clamp(8px, 2.6vw, 12px);
   padding: 5px 14px 7px 10px;
   border: 1px solid var(--rh-plate-line);
   border-radius: 6px;
@@ -271,8 +332,15 @@
  * the instrument panel: it steps aside.
  */
 html[data-camera='cabin'] .dashboard {
-  opacity: 0;
   visibility: hidden;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+
+/* The indicators' arrows stay, where the readout was. */
+html[data-camera='cabin'] .signal-button {
+  visibility: visible;
 }
 
 /* Upright phones: the wheel and pedals fill the bottom row, so the readout sits above them (and the D/R switch). */
@@ -407,10 +475,60 @@ html[data-camera='cabin'] .dashboard {
   background: var(--rh-danger);
 }
 
-/* ---- The corner buttons: square plates (the pause, the camera, the horn) ---- */
+/*
+ * The indicators' arrows, either side of the instruments: grey while off, green while their signal is on, bright as
+ * they flash (the hazard lights flash both).
+ */
+.signal-button {
+  position: relative;
+  flex: none;
+  width: clamp(32px, 9vw, 40px);
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  border: 1px solid var(--rh-plate-line);
+  border-radius: 6px;
+  background: rgb(0 0 0 / 22%);
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.signal-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 20px;
+  margin: auto;
+  background: var(--rh-control-line);
+  clip-path: polygon(0 50%, 48% 0, 48% 28%, 100% 28%, 100% 72%, 48% 72%, 48% 100%);
+}
+
+.signal-button--right::before {
+  transform: scaleX(-1);
+}
+
+.signal-button[aria-pressed='true'] {
+  border-color: #3f8f4f;
+}
+
+.signal-button[aria-pressed='true']::before {
+  background: #2e7a3c;
+}
+
+.signal-button.is-lit {
+  box-shadow: 0 0 12px rgb(90 255 120 / 45%);
+}
+
+.signal-button.is-lit::before {
+  background: #5dff7c;
+}
+
+/* ---- The corner buttons: square plates (the pause, the camera, the horn, the hazard lights) ---- */
 
 .camera-button,
 .horn-button,
+.hazard-button,
 .pause-button {
   width: 48px;
   min-height: 48px;
@@ -427,6 +545,7 @@ html[data-camera='cabin'] .dashboard {
 }
 
 .camera-button:active,
+.hazard-button:active,
 .pause-button:active {
   transform: scale(0.95);
 }
@@ -491,11 +610,53 @@ html[data-camera='cabin'] .dashboard {
   background: var(--rh-accent);
 }
 
-/* Upright phones: the mission HUD takes the width under the corner buttons, so the horn joins their row. */
+/* The hazard lights' switch, beside the horn: a red triangle, flashing with them. */
+.hazard-button {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  right: calc(env(safe-area-inset-right, 0px) + 70px);
+}
+
+.hazard-button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 21px;
+  background: #c4473d;
+  clip-path: polygon(evenodd, 50% 0, 100% 100%, 0 100%, 50% 0, 50% 34%, 23% 84%, 77% 84%, 50% 34%);
+  transform: translate(-50%, -55%);
+}
+
+.hazard-button[aria-pressed='true'] {
+  border-color: #c4473d;
+}
+
+.hazard-button.is-lit {
+  box-shadow: 0 0 12px rgb(255 80 60 / 50%);
+}
+
+.hazard-button.is-lit::before {
+  background: #ff5a45;
+}
+
+/*
+ * Upright phones: the mission HUD takes the width under the corner buttons, so the horn and the hazard lights' switch
+ * join their row, past the radio's button.
+ */
 @media (orientation: portrait) {
-  .horn-button {
+  .horn-button,
+  .hazard-button {
     top: calc(env(safe-area-inset-top, 0px) + 12px);
-    right: calc(env(safe-area-inset-right, 0px) + 70px);
+  }
+
+  .horn-button {
+    right: calc(env(safe-area-inset-right, 0px) + 128px);
+  }
+
+  .hazard-button {
+    right: calc(env(safe-area-inset-right, 0px) + 186px);
   }
 }
 
@@ -904,6 +1065,85 @@ html[data-camera='cabin'] .dashboard {
   color: #ffb3a8;
 }
 
+/* Auto-drive on the sign (the sign's only buttons, so they take taps): its switch, and the tablet's while it drives. */
+.mission-hud__auto {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 5px 0 0;
+}
+
+.mission-hud__auto[hidden],
+.mission-hud__auto-button[hidden] {
+  display: none;
+}
+
+.mission-hud__auto-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border: 1px solid rgb(244 246 242 / 55%);
+  border-radius: 15px;
+  background: rgb(0 0 0 / 18%);
+  color: var(--rh-sign-white, #f4f6f2);
+  font: 500 12.5px/1 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.mission-hud__auto-button .icon {
+  width: 16px;
+  height: 16px;
+  --rh-icon-accent: currentColor;
+}
+
+.mission-hud__auto-button.is-on {
+  border-color: #3ddc84;
+  background: rgb(61 220 132 / 22%);
+  color: #c9ffe0;
+}
+
+/* A convoy contract on the sign: how many of its trucks are with the truck; amber while one falls behind. */
+.mission-hud__convoy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 0;
+  font: 500 12.5px/1.25 var(--rh-text);
+}
+
+.mission-hud__convoy[hidden] {
+  display: none;
+}
+
+.mission-hud__convoy .icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  --rh-icon-accent: currentColor;
+}
+
+.mission-hud__convoy-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+}
+
+.mission-hud__convoy.is-lagging {
+  color: #ffd35a;
+}
+
+.mission-hud__convoy.is-lost {
+  color: #ffb3a8;
+}
+
 /* Upright phones: the sign drops below the corner buttons and takes the full width. */
 @media (orientation: portrait) {
   .mission-hud {
@@ -992,7 +1232,8 @@ html[data-camera='cabin'] .dashboard {
   .mission-hud,
   .toasts,
   .rest-area-panel,
-  .ferry-panel {
+  .ferry-panel,
+  .place-panel {
     left: calc(50% + 55px);
   }
 
@@ -1007,7 +1248,8 @@ html[data-camera='cabin'] .dashboard {
   }
 
   .rest-area-panel,
-  .ferry-panel {
+  .ferry-panel,
+  .place-panel {
     width: max-content;
     max-width: min(520px, calc(100vw - 250px));
   }
@@ -1227,6 +1469,177 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 
 .rest-area-panel__discounts:empty {
   display: none;
+}
+
+/* A place to visit's counter (src/ui/hud/PlacePanel.ts): the rest area's, in the place's colour on the maps. */
+.place-panel {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 92px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: min(92vw, 520px);
+  padding: 10px 14px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--rh-plate-line);
+  border-top: 3px solid var(--place-color, var(--rh-accent));
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  text-align: center;
+  transform: translateX(-50%);
+}
+
+.place-panel[hidden] {
+  display: none;
+}
+
+.place-panel[data-kind='diner'] {
+  --place-color: #e8663d;
+}
+
+.place-panel[data-kind='truckWash'] {
+  --place-color: #2f9be8;
+}
+
+.place-panel[data-kind='lookout'] {
+  --place-color: #2bb673;
+}
+
+.place-panel[data-kind='raceClub'] {
+  --place-color: #d23c8c;
+}
+
+/* ---- A street race (src/ui/hud/RaceHud.ts): the place, the clock and the way left at the top; the lights big ---- */
+
+/* While racing, the company's buttons and the contract's sign stand aside. */
+html[data-race='on'] .hud-dock,
+html[data-race='on'] .mission-hud {
+  display: none;
+}
+
+.race-hud[hidden],
+.race-hud__lights[hidden],
+.race-hud__warning[hidden] {
+  display: none;
+}
+
+.race-hud__bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--rh-plate-line);
+  border-top: 3px solid #d23c8c;
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg);
+  font: 600 15px/1.2 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.race-hud__place {
+  color: #ff8ac4;
+  font-family: var(--rh-display);
+  font-size: 17px;
+}
+
+.race-hud__left {
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.race-hud__quit {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.race-hud__lights {
+  position: fixed;
+  top: 32%;
+  left: 50%;
+  z-index: 3;
+  color: #ffd35a;
+  font: 700 84px/1 var(--rh-display);
+  text-shadow: 0 3px 12px rgb(0 0 0 / 55%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.race-hud__lights[data-light='go'] {
+  color: #3ddc84;
+}
+
+.race-hud__warning {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 66px);
+  left: 50%;
+  z-index: 3;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 14px;
+  background: rgb(210 60 60 / 85%);
+  color: #fff;
+  font: 600 14px/1.3 var(--rh-text);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+@media (orientation: portrait) {
+  .race-hud__bar {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    gap: 10px;
+    font-size: 14px;
+  }
+
+  .race-hud__warning {
+    top: calc(env(safe-area-inset-top, 0px) + 124px);
+  }
+}
+
+.place-panel__kind {
+  margin: 0;
+  color: var(--place-color);
+  font: 500 12px/1.2 var(--rh-display);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.place-panel__name {
+  margin: 0;
+  color: var(--rh-fg);
+  font: 600 18px/1.2 var(--rh-display);
+}
+
+.place-panel__line {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 400 13.5px/1.35 var(--rh-text);
+}
+
+.place-panel__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.place-panel__action {
+  min-height: 40px;
+  padding: 8px 14px;
+  font-size: 14px;
 }
 
 /* The ferry terminal's counter (src/ui/hud/FerryPanel.ts): the rest area's, teal like the ferry on the maps, with a line on the crossing. */
@@ -1607,4 +2020,30 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
 .radio-button__icon {
   width: 24px;
   height: 24px;
+}
+
+/* Out of the truck and back in (OnFootButton): under the hazard lights' and the horn's buttons. */
+.on-foot-button {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 128px);
+  right: calc(env(safe-area-inset-right, 0px) + 12px);
+  z-index: 2;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--rh-plate-line);
+  background: var(--rh-plate);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg-1, #fff);
+  font-size: 15px;
+  touch-action: manipulation;
+}
+
+.on-foot-button[hidden] {
+  display: none;
+}
+
+/* Away from the cab's door: greyed until the driver is back there. */
+.on-foot-button[data-state='walkBack'] {
+  color: var(--rh-fg-2);
+  opacity: 0.8;
 }

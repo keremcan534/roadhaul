@@ -6,6 +6,7 @@ import {
   GENERATED_MISSION_ID_PREFIX,
   type MissionDefinition,
   type MissionDifficulty,
+  type MissionVariant,
 } from '../../data/definitions/MissionDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 
@@ -57,6 +58,19 @@ const SPECIALITIES: Readonly<Record<CitySpecialization, readonly CargoCategory[]
   quarry: ['construction', 'oversized'],
   market: ['furniture', 'electronics', 'food'],
 };
+/**
+ * Of the contracts of the day after the two easy ones: this share are
+ * rushes, on this share of the clock (a quarter faster on average: on the
+ * highway's 90 and the country roads' 70 that is still a fair drive) for
+ * this much more pay…
+ */
+const RUSH_CHANCE = 0.18;
+const RUSH_TIME_SHARE = 0.8;
+const RUSH_PAY_FACTOR = 1.5;
+/** …and of those above easy, this share convoys. */
+const CONVOY_CHANCE = 0.2;
+/** The two easy contracts a batch opens with are always plain ones. */
+const PLAIN_SLOTS = 2;
 const SPECIALITY_WEIGHT = 3;
 
 /**
@@ -67,7 +81,9 @@ const SPECIALITY_WEIGHT = 3;
  * distance; the pay (spec §64); the time limit and the damage tolerance of
  * its difficulty. The company level it asks for is its difficulty's, or
  * the level where the truck it needs is sold if that is later. Easy
- * contracts fit a truck a new company can own. Ids are
+ * contracts fit a truck a new company can own. After the two easy ones,
+ * a contract may be a rush or a convoy (MissionVariant: contractVariant);
+ * never in a tender's batch (a negative one). Ids are
  * `daily_<batch>_<slot>`. Needs two cities; fewer give no contracts.
  */
 export function generateContracts(market: ContractMarket, batch: number, count: number): MissionDefinition[] {
@@ -131,8 +147,46 @@ export function generateContracts(market: ContractMarket, batch: number, count: 
       difficulty,
       ...(level > 1 ? { requiredCompanyLevel: level } : {}),
     });
+    // Tenders (negative batches) are plain ones too: a race is enough.
+    const variant = slot < PLAIN_SLOTS || batch < 0 ? 'standard' : contractVariant(batch, slot, difficulty);
+    if (variant !== 'standard') {
+      contracts[contracts.length - 1] = withVariant(contracts[contracts.length - 1]!, variant);
+    }
   }
   return contracts;
+}
+
+/**
+ * The kind of job slot `slot` of batch `batch` is, from a draw of its own
+ * (the rest of the batch is drawn as before it had kinds): a rush now and
+ * then, and from the normal contracts up, a convoy (CONVOY_CHANCE).
+ */
+function contractVariant(batch: number, slot: number, difficulty: MissionDifficulty): MissionVariant {
+  // The batch and slot mixed well first: one batch's draws are nothing like the next one's.
+  let seed = Math.imul(batch, 0x9e3779b1) ^ Math.imul(slot + 1, 0x85ebca6b);
+  seed = Math.imul(seed ^ (seed >>> 16), 0x7feb352d);
+  seed = Math.imul(seed ^ (seed >>> 15), 0x846ca68b);
+  const roll = new SeededRandom(seed ^ (seed >>> 16)).next();
+  if (roll < RUSH_CHANCE) {
+    return 'rush';
+  }
+  if (difficulty !== 'easy' && roll < RUSH_CHANCE + CONVOY_CHANCE) {
+    return 'convoy';
+  }
+  return 'standard';
+}
+
+/** `contract` as a job of kind `variant`: a rush on a shorter clock for more pay; a convoy as it was (its bonus comes at the drop-off). */
+export function withVariant(contract: MissionDefinition, variant: MissionVariant): MissionDefinition {
+  if (variant === 'rush') {
+    return {
+      ...contract,
+      variant,
+      timeLimitSeconds: Math.ceil((contract.timeLimitSeconds * RUSH_TIME_SHARE) / 10) * 10,
+      baseReward: Math.round((contract.baseReward * RUSH_PAY_FACTOR) / 50) * 50,
+    };
+  }
+  return { ...contract, variant };
 }
 
 /**

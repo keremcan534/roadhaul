@@ -12,6 +12,15 @@ export const MISSION_DIFFICULTIES = ['easy', 'normal', 'hard', 'expert'] as cons
 export type MissionDifficulty = (typeof MISSION_DIFFICULTIES)[number];
 
 /**
+ * What kind of job a contract is (the owner's request: missions that are not
+ * boring): a plain one; a rush, on a shorter clock for more pay; or a convoy,
+ * where the company's trucks follow the player's from the pickup and each
+ * one still with it at the drop-off pays a bonus (ConvoyTrail).
+ */
+export const MISSION_VARIANTS = ['standard', 'rush', 'convoy'] as const;
+export type MissionVariant = (typeof MISSION_VARIANTS)[number];
+
+/**
  * A hand-authored delivery contract template (spec §10, §50). The mission
  * system (roadmap step 12) turns it into a MissionInstance with its own state.
  * Distance and fuel estimate are derived from the road network, not stored.
@@ -35,6 +44,8 @@ export interface MissionDefinition {
   readonly requiredVehicleClass?: VehicleClass;
   /** The company level that unlocks the contract (spec §14). Omit for level 1. */
   readonly requiredCompanyLevel?: number;
+  /** What kind of job it is; omit for a plain one ('standard'). */
+  readonly variant?: MissionVariant;
 }
 
 /** Checks the mission's own fields. References to other definitions are checked by the content catalog. */
@@ -54,6 +65,14 @@ export function validateMissionDefinition(mission: MissionDefinition, path: stri
   if (mission.requiredCompanyLevel !== undefined) {
     validator.positiveInteger(mission.requiredCompanyLevel, `${path}.requiredCompanyLevel`);
   }
+  if (mission.variant !== undefined) {
+    validator.oneOf(mission.variant, MISSION_VARIANTS, `${path}.variant`);
+  }
+}
+
+/** The kind of job `mission` is: 'standard' when it names none. */
+export function missionVariant(mission: MissionDefinition): MissionVariant {
+  return mission.variant ?? 'standard';
 }
 
 /** Whether `vehicle` may take `mission`: payload, body for the cargo and, if required, vehicle class (spec §29 step 4). */

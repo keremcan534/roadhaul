@@ -116,6 +116,36 @@ describe('TimeOfDayService', () => {
     expect(dark.moonlit).toBeLessThan(0.05);
   });
 
+  it('holds the moon at a phase for a look at an eclipse, and lets it follow the calendar again', () => {
+    const time = service(NEW_MOON).time;
+    time.flow = 'stopped';
+    time.set(0);
+    time.holdMoonPhase(0.5);
+    expect(time.moonPhase).toBe(0.5);
+    // Full, it stands opposite the sun: high at midnight, bright.
+    expect(time.moonElevationDegrees).toBeGreaterThan(30);
+    expect(time.moonlit).toBeGreaterThan(0.9);
+    time.holdMoonPhase(null);
+    expect(Math.min(time.moonPhase, 1 - time.moonPhase)).toBeLessThan(0.05);
+  });
+
+  it('draws the moon toward a phase the shorter way round, as far as asked', () => {
+    const time = service(NEW_MOON).time;
+    time.flow = 'stopped';
+    time.set(0);
+    const calendar = time.moonPhase;
+    time.drawMoonToPhase(0.02, 0.5);
+    time.update(0);
+    const halfway = calendar > 0.5 ? (calendar + (1.02 - calendar) / 2) % 1 : (calendar + 0.02) / 2;
+    expect(time.moonPhase).toBeCloseTo(halfway, 9);
+    time.drawMoonToPhase(0.02, 1);
+    time.update(0);
+    expect(time.moonPhase).toBeCloseTo(0.02, 9);
+    time.drawMoonToPhase(0.02, 0);
+    time.update(0);
+    expect(time.moonPhase).toBeCloseTo(calendar, 9);
+  });
+
   it('turns the stars with the clock', () => {
     const { time } = service();
     time.flow = 'stopped';

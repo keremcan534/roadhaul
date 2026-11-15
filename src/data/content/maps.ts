@@ -541,6 +541,8 @@ export const MAPS: readonly MapDefinition[] = [
       { x: -2600, z: -2100, widthMeters: 10, depthMeters: 10, heightMeters: 28, form: 'lighthouse' },
       { x: -2575, z: -2068, widthMeters: 10, depthMeters: 8, heightMeters: 5 },
     ],
+    // The company's head office: open land 90 m east of the Ashford depot, back from the road.
+    headOffice: { x: -1626, z: -470, headingDegrees: 90, lengthMeters: 48, widthMeters: 36 },
     // Each yard's near long side overlaps its road by 2 m, so the truck can drive straight in.
     depots: [
       {
@@ -584,6 +586,21 @@ export const MAPS: readonly MapDefinition[] = [
         cityId: 'city_g',
         yard: { x: 2560, z: 2466, headingDegrees: 90, lengthMeters: 44, widthMeters: 26 },
         bay: { x: 2560, z: 2466, headingDegrees: 90, lengthMeters: 16, widthMeters: 4.6 },
+      },
+    ],
+    // Places to visit, each a lot beside its road (overlapping its edge), where the land is flat and open: the
+    // diner on the highway east of Havenport, the truck wash on the road north to the farms, the lookout on the
+    // coast road over the sea.
+    places: [
+      { id: 'valley_diner', kind: 'diner', lot: { x: -593, z: -537, headingDegrees: 110, lengthMeters: 44, widthMeters: 30 } },
+      { id: 'valley_truck_wash', kind: 'truckWash', lot: { x: -1700, z: 382, headingDegrees: 12, lengthMeters: 44, widthMeters: 30 } },
+      { id: 'valley_lookout', kind: 'lookout', lot: { x: -1612, z: 1659, headingDegrees: 29, lengthMeters: 44, widthMeters: 30 } },
+      // The race club on the east road, clear of the villages: its races wind 4.4 km south to the depot by the coast.
+      {
+        id: 'valley_race_club',
+        kind: 'raceClub',
+        lot: { x: 2855, z: 737, headingDegrees: 7, lengthMeters: 44, widthMeters: 30 },
+        raceTo: { x: 2750, z: -2666 },
       },
     ],
     restAreas: [

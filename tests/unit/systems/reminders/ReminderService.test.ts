@@ -8,6 +8,7 @@ import {
   type LocalNotifier,
   type NoticePermission,
   type ReminderText,
+  type UpdateNotice,
 } from '../../../../src/systems/reminders/ReminderService';
 import { MemoryLogger } from '../../../support/MemoryLogger';
 
@@ -43,7 +44,15 @@ class FakeNotifier implements LocalNotifier {
     this.scheduled = [];
     return Promise.resolve();
   }
+  /** The update notice left with the phone, if any. */
+  updateNotice: UpdateNotice | null = null;
+  armUpdateNotice(notice: UpdateNotice | null): Promise<void> {
+    this.updateNotice = notice;
+    return Promise.resolve();
+  }
 }
+
+const UPDATE: UpdateNotice = { title: 'RoadHaul has been updated', body: 'Open the game to see what’s new.' };
 
 const TEXT: ReminderText = (reminder) =>
   reminder.kind === 'dailyReward'
@@ -77,7 +86,7 @@ describe('ReminderService', () => {
   it('leaves nothing with the phone until the player says yes, even where the phone would allow it', async () => {
     const { reminders } = setup();
     const phone = new FakeNotifier('granted');
-    await reminders.attach(phone, TEXT);
+    await reminders.attach(phone, TEXT, UPDATE);
     await reminders.away();
     expect(phone.scheduled).toEqual([]);
     expect(reminders.on).toBe(false);
@@ -87,7 +96,7 @@ describe('ReminderService', () => {
   it('asks the phone on "Remind me", then plans the reminders as the player leaves and takes them back on return', async () => {
     const { reminders } = setup();
     const phone = new FakeNotifier('prompt');
-    await reminders.attach(phone, TEXT);
+    await reminders.attach(phone, TEXT, UPDATE);
     expect(await reminders.ask()).toBe(true);
     expect(phone.requests).toBe(1);
     expect(reminders.askDue).toBe(false);
@@ -108,13 +117,13 @@ describe('ReminderService', () => {
     const storage = new MemoryStorage();
     const first = setup(storage).reminders;
     const phone = new FakeNotifier('prompt', 'denied');
-    await first.attach(phone, TEXT);
+    await first.attach(phone, TEXT, UPDATE);
     expect(await first.ask()).toBe(false);
     await first.away();
     expect(phone.scheduled).toEqual([]);
 
     const again = setup(storage).reminders;
-    await again.attach(phone, TEXT);
+    await again.attach(phone, TEXT, UPDATE);
     expect(again.on).toBe(true);
     expect(again.askDue).toBe(false);
   });
@@ -122,7 +131,7 @@ describe('ReminderService', () => {
   it('switches off in Settings, taking back what waits, and on again', async () => {
     const { reminders } = setup();
     const phone = new FakeNotifier('granted');
-    await reminders.attach(phone, TEXT);
+    await reminders.attach(phone, TEXT, UPDATE);
     await reminders.setOn(true);
     await reminders.away();
     expect(phone.scheduled).toHaveLength(2);
@@ -137,7 +146,7 @@ describe('ReminderService', () => {
   it('reads the phone’s answer again on return: notifications allowed in Android’s settings meanwhile count', async () => {
     const { reminders } = setup();
     const phone = new FakeNotifier('prompt', 'denied');
-    await reminders.attach(phone, TEXT);
+    await reminders.attach(phone, TEXT, UPDATE);
     await reminders.ask();
     phone.allowed = 'granted';
     await reminders.back();
@@ -148,7 +157,7 @@ describe('ReminderService', () => {
   it('logs a phone that fails, and goes on', async () => {
     const { reminders, logger } = setup();
     const phone = new FakeNotifier('granted');
-    await reminders.attach(phone, TEXT);
+    await reminders.attach(phone, TEXT, UPDATE);
     await reminders.setOn(true);
     phone.failing = true;
     await expect(reminders.away()).resolves.toBeUndefined();
@@ -156,5 +165,37 @@ describe('ReminderService', () => {
     phone.failing = false;
     await reminders.away();
     expect(phone.scheduled).toHaveLength(2);
+  });
+
+  it('leaves the update notice with the phone while the reminders are on and allowed, and takes it back otherwise', async () => {
+    const { reminders } = setup();
+    const phone = new FakeNotifier('prompt');
+    await reminders.attach(phone, TEXT, UPDATE);
+    // Not asked yet: nothing left with the phone.
+    expect(phone.updateNotice).toBeNull();
+
+    expect(await reminders.ask()).toBe(true);
+    expect(phone.updateNotice).toEqual(UPDATE);
+    await reminders.away();
+    expect(phone.updateNotice).toEqual(UPDATE);
+    await reminders.back();
+    expect(phone.updateNotice).toEqual(UPDATE);
+
+    await reminders.setOn(false);
+    expect(phone.updateNotice).toBeNull();
+    await reminders.away();
+    expect(phone.updateNotice).toBeNull();
+  });
+
+  it('takes the update notice back when the phone no longer allows notifications', async () => {
+    const { reminders } = setup();
+    const phone = new FakeNotifier('granted');
+    await reminders.attach(phone, TEXT, UPDATE);
+    await reminders.setOn(true);
+    expect(phone.updateNotice).toEqual(UPDATE);
+
+    phone.allowed = 'denied';
+    await reminders.back();
+    expect(phone.updateNotice).toBeNull();
   });
 });

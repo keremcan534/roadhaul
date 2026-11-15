@@ -1,8 +1,8 @@
 import type { Season } from '../../data/definitions/Season';
 import type { Fraction } from '../../data/units';
 
-/** The sky's wonders a player may see: the northern lights, a shooting star, a rainbow. */
-export const SKY_WONDERS = ['aurora', 'meteor', 'rainbow'] as const;
+/** The sky's wonders a player may see: the northern lights, a shooting star, a rainbow, a total eclipse of the sun or the moon. */
+export const SKY_WONDERS = ['aurora', 'meteor', 'rainbow', 'solarEclipse', 'lunarEclipse'] as const;
 export type SkyWonder = (typeof SKY_WONDERS)[number];
 
 /** A night's sky is dark from this much of the night's look (TimeOfDayService.weights.night). */

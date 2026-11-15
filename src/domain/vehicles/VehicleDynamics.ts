@@ -13,6 +13,25 @@ const DRIVETRAIN_EFFICIENCY = 0.85;
 const DRIVEN_WEIGHT_SHARE = 0.65;
 /** Deceleration from engine braking while rolling in gear with the gas released, m/s². */
 const ENGINE_BRAKE_DECELERATION = 0.25;
+/**
+ * The engine brake (setEngineBrake), switched on: with the gas released in
+ * a forward gear above this speed (m/s), it slows the truck by up to this
+ * much more (m/s²), in step with the revs from idle to the limiter, and
+ * the gearbox holds lower gears for it (down-shifting at the middle of the
+ * shift band, not its foot). Downhill it holds a truck's speed on a 6%
+ * grade at high revs. Its working share is `engineBraking`.
+ */
+const ENGINE_BRAKE_EXTRA_DECELERATION = 0.9;
+const ENGINE_BRAKE_MIN_SPEED = 2.5;
+const ENGINE_BRAKE_DOWNSHIFT_BAND_SHARE = 0.5;
+/** It comes on and goes off over a moment, 1/s. */
+const ENGINE_BRAKE_RATE = 6;
+/**
+ * The parking brake (setParkingBrake): the spring brakes. Applied, the
+ * truck does not move off, whatever the gas or the slope; applied while
+ * rolling, they stop it at this deceleration (m/s², as the tyres allow).
+ */
+const PARKING_BRAKE_DECELERATION = 4;
 /** Below this speed (m/s) the truck counts as standing still. */
 const STANDSTILL_SPEED = 0.3;
 /** How long a pedal must be held at a standstill to switch between forward and reverse. */
@@ -122,6 +141,9 @@ export class VehicleDynamics {
   private readonly body: BodyMotion;
   private torqueFactor = 1;
   private brakeFactor = 1;
+  private parkingBrakeApplied = false;
+  /** Off unless switched on: a plain truck slows off the gas by ENGINE_BRAKE_DECELERATION alone. */
+  private engineBrakeOn = false;
   private gripFactor = 1;
   private stabilityFactor = 1;
   private engineRunning = true;
@@ -182,6 +204,24 @@ export class VehicleDynamics {
     this.engineRunning = running;
   }
 
+  /** The parking brake applied (true) or released: applied, the truck stays where it stands (PARKING_BRAKE_DECELERATION). */
+  setParkingBrake(applied: boolean): void {
+    this.parkingBrakeApplied = applied;
+  }
+
+  get parkingBrake(): boolean {
+    return this.parkingBrakeApplied;
+  }
+
+  /** The engine brake's switch: on, it slows the truck with the gas released (ENGINE_BRAKE_EXTRA_DECELERATION). */
+  setEngineBrake(on: boolean): void {
+    this.engineBrakeOn = on;
+  }
+
+  get engineBrake(): boolean {
+    return this.engineBrakeOn;
+  }
+
   /**
    * While false, holding the brake at a standstill keeps the truck stopped
    * instead of engaging reverse (a truck standing in a loading bay).
@@ -222,6 +262,7 @@ export class VehicleDynamics {
       clutchGear: 1,
       gear: 1,
       engineRpm: this.definition.powertrain.idleRpm,
+      engineBraking: 0,
       shiftTimer: 0,
       timeInGear: 0,
       directionChangeTimer: 0,
@@ -291,6 +332,7 @@ export class VehicleDynamics {
     state.shiftTimer = 0;
     const { idleRpm, maxRpm } = this.definition.powertrain;
     state.engineRpm = this.engineRunning ? idleRpm + state.throttlePedal * FREE_REV_SHARE * (maxRpm - idleRpm) : idleRpm;
+    state.engineBraking = 0;
     this.body.stepLoose(state, surface, dt);
   }
 
@@ -353,7 +395,12 @@ export class VehicleDynamics {
       }
       return;
     }
-    const { shiftUpRpm, shiftDownRpm, shiftTimeSeconds } = this.definition.powertrain;
+    const { shiftUpRpm, shiftTimeSeconds } = this.definition.powertrain;
+    // The engine brake at work keeps the revs up: a lower gear sooner.
+    const shiftDownRpm =
+      state.engineBraking > 0.05
+        ? this.definition.powertrain.shiftDownRpm + (shiftUpRpm - this.definition.powertrain.shiftDownRpm) * ENGINE_BRAKE_DOWNSHIFT_BAND_SHARE
+        : this.definition.powertrain.shiftDownRpm;
     if (state.engineRpm > shiftUpRpm && state.gear < this.gearRatios.length && drivePedal > 0) {
       state.clutchGear = state.gear;
       state.gear++;
@@ -393,7 +440,15 @@ export class VehicleDynamics {
       state.clutchGear = state.gear;
     }
     state.driveEngagement = approach(state.driveEngagement, shifting ? 0 : 1, (shifting ? CLUTCH_RELEASE_RATE : CLUTCH_TAKE_UP_RATE) * dt);
-    if (this.engineRunning && drivePedal > 0 && state.driveEngagement > 0 && !limiterHit && travelSpeed < speedLimit) {
+    // The parking brake applied, the truck does not move off: the engine's pull does not reach the road.
+    if (
+      this.engineRunning &&
+      !this.parkingBrakeApplied &&
+      drivePedal > 0 &&
+      state.driveEngagement > 0 &&
+      !limiterHit &&
+      travelSpeed < speedLimit
+    ) {
       const engineAngularSpeed = state.engineRpm / RPM_PER_RADIAN_PER_SECOND;
       const torque = this.torqueFactor * Math.min(this.maxTorque, this.maxPowerWatts / engineAngularSpeed);
       const wheelForce =
@@ -405,14 +460,26 @@ export class VehicleDynamics {
     const speedMagnitude = Math.abs(state.speed);
     const drag = 0.5 * AIR_DENSITY * this.dragArea * speedMagnitude * speedMagnitude;
     const rolling = surface.rollingResistance * weight;
-    const engineBrake = drivePedal === 0 && speedMagnitude > STANDSTILL_SPEED ? ENGINE_BRAKE_DECELERATION * mass : 0;
-    const braking = Math.min(brakePedal * this.definition.handling.brakeForceNewtons * this.brakeFactor, grip * weight);
+    // The engine brake, switched on, works in a forward gear with the gas released, harder at higher revs.
+    const { idleRpm, maxRpm } = this.definition.powertrain;
+    const engineBrakeShare =
+      this.engineBrakeOn && this.engineRunning && drivePedal === 0 && state.gear > 0 && speedMagnitude > ENGINE_BRAKE_MIN_SPEED
+        ? clamp((state.engineRpm - idleRpm) / (maxRpm - idleRpm), 0, 1) * state.driveEngagement
+        : 0;
+    state.engineBraking = approach(state.engineBraking, engineBrakeShare, ENGINE_BRAKE_RATE * dt);
+    const engineBrake =
+      drivePedal === 0 && speedMagnitude > STANDSTILL_SPEED
+        ? (ENGINE_BRAKE_DECELERATION + ENGINE_BRAKE_EXTRA_DECELERATION * state.engineBraking) * mass
+        : 0;
+    const pedalBraking = brakePedal * this.definition.handling.brakeForceNewtons * this.brakeFactor;
+    const parkingBraking = this.parkingBrakeApplied ? PARKING_BRAKE_DECELERATION * mass : 0;
+    const braking = Math.min(Math.max(pedalBraking, parkingBraking), grip * weight);
     const resistance = drag + rolling + engineBrake + braking;
 
     // The weight's pull down the slope along the truck (g · sin of the slope's angle): it can move the truck either way.
     // Standing with no pedal driving it, the hill-start aid holds it where it is (nothing to do on a phone's pedals).
     const grade = finiteOr(state.grade, 0);
-    const held = drivePedal === 0 && Math.abs(state.speed) < STANDSTILL_SPEED;
+    const held = (drivePedal === 0 || this.parkingBrakeApplied) && Math.abs(state.speed) < STANDSTILL_SPEED;
     const downhill = held ? 0 : (GRAVITY * grade) / Math.sqrt(1 + grade * grade);
     const previousSpeed = state.speed;
     let speed = previousSpeed + ((reversing ? -driveForce : driveForce) / mass - downhill) * dt;

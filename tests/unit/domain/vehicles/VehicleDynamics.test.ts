@@ -567,3 +567,89 @@ describe('VehicleDynamics on a slope', () => {
     expect(state.speed).toBeGreaterThan(15);
   });
 });
+
+describe('VehicleDynamics brakes', () => {
+  /** km/h in m/s. */
+  const metersPerSecond = (speedKmh: number): number => speedKmh / 3.6;
+
+  /** A truck driven up to `speedKmh` on the flat under full gas (its gearbox picking the gear), the engine brake as asked. */
+  function atSpeed(speedKmh: number, engineBrake: boolean) {
+    const dynamics = new VehicleDynamics(truck);
+    const state = dynamics.createState(0, 0, 0);
+    dynamics.setEngineBrake(engineBrake);
+    drive(dynamics, state, input({ throttle: 1 }), 120, { until: (now) => now.speed >= metersPerSecond(speedKmh) });
+    return { dynamics, state };
+  }
+
+  it('holds the truck still with the parking brake, whatever the gas or the slope, and lets it go once released', () => {
+    const dynamics = new VehicleDynamics(truck);
+    const state = dynamics.createState(0, 0, 0);
+    dynamics.setParkingBrake(true);
+    expect(dynamics.parkingBrake).toBe(true);
+
+    state.grade = 0.12;
+    drive(dynamics, state, input({ throttle: 1 }), 3);
+    expect(state.odometerMeters).toBeLessThan(0.01);
+    state.grade = -0.12;
+    drive(dynamics, state, input(), 3);
+    expect(state.odometerMeters).toBeLessThan(0.01);
+
+    dynamics.setParkingBrake(false);
+    drive(dynamics, state, input({ throttle: 1 }), 3);
+    expect(state.speed).toBeGreaterThan(2);
+  });
+
+  it('stops the truck rolling when the parking brake is pulled, in a few dozen meters from 50 km/h', () => {
+    const { dynamics, state } = atSpeed(50, false);
+    const from = state.odometerMeters;
+    dynamics.setParkingBrake(true);
+    drive(dynamics, state, input(), 20, { until: (now) => now.speed <= 0 });
+    expect(state.speed).toBe(0);
+    expect(state.odometerMeters - from).toBeGreaterThan(15);
+    expect(state.odometerMeters - from).toBeLessThan(35);
+  });
+
+  it('slows harder off the gas with the engine brake on, at work only while the gas is let go and the truck rolls', () => {
+    const coast = (engineBrake: boolean) => {
+      const { dynamics, state } = atSpeed(70, engineBrake);
+      const from = state.speed;
+      let working = 0;
+      drive(dynamics, state, input(), 4, {
+        until: (now) => {
+          working = Math.max(working, now.engineBraking);
+          return false;
+        },
+      });
+      return { dynamics, state, lost: from - state.speed, working };
+    };
+    const plain = coast(false);
+    const braked = coast(true);
+
+    expect(plain.working).toBe(0);
+    expect(braked.working).toBeGreaterThan(0.3);
+    // At least 0.3 m/s² more on average over the four seconds.
+    expect(braked.lost).toBeGreaterThan(plain.lost + 1.2);
+    drive(braked.dynamics, braked.state, input({ throttle: 1 }), 1);
+    expect(braked.state.engineBraking).toBeLessThan(0.05);
+    // Stopped, it is not at work.
+    drive(braked.dynamics, braked.state, input({ brake: 1 }), 30, { until: (now) => now.speed <= 0 });
+    drive(braked.dynamics, braked.state, input(), 1);
+    expect(braked.state.engineBraking).toBe(0);
+  });
+
+  it('holds the speed down a long slope with the engine brake on, in a lower gear, where the truck runs away without it', () => {
+    const descend = (engineBrake: boolean) => {
+      const { dynamics, state } = atSpeed(50, engineBrake);
+      state.grade = -0.06;
+      const gearBefore = state.gear;
+      drive(dynamics, state, input(), 20);
+      return { speed: state.speed, gearBefore, gear: state.gear };
+    };
+    const plain = descend(false);
+    const braked = descend(true);
+
+    expect(plain.speed).toBeGreaterThan(metersPerSecond(50) + 2);
+    expect(braked.speed).toBeLessThan(metersPerSecond(50) + 0.5);
+    expect(braked.gear).toBeLessThanOrEqual(braked.gearBefore);
+  });
+});

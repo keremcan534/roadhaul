@@ -1,17 +1,18 @@
-// The mobile performance run: the production build as phones run it, scene by scene, on three phones.
+// The mobile performance run: the production build as phones run it, scene by scene, on four phones.
 //
-//   npm run build && node scripts/perfRun.mjs [low,mid,high] [menu,highway,cityNight,rain,panel,map,metropol,pass]
+//   npm run build && node scripts/perfRun.mjs [entry,low,mid,high] [menu,highway,cityNight,rain,panel,map,metropol,pass]
 //                                            [--counters] [--trace] [--heap] [--cpu-profile]
 //
 // Headless Chromium has no GPU, and the game draws a plainer world when it finds itself drawn in software. So the
 // page is told a phone's GPU name, cores and memory (scripts/perf/instrument.js) and builds exactly what that phone
 // gets at its preset; the main thread is slowed to the phone's speed (CPU throttling: 6× for a low-end phone, 4× for
-// a mid-range one, 2× for a flagship); and the GPU's own drawing is left out, since software drawing would take
-// seconds a frame: every draw's CPU work (three.js's culling, state and uniforms, the uploads) still happens. What
-// it measures holds for a phone with a GPU fast enough: how long the game keeps the main thread each frame (the
-// frame rate the CPU allows), its long tasks, the draw calls and triangles in view, the boot to the main menu, and
-// the heap. What only a phone can tell, the GPU's fill and shaders, heat and battery, is step 29's
-// (docs/RELEASE.md). The numbers are estimates: a phone is not a throttled desktop.
+// a mid-range one, 2× for a flagship, 10× for an entry phone of a few years ago); and the GPU's own drawing is left
+// out, since software drawing would take seconds a frame: every draw's CPU work (three.js's culling, state and
+// uniforms, the uploads) still happens. What it measures holds for a phone with a GPU fast enough: how long the
+// game keeps the main thread each frame (the frame rate the CPU allows), its long tasks, the draw calls and
+// triangles in view, the boot to the main menu, and the heap. What only a phone can tell, the GPU's fill and
+// shaders, heat and battery, is step 29's (docs/RELEASE.md). The numbers are estimates: a phone is not a throttled
+// desktop.
 //
 // --counters adds the draw and uniform calls of a frame and what the GPU holds (they cost ~15% of the frame time);
 // --trace, --heap and --cpu-profile save a Chrome trace, a sampled heap profile or a CPU profile of each scene's
@@ -30,6 +31,9 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** The phones: the preset each gets, how much slower its CPU is, its screen, and what the game is told. */
 const PROFILES = {
+  // An entry phone of 2016–2023 that players still play on (a Galaxy J7 Prime: eight Cortex-A53 cores at 1.6 GHz and a
+  // Mali-T830 MP1; an Itel A70): about ten times slower than the desktop, 3 GB, which Chrome reports as 2.
+  entry: { quality: 'low', cpu: 10, viewport: { width: 640, height: 360 }, dpr: 3, cores: 8, memory: 2, gpu: 'Mali-T830' },
   low: { quality: 'low', cpu: 6, viewport: { width: 800, height: 360 }, dpr: 2, cores: 4, memory: 3, gpu: 'ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)' },
   mid: { quality: 'medium', cpu: 4, viewport: { width: 915, height: 412 }, dpr: 2.625, cores: 8, memory: 6, gpu: 'ANGLE (Qualcomm, Adreno (TM) 619, OpenGL ES 3.2)' },
   high: { quality: 'high', cpu: 2, viewport: { width: 915, height: 412 }, dpr: 3, cores: 8, memory: 8, gpu: 'ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)' },
@@ -225,17 +229,22 @@ async function measure(browser, profileId, sceneId, options) {
 
 /** Serves dist/ as players get it; ready when the port answers. */
 async function serve() {
-  const vite = join(ROOT, 'node_modules/vite/bin/vite.js');
-  const server = spawn(process.execPath, [vite, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
-  for (let attempt = 0; attempt < 60; attempt++) {
-    const open = await new Promise((resolve) => {
+  const answers = () =>
+    new Promise((resolve) => {
       const socket = connect(PORT, '127.0.0.1', () => {
         socket.end();
         resolve(true);
       });
       socket.on('error', () => resolve(false));
     });
-    if (open) return () => server.kill();
+  // Another server there (one left by a run that stopped short) would be measured in this build's place.
+  if (await answers()) {
+    throw new Error(`Port ${PORT} is in use: stop what serves it (a server left by an earlier run?) and run again.`);
+  }
+  const vite = join(ROOT, 'node_modules/vite/bin/vite.js');
+  const server = spawn(process.execPath, [vite, 'preview', '--host', '127.0.0.1', '--port', String(PORT), '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (await answers()) return () => server.kill();
     await sleep(500);
   }
   server.kill();
@@ -244,27 +253,31 @@ async function serve() {
 
 const args = process.argv.slice(2);
 const lists = args.filter((a) => !a.startsWith('--'));
-const phones = (lists[0] ?? 'low,mid,high').split(',');
+const phones = (lists[0] ?? 'entry,low,mid,high').split(',');
 const scenes = (lists[1] ?? Object.keys(SCENES).join(',')).split(',');
 const options = { counters: args.includes('--counters'), trace: args.includes('--trace'), heap: args.includes('--heap'), cpuProfile: args.includes('--cpu-profile') };
 mkdirSync(OUT, { recursive: true });
 const stop = await serve();
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-const results = [];
 try {
-  for (const phone of phones) {
-    for (const scene of scenes) {
-      const result = await measure(browser, phone, scene, options);
-      results.push(result);
-      const f = result.frameMs ?? {};
-      console.log(
-        `${phone.padEnd(5)} ${scene.padEnd(10)} boot ${String(result.bootSeconds).padStart(5)} s  frame ${f.p50} ms (p95 ${f.p95}, max ${f.max})` +
-          `  ≈${result.cpuFps} fps by the CPU  ${result.drawCalls} draws  ${result.triangles} tris  ${result.longTasks} long tasks${result.error ? '  ERROR ' + result.error : ''}`,
-      );
-      writeFileSync(join(OUT, 'run.json'), JSON.stringify(results, null, 1));
+  // Inside: a browser that fails to start leaves no server behind.
+  const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const results = [];
+  try {
+    for (const phone of phones) {
+      for (const scene of scenes) {
+        const result = await measure(browser, phone, scene, options);
+        results.push(result);
+        const f = result.frameMs ?? {};
+        console.log(
+          `${phone.padEnd(5)} ${scene.padEnd(10)} boot ${String(result.bootSeconds).padStart(5)} s  frame ${f.p50} ms (p95 ${f.p95}, max ${f.max})` +
+            `  ≈${result.cpuFps} fps by the CPU  ${result.drawCalls} draws  ${result.triangles} tris  ${result.longTasks} long tasks${result.error ? '  ERROR ' + result.error : ''}`,
+        );
+        writeFileSync(join(OUT, 'run.json'), JSON.stringify(results, null, 1));
+      }
     }
+  } finally {
+    await browser.close();
   }
 } finally {
-  await browser.close();
   stop();
 }

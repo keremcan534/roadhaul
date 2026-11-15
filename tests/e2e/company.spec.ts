@@ -21,8 +21,8 @@ test('builds a workshop at the head office a level at a time: repairs cost less,
   // Nothing built yet: every facility can be, its first level for a company at level 2.
   await openPanel(page, 'company');
   await expect(page.locator('[data-value="perks"]')).toHaveText('Nothing built yet: a workshop or a fuel depot soon pays for itself.');
-  await expect(page.locator('.facility-card')).toHaveCount(7);
-  await expect(page.locator('.facility-card [data-action="build-facility"]')).toHaveCount(7);
+  await expect(page.locator('.facility-card')).toHaveCount(8);
+  await expect(page.locator('.facility-card [data-action="build-facility"]')).toHaveCount(8);
   const workshop = page.locator('.facility-card[data-facility-id="workshop"]');
   await expect(workshop.locator('.upgrade-card__title')).toHaveText('Workshop');
   await expect(workshop.locator('.upgrade-card__effect')).toHaveText('Not built yet');
@@ -72,7 +72,7 @@ test('researches a step of the research tree with the points deliveries earned',
   const tree = page.locator('.hq__section--research');
   await expect(tree.locator('[data-value="research-points"]')).toHaveText('Research points: 5');
   await expect(tree.locator('.research__branch')).toHaveCount(3);
-  await expect(tree.locator('.research-node')).toHaveCount(12);
+  await expect(tree.locator('.research-node')).toHaveCount(13); // Engineering's fifth: Autopilot.
   await expect(tree.locator('.research-node[data-state="available"]')).toHaveCount(3);
   const rates = tree.locator('.research-node[data-research-id="better_rates"]');
   await expect(rates.locator('.research-node__name')).toHaveText('Better Rates');
@@ -116,3 +116,36 @@ function researchSave(points: number): string {
   garage.vehicles = garage.vehicles.map((vehicle) => ({ ...vehicle, paintId: null }));
   return JSON.stringify(save);
 }
+
+test('lets a warehouse at the head office earn rent as time goes by, nobody driving, collected there', async ({ page }) => {
+  test.slow(); // The game started, the panel opened a few times, drawn in software.
+  const problems = watchForProblems(page);
+  // The phone's clock: fixed, then three hours on (the game's own steps keep running).
+  const start = Date.parse('2026-06-10T09:00:00Z');
+  await page.clock.setFixedTime(start);
+  await continueSavedCompany(page, savedCompany({ credits: 30_000, xp: 1000 }), '?lang=en&traffic=0');
+  const credits = page.locator('.hq__credits');
+  await openPanel(page, 'company');
+  await expect(page.locator('.rent-card')).toHaveCount(0);
+  const warehouse = page.locator('.facility-card[data-facility-id="warehouse"]');
+  await warehouse.locator('[data-action="build-facility"]').click();
+  await expect(credits).toHaveText('24,000 credits');
+  const waiting = page.locator('.rent-card [data-value="rent-waiting"]');
+  const collect = page.locator('.rent-card [data-action="collect-rent"]');
+  await expect(waiting).toHaveText('0 credits waiting');
+  await expect(collect).toBeDisabled();
+
+  // The card counts up by itself while it shows.
+  await page.clock.setFixedTime(start + 3 * 3_600_000);
+  await expect(waiting).toHaveText('450 credits waiting');
+  // The page draws itself again as the game goes on (a tap on a button just replaced is lost): tapped until paid.
+  await expect(async () => {
+    if (await collect.isEnabled()) {
+      await collect.click();
+    }
+    await expect(credits).toHaveText('24,450 credits', { timeout: 2_000 });
+  }).toPass();
+  await expect(waiting).toHaveText('0 credits waiting');
+  await expect(collect).toBeDisabled();
+  expect(problems).toEqual([]);
+});

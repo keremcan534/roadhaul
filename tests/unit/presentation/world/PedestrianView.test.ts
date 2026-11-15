@@ -151,6 +151,50 @@ describe('PedestrianView', () => {
     }
   });
 
+  it('flinches away from the horn, hopping, those near it, and drifts back', () => {
+    // A street short enough for everyone on it to stay drawn, so each stays in their place among those drawn.
+    const short = new RoadPath({ id: 'short', kind: 'street', widthMeters: 10, closed: false, controlPoints: [[-90, 0], [90, 0]] });
+    const scene = new Scene();
+    const people = new PedestrianView(scene, [short], [
+      { roadIndex: 0, side: 1, fromMeters: 0, toMeters: 180 },
+      { roadIndex: 0, side: -1, fromMeters: 0, toMeters: 180 },
+    ], [], { capacity: 500 });
+    const eye = { x: 0, z: 0 };
+    people.update(0.05, eye, 1, 0);
+    const before = placesOf(people);
+    expect(before.length).toBeGreaterThan(10);
+
+    // The truck on the road at the middle sounds its horn.
+    people.startle(0, -2);
+    people.update(0.05, eye, 1, 0);
+    expect(placesOf(people).some((place) => place.y > before[0]!.y + 0.1)).toBe(true); // Hopping as they go.
+    for (let i = 0; i < 5; i++) people.update(0.05, eye, 1, 0);
+    const after = placesOf(people);
+    expect(after.length).toBe(before.length);
+    let flinched = 0;
+    after.forEach((place, i) => {
+      const from = before[i]!;
+      const distance = Math.hypot(from.x, from.z + 2);
+      const away = ((place.x - from.x) * from.x + (place.z - from.z) * (from.z + 2)) / distance;
+      if (distance < 25) {
+        // Most of a step away from it (walking on meanwhile, a little along the pavement).
+        expect(away).toBeGreaterThan(0.4);
+        flinched++;
+      } else if (distance > 35) {
+        expect(Math.abs(place.z - from.z)).toBeLessThan(0.01);
+      }
+    });
+    expect(flinched).toBeGreaterThan(0);
+
+    // A few seconds on: back on their way.
+    for (let i = 0; i < 100; i++) people.update(0.05, eye, 1, 0);
+    for (const place of placesOf(people)) {
+      expect(Math.abs(place.z)).toBeGreaterThan(5);
+      expect(Math.abs(place.z)).toBeLessThan(5 + 2.6);
+    }
+    people.dispose();
+  });
+
   it('releases its GPU resources on dispose', () => {
     const { scene, people } = view();
     const disposed = watchDisposal(gpuResources(scene));

@@ -4,11 +4,24 @@ import type { TrafficSimulation } from '../../domain/traffic/TrafficSimulation';
 import type { DrivingService } from '../driving/DrivingService';
 import type { CompanyTruckMarker, MapPlacement } from '../fleet/DepotRoads';
 
+/** Whose trucks a CompanyTruckSource shows: the player's company's (its hired drivers') or the rivals'. */
+export type CompanyTruckOwner = 'fleet' | 'rival';
+
 /** Company trucks the maps put somewhere along their roads: the fleet's (FleetService) or the rivals' (RivalService). */
 export interface CompanyTruckSource {
+  readonly truckOwner: CompanyTruckOwner;
   readonly markers: readonly CompanyTruckMarker[];
   /** Fills `markers` and returns how many there are. */
   updateMarkers(): number;
+}
+
+/** A company truck driving in the traffic, as nearestInTraffic() finds it. */
+export interface CompanyTruckNearby {
+  /** Its marker's key: a fleet truck's is its driver's id. */
+  key: string;
+  owner: CompanyTruckOwner;
+  x: number;
+  z: number;
 }
 
 /** The traffic company trucks join (TrafficService). */
@@ -24,6 +37,7 @@ const DEPOT_REACH_METERS = 25;
 /** A company truck it has seen on the maps. */
 interface TrackedTruck {
   readonly key: string;
+  readonly owner: CompanyTruckOwner;
   /** Its id as a guest in the traffic. */
   readonly id: number;
   /** Its slot in the traffic, or -1 while it is not in it. */
@@ -103,7 +117,7 @@ export class CompanyTraffic {
       const source = this.sources[s]!;
       const count = source.updateMarkers();
       for (let m = 0; m < count; m++) {
-        this.consider(simulation, source.markers[m]!);
+        this.consider(simulation, source.markers[m]!, source.truckOwner);
       }
     }
     // Gone from the maps (called back to the garage, a rival bought out): its lorry drives on and leaves.
@@ -141,12 +155,46 @@ export class CompanyTraffic {
     return false;
   }
 
-  /** Brings the truck `marker` shows into the traffic if it may come now. */
-  private consider(simulation: TrafficSimulation, marker: CompanyTruckMarker): void {
+  /**
+   * The company truck driving in the traffic nearest (x, z), within
+   * `meters`, into `out`; false when there is none. Allocation-free.
+   */
+  nearestInTraffic(x: number, z: number, meters: number, out: CompanyTruckNearby): boolean {
+    const simulation = this.simulation;
+    if (simulation === null || simulation !== this.traffic.simulation) {
+      return false;
+    }
+    let best = meters * meters;
+    let found: TrackedTruck | null = null;
+    for (let i = 0; i < this.tracked.length; i++) {
+      const truck = this.tracked[i]!;
+      if (!this.isInTraffic(truck)) {
+        continue;
+      }
+      const dx = simulation.x[truck.slot]! - x;
+      const dz = simulation.z[truck.slot]! - z;
+      const distanceSq = dx * dx + dz * dz;
+      if (distanceSq <= best) {
+        best = distanceSq;
+        found = truck;
+      }
+    }
+    if (found === null) {
+      return false;
+    }
+    out.key = found.key;
+    out.owner = found.owner;
+    out.x = simulation.x[found.slot]!;
+    out.z = simulation.z[found.slot]!;
+    return true;
+  }
+
+  /** Brings the truck `marker` shows (one of `owner`'s) into the traffic if it may come now. */
+  private consider(simulation: TrafficSimulation, marker: CompanyTruckMarker, owner: CompanyTruckOwner): void {
     if (marker.key === '') {
       return; // Only the maps show it.
     }
-    const truck = this.trackedTruck(marker.key);
+    const truck = this.trackedTruck(marker.key, owner);
     truck.seen = true;
     if (truck.slot >= 0) {
       return;
@@ -173,15 +221,15 @@ export class CompanyTraffic {
     );
   }
 
-  /** The truck known by `key`: allocates the first time it is met. */
-  private trackedTruck(key: string): TrackedTruck {
+  /** The truck known by `key` (one of `owner`'s): allocates the first time it is met. */
+  private trackedTruck(key: string, owner: CompanyTruckOwner): TrackedTruck {
     const tracked = this.tracked;
     for (let i = 0; i < tracked.length; i++) {
       if (tracked[i]!.key === key) {
         return tracked[i]!;
       }
     }
-    const truck: TrackedTruck = { key, id: tracked.length, slot: -1, waitingOutOfReach: false, seen: false };
+    const truck: TrackedTruck = { key, owner, id: tracked.length, slot: -1, waitingOutOfReach: false, seen: false };
     tracked.push(truck);
     return truck;
   }

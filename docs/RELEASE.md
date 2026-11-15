@@ -241,7 +241,10 @@ Google → Backup), and brings it back when the game is installed again with the
   Performance display shows the frame rate.
 - Set the version players see in `package.json` (for example `1.0.0` for the first production release). The build
   number (`versionCode`) takes care of itself.
-- Update the release notes in `fastlane/metadata/android/<locale>/changelogs/default.txt`.
+- Update the release notes in `fastlane/metadata/android/<locale>/changelogs/default.txt`. The game shows the same
+  words once after the update, at the main menu (What's New: the build has them built in), to players who played
+  before. Players who turned the reminders on also get a notification once Google Play has installed the update
+  ("RoadHaul has been updated", from the app itself: `UpdateReceiver`).
 
 ### 2. Build the signed bundle
 
@@ -273,8 +276,10 @@ said out loud; test ads are refused, because they never pay. The game inside mus
 Settings → About shows the build: `1049` carries the game's own ads, `1049-noads` none and `1049-testads` Google's
 test ads.
 
-A release build is shrunk and optimized by R8 (`android/app/build.gradle`). The bundle carries R8's mapping file, so
-Google Play shows crash reports with the code's real names; nothing to upload by hand. A new native plugin that finds
+A release build is shrunk and optimized by R8 (`android/app/build.gradle`), its resources with the code (optimized
+resource shrinking, `android/gradle.properties`: Android vitals asks for it, and the bundle's
+`BUNDLE-METADATA/com.android.tools/r8.json` says `isOptimizedShrinkingEnabled`). The bundle carries R8's mapping file,
+so Google Play shows crash reports with the code's real names; nothing to upload by hand. A new native plugin that finds
 classes or resources by name needs its keep rules (`android/app/proguard-rules.pro`, `res/raw/keep.xml`); try the
 release build on a phone after adding one.
 

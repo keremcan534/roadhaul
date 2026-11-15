@@ -76,6 +76,13 @@ function acceptAndLoad(context: ReturnType<typeof setup>) {
   run(driving, missions, LOADING_SECONDS + 0.1);
 }
 
+/** Loads the contract already accepted (and on its way to the pickup) at the origin bay. */
+function acceptAndLoadAgain(context: ReturnType<typeof setup>) {
+  const { driving, missions } = context;
+  parkIn(driving, missions.target!.depot.bay);
+  run(driving, missions, LOADING_SECONDS + 0.1);
+}
+
 /** Contracts of the day as DailyContracts hands them out: a batch that can change under the board. */
 function contractsOfTheDay(...contracts: MissionDefinition[]): ContractSource & { batch: readonly MissionDefinition[] } {
   const source = { batch: contracts, current: () => source.batch };
@@ -241,10 +248,25 @@ describe('MissionService', () => {
     const [delivery] = completed;
     // The clock ran for the 0.1 s still spent in the bay after loading, 2 s of driving and the unloading.
     expect(delivery!.deliverySeconds).toBeCloseTo(0.1 + 2 + LOADING_SECONDS, 1);
-    expect(delivery!.reward).toMatchObject({ basePay: 1000, timeBonus: 200, conditionBonus: 200, total: 1400 });
+    // Parked squarely in the middle of the bay: the parking bonus too.
+    expect(delivery!.reward).toMatchObject({ basePay: 1000, timeBonus: 200, conditionBonus: 200, parkingBonus: 50, total: 1450 });
     expect(missions.active).toBeNull();
     expect(missions.target).toBeNull();
     expect(driving.totalMassKg).toBe(EMPTY_MASS);
+  });
+
+  it('delivers with the truck a little over the bay\'s lines and askew, only a perfect park earning the parking bonus', () => {
+    const context = setup();
+    const { driving, missions, completed } = context;
+    acceptAndLoad(context);
+    run(driving, missions, 1, 1);
+    const pose = bayParkingPose(missions.target!.depot.bay, driving.definition.body);
+    // 0.8 m to one side of the middle and 5° askew: a corner some 0.4 m over the line.
+    driving.placeTruck(pose.x + Math.cos(pose.heading) * 0.8, pose.z - Math.sin(pose.heading) * 0.8, pose.heading + (5 * Math.PI) / 180);
+    run(driving, missions, LOADING_SECONDS + 0.1);
+
+    expect(completed).toHaveLength(1);
+    expect(completed[0]!.reward).toMatchObject({ parkingBonus: 0, total: 1400 });
   });
 
   it('pays less for a late delivery', () => {
@@ -357,8 +379,8 @@ describe('MissionService', () => {
     parkIn(driving, missions.target!.depot.bay);
     run(driving, missions, LOADING_SECONDS + 0.1);
 
-    // Easy, 1400 credits, on time and pristine: 112 XP and the full 10 reputation.
-    expect(completed[0]).toMatchObject({ xp: 112, reputation: 10 });
+    // Easy, 1450 credits (parked perfectly), on time and pristine: 116 XP and the full 10 reputation.
+    expect(completed[0]).toMatchObject({ xp: 116, reputation: 10 });
 
     missions.accept('test_mission');
     missions.abandon();
@@ -430,6 +452,103 @@ describe('MissionService', () => {
     run(driving, missions, 0.15);
     expect(missions.active?.state).toBe('loaded');
     expect(DEFAULT_GAME_CONFIG.missions.loadingSeconds).toBe(3);
+  });
+
+  it('counts the way driven loaded and auto-drive\'s share of it, for its pay cut, and saves both', () => {
+    const context = setup();
+    const { driving, missions, events, completed } = context;
+    acceptAndLoad(context);
+
+    events.emit('AutoDriveChanged', { engaged: true, reason: null });
+    run(driving, missions, 3, 1);
+    events.emit('AutoDriveChanged', { engaged: false, reason: 'switchedOff' });
+    run(driving, missions, 3, 1);
+    const saved = missions.snapshot()!;
+
+    expect(saved.loadedMeters).toBeGreaterThan(saved.autoDriveMeters!);
+    expect(saved.autoDriveMeters).toBeGreaterThan(5);
+    parkIn(driving, missions.target!.depot.bay);
+    run(driving, missions, LOADING_SECONDS + 0.1);
+    // The base pay 1000: 15% for all of the way, in step for the share auto-drive drove.
+    const share = saved.autoDriveMeters! / saved.loadedMeters!;
+    expect(completed[0]!.reward.autoDriveDeduction).toBe(Math.round(150 * share));
+    expect(completed[0]!.reward.autoDriveDeduction).toBeGreaterThan(0);
+  });
+
+  describe('a convoy contract', () => {
+    const convoyContent = { missions: [missionFixture({ variant: 'convoy' })] };
+
+    /** Moves the truck on round a circle in hops of `hop` meters (under the jump that re-forms a convoy), a step each. */
+    function hopAround(context: ReturnType<typeof setup>, hops: number, hop: number, until = () => false): void {
+      const { driving, missions } = context;
+      const radius = 120;
+      let angle = 0;
+      for (let i = 0; i < hops && !until(); i++) {
+        angle += hop / radius;
+        // Round (0, 300), heading along the circle.
+        driving.placeTruck(Math.sin(angle) * radius, 300 - Math.cos(angle) * radius, angle + Math.PI / 2);
+        missions.update(STEP_SECONDS);
+      }
+    }
+
+    it('has two of the company\'s trucks follow the truck out from the pickup, and pays for each still with it', () => {
+      const context = setup(convoyContent);
+      const { driving, missions, completed } = context;
+      expect(missions.jobBoard()[0]!.mission.variant).toBe('convoy');
+      missions.accept('test_mission');
+      missions.update(STEP_SECONDS);
+      expect(missions.convoy).toBeNull();
+
+      acceptAndLoadAgain(context);
+      const convoy = missions.convoy!;
+      expect(convoy.trucksWithConvoy).toBe(2);
+      expect(Array.from(convoy.shown)).toEqual([0, 0]); // Still in the yard.
+      run(driving, missions, 12, 1);
+      expect(Array.from(convoy.shown)).toEqual([1, 1]);
+
+      parkIn(driving, missions.target!.depot.bay);
+      run(driving, missions, LOADING_SECONDS + 0.1);
+
+      expect(completed).toHaveLength(1);
+      // Both with it: 20% of the base pay each.
+      expect(completed[0]!.reward).toMatchObject({ basePay: 1000, convoyBonus: 400, total: 1850 });
+      expect(missions.convoy).toBeNull();
+    });
+
+    it('loses a truck left too far behind for good: the save remembers it, and its bonus is not paid', () => {
+      const context = setup(convoyContent);
+      const lost: GameEvents['ConvoyTruckLost'][] = [];
+      context.events.on('ConvoyTruckLost', (event) => lost.push(event));
+      context.missions.accept('test_mission');
+      context.missions.update(STEP_SECONDS);
+      acceptAndLoadAgain(context);
+
+      // 25 m a step: far faster than they go.
+      hopAround(context, 200, 25, () => lost.length > 0);
+
+      expect(lost).toEqual([{ missionId: 'test_mission', remaining: 1 }]);
+      const saved = context.missions.snapshot();
+      // Put down a step at a time, it never rolled off: still 'loaded'.
+      expect(saved).toMatchObject({ state: 'loaded', convoyTrucksLost: 1 });
+
+      const resumed = setup(convoyContent);
+      resumed.missions.restore(JSON.parse(JSON.stringify(saved)) as typeof saved);
+      expect(resumed.missions.convoy!.trucksWithConvoy).toBe(1);
+      run(resumed.driving, resumed.missions, 1, 1);
+      parkIn(resumed.driving, resumed.missions.target!.depot.bay);
+      run(resumed.driving, resumed.missions, LOADING_SECONDS + 0.1);
+
+      expect(resumed.completed[0]!.reward).toMatchObject({ convoyBonus: 200 });
+    });
+
+    it('is no convoy for a plain contract', () => {
+      const context = setup();
+      acceptAndLoad(context);
+      run(context.driving, context.missions, 2, 1);
+
+      expect(context.missions.convoy).toBeNull();
+      expect(context.missions.snapshot()).not.toHaveProperty('convoyTrucksLost');
+    });
   });
 
   describe('contracts of the day', () => {

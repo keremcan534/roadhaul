@@ -17,7 +17,7 @@ import type { Credits } from '../units';
  * - perfectStreak: the longest run of perfect deliveries (three stars).
  * - cratesOpened: crates opened.
  * - skyWonders: the sky's wonders seen (the northern lights, shooting
- *   stars, rainbows).
+ *   stars, rainbows, eclipses).
  */
 export const ACHIEVEMENT_METRICS = [
   'deliveries',

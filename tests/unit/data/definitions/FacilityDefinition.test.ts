@@ -24,9 +24,9 @@ describe('validateFacilityDefinition', () => {
     }
   });
 
-  it('ships seven facilities, each its own effect, three levels each, a first one a new company can build', () => {
+  it('ships eight facilities, each its own effect, three levels each, a first one a new company can build', () => {
     const effects = FACILITIES.map((facility) => facility.effect);
-    expect(FACILITIES).toHaveLength(7);
+    expect(FACILITIES).toHaveLength(8);
     expect(new Set(effects).size).toBe(FACILITIES.length);
     // Every other effect is the research's.
     const researched = new Set(RESEARCH.map((research) => research.effect));
@@ -53,7 +53,7 @@ describe('validateFacilityDefinition', () => {
     expect(issues(facilityFixture({ id: 'Bad Id' }))[0]).toMatch(/^facility\.id/);
   });
 
-  it('keeps a discount below 1, a count whole, and a bonus within +200 %', () => {
+  it('keeps a discount below 1, a count whole, a bonus within +200 %, and rent in whole credits', () => {
     expect(issues(facilityFixture({ effect: 'fuelDiscount', levels: [{ cost: 100, value: 1 }] }))).toEqual([
       'facility.levels[0].value: must be below 1: "fuelDiscount" takes a share off',
     ]);
@@ -65,6 +65,11 @@ describe('validateFacilityDefinition', () => {
     ]);
     expect(issues(facilityFixture({ effect: 'xpBonus', levels: [{ cost: 100, value: 2.5 }] }))).toEqual([
       'facility.levels[0].value: must be at most 2',
+    ]);
+    // Rent: whole credits an hour.
+    expect(issues(facilityFixture({ effect: 'rentPerHour', levels: [{ cost: 100, value: 150 }] }))).toEqual([]);
+    expect(issues(facilityFixture({ effect: 'rentPerHour', levels: [{ cost: 100, value: 150.5 }] }))).toEqual([
+      'facility.levels[0].value: must be whole credits up to 10000',
     ]);
     for (const value of [0, -0.1, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(issues(facilityFixture({ levels: [{ cost: 100, value }] })), String(value)).toEqual([

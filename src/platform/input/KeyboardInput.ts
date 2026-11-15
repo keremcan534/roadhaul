@@ -9,6 +9,13 @@ const PAUSE = new Set(['Escape', 'KeyP']);
 const HORN = 'KeyH';
 const MAP = 'KeyM';
 const RADIO = 'KeyR';
+const SIGNAL_LEFT = 'KeyQ';
+const SIGNAL_RIGHT = 'KeyE';
+const HAZARDS = 'KeyX';
+const PARKING_BRAKE = 'KeyB';
+const ENGINE_BRAKE = 'KeyJ';
+const AUTO_DRIVE = 'KeyV';
+const STEP_OUT = new Set(['Enter', 'NumpadEnter']);
 
 export interface KeyboardActions {
   readonly onToggleCamera: () => void;
@@ -19,11 +26,25 @@ export interface KeyboardActions {
   readonly onMap: () => void;
   /** R: the cab radio's next station. */
   readonly onRadio: () => void;
+  /** Q or E: the left or the right turn signal, on or off. */
+  readonly onSignal: (side: 'left' | 'right') => void;
+  /** X: the hazard lights, on or off. */
+  readonly onHazards: () => void;
+  /** B: the parking brake, applied or released. */
+  readonly onParkingBrake: () => void;
+  /** J: the engine brake, switched on or off. */
+  readonly onEngineBrake: () => void;
+  /** V: auto-drive, on or off. */
+  readonly onAutoDrive: () => void;
+  /** Enter: out of the truck, or back in. */
+  readonly onStepOut: () => void;
 }
 
 /**
  * Desktop driving controls: arrows or WASD, Space brakes, C switches camera,
- * H sounds the horn, M opens the map, R tunes the radio, Escape or P pauses. Uses physical key codes, so it
+ * H sounds the horn, M opens the map, R tunes the radio, Q and E the turn
+ * signals, X the hazard lights, B the parking brake, J the engine brake,
+ * V auto-drive, Enter out of the truck and back in, Escape or P pauses. Uses physical key codes, so it
  * works the same on Turkish Q/F and other layouts. The truck's steering rate
  * smooths the digital steering.
  */
@@ -51,7 +72,18 @@ export class KeyboardInput {
     if (isTyping(event)) {
       return; // Letters typed into a form (the company name) are not driving.
     }
-    if (event.code === CAMERA_TOGGLE || event.code === MAP || event.code === RADIO || PAUSE.has(event.code)) {
+    if (STEP_OUT.has(event.code)) {
+      // A button on the screen with the focus takes Enter for itself. One hidden with a closed dialog (focus
+      // lingers there) must not be pressed behind the player's back: the game takes Enter.
+      if (!isShownButton(event.target)) {
+        event.preventDefault();
+        if (!event.repeat) {
+          this.actions.onStepOut();
+        }
+      }
+      return;
+    }
+    if (isSwitchKey(event.code)) {
       if (!event.repeat) {
         if (event.code === CAMERA_TOGGLE) {
           this.actions.onToggleCamera();
@@ -59,6 +91,16 @@ export class KeyboardInput {
           this.actions.onMap();
         } else if (event.code === RADIO) {
           this.actions.onRadio();
+        } else if (event.code === SIGNAL_LEFT || event.code === SIGNAL_RIGHT) {
+          this.actions.onSignal(event.code === SIGNAL_LEFT ? 'left' : 'right');
+        } else if (event.code === HAZARDS) {
+          this.actions.onHazards();
+        } else if (event.code === PARKING_BRAKE) {
+          this.actions.onParkingBrake();
+        } else if (event.code === ENGINE_BRAKE) {
+          this.actions.onEngineBrake();
+        } else if (event.code === AUTO_DRIVE) {
+          this.actions.onAutoDrive();
         } else {
           this.actions.onPause();
         }
@@ -102,8 +144,30 @@ export class KeyboardInput {
   }
 }
 
+/** A key that does something once as it goes down (held, it does not repeat). */
+function isSwitchKey(code: string): boolean {
+  return (
+    code === CAMERA_TOGGLE ||
+    code === MAP ||
+    code === RADIO ||
+    code === SIGNAL_LEFT ||
+    code === SIGNAL_RIGHT ||
+    code === HAZARDS ||
+    code === PARKING_BRAKE ||
+    code === ENGINE_BRAKE ||
+    code === AUTO_DRIVE ||
+    PAUSE.has(code)
+  );
+}
+
 function isDrivingKey(code: string): boolean {
   return STEER_LEFT.has(code) || STEER_RIGHT.has(code) || THROTTLE.has(code) || BRAKE.has(code);
+}
+
+/** A button the player can see (laid out on the page), with the focus. */
+function isShownButton(target: EventTarget | null): boolean {
+  const element = target as { tagName?: string; getClientRects?: () => { length: number } } | null;
+  return element !== null && element.tagName === 'BUTTON' && (element.getClientRects?.().length ?? 0) > 0;
 }
 
 /** True while the player types into a text field. */

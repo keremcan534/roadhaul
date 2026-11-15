@@ -44,6 +44,14 @@ const DODGE_CLEARANCE_METERS = 1;
 const DODGE_RATE = 10;
 const RETURN_RATE = 1.2;
 const DODGE_HOP_METERS = 0.35;
+/**
+ * The truck's horn (startle): the people within this far of it, meters,
+ * flinch this far away from it, hopping, for this long, seconds, then drift
+ * back to their way.
+ */
+const STARTLE_METERS = 30;
+const STARTLE_STEP_METERS = 0.9;
+const STARTLE_SECONDS = 1.6;
 
 /** The truck as the people see it coming (PedestrianView.update): where it is, and its body round its rear axle. */
 export interface TruckNearby {
@@ -161,6 +169,8 @@ export class PedestrianView {
   private readonly capacity: number;
   /** Each pavement's middle and how far it reaches from it, to skip those out of reach at once. */
   private readonly reachOf: Float64Array;
+  /** Where each pavement's walkers start among them (they are placed pavement by pavement), and where the last end. */
+  private readonly walkersFrom: Uint32Array;
   private readonly matrix = new Matrix4();
   private readonly pose = createPedestrianPose();
   private readonly point = createRoadPoint();
@@ -169,6 +179,10 @@ export class PedestrianView {
   private readonly walkerDodge: Float32Array;
   private readonly waitingDodge: Float32Array;
   private hop = 0;
+  /** Where the horn last sounded, and how long its people still flinch from it, seconds. */
+  private startleX = 0;
+  private startleZ = 0;
+  private startleSeconds = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -180,6 +194,19 @@ export class PedestrianView {
     this.capacity = Math.max(1, options.capacity ?? 120);
     this.people = placePedestrians(roads, sidewalks, furniture, PEDESTRIAN_SEED);
     this.walkerDodge = new Float32Array(this.people.walkers.length * 2);
+    this.walkersFrom = new Uint32Array(sidewalks.length + 1);
+    let pavement = 0;
+    let previous = 0;
+    this.people.walkers.forEach((walker, index) => {
+      if (walker.sidewalk < previous) {
+        throw new Error('PedestrianView: the walkers are not placed pavement by pavement.');
+      }
+      previous = walker.sidewalk;
+      while (pavement <= walker.sidewalk) {
+        this.walkersFrom[pavement++] = index;
+      }
+    });
+    this.walkersFrom.fill(this.people.walkers.length, pavement);
     this.waitingDodge = new Float32Array(this.people.waiting.length * 2);
     this.reachOf = new Float64Array(sidewalks.length * 3);
     sidewalks.forEach((sidewalk, index) => {
@@ -197,16 +224,7 @@ export class PedestrianView {
       DynamicDrawUsage,
     );
     geometry.setAttribute('person', this.person);
-    const material = new MeshLambertMaterial({ vertexColors: true });
-    const uniforms = this.uniforms;
-    material.onBeforeCompile = (shader) => {
-      Object.assign(shader.uniforms, uniforms);
-      shader.vertexShader = shader.vertexShader
-        .replace('#include <common>', `#include <common>\n${PERSON_PARS}`)
-        .replace('#include <begin_vertex>', `#include <begin_vertex>\n${PERSON_VERTEX}`)
-        .replace('#include <color_vertex>', PERSON_COLOR);
-    };
-    material.customProgramCacheKey = () => 'pedestrians';
+    const material = personMaterial(this.uniforms);
     this.mesh = new InstancedMesh(geometry, material, this.capacity);
     this.mesh.name = 'pedestrians';
     this.mesh.count = 0;
@@ -242,34 +260,44 @@ export class PedestrianView {
     truck: Readonly<TruckNearby> | null = null,
   ): void {
     this.time += deltaSeconds;
+    if (this.startleSeconds > 0) {
+      this.startleSeconds -= deltaSeconds;
+    }
     this.uniforms.umbrella.value = Math.min(1, Math.max(0, umbrella));
     const person = this.person.array as Float32Array;
     const reachSq = REACH_METERS * REACH_METERS;
     let count = 0;
     const { walkers, waiting } = this.people;
-    for (let i = 0; i < walkers.length && count < this.capacity; i++) {
-      const walker = walkers[i]!;
-      if (!crowdShows(walker.presence, crowd) || !this.nearEnough(walker.sidewalk, eye)) {
+    // Pavement by pavement, those out of reach skipped whole: the walkers in the same order as one by one.
+    for (let pavement = 0; pavement < this.sidewalks.length && count < this.capacity; pavement++) {
+      const end = this.walkersFrom[pavement + 1]!;
+      if (this.walkersFrom[pavement] === end || !this.nearEnough(pavement, eye)) {
         continue;
       }
-      const sidewalk = this.sidewalks[walker.sidewalk]!;
-      const pose = walkerAt(walker, this.roads[sidewalk.roadIndex]!, sidewalk, this.time, this.point, this.pose);
-      const dx = pose.x - eye.x;
-      const dz = pose.z - eye.z;
-      if (dx * dx + dz * dz > reachSq) {
-        continue;
+      for (let i = this.walkersFrom[pavement]!; i < end && count < this.capacity; i++) {
+        const walker = walkers[i]!;
+        if (!crowdShows(walker.presence, crowd)) {
+          continue;
+        }
+        const sidewalk = this.sidewalks[walker.sidewalk]!;
+        const pose = walkerAt(walker, this.roads[sidewalk.roadIndex]!, sidewalk, this.time, this.point, this.pose);
+        const dx = pose.x - eye.x;
+        const dz = pose.z - eye.z;
+        if (dx * dx + dz * dz > reachSq) {
+          continue;
+        }
+        this.dodge(this.walkerDodge, i, pose.x, pose.z, deltaSeconds, truck);
+        this.mesh.setMatrixAt(
+          count,
+          this.matrix
+            .makeRotationY(pose.heading)
+            .setPosition(pose.x + this.walkerDodge[i * 2]!, PAVEMENT_Y + this.hop, pose.z + this.walkerDodge[i * 2 + 1]!),
+        );
+        person[count * PERSON_STRIDE] = pose.stride;
+        person[count * PERSON_STRIDE + 1] = 1;
+        person[count * PERSON_STRIDE + 2] = walker.look;
+        count++;
       }
-      this.dodge(this.walkerDodge, i, pose.x, pose.z, deltaSeconds, truck);
-      this.mesh.setMatrixAt(
-        count,
-        this.matrix
-          .makeRotationY(pose.heading)
-          .setPosition(pose.x + this.walkerDodge[i * 2]!, PAVEMENT_Y + this.hop, pose.z + this.walkerDodge[i * 2 + 1]!),
-      );
-      person[count * PERSON_STRIDE] = pose.stride;
-      person[count * PERSON_STRIDE + 1] = 1;
-      person[count * PERSON_STRIDE + 2] = walker.look;
-      count++;
     }
     for (let i = 0; i < waiting.length && count < this.capacity; i++) {
       const one = waiting[i]!;
@@ -295,6 +323,15 @@ export class PedestrianView {
       this.person.needsUpdate = true;
     }
     this.mesh.count = count;
+    // Nobody near (the country, the highway): no draw at all, where an empty one still sets everything up.
+    this.mesh.visible = count > 0;
+  }
+
+  /** The truck's horn sounded at (x, z): the people near it flinch away from it a moment (STARTLE_METERS). */
+  startle(x: number, z: number): void {
+    this.startleX = x;
+    this.startleZ = z;
+    this.startleSeconds = STARTLE_SECONDS;
   }
 
   dispose(): void {
@@ -307,7 +344,8 @@ export class PedestrianView {
   /**
    * Person `i` (its step aside in `steps`), whose way puts it at (x, z):
    * in the path `truck` sweeps within DODGE_LOOK_AHEAD_SECONDS, it jumps
-   * out to its side of it, hopping (`hop`); clear of it, it drifts back.
+   * out to its side of it, hopping (`hop`); near the horn just sounded, it
+   * flinches away from it; clear of both, it drifts back.
    */
   private dodge(steps: Float32Array, i: number, x: number, z: number, dt: number, truck: Readonly<TruckNearby> | null): void {
     let toX = 0;
@@ -329,6 +367,16 @@ export class PedestrianView {
         toZ = sin * step;
       }
     }
+    if (toX === 0 && toZ === 0 && this.startleSeconds > 0) {
+      const awayX = x - this.startleX;
+      const awayZ = z - this.startleZ;
+      const distanceSq = awayX * awayX + awayZ * awayZ;
+      if (distanceSq < STARTLE_METERS * STARTLE_METERS && distanceSq > 1e-6) {
+        const scale = STARTLE_STEP_METERS / Math.sqrt(distanceSq);
+        toX = awayX * scale;
+        toZ = awayZ * scale;
+      }
+    }
     const fromX = steps[i * 2]!;
     const fromZ = steps[i * 2 + 1]!;
     const ease = 1 - Math.exp(-(toX !== 0 || toZ !== 0 ? DODGE_RATE : RETURN_RATE) * dt);
@@ -347,6 +395,30 @@ export class PedestrianView {
     const reach = REACH_METERS + this.reachOf[index * 3 + 2]!;
     return dx * dx + dz * dz <= reach * reach;
   }
+}
+
+/** The people's uniforms: their time (the stride's pace is each one's own), and how far their umbrellas are open. */
+export interface PersonUniforms {
+  readonly time: { value: number };
+  readonly umbrella: { value: number };
+}
+
+/**
+ * The material that dresses and walks people (personGeometry, with a
+ * `person` attribute per instance: the stride's cycle, walking or not,
+ * their look), lit as the world is.
+ */
+export function personMaterial(uniforms: PersonUniforms): MeshLambertMaterial {
+  const material = new MeshLambertMaterial({ vertexColors: true });
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${PERSON_PARS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${PERSON_VERTEX}`)
+      .replace('#include <color_vertex>', PERSON_COLOR);
+  };
+  material.customProgramCacheKey = () => 'pedestrians';
+  return material;
 }
 
 /**

@@ -63,6 +63,30 @@ export function skyDirection(declination: number, hourAngle: number, latitude: n
   return out;
 }
 
+/**
+ * How far past its highest (an hour angle, radians: 0 to π) a body
+ * `declination` north stands `elevation` high (radians) seen from
+ * `latitude`: as far before it on the way up. 0 if it never stands so
+ * high, π if it never sinks so low.
+ */
+export function hourAngleAt(elevation: number, declination: number, latitude: number): number {
+  const cos = (Math.sin(elevation) - Math.sin(latitude) * Math.sin(declination)) / (Math.cos(latitude) * Math.cos(declination));
+  return Math.acos(Math.max(-1, Math.min(1, cos)));
+}
+
+/** The lunation `epochMs` falls in: how many new moons have come since 6 January 2000's (that one's is 0). */
+export function lunationAt(epochMs: number): number {
+  return Math.floor((epochMs - NEW_MOON_MS) / (SYNODIC_MONTH_DAYS * DAY_MS));
+}
+
+/** The new moon that begins lunation `lunation` (lunationAt), epoch ms; its full moon is half a month on. */
+export function newMoonMs(lunation: number): number {
+  return NEW_MOON_MS + lunation * SYNODIC_MONTH_DAYS * DAY_MS;
+}
+
+/** From one new moon to the next, ms. */
+export const SYNODIC_MONTH_MS = SYNODIC_MONTH_DAYS * DAY_MS;
+
 /** How far through its phases the moon is at `epochMs`: 0 new, 0.5 full, toward 1 new again. */
 export function moonPhase(epochMs: number): number {
   const days = (epochMs - NEW_MOON_MS) / DAY_MS;

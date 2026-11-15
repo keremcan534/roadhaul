@@ -102,9 +102,15 @@ describe('sketchWorld', () => {
     expect(drawn).toBeLessThan(sampled / 3);
   });
 
-  it('has the depots, the rest area, the ferry and a name for each city near its depot', () => {
+  it('has the depots, the rest area, the places to visit, the ferry and a name for each city near its depot', () => {
     expect(sketch.depots.map((depot) => depot.id)).toEqual(world.depots.map((depot) => depot.id));
     expect(sketch.restAreas.map((restArea) => restArea.id)).toEqual(world.restAreas.map((restArea) => restArea.id));
+    expect(sketch.places.map((place) => [place.id, place.kind])).toEqual([
+      ['valley_diner', 'diner'],
+      ['valley_truck_wash', 'truckWash'],
+      ['valley_lookout', 'lookout'],
+      ['valley_race_club', 'raceClub'],
+    ]);
     expect(sketch.ferries).toEqual(world.gates.map((gate) => ({ x: gate.area.x, z: gate.area.z, toMapId: 'metropol', requiredLevel: 2 })));
     expect(sketch.cities.map((city) => city.cityId)).toEqual(world.depots.map((depot) => depot.cityId));
     sketch.cities.forEach((city, index) => {
@@ -113,7 +119,9 @@ describe('sketchWorld', () => {
     });
     expect(sketch.buildings).toHaveLength(world.buildings.length);
     // Every yard, lot and quay is paved on the map, and the turning circles too.
-    expect(sketch.pavedAreas).toHaveLength(world.depots.length + world.restAreas.length + (world.sea?.quays.length ?? 0));
+    expect(sketch.pavedAreas).toHaveLength(
+      world.depots.length + world.restAreas.length + world.places.length + (world.sea?.quays.length ?? 0),
+    );
     expect(sketch.turningCircles).toHaveLength(world.turningCircles.length);
   });
 

@@ -46,6 +46,7 @@ describe('FacilityService', () => {
       'workshop',
       'fuel_depot',
       'training_centre',
+      'warehouse',
       'logistics_office',
     ]);
   });
