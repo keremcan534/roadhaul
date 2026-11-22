@@ -592,11 +592,12 @@ export interface QualityPreset {
 }
 
 export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = frozenCopy({
+  // Every preset draws as sharp: a lower one gives up effects, plants and traffic, never the picture's pixels.
   low: {
-    maxPixelRatio: 1,
+    maxPixelRatio: 1.5,
     // No colour pass to smooth the edges: the canvas does, cheaply on phones' tiled GPUs.
     antialias: true,
-    minResolutionScale: 1,
+    minResolutionScale: 0.75,
     rainDensity: 0.5,
     particleDensity: 0.5,
     vegetationDensity: 0.45,
@@ -608,9 +609,9 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
     trafficVehicles: 8,
   },
   medium: {
-    maxPixelRatio: 1.25,
+    maxPixelRatio: 1.5,
     antialias: false,
-    minResolutionScale: 0.8,
+    minResolutionScale: 0.75,
     rainDensity: 0.75,
     particleDensity: 0.75,
     vegetationDensity: 0.75,
@@ -624,7 +625,7 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
   high: {
     maxPixelRatio: 1.5,
     antialias: false,
-    minResolutionScale: 0.67,
+    minResolutionScale: 0.75,
     rainDensity: 1,
     particleDensity: 1,
     vegetationDensity: 1,
@@ -638,12 +639,23 @@ export const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualityPreset>> = fr
 });
 
 /**
- * `config` with the graphics preset `level`: resolution, rain, smoke and
- * dust, glows, the colour pass and its bloom and smoothing, the sun's
- * shadows, and how much traffic.
+ * The weakest phones' GPUs (deviceQuality.isEntryGpu) fill too few pixels for
+ * the presets' sharpness: this pixel ratio at most, and this share of it
+ * under load (one pixel per CSS pixel, the least any phone draws).
  */
-export function applyQualityPreset(config: GameConfig, level: QualityLevel): GameConfig {
-  const { trafficVehicles, ...rendering } = QUALITY_PRESETS[level];
+export const ENTRY_GPU_MAX_PIXEL_RATIO = 1.25;
+export const ENTRY_GPU_MIN_RESOLUTION_SCALE = 0.8;
+
+/**
+ * `config` with the graphics preset `level`: rain, smoke and dust, glows,
+ * the colour pass and its bloom and smoothing, the sun's shadows, and how
+ * much traffic. `entryGpu`: the weakest phones' sharpness.
+ */
+export function applyQualityPreset(config: GameConfig, level: QualityLevel, entryGpu = false): GameConfig {
+  const { trafficVehicles, ...preset } = QUALITY_PRESETS[level];
+  const rendering = entryGpu
+    ? { ...preset, maxPixelRatio: ENTRY_GPU_MAX_PIXEL_RATIO, minResolutionScale: ENTRY_GPU_MIN_RESOLUTION_SCALE }
+    : preset;
   return {
     ...config,
     rendering: { ...config.rendering, ...rendering, quality: level },
@@ -662,7 +674,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     quality: 'high',
     maxPixelRatio: 1.5,
     antialias: false,
-    minResolutionScale: 0.67,
+    minResolutionScale: 0.75,
     rainDensity: 1,
     particleDensity: 1,
     vegetationDensity: 1,
@@ -773,8 +785,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     serviceDiscount: 0.5,
     serviceDiscountsPerDay: 5,
     interstitialFirstAfterDeliveries: 2,
-    interstitialEveryDeliveries: 3,
-    interstitialMinSeconds: 480,
+    interstitialEveryDeliveries: 2,
+    interstitialMinSeconds: 240,
     earningsBoostShare: 0.25,
     earningsBoostMinutes: 60,
     adCrate: 'silver',

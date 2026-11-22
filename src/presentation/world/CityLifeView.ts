@@ -127,6 +127,9 @@ export class CityLifeView {
   private readonly geometries: BufferGeometry[] = [];
   /** Per slot: the vehicle shown there (made the first time a kind is needed in it), and its beacons. */
   private readonly slots: Partial<Record<CityVehicleKind, VehicleSlot>>[] = [{}, {}, {}];
+  /** Each kind's body and the beacons' box, built at boot and shared by the slots: building one on the road is a hitch. */
+  private readonly bodies: Readonly<Record<CityVehicleKind, BufferGeometry>>;
+  private readonly beaconBox = this.track(new BoxGeometry(0.42, 0.16, 0.26));
   private readonly beaconGlows = new LampGlows(MAX_BEACONS, 2.2);
   private readonly fireGlow = new LampGlows(1, 30);
   private readonly flames: ParticlePool;
@@ -166,6 +169,18 @@ export class CityLifeView {
   ) {
     this.root.name = 'cityLife';
     scene.add(this.root);
+    const bodyOf = (kind: CityVehicleKind): BufferGeometry =>
+      this.track(paintedVehicle(VEHICLE_BODIES[kind].type, VEHICLE_BODIES[kind].paint, kind));
+    this.bodies = {
+      fire_engine: bodyOf('fire_engine'),
+      ambulance: bodyOf('ambulance'),
+      police: bodyOf('police'),
+      getaway: bodyOf('getaway'),
+    };
+    // One of each in the scene, hidden, so their shaders are compiled at boot with everything else's.
+    for (const kind of CITY_VEHICLE_KINDS) {
+      this.slotFor(0, kind).mesh.visible = false;
+    }
     for (const glows of [this.beaconGlows, this.fireGlow, this.planeLights, this.helicopterLight, this.shipLights]) {
       this.root.add(glows.points);
     }
@@ -304,10 +319,9 @@ export class CityLifeView {
     const slots = this.slots[slot]!;
     let shown = slots[kind];
     if (shown === undefined) {
-      const body = VEHICLE_BODIES[kind];
-      const mesh = new Mesh(this.track(paintedVehicle(body.type, body.paint, kind)), this.lambert);
+      const mesh = new Mesh(this.bodies[kind], this.lambert);
       const beacons = BEACONS[kind].map(([x, y, z]) => {
-        const beacon = new Mesh(this.track(new BoxGeometry(0.42, 0.16, 0.26)), this.dimBeacon);
+        const beacon = new Mesh(this.beaconBox, this.dimBeacon);
         beacon.position.set(x, y, z);
         mesh.add(beacon);
         return beacon;

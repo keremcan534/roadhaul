@@ -60,8 +60,7 @@ interface TrackedTruck {
  * it never shows twice.
  *
  * Call update() every fixed step, after the traffic. Allocation-free, but
- * for the first time it meets a truck and the first time a map is driven to
- * each depot.
+ * for the first time it meets a truck and as a map's first drive starts.
  */
 export class CompanyTraffic {
   private readonly tracked: TrackedTruck[] = [];
@@ -251,6 +250,11 @@ export class CompanyTraffic {
     if (simulation.graph !== this.graph) {
       this.graph = simulation.graph;
       this.routes.clear();
+      // Every depot's way worked out now, as the drive starts: met one by one on the road, each would be a hitch.
+      const depots = this.driving.world.depots;
+      for (let i = 0; i < depots.length; i++) {
+        this.routeTo(simulation.graph, depots[i]!.cityId);
+      }
     }
     this.truckType = simulation.types.findIndex((type) => type.kind === 'truck');
     for (let i = 0; i < this.tracked.length; i++) {

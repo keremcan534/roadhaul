@@ -284,11 +284,20 @@ describe('GameConfig', () => {
     }
   });
 
-  it('asks less of weaker devices: fewer pixels, less rain, smoke and traffic, no glows or colour pass on low', () => {
+  it('keeps the picture as sharp on every preset, and the weakest GPUs at one pixel per CSS pixel or more', () => {
+    const [low, medium, high] = QUALITY_LEVELS.map((level) => QUALITY_PRESETS[level]);
+    expect(low!.maxPixelRatio).toBe(high!.maxPixelRatio);
+    expect(medium!.maxPixelRatio).toBe(high!.maxPixelRatio);
+
+    const entry = applyQualityPreset(DEFAULT_GAME_CONFIG, 'low', true).rendering;
+    expect(entry.maxPixelRatio).toBeLessThan(low!.maxPixelRatio);
+    expect(entry.maxPixelRatio * entry.minResolutionScale).toBeGreaterThanOrEqual(1);
+    expect(validateGameConfig(applyQualityPreset(DEFAULT_GAME_CONFIG, 'low', true), catalog)).toEqual([]);
+  });
+
+  it('asks less of weaker devices: less rain, smoke and traffic, no glows or colour pass on low', () => {
     const [low, medium, high] = QUALITY_LEVELS.map((level) => QUALITY_PRESETS[level]);
 
-    expect(low!.maxPixelRatio).toBeLessThan(medium!.maxPixelRatio);
-    expect(medium!.maxPixelRatio).toBeLessThan(high!.maxPixelRatio);
     expect(low!.trafficVehicles).toBeLessThan(high!.trafficVehicles);
     expect(low!.rainDensity).toBeLessThan(high!.rainDensity);
     expect(low!.particleDensity).toBeLessThan(medium!.particleDensity);

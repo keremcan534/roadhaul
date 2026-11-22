@@ -23,8 +23,6 @@ export interface SoundState {
   rain: number;
   /** In reverse gear: the reversing alarm beeps. */
   reversing: boolean;
-  /** How hard the engine brake works, 0..1 (VehicleRuntimeState.engineBraking): its rasp, at the engine's firing. */
-  engineBraking: number;
   /** Meters to the nearest emergency vehicle's siren (CityLifeView); Infinity for none. */
   sirenMeters: number;
 }
@@ -41,7 +39,6 @@ export function createSoundState(): SoundState {
     speed: 0,
     rain: 0,
     reversing: false,
-    engineBraking: 0,
     sirenMeters: Number.POSITIVE_INFINITY,
   };
 }
@@ -86,13 +83,6 @@ const FIREWORK_VOLUME = 0.5;
 /** A truck's dual-tone air horn: two notes a major third apart, Hz. */
 const HORN_NOTES = [196, 247] as const;
 /**
- * The engine brake's rasp: a hard buzz at the engine's firing (a six
- * cylinder four-stroke fires three times a turn: rpm / 20 Hz), nasal and
- * loud, at this level at full work.
- */
-const ENGINE_BRAKE_VOLUME = 0.13;
-const ENGINE_BRAKE_FIRINGS_PER_RPM = 1 / 20;
-/**
  * Another truck's horn answering the player's (hootBack): its two notes, a
  * little higher, in two short blasts (from, seconds long), as loud as the
  * player's at this far off, meters, and fainter farther.
@@ -116,8 +106,6 @@ interface Graph {
   readonly drops: GainNode;
   readonly spray: GainNode;
   readonly horn: GainNode;
-  readonly engineBrake: GainNode;
-  readonly engineBrakeNote: OscillatorNode;
   readonly alarm: GainNode;
   readonly siren: GainNode;
 }
@@ -236,9 +224,6 @@ export class GameAudio {
     follow(graph.drops.gain, rain * RAIN_DROPS_VOLUME, now);
     follow(graph.spray.gain, driving ? clamp01(state.rain) * clamp01(Math.abs(state.speed) / SPRAY_FULL_SPEED) * SPRAY_VOLUME : 0, now);
     follow(graph.horn.gain, driving && this.hornPressed ? HORN_VOLUME : 0, now);
-    const engineBraking = driving && state.engineRunning ? clamp01(state.engineBraking) : 0;
-    follow(graph.engineBrake.gain, engineBraking * ENGINE_BRAKE_VOLUME, now);
-    follow(graph.engineBrakeNote.frequency, Math.max(20, state.engineRpm * ENGINE_BRAKE_FIRINGS_PER_RPM), now);
     // Beep, beep: on for the first half of each beat while in reverse.
     const beeping = driving && state.reversing && (now * ALARM_BEATS_PER_SECOND) % 1 < 0.5;
     follow(graph.alarm.gain, beeping ? ALARM_VOLUME : 0, now);
@@ -640,17 +625,6 @@ function buildGraph(context: AudioContext): Graph {
     note.start();
   }
 
-  // The engine brake: a square wave at the engine's firing, through a resonant low-pass, with a breath of exhaust.
-  const engineBrake = gainNode(context, 0);
-  const engineBrakeTone = filterNode(context, 'lowpass', 1100, 2.5);
-  engineBrakeTone.connect(engineBrake).connect(master);
-  const engineBrakeNote = context.createOscillator();
-  engineBrakeNote.type = 'square';
-  engineBrakeNote.frequency.value = 40;
-  engineBrakeNote.connect(engineBrakeTone);
-  engineBrakeNote.start();
-  noiseLoop().connect(filterNode(context, 'bandpass', 700, 0.9)).connect(gainNode(context, 0.6)).connect(engineBrakeTone);
-
   // The reversing alarm: one steady note, switched on and off by update().
   const alarm = gainNode(context, 0);
   const alarmNote = context.createOscillator();
@@ -673,5 +647,5 @@ function buildGraph(context: AudioContext): Graph {
   sirenNote.start();
   swing.start();
 
-  return { master, noise, engine, roadFilter, road, brake, rain, drops, spray, horn, engineBrake, engineBrakeNote, alarm, siren };
+  return { master, noise, engine, roadFilter, road, brake, rain, drops, spray, horn, alarm, siren };
 }

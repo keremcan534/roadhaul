@@ -329,7 +329,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const qualityChoice = qualitySetting(query.get('quality'), settings.quality, persistent);
   const device = deviceHints(navigator, gpuName(document));
   const quality = chooseQuality(query.get('quality'), qualityChoice, detectQuality(device));
-  const overridden = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality), query);
+  const entryGpu = device.gpu !== undefined && isEntryGpu(device.gpu);
+  const overridden = applyConfigOverrides(applyQualityPreset(DEFAULT_GAME_CONFIG, quality, entryGpu), query);
   // `?map=metropol` founds new companies in that region (a debug switch: to look round it without the ferry).
   const requestedMap = query.get('map');
   const config =
@@ -3707,7 +3708,6 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         soundState.driving = simulating;
         soundState.engineRunning = driving.isEngineRunning;
         soundState.engineRpm = vehicle.engineRpm;
-        soundState.engineBraking = vehicle.engineBraking;
         soundState.idleRpm = driving.definition.powertrain.idleRpm;
         soundState.maxRpm = driving.definition.powertrain.maxRpm;
         soundState.engineLoad = dashboard.drivePedal * vehicle.driveEngagement;

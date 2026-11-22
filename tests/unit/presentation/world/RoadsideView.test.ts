@@ -123,7 +123,12 @@ describe('RoadsideView', () => {
     full.update(spawn.x, spawn.z, 0);
     // Somewhere else first, then the spawn: the spawn's plants are the same.
     again.update(far.x(0), far.z(0), 0);
+    // On the road the cells that come near grow a frame or so at a time: one frame shows only part of them.
     again.update(spawn.x, spawn.z, 0);
+    expect(again.plants('tuft').drawn).toBeLessThan(full.plants('tuft').drawn + 1);
+    for (let frame = 0; frame < 500; frame++) {
+      again.update(spawn.x, spawn.z, 0);
+    }
     thin.update(spawn.x, spawn.z, 0);
 
     const sorted = (scene: Scene): string[] =>

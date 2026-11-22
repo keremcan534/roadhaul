@@ -36,7 +36,9 @@ export function laneRouteTo(graph: LaneGraph, x: number, z: number, reachMeters:
       const dz = graph.pointZ[k + 1]! - az;
       const lengthSquared = dx * dx + dz * dz;
       const t = lengthSquared > 1e-12 ? Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / lengthSquared)) : 0;
-      const distance = Math.hypot(ax + dx * t - x, az + dz * t - z);
+      const offX = ax + dx * t - x;
+      const offZ = az + dz * t - z;
+      const distance = Math.sqrt(offX * offX + offZ * offZ);
       if (distance < nearest[link]!) {
         nearest[link] = distance;
         nearestAlong[link] = graph.along[k]! + t * Math.sqrt(lengthSquared);

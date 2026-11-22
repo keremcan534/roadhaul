@@ -17,7 +17,8 @@
     "test:e2e": "playwright test",
     "android": "npm run build && cap sync android",
     "check": "npm run typecheck && npm test && npm run build && npm run test:e2e",
-    "perf": "node scripts/perfRun.mjs"
+    "perf": "node scripts/perfRun.mjs",
+    "postinstall": "node scripts/patchAndroidPlugins.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "8.1.0",

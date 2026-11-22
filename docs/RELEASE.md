@@ -144,8 +144,9 @@ at every start, so a purchase follows the player to a new phone, and a refund ta
    billing library in it (every build has).
 3. Monetize with Play → Products → **In-app products** → Create product, once for each. The product ids must be exactly
    `remove_ads`, `premium_paints`, `designs_street`, `designs_neon`, `supporter_pack` and `road_pass` (they are in the
-   game's code and stored on players' phones: never rename them). Suggested prices: €1.99, €0.99, €0.99, €0.99, €2.99
-   and €1.49 (see "Local prices" below). `road_pass` is a one-time product too (not a subscription): Road Pass Plus for
+   game's code and stored on players' phones: never rename them). Prices are impulse buys, nothing a player has to
+   think about: €1.09, €0.49, €0.49, €0.49, €1.59 and €0.69 ($0.99, $0.49, $0.49, $0.49, $1.49, $0.69; 29.99, 14.99,
+   14.99, 14.99, 44.99 and 19.99 TL), since 19 November 2026 (see "Local prices" below). `road_pass` is a one-time product too (not a subscription): Road Pass Plus for
    every season. `supporter_pack` holds all five others: the shop shows it first, as the best value, so keep its price
    well under theirs together. Give each a name and a description (translate them for the listings' languages), a price,
    and **activate** it.
@@ -163,7 +164,7 @@ player in each country pays is set in the Play Console, and a euro price turned 
 exchange rate is far more than people there pay for a game's extras. So:
 
 1. Monetize with Play → Products → **Pricing templates** → Create template, one per price point (for example
-   "Small" €0.99, "Medium" €1.49, "Ads" €1.99, "Bundle" €2.99). Each product takes its price from a template, and a
+   "Small" €0.49, "Pass" €0.69, "Ads" €1.09, "Bundle" €1.59). Each product takes its price from a template, and a
    change to the template changes every product on it.
 2. In each template, after the default price, open **Local prices**. Play fills in every country from the exchange
    rate and rounds to local habits (…,99 and so on); then lower the countries where that is too much for the place.
@@ -175,6 +176,10 @@ exchange rate is far more than people there pay for a game's extras. So:
 
 Players who bought keep what they bought: a price change only affects new purchases.
 
+On a product's purchase option, **Set prices → bulk edit** takes the price *before* tax and adds the country's VAT
+(0.89 entered for Albania becomes 1.09); the pencil beside one country's price sets the price the player pays. The
+cut of 19 November 2026 lowered every country by the same ratio as the US price (about 45%; the Road Pass 41%).
+
 ### 7. Switching the ads on
 
 Releases are built without ads until you switch them on here. CI's debug APK always shows Google's **test** ads, so the
@@ -183,7 +188,7 @@ rewarded boosts and the ads between contracts can be tried on a phone first. The
 - **Rewarded**, the player's choice only: a quarter of a delivery's pay again (100 to 2,500 credits), or half off a
   repair or a fill-up at a depot or rest area (five a day).
 - **Interstitial**, never while driving: as a delivery's result closes, after a new player's first two deliveries, then
-  every third, at least eight minutes apart. The count is kept on the phone, so short visits add up. None once "Remove
+  every second, at least four minutes apart. The count is kept on the phone, so short visits add up. None once "Remove
   ads" is bought.
 
 The numbers are in `GameConfig.monetization` (`src/data/config/GameConfig.ts`).
