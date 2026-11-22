@@ -14,6 +14,30 @@ function run(resolution: AdaptiveResolution, fps: number, seconds: number, work 
 }
 
 describe('AdaptiveResolution', () => {
+  it('waits twice as long to raise the pixels again each time a raise could not be kept', () => {
+    /** Exactly one two-second measuring window of frames at `fps`: whether the scale changed at its end. */
+    const oneWindow = (resolution: AdaptiveResolution, fps: number): boolean => {
+      let changed = false;
+      for (let frame = 0; frame < 2 * fps; frame++) {
+        changed = resolution.frame((1 / fps) * (1 + 1e-9)) || changed;
+      }
+      return changed;
+    };
+    const resolution = new AdaptiveResolution(0.6);
+    oneWindow(resolution, 60); // The first window is not measured.
+    expect(oneWindow(resolution, 40)).toBe(true); // Slow: down a step.
+
+    // Three quick windows: up again…
+    expect([oneWindow(resolution, 60), oneWindow(resolution, 60), oneWindow(resolution, 60)]).toEqual([false, false, true]);
+    expect(oneWindow(resolution, 40)).toBe(true); // …which the frames could not keep.
+
+    // Six quick windows now, not three.
+    for (let window = 0; window < 5; window++) {
+      expect(oneWindow(resolution, 60)).toBe(false);
+    }
+    expect(oneWindow(resolution, 60)).toBe(true);
+  });
+
   it('keeps the full resolution while frames come as fast as the screen shows them, or the player caps them', () => {
     const resolution = new AdaptiveResolution(0.6);
     run(resolution, 60, 30);

@@ -30,6 +30,14 @@ const FRAMES_IN_A_ROW = 3;
 const WINDOW_SECONDS = 2;
 /** Quick windows in a row before the resolution goes back up (slow ones act at once). */
 const QUICK_WINDOWS_TO_RAISE = 3;
+/**
+ * A raise the frames could not keep (slow again within this many windows)
+ * doubles the quick windows the next raise waits for, up to the most here
+ * (five minutes): each change of resolution is a hitch, and a phone on the
+ * edge would otherwise go down and up again every few seconds.
+ */
+const RAISE_FAILS_WITHIN_WINDOWS = 5;
+const MOST_WINDOWS_TO_RAISE = 150;
 const LOWER_FACTOR = 0.85;
 const RAISE_FACTOR = 1.1;
 /** Longer frames are hitches (a tab switch, a page loading), not a measure of the device. */
@@ -67,6 +75,10 @@ export class AdaptiveResolution {
   private windowFrames = 0;
   private windowWorkSeconds = 0;
   private quickWindows = 0;
+  /** Quick windows the next raise waits for (RAISE_FAILS_WITHIN_WINDOWS). */
+  private windowsToRaise = QUICK_WINDOWS_TO_RAISE;
+  /** Windows measured since the last raise; infinite before the first. */
+  private windowsSinceRaise = Number.POSITIVE_INFINITY;
   /** The first window after a (re)start is not measured: shaders compile, textures upload. */
   private warmingUp = true;
   /** The shortest frame seen yet FRAMES_IN_A_ROW times in a row, seconds: the screen's refresh interval (or the cap's). */
@@ -125,6 +137,7 @@ export class AdaptiveResolution {
       this.warmingUp = false;
       return false;
     }
+    this.windowsSinceRaise++;
     // The rate the pixels are traded for: the target, but not above SHARP_FPS.
     const target = Math.min(this.targetFps, SHARP_FPS);
     if (average > Math.min(FLOOR_FRAME_SECONDS, 1 / (SLOW_SHARE * target))) {
@@ -134,6 +147,9 @@ export class AdaptiveResolution {
         return false;
       }
       if (this.setScale(this.current * LOWER_FACTOR)) {
+        if (this.windowsSinceRaise <= RAISE_FAILS_WITHIN_WINDOWS) {
+          this.windowsToRaise = Math.min(MOST_WINDOWS_TO_RAISE, this.windowsToRaise * 2);
+        }
         return true;
       }
       // As few pixels as it may draw, and still slow.
@@ -146,10 +162,11 @@ export class AdaptiveResolution {
     this.slowAtLowest = 0;
     if (average < 1 / (QUICK_SHARE * target) && this.current < 1) {
       this.quickWindows++;
-      if (this.quickWindows < QUICK_WINDOWS_TO_RAISE) {
+      if (this.quickWindows < this.windowsToRaise) {
         return false;
       }
       this.quickWindows = 0;
+      this.windowsSinceRaise = 0;
       return this.setScale(this.current * RAISE_FACTOR);
     }
     this.quickWindows = 0;

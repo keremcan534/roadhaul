@@ -80,6 +80,8 @@ export interface RoadsideViewOptions {
 type CellPlants = Readonly<Record<RoadsideKind, { readonly places: Float32Array; readonly colors: Float32Array }>>;
 
 const PLACE_FLOATS = 6;
+/** Cells grown in one frame on the road: on a slow phone a few at once are a visible hitch. */
+const CELLS_GROWN_PER_FRAME = 1;
 
 /** What a cell's plants must keep clear of: whether the sea is near, and the fields and buildings that reach into it. */
 interface CellSurroundings {
@@ -115,6 +117,10 @@ export class RoadsideView {
   private readonly point = createRoadPoint();
   private gatheredX = Number.NaN;
   private gatheredZ = Number.NaN;
+  private gatheredOnce = false;
+  /** Cells this gathering may still grow, and whether some near the camera were left for the next frame. */
+  private growthsLeft = Number.POSITIVE_INFINITY;
+  private cellsWaiting = false;
 
   constructor(
     private readonly scene: Scene,
@@ -189,11 +195,15 @@ export class RoadsideView {
   update(cameraX: number, cameraZ: number, deltaSeconds: number): void {
     this.wind.value = (this.wind.value + deltaSeconds) % WIND_PERIOD_SECONDS;
     const moved = hypot2(cameraX - this.gatheredX, cameraZ - this.gatheredZ);
-    if (moved < REGATHER_METERS) {
+    if (moved < REGATHER_METERS && !this.cellsWaiting) {
       return;
     }
     this.gatheredX = cameraX;
     this.gatheredZ = cameraZ;
+    // The first gathering grows all it finds, at boot; on the road a cell or so a frame, the rest in the frames after.
+    this.growthsLeft = this.gatheredOnce ? CELLS_GROWN_PER_FRAME : Number.POSITIVE_INFINITY;
+    this.gatheredOnce = true;
+    this.cellsWaiting = false;
     for (let i = 0; i < ROADSIDE_KINDS.length; i++) {
       this.gather(ROADSIDE_KINDS[i]!, cameraX, cameraZ);
     }
@@ -277,14 +287,27 @@ export class RoadsideView {
     }
   }
 
-  /** The plants along the roads through the cell `key`, grown now if they have not been yet; null where no road runs. */
+  /**
+   * The plants along the roads through the cell `key`, grown now if they have
+   * not been yet and this frame may grow another; null where no road runs, or
+   * until its turn comes (cellsWaiting).
+   */
   private plantsIn(key: number): CellPlants | null {
     const known = this.grown.get(key);
     if (known !== undefined) {
       return known;
     }
     const stretches = this.stretches.get(key);
-    const plants = stretches === undefined ? null : this.grow(key, stretches);
+    if (stretches === undefined) {
+      this.grown.set(key, null);
+      return null;
+    }
+    if (this.growthsLeft <= 0) {
+      this.cellsWaiting = true;
+      return null;
+    }
+    this.growthsLeft--;
+    const plants = this.grow(key, stretches);
     this.grown.set(key, plants);
     return plants;
   }

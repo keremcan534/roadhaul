@@ -51,6 +51,9 @@ export interface SaveServiceOptions {
  * as Results too.
  */
 export class SaveService {
+  /** The save this session last wrote to the main slot: valid, as it was checked before it was written. */
+  private lastWritten: string | null = null;
+
   constructor(
     private readonly storage: KeyValueStorage,
     private readonly content: ContentCatalog,
@@ -106,11 +109,13 @@ export class SaveService {
         throw new Error('The written save did not read back the same.');
       }
       const previous = this.storage.getItem(SAVE_KEYS.main);
-      if (previous !== null && this.parse(previous).ok) {
+      // What this session wrote itself is known good: reading it through again on every autosave is a hitch on the road.
+      if (previous !== null && (previous === this.lastWritten || this.parse(previous).ok)) {
         this.storage.setItem(SAVE_KEYS.backup, previous);
       }
       this.storage.setItem(SAVE_KEYS.main, json);
       this.storage.removeItem(SAVE_KEYS.pending);
+      this.lastWritten = json;
       return ok(undefined);
     } catch (error) {
       this.logger.error('Saving failed.', error);
