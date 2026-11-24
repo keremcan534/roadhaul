@@ -19,12 +19,23 @@ export interface GpuFences<Fence> {
 export const FRAMES_IN_FLIGHT = 2;
 
 /**
- * A frame waits at most this long for the GPU, seconds (from the frame drawn
- * before it), and is then drawn anyway: a driver whose fences never pass
- * would otherwise freeze the picture. A GPU that slow shows one frame a
- * second whatever is done.
+ * Until a fence has been seen to pass, a frame waits at most this long for
+ * the GPU, seconds (from the frame drawn before it), and is then drawn
+ * anyway: a driver whose fences never pass would otherwise freeze the
+ * picture.
  */
 export const GPU_WAIT_LIMIT_SECONDS = 1;
+
+/**
+ * Once fences are known to pass, a frame waits up to this long. A GPU that
+ * needs more than a second for a frame (a weak one, hot, short of memory)
+ * is still drawing: a frame handed to it then only lengthens its queue, and
+ * at GPU_WAIT_LIMIT_SECONDS the queue grew by a frame a second for as long
+ * as it was that slow, until Android's own drawing waited behind it for
+ * five seconds (an ANR). The limit stays for a GPU that never comes back
+ * (its context is lost, and `forget` opens the gate then).
+ */
+export const GPU_WAIT_LIMIT_SLOW_SECONDS = 10;
 
 /**
  * No more than FRAMES_IN_FLIGHT frames on the GPU (ARCHITECTURE.md §11).
@@ -46,6 +57,8 @@ export class GpuFrameGate<Fence> {
   /** The fences after the frames still on the GPU, the oldest at `oldest`; null where none waits. */
   private readonly inFlight: (Fence | null)[];
   private oldest = 0;
+  /** Whether a fence has been seen to pass: the driver's fences work, and a slow GPU is waited for. */
+  private fencesWork = false;
   /** Frames held back for the GPU since the gate was made. */
   heldBack = 0;
 
@@ -59,14 +72,17 @@ export class GpuFrameGate<Fence> {
   /**
    * Whether a frame may be drawn now: the GPU is done with the oldest frame
    * still on it, or `waitedSeconds` (since the frame drawn last) reached
-   * GPU_WAIT_LIMIT_SECONDS.
+   * GPU_WAIT_LIMIT_SECONDS (GPU_WAIT_LIMIT_SLOW_SECONDS once fences are
+   * known to pass).
    */
   ready(waitedSeconds: number): boolean {
     const fence = this.inFlight[this.oldest] ?? null;
     if (fence === null) {
       return true;
     }
-    if (!this.fences.passed(fence) && waitedSeconds < GPU_WAIT_LIMIT_SECONDS) {
+    if (this.fences.passed(fence)) {
+      this.fencesWork = true;
+    } else if (waitedSeconds < (this.fencesWork ? GPU_WAIT_LIMIT_SLOW_SECONDS : GPU_WAIT_LIMIT_SECONDS)) {
       this.heldBack++;
       return false;
     }
