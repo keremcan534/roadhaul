@@ -602,6 +602,8 @@ export const MAPS: readonly MapDefinition[] = [
         lot: { x: 2855, z: 737, headingDegrees: 7, lengthMeters: 44, widthMeters: 30 },
         raceTo: { x: 2750, z: -2666 },
       },
+      // The coach station on the highway out of Havenport to the east: its line calls at the towns' bus stops.
+      { id: 'valley_coach_station', kind: 'busStation', lot: { x: -1366, z: -237, headingDegrees: 102, lengthMeters: 44, widthMeters: 30 } },
     ],
     restAreas: [
       {

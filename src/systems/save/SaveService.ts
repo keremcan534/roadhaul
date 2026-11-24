@@ -5,6 +5,7 @@ import type { ContentCatalog } from '../../data/ContentCatalog';
 import type { SaveGameData } from '../../domain/save/SaveGameData';
 import { migrateSave, type SaveMigrationContext } from '../../domain/save/saveMigrations';
 import { validateSaveGameData } from '../../domain/save/validateSaveGameData';
+import { openBackup, sealBackup } from './backupSeal';
 
 /** Storage keys. The main slot holds the latest save, the backup the one before it. */
 export const SAVE_KEYS = Object.freeze({
@@ -22,8 +23,11 @@ export const SAVE_KEYS = Object.freeze({
  */
 export type LoadProblem = 'missing' | 'corrupted' | 'tooNew';
 export type SaveProblem = 'invalid' | 'storageFailed';
-/** unreadable: not a save, damaged, or not valid for this game. tooNew: written by a newer build. */
-export type BackupProblem = 'unreadable' | 'tooNew';
+/**
+ * unreadable: not a save, damaged, or not valid for this game. unsealed: its seal does not match (changed since it was
+ * made, or a bare save from before backups were sealed; backupSeal.ts). tooNew: written by a newer build.
+ */
+export type BackupProblem = 'unreadable' | 'unsealed' | 'tooNew';
 
 /** A backup longer than this is refused unread (a save is a few tens of kilobytes; storage holds about five megabytes). */
 export const MAX_BACKUP_CHARS = 4_000_000;
@@ -124,9 +128,9 @@ export class SaveService {
   }
 
   /**
-   * The latest readable save as text, at this version (migrated): what a
-   * backup file holds. Read-only: unlike `load`, an unreadable save is left
-   * where it is.
+   * The latest readable save, at this version (migrated), as a backup
+   * file's text: sealed, so a backup changed by hand is refused. Read-only:
+   * unlike `load`, an unreadable save is left where it is.
    */
   exportText(): Result<string, LoadProblem> {
     let found = false;
@@ -138,7 +142,7 @@ export class SaveService {
       found = true;
       const parsed = this.parse(json);
       if (parsed.ok) {
-        return ok(JSON.stringify(parsed.value));
+        return ok(sealBackup(parsed.value));
       }
       if (parsed.error === 'tooNew') {
         return err('tooNew');
@@ -147,9 +151,13 @@ export class SaveService {
     return err(found ? 'corrupted' : 'missing');
   }
 
-  /** A backup's save, migrated and validated as a save on load is, without writing it anywhere. */
+  /** A backup's save, its seal checked, then migrated and validated as a save on load is, without writing it anywhere. */
   readText(text: string): Result<SaveGameData, BackupProblem> {
-    return text.length > MAX_BACKUP_CHARS ? err('unreadable') : this.parse(text);
+    if (text.length > MAX_BACKUP_CHARS) {
+      return err('unreadable');
+    }
+    const opened = openBackup(text);
+    return opened.ok ? this.parse(opened.value) : opened;
   }
 
   /** Makes a backup's save the save (written as `save` writes: the one there now becomes the backup slot's). */

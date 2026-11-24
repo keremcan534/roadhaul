@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { FRAMES_IN_FLIGHT, GPU_WAIT_LIMIT_SECONDS, GpuFrameGate, type GpuFences } from '../../../src/presentation/GpuFrameGate';
+import {
+  FRAMES_IN_FLIGHT,
+  GPU_WAIT_LIMIT_SECONDS,
+  GPU_WAIT_LIMIT_SLOW_SECONDS,
+  GpuFrameGate,
+  type GpuFences,
+} from '../../../src/presentation/GpuFrameGate';
 
 /** A GPU that passes the fences it is told to: each fence is the number of the frame it follows. */
 class FakeGpu implements GpuFences<number> {
@@ -77,6 +83,21 @@ describe('GpuFrameGate', () => {
     expect(gate.ready(GPU_WAIT_LIMIT_SECONDS - 0.01)).toBe(false);
     expect(gate.ready(GPU_WAIT_LIMIT_SECONDS)).toBe(true);
     expect(gpu.removed).toEqual([1]);
+  });
+
+  it('waits for a slow GPU once its fences are known to pass, so its queue does not grow a frame a second', () => {
+    const gpu = new FakeGpu();
+    const gate = new GpuFrameGate(gpu, 1);
+    gate.drawn(); // frame 1
+    gpu.doneUpTo = 1;
+    expect(gate.ready(0.016)).toBe(true); // A fence passed: the driver's fences work.
+    gate.drawn(); // frame 2: the GPU takes seconds over it
+    expect(gate.ready(GPU_WAIT_LIMIT_SECONDS)).toBe(false);
+    expect(gate.ready(GPU_WAIT_LIMIT_SLOW_SECONDS - 0.01)).toBe(false);
+    gpu.doneUpTo = 2;
+    expect(gate.ready(GPU_WAIT_LIMIT_SLOW_SECONDS - 0.01)).toBe(true);
+    gate.drawn(); // frame 3: a GPU that never comes back is still drawn past, at the longer limit
+    expect(gate.ready(GPU_WAIT_LIMIT_SLOW_SECONDS)).toBe(true);
   });
 
   it('draws every frame where there are no fences (WebGL 1)', () => {

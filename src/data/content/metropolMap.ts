@@ -363,6 +363,8 @@ const LAID_OUT: MapDefinition = {
       lot: { x: 1980, z: 100, headingDegrees: 0, lengthMeters: 44, widthMeters: 30 },
       raceTo: { x: 3350, z: 3516 },
     },
+    // The coach station on the west boulevard, north of Halverton: its line calls at the districts' bus stops.
+    { id: 'metropol_coach_station', kind: 'busStation', lot: { x: -2220, z: -770, headingDegrees: 0, lengthMeters: 44, widthMeters: 30 } },
   ],
   restAreas: [
     {

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { sealBackup } from '../../src/systems/save/backupSeal';
 import { foundCompany, openMainMenu, openSettingsWhileDriving, savedCompany, watchForProblems } from './support';
 
 test('backs the company up to a file from Settings, and restores another from the main menu after asking', async ({ page }) => {
@@ -21,9 +22,15 @@ test('backs the company up to a file from Settings, and restores another from th
   const download = await downloading;
   expect(download.suggestedFilename()).toMatch(/^roadhaul-isik-lojistik-\d{8}\.json$/);
   await expect(page.locator('.toast').filter({ hasText: 'Backup saved to your downloads.' })).toBeVisible();
-  const backup = JSON.parse(await readFile((await download.path())!, 'utf8')) as { version: number; profile: { companyName: string } };
-  expect(backup.profile.companyName).toBe('Işık Lojistik');
-  expect(backup.version).toBeGreaterThanOrEqual(22);
+  const backup = JSON.parse(await readFile((await download.path())!, 'utf8')) as {
+    kind: string;
+    seal: string;
+    save: { version: number; profile: { companyName: string } };
+  };
+  expect(backup.kind).toBe('roadhaul-backup');
+  expect(backup.seal).toMatch(/^[0-9a-f]{64}$/);
+  expect(backup.save.profile.companyName).toBe('Işık Lojistik');
+  expect(backup.save.version).toBeGreaterThanOrEqual(22);
 
   // Back on the main menu, with the company still loaded: a backup of another company, an old save, restored over it.
   await page.locator('[data-action="close-settings"]').click();
@@ -39,8 +46,15 @@ test('backs the company up to a file from Settings, and restores another from th
   await expect(page.locator('.toast').filter({ hasText: 'That file is not a RoadHaul backup, or it is damaged.' })).toBeVisible();
   await expect(row.locator('.settings__confirm')).toBeHidden();
 
+  // A save with its credits written in by hand (a bare save, as backups were before they were sealed, or a sealed one
+  // changed): refused, nothing asked.
+  const edited = { name: 'rich.json', mimeType: 'application/json', buffer: Buffer.from(savedCompany({ credits: 99_999_999 })) };
+  await input.setInputFiles(edited);
+  await expect(page.locator('.toast').filter({ hasText: 'That backup was changed after it was made' })).toBeVisible();
+  await expect(row.locator('.settings__confirm')).toBeHidden();
+
   // A backup: the question names what it holds; keeping theirs changes nothing.
-  const other = { name: 'kuzey.json', mimeType: 'application/json', buffer: Buffer.from(savedCompany()) };
+  const other = { name: 'kuzey.json', mimeType: 'application/json', buffer: Buffer.from(sealBackup(JSON.parse(savedCompany()))) };
   await input.setInputFiles(other);
   const question = row.locator('.settings__confirm-question');
   await expect(question).toHaveText('Replace the company on this device with Kuzey Lojistik (level 2, 30,000 credits)?');

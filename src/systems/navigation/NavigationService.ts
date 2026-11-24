@@ -13,7 +13,7 @@ const ON_ROAD_METERS = 8;
 
 /**
  * GPS (spec §62–63): the route by road from the truck to the contract's next
- * bay, what to do next along it (turn left or right, turn round, arrive),
+ * bay (or a coach line's next stop), what to do next along it (turn left or right, turn round, arrive),
  * the distance and the arrival time, and a point ahead on the route for the
  * direction arrow. The HUD and the line on the road read it; nothing here
  * changes the game. Call update() every fixed step; it recomputes ten times
@@ -30,15 +30,20 @@ export class NavigationService {
   private aimZValue = 0;
   private revisionValue = 0;
 
+  /**
+   * @param stops A coach line's next stop while a run of one is on
+   *   (CoachLineService): led to before any contract's bay.
+   */
   constructor(
     private readonly driving: DrivingService,
     private readonly missions: MissionService,
     private readonly speedLimitsKmh: GameConfig['traffic']['speedLimitsKmh'],
     private readonly config: GameConfig['navigation'],
     private readonly logger: Logger,
+    private readonly stops: { readonly navTarget: { readonly x: number; readonly z: number } | null } | null = null,
   ) {}
 
-  /** True while there is somewhere to go: a contract's next bay. */
+  /** True while there is somewhere to go: a contract's next bay, or a coach line's next stop. */
   get hasRoute(): boolean {
     return this.routed;
   }
@@ -85,8 +90,9 @@ export class NavigationService {
 
   /** Works the route out now (after the truck was moved, or a contract accepted). */
   refresh(): void {
-    const target = this.missions.target;
-    if (target === null || !this.driving.isDriving) {
+    const stop = this.stops?.navTarget ?? null;
+    const target = stop === null ? this.missions.target : null;
+    if ((stop === null && target === null) || !this.driving.isDriving) {
       if (this.routed) {
         this.routed = false;
         this.revisionValue++;
@@ -107,7 +113,7 @@ export class NavigationService {
       this.paces[index] = (Math.min(limit, truckTop) / 3.6) * this.config.etaPaceFactor;
     }
     const truck = this.driving.vehicle;
-    const bay = target.depot.bay;
+    const bay = stop ?? target!.depot.bay;
     const trace = this.network!.trace(truck.x, truck.z, bay.x, bay.z, this.paces, this.trace!);
     const onRoad = trace.count > 0 && Math.hypot(trace.x[0]! - truck.x, trace.z[0]! - truck.z) < ON_ROAD_METERS;
     nextManoeuvre(trace, truck.heading, onRoad, this.manoeuvre);

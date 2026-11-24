@@ -106,7 +106,50 @@ export function placeParts(place: PlaceDefinition, back: 1 | -1): BufferGeometry
       return lookoutParts(place.lot, back);
     case 'raceClub':
       return raceClubParts(place.lot, back);
+    case 'busStation':
+      return coachStationParts(place.lot, back);
   }
+}
+
+/** A coach station: a glass-fronted hall in the coaches' green, a platform under a canopy beside it, a sign with a coach by the road. */
+function coachStationParts(lot: RectangleDefinition, back: 1 | -1): BufferGeometry[] {
+  const box = (size: Size, at: At, color: number) => lotBox(lot, back, size, at, color);
+  const green = 0x1f8a70;
+  const front = 6;
+  const depth = 8;
+  const middle = front + depth / 2;
+  const parts = [
+    box({ along: 22, across: depth, height: 4.6 }, { along: 6, across: middle, bottom: 0 }, 0xdfe4e8),
+    box({ along: 22.1, across: depth + 0.1, height: 0.7 }, { along: 6, across: middle, bottom: 3.5 }, green),
+    box({ along: 22.6, across: depth + 0.6, height: 0.3 }, { along: 6, across: middle, bottom: 4.6 }, 0x3a4048),
+    // Doors in the middle of the glass front.
+    box({ along: 2.4, across: 0.12, height: 2.4 }, { along: 6, across: front - 0.04, bottom: 0 }, DARK_WOOD),
+  ];
+  for (const along of [-2.5, 1.5, 10.5, 14.5]) {
+    parts.push(box({ along: 3.4, across: 0.12, height: 2.2 }, { along, across: front - 0.04, bottom: 0.6 }, GLASS));
+  }
+  // The platform beside the hall: a canopy on posts over benches, at the back of the lot (the front is the coach's).
+  for (const along of [-18.5, -12, -5.5]) {
+    for (const across of [6.5, 12.5]) {
+      parts.push(box({ along: 0.25, across: 0.25, height: 3.6 }, { along, across, bottom: 0 }, POLE));
+    }
+  }
+  parts.push(
+    box({ along: 14, across: 7, height: 0.25 }, { along: -12, across: 9.5, bottom: 3.6 }, green),
+    box({ along: 5, across: 0.6, height: 0.45 }, { along: -15, across: 11.5, bottom: 0 }, WOOD),
+    box({ along: 5, across: 0.6, height: 0.45 }, { along: -9, across: 11.5, bottom: 0 }, WOOD),
+  );
+  // The sign by the road: a green board with a white coach on it, its windows dark.
+  const sign = { along: 19, across: -12.5 };
+  parts.push(
+    box({ along: 0.3, across: 0.3, height: 5.5 }, { ...sign, bottom: 0 }, POLE),
+    box({ along: 3.2, across: 0.2, height: 2 }, { ...sign, bottom: 5.5 }, green),
+    box({ along: 2.4, across: 0.24, height: 1 }, { ...sign, bottom: 6 }, WHITE),
+  );
+  for (const offset of [-0.75, 0, 0.75]) {
+    parts.push(box({ along: 0.5, across: 0.28, height: 0.35 }, { along: sign.along + offset, across: sign.across, bottom: 6.5 }, 0x1d2126));
+  }
+  return parts;
 }
 
 /** A race club: a garage hall with its doors, a little grandstand, and checkered flags by the road. */

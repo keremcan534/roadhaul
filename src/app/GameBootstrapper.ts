@@ -65,6 +65,9 @@ import { UpgradeService } from '../systems/vehicles/UpgradeService';
 import { AutoDriveService } from '../systems/vehicles/AutoDriveService';
 import { RaceService } from '../systems/race/RaceService';
 import { RACE_CAR } from '../data/content/raceCar';
+import { COACH } from '../data/content/coach';
+import { localDay } from '../domain/rewards/dailyReward';
+import { CoachLineService } from '../systems/coach/CoachLineService';
 import { ServiceKeys } from './ServiceKeys';
 
 export interface BootstrapOptions {
@@ -329,6 +332,22 @@ export class GameBootstrapper {
         ServiceKeys.convoy,
         new ConvoyService(driving, economy, config.convoy, () => convoyLuck.next(), events, logger.withCategory('Convoy')),
       );
+      // The coach stations' coach lines: the coach driven through the towns' bus stops, the truck waiting.
+      const coachLines = container.register(
+        ServiceKeys.coachLines,
+        new CoachLineService(
+          driving,
+          missions,
+          economy,
+          company,
+          () => ({ hour: timeOfDay.minutes / 60, day: localDay(clock.now(), this.options.localTimeOffsetMinutes ?? 0) }),
+          COACH,
+          config.coachLines,
+          config.traffic.speedLimitsKmh,
+          events,
+          logger.withCategory('Coach'),
+        ),
+      );
       const navigation = container.register(
         ServiceKeys.navigation,
         new NavigationService(
@@ -337,6 +356,7 @@ export class GameBootstrapper {
           config.traffic.speedLimitsKmh,
           config.navigation,
           logger.withCategory('Navigation'),
+          coachLines,
         ),
       );
       // Auto-drive along the contract's route: earned in research (the `autoDrive` perk), never sold.

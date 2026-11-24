@@ -487,12 +487,12 @@ describe.each(MAPS)('map $id', (map) => {
 });
 
 describe('places to visit', () => {
-  it('has a diner, a truck wash, a lookout and a race club in every region, each id once across the maps (saves keep them)', () => {
+  it('has a diner, a truck wash, a lookout, a race club and a coach station in every region, each id once across the maps (saves keep them)', () => {
     const ids = MAPS.flatMap((map) => (map.places ?? []).map((place) => place.id));
 
     expect(new Set(ids).size).toBe(ids.length);
     for (const map of MAPS) {
-      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['diner', 'lookout', 'raceClub', 'truckWash']);
+      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['busStation', 'diner', 'lookout', 'raceClub', 'truckWash']);
     }
   });
 
