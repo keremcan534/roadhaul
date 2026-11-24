@@ -2026,7 +2026,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     const read = session.readBackup(text);
     const restored = session.restoreBackup(text);
     if (!restored.ok) {
-      const problem = restored.error === 'unreadable' || restored.error === 'tooNew' ? restored.error : 'failed';
+      const problem =
+        restored.error === 'unreadable' || restored.error === 'unsealed' || restored.error === 'tooNew' ? restored.error : 'failed';
       toasts.show(strings.t(`restore.${problem}`), 'warning');
       return;
     }

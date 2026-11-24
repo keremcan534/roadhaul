@@ -3,6 +3,7 @@ import { MemoryStorage, type KeyValueStorage } from '../../../../src/core/storag
 import { ContentCatalog } from '../../../../src/data/ContentCatalog';
 import { createNewSaveGameData } from '../../../../src/domain/save/createNewSaveGameData';
 import { CURRENT_SAVE_VERSION, type SaveGameData } from '../../../../src/domain/save/SaveGameData';
+import { sealBackup } from '../../../../src/systems/save/backupSeal';
 import { MAX_BACKUP_CHARS, SAVE_KEYS, SaveService } from '../../../../src/systems/save/SaveService';
 import { contentFixture, vehicleFixture } from '../../../support/contentFixtures';
 import { MemoryLogger } from '../../../support/MemoryLogger';
@@ -172,7 +173,7 @@ describe('SaveService', () => {
 
       const exported = service.exportText();
 
-      expect(exported.ok && JSON.parse(exported.value).version).toBe(CURRENT_SAVE_VERSION);
+      expect(exported.ok && JSON.parse(exported.value).save.version).toBe(CURRENT_SAVE_VERSION);
       const read = service.readText(exported.ok ? exported.value : '');
       expect(read.ok && read.value.profile.companyName).toBe('Kuzey Lojistik');
       // Reading it wrote nothing.
@@ -187,7 +188,7 @@ describe('SaveService', () => {
 
       const exported = service.exportText();
 
-      expect(exported.ok && JSON.parse(exported.value).economy.credits).toBe(1000);
+      expect(exported.ok && JSON.parse(exported.value).save.economy.credits).toBe(1000);
       expect(storage.getItem(SAVE_KEYS.main)).toBe('{"trunc');
       expect(storage.getItem(SAVE_KEYS.unreadable)).toBeNull();
       storage.setItem(SAVE_KEYS.backup, '[]');
@@ -197,7 +198,7 @@ describe('SaveService', () => {
     it('restores a backup as the save, the one before kept in the backup slot', () => {
       const { service, storage } = setup();
       service.save(newSave(1000));
-      const backup = JSON.stringify(newSave(9000));
+      const backup = sealBackup(newSave(9000));
 
       const imported = service.importText(backup);
 
@@ -213,11 +214,31 @@ describe('SaveService', () => {
       const kept = storage.getItem(SAVE_KEYS.main);
       const invalid = { ...newSave(), garage: { ...newSave().garage, activeVehicleInstanceId: 'nobody' } };
 
-      for (const text of ['', 'hello', '{"version": 22', JSON.stringify({ photo: true }), JSON.stringify(invalid), ' '.repeat(MAX_BACKUP_CHARS + 1)]) {
+      for (const text of ['', 'hello', '{"version": 22', JSON.stringify({ photo: true }), sealBackup(invalid), ' '.repeat(MAX_BACKUP_CHARS + 1)]) {
         expect(service.importText(text)).toEqual({ ok: false, error: 'unreadable' });
       }
-      expect(service.importText(JSON.stringify({ ...newSave(), version: 99 }))).toEqual({ ok: false, error: 'tooNew' });
+      expect(service.importText(sealBackup({ ...newSave(), version: 99 }))).toEqual({ ok: false, error: 'tooNew' });
       expect(storage.getItem(SAVE_KEYS.main)).toBe(kept);
+    });
+
+    it('refuses a backup changed by hand and a bare save, but opens one only reformatted', () => {
+      const { service, storage } = setup();
+      service.save(newSave(1000));
+      const kept = storage.getItem(SAVE_KEYS.main);
+      const exported = service.exportText();
+      const text = exported.ok ? exported.value : '';
+
+      // Credits written in by hand: the seal no longer matches.
+      const edited = JSON.parse(text) as { save: { economy: { credits: number } } };
+      edited.save.economy.credits = 99_999_999;
+      expect(service.importText(JSON.stringify(edited))).toEqual({ ok: false, error: 'unsealed' });
+      // A bare save: a backup from before they were sealed, or one made up.
+      expect(service.importText(JSON.stringify(newSave(99_999_999)))).toEqual({ ok: false, error: 'unsealed' });
+      expect(storage.getItem(SAVE_KEYS.main)).toBe(kept);
+
+      // Indented by an editor, nothing changed: still the same backup.
+      const read = service.readText(JSON.stringify(JSON.parse(text), null, 2));
+      expect(read.ok && read.value.economy.credits).toBe(1000);
     });
 
     it('reports a backup it could not write', () => {
@@ -230,7 +251,7 @@ describe('SaveService', () => {
         removeItem: (key) => storage.removeItem(key),
       });
 
-      expect(service.importText(JSON.stringify(newSave()))).toEqual({ ok: false, error: 'storageFailed' });
+      expect(service.importText(sealBackup(newSave()))).toEqual({ ok: false, error: 'storageFailed' });
     });
   });
 });

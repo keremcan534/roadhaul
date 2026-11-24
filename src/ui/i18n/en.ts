@@ -1237,6 +1237,7 @@ export const EN: StringTable = {
   'backup.none': 'There is no company to back up yet.',
   'backup.failed': 'The backup could not be made.',
   'restore.unreadable': 'That file is not a RoadHaul backup, or it is damaged.',
+  'restore.unsealed': 'That backup was changed after it was made, or comes from an older version of RoadHaul: it cannot be restored.',
   'restore.tooNew': 'That backup comes from a newer version of RoadHaul. Update the game first.',
   'restore.failed': 'The backup could not be restored: the device\'s storage is full or off.',
   'restore.done': '{company} is back. Starting again…',

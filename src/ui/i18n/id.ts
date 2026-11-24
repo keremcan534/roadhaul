@@ -1237,6 +1237,7 @@ export const ID: StringTable = {
   'backup.none': 'Belum ada perusahaan untuk dicadangkan.',
   'backup.failed': 'Cadangan tidak dapat dibuat.',
   'restore.unreadable': 'File itu bukan cadangan RoadHaul, atau rusak.',
+  'restore.unsealed': 'Cadangan itu diubah setelah dibuat, atau berasal dari versi RoadHaul yang lebih lama: tidak bisa dipulihkan.',
   'restore.tooNew': 'Cadangan itu dari versi RoadHaul yang lebih baru. Perbarui game terlebih dahulu.',
   'restore.failed': 'Cadangan tidak dapat dipulihkan: penyimpanan perangkat penuh atau nonaktif.',
   'restore.done': '{company} kembali. Memulai ulang…',

@@ -1237,6 +1237,7 @@ export const PL: StringTable = {
   'backup.none': 'Nie ma jeszcze firmy, której kopię można utworzyć.',
   'backup.failed': 'Nie udało się utworzyć kopii.',
   'restore.unreadable': 'Ten plik nie jest kopią RoadHaul albo jest uszkodzony.',
+  'restore.unsealed': 'Ta kopia została zmieniona po utworzeniu albo pochodzi ze starszej wersji RoadHaul: nie można jej przywrócić.',
   'restore.tooNew': 'Ta kopia pochodzi z nowszej wersji RoadHaul. Najpierw zaktualizuj grę.',
   'restore.failed': 'Nie udało się przywrócić kopii: pamięć urządzenia jest pełna lub wyłączona.',
   'restore.done': '{company} wraca. Ponowne uruchamianie…',

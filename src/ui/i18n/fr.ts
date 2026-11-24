@@ -1237,6 +1237,7 @@ export const FR: StringTable = {
   'backup.none': 'Il n’y a pas encore d’entreprise à sauvegarder.',
   'backup.failed': 'La sauvegarde n’a pas pu être créée.',
   'restore.unreadable': 'Ce fichier n’est pas une sauvegarde RoadHaul, ou il est endommagé.',
+  'restore.unsealed': 'Cette sauvegarde a été modifiée après sa création, ou vient d’une ancienne version de RoadHaul : elle ne peut pas être restaurée.',
   'restore.tooNew': 'Cette sauvegarde vient d’une version plus récente de RoadHaul. Mets d’abord le jeu à jour.',
   'restore.failed': 'La sauvegarde n’a pas pu être restaurée : le stockage de l’appareil est plein ou désactivé.',
   'restore.done': '{company} est de retour. Redémarrage…',

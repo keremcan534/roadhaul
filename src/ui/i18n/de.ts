@@ -1237,6 +1237,7 @@ export const DE: StringTable = {
   'backup.none': 'Es gibt noch keine Firma zum Sichern.',
   'backup.failed': 'Die Sicherung konnte nicht erstellt werden.',
   'restore.unreadable': 'Diese Datei ist keine RoadHaul-Sicherung oder sie ist beschädigt.',
+  'restore.unsealed': 'Diese Sicherung wurde nach dem Erstellen verändert oder stammt aus einer älteren RoadHaul-Version: Sie kann nicht wiederhergestellt werden.',
   'restore.tooNew': 'Diese Sicherung stammt aus einer neueren Version von RoadHaul. Aktualisiere zuerst das Spiel.',
   'restore.failed': 'Die Sicherung konnte nicht geladen werden: Der Speicher des Geräts ist voll oder aus.',
   'restore.done': '{company} ist zurück. Neustart…',

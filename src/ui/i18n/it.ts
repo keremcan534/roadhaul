@@ -1237,6 +1237,7 @@ export const IT: StringTable = {
   'backup.none': 'Non c’è ancora nessuna azienda di cui fare il backup.',
   'backup.failed': 'Impossibile creare il backup.',
   'restore.unreadable': 'Quel file non è un backup di RoadHaul, oppure è danneggiato.',
+  'restore.unsealed': 'Quel backup è stato modificato dopo essere stato creato, oppure viene da una versione precedente di RoadHaul: non può essere ripristinato.',
   'restore.tooNew': 'Quel backup viene da una versione più recente di RoadHaul. Aggiorna prima il gioco.',
   'restore.failed': 'Impossibile ripristinare il backup: la memoria del dispositivo è piena o disattivata.',
   'restore.done': '{company} è tornata. Riavvio…',

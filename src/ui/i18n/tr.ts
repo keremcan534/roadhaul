@@ -1237,6 +1237,7 @@ export const TR: StringTable = {
   'backup.none': 'Henüz yedeklenecek bir şirket yok.',
   'backup.failed': 'Yedek oluşturulamadı.',
   'restore.unreadable': 'Bu dosya bir RoadHaul yedeği değil ya da bozuk.',
+  'restore.unsealed': 'Bu yedek oluşturulduktan sonra değiştirilmiş ya da RoadHaul’un eski bir sürümünden kalma: geri yüklenemez.',
   'restore.tooNew': 'Bu yedek RoadHaul’ın daha yeni bir sürümünden. Önce oyunu güncelle.',
   'restore.failed': 'Yedek geri yüklenemedi: cihazın depolama alanı dolu ya da kapalı.',
   'restore.done': '{company} geri geldi. Yeniden başlatılıyor…',
