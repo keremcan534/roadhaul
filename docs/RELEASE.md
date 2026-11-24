@@ -288,6 +288,16 @@ so Google Play shows crash reports with the code's real names; nothing to upload
 classes or resources by name needs its keep rules (`android/app/proguard-rules.pro`, `res/raw/keep.xml`); try the
 release build on a phone after adding one.
 
+**Start every release bundle before it is uploaded**, on a phone or an emulator with Google Play services: the checks
+above and the e2e tests never start the Android app. 156 (Android Gradle plugin 9) crashed at every launch: AGP 9's R8
+no longer keeps a class's default constructor for a library's `-keep class` rule, and WorkManager's Room database
+(`WorkDatabase_Impl`, made by reflection) lost its own. 157 went back to AGP 8.13. The check: make a universal APK
+from the bundle (`bundletool build-apks --mode=universal`, signed with the debug key), install it over the version
+before, open the game, and read `adb logcat`: no `FATAL EXCEPTION`, the ads SDK's `This request is sent from a test
+device` (an emulator is a test device), and the main menu shows "Watch an ad" (a rewarded ad loaded). Before trying
+AGP 9 again: keep rules for the constructors found by reflection (`-keep class * extends
+androidx.room.RoomDatabase { <init>(); }` at least), and this check.
+
 ### 3. Upload it
 
 - **The first time: closed testing** (Test and release → Testing → Closed testing). Create a track, add the testers
