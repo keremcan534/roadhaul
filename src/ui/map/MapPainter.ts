@@ -80,6 +80,7 @@ const COLORS = {
   truckWash: '#2f9be8',
   lookout: '#2bb673',
   raceClub: '#d23c8c',
+  busStation: '#1f8a70',
   ferry: '#16a99c',
   ferryClosed: '#5b6b70',
   ferryGlow: 'rgb(22 169 156 / 35%)',
@@ -902,7 +903,7 @@ export function paintHome(context: CanvasRenderingContext2D, x: number, y: numbe
   context.fill();
 }
 
-/** A place's pin at (x, y): a cup for a diner, a drop for a truck wash, two hills for a lookout, white on the place's colour. */
+/** A place's pin at (x, y): a cup for a diner, a drop for a truck wash, two hills for a lookout, a coach for a coach station, white on the place's colour. */
 export function paintPlace(context: CanvasRenderingContext2D, x: number, y: number, kind: PlaceKind): void {
   disc(context, x, y, 9.5, COLORS.truckEdge);
   disc(context, x, y, 8, COLORS[kind]);
@@ -922,6 +923,16 @@ export function paintPlace(context: CanvasRenderingContext2D, x: number, y: numb
     context.arc(x, y + 1.6, 3.6, 0, Math.PI);
     context.quadraticCurveTo(x - 4.5, y, x, y - 5.5);
     context.fill();
+  } else if (kind === 'busStation') {
+    // A coach from the side: its body, a row of windows, two wheels.
+    context.fillRect(x - 5.5, y - 3.5, 11, 6);
+    context.fillStyle = COLORS.busStation;
+    for (let window = 0; window < 3; window++) {
+      context.fillRect(x - 4.3 + window * 3.1, y - 2.5, 2.3, 2);
+    }
+    context.fillStyle = '#ffffff';
+    disc(context, x - 3, y + 3, 1.4, '#ffffff');
+    disc(context, x + 3, y + 3, 1.4, '#ffffff');
   } else if (kind === 'raceClub') {
     // A checkered flag on its staff.
     context.fillRect(x - 4.5, y - 5, 1.2, 10);

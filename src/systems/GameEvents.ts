@@ -366,6 +366,41 @@ export interface GameEvents {
     readonly seconds: number;
     readonly crate: CrateTier | null;
   };
+  /** A run of a coach line began at a coach station (CoachLineService): the coach is driven, the truck waits. */
+  CoachLineStarted: {
+    readonly placeId: string;
+    readonly stops: number;
+  };
+  /**
+   * The coach stopped at a stop of its line (CoachLineService): `stopIndex` (1 for the first town), how many got
+   * off and on, and how late it was against the timetable (negative: early), seconds.
+   */
+  CoachStopServed: {
+    readonly stopIndex: number;
+    readonly cityId: string | null;
+    readonly off: number;
+    readonly on: number;
+    readonly lateSeconds: number;
+  };
+  /**
+   * A run of a coach line ended (CoachLineService): finished at its last stop or given up, what it paid and
+   * earned. The truck is driven again.
+   */
+  CoachLineEnded: {
+    readonly placeId: string;
+    readonly finished: boolean;
+    readonly stopsServed: number;
+    readonly stops: number;
+    readonly onTimeStops: number;
+    readonly comfort: number;
+    readonly passengers: number;
+    readonly fares: Credits;
+    readonly onTimeBonus: Credits;
+    readonly comfortBonus: Credits;
+    readonly total: Credits;
+    readonly xp: number;
+    readonly stars: 0 | 1 | 2 | 3;
+  };
   /** The race car struck something (DrivingService while racing): the truck's VehicleCollided, for the race car. */
   RaceCarCollided: {
     readonly impactSpeedMetersPerSecond: number;

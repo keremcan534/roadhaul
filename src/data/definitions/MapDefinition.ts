@@ -159,7 +159,7 @@ export interface RestAreaDefinition {
 }
 
 /** What there is to do at a place to visit (PlaceDefinition). */
-export const PLACE_KINDS = ['diner', 'truckWash', 'lookout', 'raceClub'] as const;
+export const PLACE_KINDS = ['diner', 'truckWash', 'lookout', 'raceClub', 'busStation'] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 
 /**
@@ -167,7 +167,8 @@ export type PlaceKind = (typeof PLACE_KINDS)[number];
  * building of its kind on its back half. Stopping on it the first time pays
  * a finder's reward; the diner serves the day's Yard Jam puzzle, the truck
  * wash a scrub, the lookout a view, the race club a street race to
- * `raceTo`. Ids end up in saves (the places found).
+ * `raceTo`, the coach station a run of its coach line through the towns.
+ * Ids end up in saves (the places found).
  */
 export interface PlaceDefinition {
   /** Stable snake_case id, unique across the maps. */

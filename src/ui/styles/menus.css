@@ -4235,3 +4235,67 @@ html[data-photo='on'] body > :not(#game-canvas, .photo-mode) {
 .race-result__prize[hidden] {
   display: none;
 }
+
+/* ---- A run of a coach line's result (src/ui/menus/CoachResultDialog.ts) ---- */
+
+.coach-result {
+  z-index: 12;
+  background: var(--rh-scrim);
+}
+
+.coach-result__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 380px);
+  text-align: center;
+}
+
+.coach-result__icon {
+  width: 40px;
+  height: 40px;
+  color: #1f8a70;
+  --rh-icon-accent: #5ee0bd;
+}
+
+.coach-result__stars {
+  margin: 0;
+  color: #ffd35a;
+  font-size: 28px;
+  letter-spacing: 4px;
+}
+
+.coach-result__stars[hidden] {
+  display: none;
+}
+
+.coach-result__lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coach-result__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--rh-fg-2);
+  font: 500 14px/1.35 var(--rh-text);
+}
+
+.coach-result__amount {
+  color: var(--rh-fg);
+  font-family: var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+}
+
+.coach-result__total {
+  margin: 0 0 6px;
+  color: var(--rh-fg);
+  font: 600 16px/1.35 var(--rh-text);
+}

@@ -1513,6 +1513,10 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   --place-color: #d23c8c;
 }
 
+.place-panel[data-kind='busStation'] {
+  --place-color: #1f8a70;
+}
+
 /* ---- A street race (src/ui/hud/RaceHud.ts): the place, the clock and the way left at the top; the lights big ---- */
 
 /* While racing, the company's buttons and the contract's sign stand aside. */
@@ -2046,4 +2050,125 @@ html[data-race='on'] .mission-hud {
 .on-foot-button[data-state='walkBack'] {
   color: var(--rh-fg-2);
   opacity: 0.8;
+}
+
+/* ---- A run of a coach line (src/ui/hud/CoachHud.ts): the next stop, the timetable, the people and the comfort ---- */
+
+/* While the coach is driven, the company's buttons and the contract's sign stand aside. */
+html[data-coach='on'] .hud-dock,
+html[data-coach='on'] .mission-hud {
+  display: none;
+}
+
+.coach-hud[hidden],
+.coach-hud__doors[hidden] {
+  display: none;
+}
+
+.coach-hud__bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--rh-plate-line);
+  border-top: 3px solid #1f8a70;
+  border-radius: var(--rh-radius);
+  background: var(--rh-plate-strong);
+  box-shadow: var(--rh-shadow-small);
+  color: var(--rh-fg);
+  font: 600 15px/1.2 var(--rh-numeric);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.coach-hud__stop {
+  color: #5ee0bd;
+  font-family: var(--rh-display);
+  font-size: 16px;
+}
+
+.coach-hud__timetable,
+.coach-hud__people {
+  color: var(--rh-fg-2);
+  font-size: 13px;
+}
+
+.coach-hud__timetable[data-state='late'] {
+  color: #ff8a7a;
+}
+
+.coach-hud__timetable[data-state='due'] {
+  color: #ffd35a;
+}
+
+.coach-hud__comfort {
+  display: inline-flex;
+  align-items: center;
+}
+
+.coach-hud__meter {
+  position: relative;
+  display: block;
+  width: 56px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 15%);
+}
+
+.coach-hud__meter-fill {
+  position: absolute;
+  inset: 0;
+  background: #3ddc84;
+  transform-origin: left center;
+  transition: transform 0.3s ease-out;
+}
+
+.coach-hud__comfort[data-state='fair'] .coach-hud__meter-fill {
+  background: #ffd35a;
+}
+
+.coach-hud__comfort[data-state='poor'] .coach-hud__meter-fill {
+  background: #ff6b5a;
+}
+
+.coach-hud__quit {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.coach-hud__doors {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 66px);
+  left: 50%;
+  z-index: 3;
+  margin: 0;
+  padding: 5px 14px;
+  border-radius: 14px;
+  background: rgb(31 138 112 / 88%);
+  color: #fff;
+  font: 600 14px/1.3 var(--rh-text);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+@media (orientation: portrait) {
+  .coach-hud__bar {
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 10px;
+    max-width: calc(100vw - 24px);
+    font-size: 14px;
+  }
+
+  .coach-hud__doors {
+    top: calc(env(safe-area-inset-top, 0px) + 150px);
+  }
 }

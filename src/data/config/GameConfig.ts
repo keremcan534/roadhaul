@@ -426,6 +426,42 @@ export interface GameConfig {
     /** The crates for the podium, first place first. */
     readonly podiumCrates: readonly CrateTier[];
   };
+  /** The coach stations' coach lines (CoachLineService): the owner's bus job. */
+  readonly coachLines: {
+    /** Stops on a line: the station's own, then one in each town, the nearest town first. */
+    readonly stops: number;
+    /** A town's bus stop serves its line when it stands within this of the town's depot, meters. */
+    readonly townReachMeters: number;
+    /** A line is no longer than this by road: fewer towns rather than a run too long, meters. */
+    readonly longestMeters: number;
+    readonly seats: number;
+    /** People waiting at a stop, from–to: more in the rush hours, fewer at night. */
+    readonly waiting: readonly [number, number];
+    /** The share of the people on board who get off at a town's stop (all of them at the last). */
+    readonly alightShare: number;
+    /** A fare, credits a person, paid as they get off. */
+    readonly fareCredits: Credits;
+    /** The coach is at a stop within this of it, meters, going no faster than stopSpeed (m/s). */
+    readonly stopRadiusMeters: number;
+    readonly stopSpeed: number;
+    /** At a stop the doors take this long, seconds, and every person getting off or on this long more. */
+    readonly doorSeconds: number;
+    readonly secondsPerPerson: number;
+    /** The timetable drives each road at this share of its speed limit. */
+    readonly timetablePace: number;
+    /** No later than this at a stop is on time, seconds. */
+    readonly lateGraceSeconds: number;
+    /** Comfort (100 at the start): a pull along or across the road beyond gentlePull (m/s²) costs comfortPerPull points per m/s² over it a second, a knock comfortPerKnock. */
+    readonly gentlePull: number;
+    readonly comfortPerPull: number;
+    readonly comfortPerKnock: number;
+    /** On top of the fares: this share of them for a run on time at every stop… */
+    readonly onTimeBonusShare: number;
+    /** …and up to this share for comfort (all of it at 100). */
+    readonly comfortBonusShare: number;
+    /** Experience for each person carried. */
+    readonly xpPerPassenger: number;
+  };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
     /** A delivery of the company's own earns a point per this many credits of its pay, at least this many… */
@@ -926,6 +962,29 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     pace: { topSpeed: 50, corner: 8.5, accelerate: 4.6, brake: 7 },
     podiumCrates: ['gold', 'silver', 'bronze'],
   },
+  coachLines: {
+    stops: 5,
+    townReachMeters: 1200,
+    // About twelve minutes at the timetable's pace.
+    longestMeters: 11_000,
+    seats: 40,
+    waiting: [3, 11],
+    alightShare: 0.4,
+    // A run of four towns carries thirty people or so: a little over a long contract's pay for about as long a drive.
+    fareCredits: 70,
+    stopRadiusMeters: 12,
+    stopSpeed: 0.8,
+    doorSeconds: 3,
+    secondsPerPerson: 0.7,
+    timetablePace: 0.85,
+    lateGraceSeconds: 60,
+    gentlePull: 2.2,
+    comfortPerPull: 5,
+    comfortPerKnock: 15,
+    onTimeBonusShare: 0.25,
+    comfortBonusShare: 0.25,
+    xpPerPassenger: 4,
+  },
   weeklyCup: {
     creditsPerPoint: 100,
     leastDeliveryPoints: 5,
@@ -1077,6 +1136,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     convoy,
     places,
     races,
+    coachLines,
     weeklyCup,
     usedTrucks,
     roadEvents,
@@ -1397,6 +1457,34 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   for (const key of ['gapSeconds', 'aheadMeters', 'routeMeters'] as const) {
     const [least, most] = convoy[key];
     validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
+  }
+  for (const key of [
+    'stops',
+    'townReachMeters',
+    'longestMeters',
+    'seats',
+    'fareCredits',
+    'stopRadiusMeters',
+    'stopSpeed',
+    'doorSeconds',
+    'secondsPerPerson',
+    'timetablePace',
+    'lateGraceSeconds',
+    'gentlePull',
+    'comfortPerPull',
+    'comfortPerKnock',
+    'xpPerPassenger',
+  ] as const) {
+    validator.positiveNumber(coachLines[key], `coachLines.${key}`);
+  }
+  validator.check(coachLines.stops >= 2, 'coachLines.stops', 'must be the station and at least one town');
+  validator.check(
+    coachLines.waiting[0] >= 0 && coachLines.waiting[1] >= coachLines.waiting[0],
+    'coachLines.waiting',
+    'must be a range from 0 up, the least first',
+  );
+  for (const key of ['alightShare', 'onTimeBonusShare', 'comfortBonusShare'] as const) {
+    validator.check(coachLines[key] >= 0 && coachLines[key] <= 1, `coachLines.${key}`, 'must be a share, 0 to 1');
   }
   validator.positiveNumber(races.countdownSeconds, 'races.countdownSeconds');
   validator.check(

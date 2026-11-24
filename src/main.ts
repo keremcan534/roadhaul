@@ -156,6 +156,10 @@ import { RaceHud } from './ui/hud/RaceHud';
 import { OnFootButton } from './ui/hud/OnFootButton';
 import { RaceResultDialog } from './ui/menus/RaceResultDialog';
 import { RACE_CAR } from './data/content/raceCar';
+import { COACH } from './data/content/coach';
+import { CoachView } from './presentation/vehicles/CoachView';
+import { CoachHud } from './ui/hud/CoachHud';
+import { CoachResultDialog } from './ui/menus/CoachResultDialog';
 import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
 import { ControlsDialog } from './ui/menus/ControlsDialog';
@@ -458,6 +462,9 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const places = services.resolve(ServiceKeys.places);
   const autoDrive = services.resolve(ServiceKeys.autoDrive);
   const race = services.resolve(ServiceKeys.race);
+  const coachLines = services.resolve(ServiceKeys.coachLines);
+  /** The truck waits while another vehicle is driven: a race car or a coach line's coach. */
+  const otherVehicle = (): boolean => race.active || coachLines.active;
   const requestedRoad = requestedRoadEvent(query);
   if (requestedRoad === 'stranded') {
     roadEvents.sendStrandedDriver();
@@ -747,6 +754,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const cameraRig = new CameraRig(renderHost.camera, driving.definition.body, driving.definition.trailer ?? null);
   // A street race's cars: the player's while it is driven, and the club's rivals (RaceService).
   const raceCars = new RaceCarsView(renderHost.scene, RACE_CAR.body, RACE_CAR.factoryColor);
+  // A coach line's coach while it is driven, and the beacon over its next stop (CoachLineService).
+  const coachView = new CoachView(renderHost.scene, COACH.body, COACH.factoryColor, config.coachLines.stopRadiusMeters);
   /** The driver on foot, out of the truck (OnFootService). */
   const driverFigure = new DriverFigureView(renderHost.scene);
   cameraRig.currentMode = settings.camera;
@@ -1006,6 +1015,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     if (current !== 'driving') {
       autoDrive.disengage('switchedOff'); // Off the road: nobody drives.
       race.quit(); // Nor races: the truck is driven again.
+      coachLines.quit(); // Nor coach lines.
     }
   });
   // The crates, over the company panel or the result: earned for perfect streaks, levels, the daily reward, the day's
@@ -1415,6 +1425,16 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           toasts.show(strings.t(`race.refused.${started.error}`), 'warning');
         }
       },
+      onCoach: () => {
+        const station = places.current;
+        if (station === null) {
+          return;
+        }
+        const started = coachLines.start(station);
+        if (!started.ok) {
+          toasts.show(strings.t(`coach.refused.${started.error}`), 'warning');
+        }
+      },
     },
     {
       get contractUnderWay() {
@@ -1430,6 +1450,15 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           }
         }
         return nearest === undefined ? '' : strings.cityName(nearest.cityId);
+      },
+    },
+    {
+      lineOf: (station) => {
+        const line = coachLines.lineFrom(station);
+        const last = line?.stops[line.stops.length - 1];
+        return line === null || last === undefined || last.cityId === null
+          ? null
+          : { towns: line.stops.length - 1, lastTown: strings.cityName(last.cityId), minutes: Math.ceil(last.dueSeconds / 60) };
       },
     },
   );
@@ -1448,6 +1477,23 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       raceResult.open(result);
     }
   });
+  // A run of a coach line over the road, and how it ended.
+  const coachHud = new CoachHud(ui, strings, coachLines, () => navigation.distanceMeters, () => coachLines.quit());
+  const coachResult = new CoachResultDialog(ui, strings, () => coachResult.close());
+  events.on('CoachLineStarted', () => {
+    root.dataset.coach = 'on';
+    cameraRig.setBody(COACH.body, null);
+    navigation.refresh();
+  });
+  events.on('CoachLineEnded', (result) => {
+    root.dataset.coach = 'off';
+    cameraRig.setBody(driving.definition.body, driving.definition.trailer ?? null);
+    navigation.refresh();
+    // Given up by leaving the road (the main menu): nothing to show there.
+    if (gameState.current === 'driving') {
+      coachResult.open(result);
+    }
+  });
   // The cab's tablet, while auto-drive drives: Memory, and Yard Jam for fun (the drive goes on under it).
   const tablet = new CabTablet(ui, strings, Math.random, {
     onYardJam: () => openYardJam(false, false),
@@ -1456,7 +1502,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   /** Auto-drive on or off (V, or its switch on the sign); a toast says why it will not. */
   /** Out of the truck standing still, or back in at the cab's door (Enter, or the HUD's button). */
   const stepOutOrIn = (): void => {
-    if (!onRoad() || paused || race.active) {
+    if (!onRoad() || paused || otherVehicle()) {
       return;
     }
     if (onFoot.active) {
@@ -2553,7 +2599,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * was moving, traffic and weather wait with it, else the world goes on.
    */
   const openPanel = (tab: HqTab): void => {
-    if (!isDriving() || paused || result.isOpen || race.active) {
+    if (!isDriving() || paused || result.isOpen || otherVehicle()) {
       return;
     }
     if (hq.isOpen) {
@@ -2632,7 +2678,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
    * nowhere (menus, pause, a result, the cab's tablet, or the rest area's counter in its place).
    */
   const hintPlace = (): TutorialPlace | null => {
-    if (!isDriving() || paused || result.isOpen || tablet.isOpen || race.active) {
+    if (!isDriving() || paused || result.isOpen || tablet.isOpen || otherVehicle()) {
       return null;
     }
     if (hq.isOpen) {
@@ -3193,7 +3239,18 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     // Debug: T parks the truck in the bay the mission needs next, Y at the first rest area, G at the nearest place to
     // visit; F runs the fleet and the rivals 10 minutes on.
     window.addEventListener('keydown', (event) => {
-      if (event.repeat || !onRoad() || paused || race.active) {
+      if (event.repeat || !onRoad() || paused) {
+        return;
+      }
+      if (coachLines.active) {
+        // T: the coach at its next stop.
+        const stop = coachLines.navTarget;
+        if (event.code === 'KeyT' && stop !== null) {
+          driving.placeTruck(stop.x, stop.z, stop.heading);
+        }
+        return;
+      }
+      if (otherVehicle()) {
         return;
       }
       if (event.code === 'KeyF') {
@@ -3309,6 +3366,18 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
             driving.step(stepSeconds, driverInput);
             horn.update(stepSeconds);
             crashes.update(stepSeconds);
+          }
+          return;
+        }
+        // A coach line's run: the coach driven through the towns' stops, the GPS leading to the next, the truck waiting.
+        if (coachLines.active) {
+          coachLines.update(stepSeconds, driverInput);
+          if (coachLines.active) {
+            driving.step(stepSeconds, driverInput);
+            turnSignals.update(stepSeconds, driving.vehicle);
+            horn.update(stepSeconds);
+            crashes.update(stepSeconds);
+            navigation.update(stepSeconds);
           }
           return;
         }
@@ -3461,8 +3530,19 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         } else {
           truck.update(pose, vehicle, simulating ? deltaSeconds : 0, bodyPose, shownTrailer);
         }
-        raceCars.update(driving.racing, pose, bodyPose, race, raceGround, RACE_CAR.body.wheelbaseMeters);
+        raceCars.update(driving.racing && race.active, pose, bodyPose, race, raceGround, RACE_CAR.body.wheelbaseMeters);
         raceHud.update(deltaSeconds);
+        coachView.update(
+          coachLines,
+          pose,
+          bodyPose,
+          COACH.body.wheelbaseMeters,
+          raceGround,
+          renderHost.camera.position.x,
+          renderHost.camera.position.z,
+          deltaSeconds,
+        );
+        coachHud.update(deltaSeconds);
         cameraRig.setTrailerPose(shownTrailer);
         // What was knocked over leaves its place; it and the wrecks tumble about, between steps like the truck.
         const world = driving.world;
@@ -3623,13 +3703,13 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           hq.tick();
         }
         worldMap.frame();
-        restArea.visible = simulating && !race.active && !onFoot.active;
+        restArea.visible = simulating && !otherVehicle() && !onFoot.active;
         restArea.update();
-        placePanel.visible = simulating && !race.active && !onFoot.active;
-        onFootButton.visible = simulating && !race.active;
+        placePanel.visible = simulating && !otherVehicle() && !onFoot.active;
+        onFootButton.visible = simulating && !otherVehicle();
         onFootButton.update(deltaSeconds);
         placePanel.update();
-        ferry.visible = simulating && !race.active && !onFoot.active;
+        ferry.visible = simulating && !otherVehicle() && !onFoot.active;
         ferry.update();
         // Up on two wheels: a warning. Over, and about at rest: a way back onto its wheels.
         const sliding = Math.hypot(vehicle.speed, vehicle.slipSpeed);

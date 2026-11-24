@@ -19,6 +19,12 @@ export interface PlacePanelRaces {
   finishName(place: PlaceDefinition): string;
 }
 
+/** A coach station's line, as the panel tells it (CoachLineService). */
+export interface PlacePanelCoaches {
+  /** The line from a coach station: the towns it calls at, the last one's name and the timetable's minutes; null for none. */
+  lineOf(place: PlaceDefinition): { readonly towns: number; readonly lastTown: string; readonly minutes: number } | null;
+}
+
 /** What the panel's buttons do. */
 export interface PlacePanelActions {
   /** The diner: the day's Yard Jam, or one for fun once it is solved. */
@@ -29,6 +35,8 @@ export interface PlacePanelActions {
   readonly onPhoto: () => void;
   /** The race club: a street race. */
   readonly onRace: () => void;
+  /** The coach station: a run of its coach line. */
+  readonly onCoach: () => void;
 }
 
 /** What the day's puzzle and the wash pay, for the panel's lines. */
@@ -55,7 +63,7 @@ export class PlacePanel {
   /** Continue was pressed at this place: stay closed until the truck leaves it. */
   private dismissedAt: PlaceDefinition | null = null;
   private shown: PlaceDefinition | null = null;
-  /** What the shown lines were written for: done today (or for a race club, whether it can race and how many left). */
+  /** What the shown lines were written for: done today (for a race club whether it can race and how many left; for a coach station −1 with a contract under way). */
   private shownDone: boolean | number = false;
 
   constructor(
@@ -65,6 +73,7 @@ export class PlacePanel {
     private readonly rewards: PlaceRewards,
     private readonly actions: PlacePanelActions,
     private readonly races: PlacePanelRaces,
+    private readonly coaches: PlacePanelCoaches,
   ) {
     const document = parent.ownerDocument;
     this.root = element(document, 'div', 'place-panel');
@@ -132,6 +141,9 @@ export class PlacePanel {
 
   /** What the lines depend on: done today, or for a race club its races left (−1 with a contract under way). */
   private doneToday(place: PlaceDefinition): boolean | number {
+    if (place.kind === 'busStation') {
+      return this.races.contractUnderWay ? -1 : 1;
+    }
     if (place.kind === 'raceClub') {
       return this.races.contractUnderWay ? -1 : this.places.racesLeftToday;
     }
@@ -168,6 +180,20 @@ export class PlacePanel {
         );
         setText(this.action, strings.t('place.race.start'));
         break;
+      case 'busStation': {
+        const line = this.coaches.lineOf(place);
+        setText(
+          this.line,
+          done === -1
+            ? strings.t('place.coach.contract')
+            : line === null
+              ? strings.t('place.coach.none')
+              : strings.t('place.coach.line', { count: line.towns, city: line.lastTown, minutes: line.minutes }),
+        );
+        setText(this.action, strings.t('place.coach.start'));
+        this.action.disabled = done === -1 || line === null;
+        return;
+      }
     }
     this.action.disabled = place.kind === 'raceClub' && (done === -1 || done === 0);
   }
@@ -183,6 +209,8 @@ export class PlacePanel {
       this.actions.onWash();
     } else if (place.kind === 'raceClub') {
       this.actions.onRace();
+    } else if (place.kind === 'busStation') {
+      this.actions.onCoach();
     } else {
       this.actions.onPhoto();
     }
