@@ -650,6 +650,14 @@ On 2026-11-15 Google Play's Android vitals showed a user-perceived ANR rate of 7
 |---|---|---|
 | The crates' chests | ✅ | The owner: the crates looked cheap and were cut off. The crates' stage drew a box in CSS; it is now the tier's painted chest (`src/ui/crateArt.ts`, `src/ui/images/crates/`): wood banded in iron for bronze, silver, gold, each with a gem on its lock, and burst open full of gems when it opens (shown 0.9 s before the reward, then faint behind it). The studio's own art, from the chests of its gem game (`autopublisher/workspaces/gem-art-art/play/chest-*.png`, 1254 px), cropped and made 320 px WebP: six images, 151 KB, loaded the first time a crate is shown. The slots, a delivery's crate and a level's crate show the same chests; the buttons keep the `crate` glyph. On a phone on its side the dialog lays the slots beside the chest, the title beside the tabs, and keeps Open another and Close in view: nothing to scroll |
 
+### Fewer hitches on entry phones (between steps 28 and 29)
+
+| Item | Status | Notes |
+|---|---|---|
+| The near ground moving on | ✅ | The owner: the game stutters more with each thing added. CPU profiles of the performance run (`npm run perf`, entry phone, 10× CPU slowdown) showed the near ground's refill (`TerrainGround.fill`, every 128 m the camera moves) as a 55–60 ms frame: each of its 16,641 vertices read the terrain five times (itself and four neighbours, for its slope), and its bounds were worked out though it is never culled. The heights are now read once into a grid a cell wider (the same slopes from it, a fifth of the reads), no bounds. |
+| A batch of tiles first drawn on the road | ✅ | three.js works out a BatchedMesh's bounds the first time it draws it (to sort it), going over every tile and every vertex: a batch with no tile near at the start did that on the road, 34 ms on an entry phone. `TileBatch` works them out as it is built, while the world loads (the tiles never move). |
+| Result | ✅ | Entry phone, longest frame: night city 115 → 38 ms, Metropol 131 → 64 ms, highway about 50 ms as before; the low phone's under 20 ms in every scene (was up to 43). The boot about as long (the work moved there is small). What is left: the garbage collector's pauses (100 ms now and then on an entry phone: about 1.4 MB a second allocated, most of it in three.js's uniform uploads) |
+
 ## Next step: 29 Device testing
 
 Suggested request:

@@ -51,6 +51,8 @@ export class TerrainGround {
   private centreX = Number.NaN;
   private centreZ = Number.NaN;
   private readonly side = NEAR_GROUND_METERS / NEAR_GROUND_CELL_METERS + 1;
+  /** The near ground's heights and a cell round them (its edge's slopes), read once a fill and kept: no allocation. */
+  private readonly heights = new Float32Array((NEAR_GROUND_METERS / NEAR_GROUND_CELL_METERS + 3) ** 2);
 
   constructor(
     private readonly terrain: Terrain,
@@ -73,7 +75,9 @@ export class TerrainGround {
     }
     const farSide = Math.ceil(sizeMeters / FAR_GROUND_CELL_METERS) + 1;
     const far = gridGeometry(farSide);
-    this.fill(far, -half, -half, (sizeMeters / (farSide - 1)));
+    this.fill(far, -half, -half, sizeMeters / (farSide - 1));
+    far.computeBoundingSphere();
+    far.computeBoundingBox();
     indexBlocks(far, farSide, FAR_BLOCK_CELLS);
     this.far = new Mesh(far, farMaterial);
     this.far.name = 'ground:far';
@@ -84,7 +88,11 @@ export class TerrainGround {
     this.near.frustumCulled = false;
   }
 
-  /** Moves the near ground on to the camera at (x, z) when it has gone far enough. Cheap unless it moves. */
+  /**
+   * Moves the near ground on to the camera at (x, z) when it has gone far
+   * enough. Cheap unless it moves; then a frame's work on an entry phone
+   * (about a fifth of what it was: each height read once, no bounds).
+   */
   update(x: number, z: number): void {
     if (Math.abs(x - this.centreX) < RECENTRE_METERS && Math.abs(z - this.centreZ) < RECENTRE_METERS) {
       return;
@@ -103,7 +111,14 @@ export class TerrainGround {
     this.near.geometry.dispose();
   }
 
-  /** Sets a grid's vertices on the terrain from (x0, z0), `cell` apart: heights, uvs, tints lit by their slope. */
+  /**
+   * Sets a grid's vertices on the terrain from (x0, z0), `cell` apart:
+   * heights, uvs, tints lit by their slope. The near ground's slopes come
+   * from its neighbours' heights, read once into `heights` (the terrain is
+   * read a fifth as often as a vertex at a time); the far ground's, coarser
+   * than the slopes it shows, from the terrain beside each vertex. The near
+   * ground is never culled, so no bounds are worked out for it.
+   */
   private fill(geometry: BufferGeometry, x0: number, z0: number, cell: number): void {
     const positions = geometry.getAttribute('position') as BufferAttribute;
     const colors = geometry.getAttribute('color') as BufferAttribute;
@@ -115,20 +130,32 @@ export class TerrainGround {
     const c = colors.array as Float32Array;
     const u = uvs.array as Float32Array;
     const step = Math.min(cell, NEAR_GROUND_CELL_METERS);
+    // On the grid's own spacing the neighbours either side are its vertices: their heights, read once, a cell round.
+    const grid = step === cell;
+    const outer = side + 2;
+    const h = this.heights;
+    if (grid) {
+      for (let j = -1; j <= side; j++) {
+        for (let i = -1; i <= side; i++) {
+          h[(j + 1) * outer + i + 1] = terrain.heightAt(x0 + i * cell, z0 + j * cell);
+        }
+      }
+    }
     for (let j = 0; j < side; j++) {
       const z = z0 + j * cell;
       for (let i = 0; i < side; i++) {
         const x = x0 + i * cell;
         const v = j * side + i;
-        const height = terrain.heightAt(x, z);
+        const at = (j + 1) * outer + i + 1;
+        const height = grid ? h[at]! : terrain.heightAt(x, z);
         p[v * 3] = x;
         p[v * 3 + 1] = height;
         p[v * 3 + 2] = z;
         u[v * 2] = 0.5 + x / size;
         u[v * 2 + 1] = 0.5 - z / size;
         // The slope's normal from the heights either side, lit by the fixed sun and the sky.
-        const nx = terrain.heightAt(x - step, z) - terrain.heightAt(x + step, z);
-        const nz = terrain.heightAt(x, z - step) - terrain.heightAt(x, z + step);
+        const nx = grid ? h[at - 1]! - h[at + 1]! : terrain.heightAt(x - step, z) - terrain.heightAt(x + step, z);
+        const nz = grid ? h[at - outer]! - h[at + outer]! : terrain.heightAt(x, z - step) - terrain.heightAt(x, z + step);
         const ny = 2 * step;
         const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
         const facing = (nx * SUN.x + ny * SUN.y + nz * SUN.z) / length;
@@ -140,8 +167,6 @@ export class TerrainGround {
     positions.needsUpdate = true;
     colors.needsUpdate = true;
     uvs.needsUpdate = true;
-    geometry.computeBoundingSphere();
-    geometry.computeBoundingBox();
   }
 
   /** The tint at (x, z) times `light`, into `out` at `at`. */
