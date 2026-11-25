@@ -70,6 +70,12 @@ export class TileBatch {
       (attribute as BufferAttribute).clearUpdateRanges();
     }
     this.mesh.geometry.index?.clearUpdateRanges();
+    // Its bounds now, while the world loads: three.js works them out the first time the batch is drawn (to sort it), going
+    // over every tile and every vertex, and a batch first shown on the road (none of its tiles near at the start) did
+    // that in one frame, 34 ms on an entry phone. The tiles never move, so the bounds hold; each tile's are kept too.
+    if (geometries.length > 0) {
+      this.mesh.computeBoundingSphere();
+    }
     this.mesh.visible = geometries.length > 0;
   }
 
