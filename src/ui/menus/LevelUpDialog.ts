@@ -3,6 +3,7 @@ import type { CrateTier } from '../../data/config/GameConfig';
 import { button, element } from '../dom';
 import type { Strings } from '../i18n';
 import { icon, withIcon } from '../icons';
+import { crateImage } from '../crateArt';
 import type { IconName } from '../iconShapes';
 
 export interface LevelUpActions {
@@ -102,7 +103,7 @@ export class LevelUpDialog {
     const crate = element(document, 'div', 'level-up__reward level-up__reward--crate');
     crate.dataset.tier = level.crate;
     crate.append(
-      icon(document, 'crate', 'level-up__reward-icon'),
+      crateImage(document, level.crate, 'level-up__reward-art'),
       element(document, 'span', 'level-up__reward-value', strings.t(`crate.name.${level.crate}`)),
     );
     rewards.append(money, crate);

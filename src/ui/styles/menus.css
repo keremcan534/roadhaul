@@ -2214,12 +2214,12 @@
   animation: daily-pop 520ms var(--rh-ease) 1500ms both;
 }
 
-.result-dialog__crate-icon {
+.result-dialog__crate-art {
   flex: none;
-  width: 34px;
-  height: 34px;
-  color: var(--crate-colour);
-  --rh-icon-accent: var(--rh-sign-yellow);
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 45%));
 }
 
 .result-dialog__crate-name {
@@ -2532,11 +2532,12 @@
   --crate-rgb: 255 203 69;
 }
 
-.crates__slot-icon {
-  width: 28px;
-  height: 28px;
-  color: var(--crate-colour);
-  --rh-icon-accent: var(--rh-sign-yellow);
+.crates__slot-art {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 45%));
+  pointer-events: none;
 }
 
 .crates__slot-name {
@@ -2766,8 +2767,8 @@
 .crate-box {
   position: relative;
   display: block;
-  width: 120px;
-  height: 104px;
+  width: 136px;
+  height: 136px;
   padding: 0;
   border: 0;
   background: none;
@@ -2779,59 +2780,34 @@
   cursor: default;
 }
 
-.crate-box__lid,
-.crate-box__body {
+/* The chest (src/ui/crateArt.ts): the tier's painted chest, closed, and burst open in its place. */
+.crate-art {
   position: absolute;
-  left: 0;
+  inset: 0;
   width: 100%;
-  box-sizing: border-box;
-  border: 3px solid var(--crate-colour);
-  background:
-    linear-gradient(90deg, transparent 18%, var(--crate-colour) 18% 26%, transparent 26% 74%, var(--crate-colour) 74% 82%, transparent 82%),
-    repeating-linear-gradient(180deg, #7a4a24 0 12px, #6a3f1e 12px 14px);
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
-.crate-box__lid {
-  top: 0;
-  height: 36px;
-  border-radius: 10px 10px 3px 3px;
-  transform-origin: 50% 100%;
+.crate-art--open {
+  opacity: 0;
 }
 
-.crate-box__body {
-  bottom: 0;
-  height: 70px;
-  border-radius: 3px 3px 8px 8px;
+.crates__stage[data-state='burst'] .crate-art--closed,
+.crates__stage[data-state='opened'] .crate-art--closed {
+  opacity: 0;
 }
 
-.crate-box__lock {
-  position: absolute;
-  top: -12px;
-  left: 50%;
-  width: 22px;
-  height: 26px;
-  margin-left: -11px;
-  border-radius: 4px 4px 11px 11px;
-  background: radial-gradient(circle at 50% 40%, #241500 18%, transparent 20%), linear-gradient(180deg, #ffe08a, var(--rh-sign-yellow) 50%, #c98a12);
-  box-shadow: 0 0 8px rgb(255 211 77 / 60%);
+.crates__stage[data-state='burst'] .crate-art--open,
+.crates__stage[data-state='opened'] .crate-art--open {
+  opacity: 1;
+  animation: crate-pop 480ms cubic-bezier(0.2, 1.5, 0.4, 1) both;
 }
 
-.crates__stage[data-tier='silver'] .crate-box__lid,
-.crates__stage[data-tier='silver'] .crate-box__body {
-  background:
-    linear-gradient(90deg, transparent 18%, var(--crate-colour) 18% 26%, transparent 26% 74%, var(--crate-colour) 74% 82%, transparent 82%),
-    repeating-linear-gradient(180deg, #5b6470 0 12px, #4c545e 12px 14px);
-}
-
-.crates__stage[data-tier='gold'] .crate-box__lid,
-.crates__stage[data-tier='gold'] .crate-box__body {
-  background:
-    linear-gradient(90deg, transparent 18%, var(--crate-colour) 18% 26%, transparent 26% 74%, var(--crate-colour) 74% 82%, transparent 82%),
-    repeating-linear-gradient(180deg, #3a2a52 0 12px, #2f2244 12px 14px);
-}
-
-/* Waiting, the crate bobs inside its button, which stays still to be tapped. */
-.crates__stage[data-state='closed'] .crate-box:not(:disabled) > span {
+.crates__stage[data-state='closed'] .crate-box:not(:disabled) > .crate-art--closed {
   animation: crate-bob 1.6s ease-in-out infinite;
 }
 
@@ -2847,14 +2823,9 @@
   animation: crate-shake-harder 300ms ease-in-out;
 }
 
-.crates__stage[data-state='burst'] .crate-box__lid,
-.crates__stage[data-state='opened'] .crate-box__lid {
-  animation: crate-lid 600ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
-}
-
 .crates__stage[data-state='opened'] .crate-box {
-  opacity: 0;
-  transform: scale(0.7);
+  opacity: 0.4;
+  transform: scale(0.9);
   transition:
     opacity 300ms,
     transform 300ms;
@@ -3032,14 +3003,13 @@
   }
 }
 
-@keyframes crate-lid {
+@keyframes crate-pop {
   0% {
-    transform: none;
+    transform: scale(0.8);
   }
 
   100% {
-    transform: translateY(-70px) rotate(-28deg);
-    opacity: 0;
+    transform: none;
   }
 }
 
@@ -3050,20 +3020,106 @@
   }
 
   .crate-box {
-    width: 96px;
-    height: 84px;
-  }
-
-  .crate-box__lid {
-    height: 29px;
-  }
-
-  .crate-box__body {
-    height: 56px;
+    width: 112px;
+    height: 112px;
   }
 
   .crates__intro {
     display: none;
+  }
+}
+
+/* A phone on its side: the crates and the offers on the left, the chest on the right, all in view without scrolling. */
+@media (orientation: landscape) and (max-height: 500px) {
+  /* The title and the tabs share the top row. */
+  .crates__panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-content: start;
+    gap: 10px 16px;
+    width: min(100%, 720px);
+    padding: 12px 16px 14px;
+  }
+
+  .crates__panel > .crates__page,
+  .crates__panel > .crates__choices {
+    grid-column: 1 / -1;
+  }
+
+  .crates__page[data-page='crates']:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    align-items: start;
+    gap: 8px 14px;
+  }
+
+  .crates__page[data-page='crates'] > .crates__offers,
+  .crates__page[data-page='crates'] > .crates__slots,
+  .crates__page[data-page='crates'] > .crates__empty,
+  .crates__page[data-page='crates'] > .crates__paints {
+    grid-column: 1;
+  }
+
+  .crates__page[data-page='crates'] > .crates__stage {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    min-height: 140px;
+  }
+
+  .crates__page[data-page='crates'] > .crates__hint {
+    grid-row: 3;
+    grid-column: 2;
+  }
+
+  .crates__offers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crates__slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crates__slot {
+    min-height: 42px;
+    padding: 3px 4px;
+  }
+
+  .crates__slot-art {
+    width: 30px;
+    height: 30px;
+  }
+
+  .crates__page[data-page='crates'] > .crates__paints {
+    grid-row: 3;
+    grid-column: 1;
+  }
+
+  .crates__head .panel__title {
+    font-size: 18px;
+  }
+
+  .crates__icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .crates__tab {
+    min-height: 32px;
+    padding: 4px;
+  }
+
+  .crates__offer {
+    padding: 5px 8px;
+  }
+
+  /* Open another and Close stay in view at the panel's foot. */
+  .crates__choices {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding-top: 6px;
+    background: linear-gradient(transparent, var(--rh-surface) 30%);
   }
 }
 
@@ -3196,6 +3252,13 @@
   height: 34px;
   color: var(--crate-colour);
   --rh-icon-accent: var(--rh-sign-yellow);
+}
+
+.level-up__reward-art {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 45%));
 }
 
 .level-up__reward-value {
@@ -3386,7 +3449,7 @@
   .crates__hint,
   .crates__rays,
   .crates__stage .crate-box,
-  .crates__stage .crate-box__lid,
+  .crates__stage .crate-art,
   .crates__stage .daily__coin,
   .crates__spark,
   .crates__credits,
@@ -3399,7 +3462,6 @@
   .level-up__reward,
   .level-up__unlock,
   .level-up__collect::after,
-  .crates__stage .crate-box > span,
   .level-up__burst .daily__coin {
     animation: none;
   }
