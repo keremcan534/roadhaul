@@ -4,6 +4,7 @@ import type { PaintRarity } from '../../data/definitions/PaintDefinition';
 import type { QuestMetric } from '../../data/definitions/QuestDefinition';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
+import { CRATE_ART, crateImage } from '../crateArt';
 import { icon, withIcon } from '../icons';
 import type { IconName } from '../iconShapes';
 
@@ -85,7 +86,7 @@ export interface CratesShown {
 /** How the crate opens: three shakes, each this long, then the burst; the reward shows this long after it. */
 const SHAKE_MS = 330;
 const SHAKES = 3;
-const REVEAL_MS = 380;
+const REVEAL_MS = 900;
 const COINS = 18;
 const SPARKS = 14;
 /** The crates' slots: this many shown, the rest counted on the last. */
@@ -114,10 +115,10 @@ const BOOSTER_ICONS: Readonly<Record<BoosterKind, IconName>> = {
  *
  * - Crates: the free crate (collected when ready, else when it will be), a
  *   crate for a rewarded ad (a few a day), the crates held in their slots,
- *   and the stage, where the chosen crate stands glowing in its tier's
- *   colour. A tap shakes it three times, harder each time, then it bursts:
- *   the lid flies off, light wheels behind, coins and sparks fly and the
- *   reward pops up (the credits; parts, a booster; a crate colour as a
+ *   and the stage, where the chosen crate's chest (crateArt.ts) stands
+ *   glowing in its tier's colour. A tap shakes it three times, harder each
+ *   time, then it bursts: the chest pops open, full of what it held, light
+ *   wheels behind, coins and sparks fly and the reward pops up (the credits; parts, a booster; a crate colour as a
  *   swatch, in its rarity's glow).
  * - Quests: the day's three (QuestService), each with its bar and its
  *   crate, collected once done; all three, a bonus crate.
@@ -141,6 +142,9 @@ export class CrateDialog {
   private readonly slots: HTMLDivElement;
   private readonly stage: HTMLDivElement;
   private readonly box: HTMLButtonElement;
+  /** The chosen crate's chest, closed and burst open (its tier's images, set in reset()). */
+  private readonly closedArt: HTMLImageElement;
+  private readonly openArt: HTMLImageElement;
   private readonly hint: HTMLParagraphElement;
   private readonly reward: HTMLDivElement;
   private readonly burst: HTMLDivElement;
@@ -217,10 +221,18 @@ export class CrateDialog {
     this.box.className = 'crate-box';
     this.box.dataset.action = 'open-crate';
     this.box.setAttribute('aria-label', strings.t('crates.openOne'));
-    const lid = element(document, 'span', 'crate-box__lid');
-    const body = element(document, 'span', 'crate-box__body');
-    body.append(element(document, 'span', 'crate-box__lock'));
-    this.box.append(lid, body);
+    this.closedArt = document.createElement('img');
+    this.openArt = document.createElement('img');
+    for (const [art, className] of [
+      [this.closedArt, 'crate-art crate-art--closed'],
+      [this.openArt, 'crate-art crate-art--open'],
+    ] as const) {
+      art.className = className;
+      art.alt = '';
+      art.draggable = false;
+      art.decoding = 'async';
+    }
+    this.box.append(this.closedArt, this.openArt);
     this.box.addEventListener('click', () => this.open());
     this.burst = element(document, 'div', 'crates__burst');
     this.burst.setAttribute('aria-hidden', 'true');
@@ -400,7 +412,7 @@ export class CrateDialog {
       card.dataset.tier = tier;
       card.classList.toggle('is-chosen', tier === this.tier);
       card.replaceChildren(
-        icon(document, 'crate', 'crates__slot-icon'),
+        crateImage(document, tier, 'crates__slot-art'),
         element(document, 'span', 'crates__slot-name', this.strings.t(`crate.name.${tier}`)),
       );
       const more = held.length - SLOTS;
@@ -533,6 +545,12 @@ export class CrateDialog {
     }
     this.stage.dataset.tier = this.tier;
     this.stage.dataset.state = 'closed';
+    // The images load the first time a crate is shown, not with the game.
+    const art = CRATE_ART[this.tier];
+    if (this.closedArt.getAttribute('src') !== art.closed) {
+      this.closedArt.src = art.closed;
+      this.openArt.src = art.open;
+    }
     delete this.stage.dataset.rarity;
     this.reward.replaceChildren();
     this.burst.replaceChildren();

@@ -644,6 +644,12 @@ On 2026-11-15 Google Play's Android vitals showed a user-perceived ANR rate of 7
 | A run of the line | ✅ | The coach (12 m, lent for the run, the traffic's bus shape in green) is driven as the race car is, the truck waiting at the station; no run with a contract under way. At each stop, standing beside it, the doors open: a share of those on board get off, paying their fares (70 credits each), and the people waiting get on (3 to 11, half as many again in the rush hours, a third at night; 40 seats), held for the doors' time. The GPS, its line on the road and a ring and light pillar lead to the next stop; the bar says the stop, the distance, the timetable (due in, or how late) and the comfort, which hard pulls (over 2.2 m/s² along or across) and knocks with people on board cost. At the last stop all get off: the fares, a quarter more for every stop on time, up to a quarter more for comfort, 1–3 stars and 4 XP a passenger (a run of 25 people, on time and smooth: 2,625 credits). Given up, the fares of those already off. Not saved: a run belongs to the session, like a race |
 | Not yet | ⏳ | Town loops with more stops (the towns have one shelter a street: 22 in North Valley), the people walking to the door, the coach's own sounds (doors, kneeling), a coach of the company's own and hired drivers on the lines, night lines; the event venues (a stadium, a funfair) and their match-day charters |
 
+### Painted crates (between steps 28 and 29)
+
+| Item | Status | Notes |
+|---|---|---|
+| The crates' chests | ✅ | The owner: the crates looked cheap and were cut off. The crates' stage drew a box in CSS; it is now the tier's painted chest (`src/ui/crateArt.ts`, `src/ui/images/crates/`): wood banded in iron for bronze, silver, gold, each with a gem on its lock, and burst open full of gems when it opens (shown 0.9 s before the reward, then faint behind it). The studio's own art, from the chests of its gem game (`autopublisher/workspaces/gem-art-art/play/chest-*.png`, 1254 px), cropped and made 320 px WebP: six images, 151 KB, loaded the first time a crate is shown. The slots, a delivery's crate and a level's crate show the same chests; the buttons keep the `crate` glyph. On a phone on its side the dialog lays the slots beside the chest, the title beside the tabs, and keeps Open another and Close in view: nothing to scroll |
+
 ## Next step: 29 Device testing
 
 Suggested request:

@@ -9,6 +9,7 @@ import { button, element } from '../dom';
 import { routeText } from '../hq/jobCards';
 import type { Strings } from '../i18n';
 import { icon, withIcon } from '../icons';
+import { crateImage } from '../crateArt';
 
 /** Where the player goes from the result: back on the road, or to the job board for the next contract. */
 export type ResultChoice = 'road' | 'jobs';
@@ -184,7 +185,7 @@ export class ResultDialog {
         'crate',
       );
       card.append(
-        icon(document, 'crate', 'result-dialog__crate-icon'),
+        crateImage(document, crate, 'result-dialog__crate-art'),
         element(document, 'span', 'result-dialog__crate-name', strings.t('result.crateEarned', { crate: strings.t(`crate.name.${crate}`) })),
         open,
       );
