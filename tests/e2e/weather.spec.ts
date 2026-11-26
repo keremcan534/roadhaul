@@ -118,8 +118,9 @@ test('lays a morning mist at sunrise, and none when the address clears it', asyn
 
   // The mist's light veils the hills and the horizon: the band across them is lighter. Drawn in software, only the
   // sky and its hills take the mist (the land's costs too much there), so the band shows less of it than a GPU would;
-  // and the mountains' crests rise out of it.
-  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.03);
+  // and the mountains' crests rise out of it. In CI's software drawing the band comes out about 3% lighter, give or
+  // take the dawn's minute: 2% is the veil there, without the test failing on the minute.
+  expect(brightness(misty)).toBeGreaterThan(brightness(clear) * 1.02);
   expect(problems).toEqual([]);
 });
 
