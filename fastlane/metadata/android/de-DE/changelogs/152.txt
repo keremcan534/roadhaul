@@ -1,0 +1,1 @@
+Das Spiel füllt jetzt auf jeder Android-Version den ganzen Bildschirm von Rand zu Rand, die Oberfläche bleibt frei von Notches. Kleine Fehlerbehebungen.

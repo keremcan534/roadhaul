@@ -320,7 +320,11 @@ export class PostProcessing {
       this.pictureTarget === null
         ? null
         : pass(
-            { tDiffuse: { value: this.pictureTarget.texture }, resolution: { value: new Vector2() } },
+            {
+              tDiffuse: { value: this.pictureTarget.texture },
+              resolution: { value: new Vector2() },
+              sharpness: { value: SHARPNESS_MIN },
+            },
             FXAA_FRAGMENT,
           );
     this.quad = new Mesh(new PlaneGeometry(2, 2), this.composite);
@@ -337,6 +341,13 @@ export class PostProcessing {
   /** Whether FXAA smooths the finished picture's edges. */
   get fxaaSmoothing(): boolean {
     return this.fxaa !== null;
+  }
+
+  /** How much the FXAA pass sharpens (SHARPNESS_MIN to SHARPNESS_MAX); nothing without that pass. */
+  setSharpness(amount: number): void {
+    if (this.fxaa !== null) {
+      this.fxaa.uniforms['sharpness']!.value = Math.min(SHARPNESS_MAX, Math.max(SHARPNESS_MIN, amount));
+    }
   }
 
   /** Sizes the targets to the drawing buffer, `width` × `height` pixels. Not per frame. */
@@ -547,10 +558,33 @@ export function sunOnPicture(camera: PerspectiveCamera, direction: Readonly<{ x:
  * into their neighbours at half its strength: stars and far lamps, a pixel
  * or two across, keep their sparkle.
  */
-export const FXAA_FRAGMENT = FXAAShader.fragmentShader.replace(
-  'float _SubpixelBlending = 1.0;',
-  'float _SubpixelBlending = 0.5;',
-);
+/**
+ * Sharpening after FXAA, at least and at most: FXAA softens the whole
+ * picture a little, and a picture drawn with fewer pixels than the screen's
+ * is softened again as the screen stretches it. A light unsharp mask on the
+ * smoothed pixel against its four neighbours (`sharpness`, RenderHost:
+ * more the fewer pixels are drawn), held between their darkest and
+ * brightest so no halo rings an edge, gives the detail back for four
+ * texture reads.
+ */
+export const SHARPNESS_MIN = 0.12;
+export const SHARPNESS_MAX = 0.45;
+
+export const FXAA_FRAGMENT = `uniform float sharpness;
+${FXAAShader.fragmentShader
+  .replace('float _SubpixelBlending = 1.0;', 'float _SubpixelBlending = 0.5;')
+  .replace(
+    'gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );',
+    `vec4 smoothed = ApplyFXAA( tDiffuse, resolution.xy, vUv );
+			vec3 north = texture( tDiffuse, vUv + vec2( 0.0, resolution.y ) ).rgb;
+			vec3 south = texture( tDiffuse, vUv - vec2( 0.0, resolution.y ) ).rgb;
+			vec3 east = texture( tDiffuse, vUv + vec2( resolution.x, 0.0 ) ).rgb;
+			vec3 west = texture( tDiffuse, vUv - vec2( resolution.x, 0.0 ) ).rgb;
+			vec3 darkest = min( min( min( north, south ), min( east, west ) ), smoothed.rgb );
+			vec3 brightest = max( max( max( north, south ), max( east, west ) ), smoothed.rgb );
+			vec3 sharpened = smoothed.rgb + sharpness * ( 4.0 * smoothed.rgb - north - south - east - west );
+			gl_FragColor = vec4( clamp( sharpened, darkest, brightest ), smoothed.a );`,
+  )}`;
 
 /**
  * A full-screen pass's material: no depth, no blending unless set, and its

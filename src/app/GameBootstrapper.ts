@@ -602,6 +602,8 @@ export class GameBootstrapper {
           logger.withCategory('Achievements'),
         ),
       );
+      // The pack designs that playing earns too: the goals come after the designs.
+      liveries.attachGoals(achievements);
       // The day's quests: their kilometres from the session (made below).
       const quests = container.register(
         ServiceKeys.quests,

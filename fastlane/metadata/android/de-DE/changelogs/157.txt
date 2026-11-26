@@ -1,0 +1,1 @@
+Behebt, dass sich das Spiel nach dem letzten Update gleich beim Start schloss. Entschuldigung! Außerdem: flüssigeres Fahren, ein scharfes Bild auf jeder Grafikstufe, Bremsen, die wie Bremsen klingen, und niedrigere Preise im Shop.

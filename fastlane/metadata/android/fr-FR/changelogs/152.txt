@@ -1,0 +1,1 @@
+Le jeu remplit désormais tout l'écran bord à bord sur toutes les versions d'Android, et l'interface reste à l'écart des encoches. Petites corrections.

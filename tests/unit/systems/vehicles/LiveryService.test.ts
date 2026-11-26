@@ -66,6 +66,21 @@ describe('LiveryService', () => {
     expect(game.monetization.premiumPaintAccess).toBe('owned');
   });
 
+  it('also gives a pack\'s design for reaching its goal by playing, with how far the company has come shown', async () => {
+    const game = await newCompany(1, 0);
+    const neon = () => game.liveries.offers().find((candidate) => candidate.livery.id === 'neon')!;
+    // Not yet: the goal (company level 5) and the way there; no shop on the web game, but the goal is a way to it.
+    expect(neon()).toMatchObject({ way: 'pack', owned: false, unavailable: false, inShop: false });
+    expect(neon().goal).toMatchObject({ achievementId: 'level_5', metric: 'companyLevel', target: 5, reached: false });
+    expect(neon().goal!.progress).toBe(1);
+    // Reached by playing: the company's, the pack never bought.
+    reachLevel(game, 5);
+    expect(neon()).toMatchObject({ owned: true, goal: { reached: true } });
+    expect(game.liveries.apply(game.garage.activeTruck.instanceId, 'neon').ok).toBe(true);
+    // Every pack's design is earned by playing too.
+    expect(LIVERIES.filter((livery) => livery.pack !== undefined).every((livery) => livery.earnedBy !== undefined)).toBe(true);
+  });
+
   it('letters the company\'s trailers, and keeps it all in the save', async () => {
     const game = await newCompany(1, 10_000);
     expect(game.liveries.setTrailerText('Kuzey lojistik', 'tr')).toEqual({ ok: true, value: 'KUZEY LOJİSTİK' });

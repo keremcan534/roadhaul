@@ -1,0 +1,1 @@
+Game kini memenuhi seluruh layar dari tepi ke tepi di semua versi Android, dan antarmuka tidak tertutup notch. Perbaikan kecil.

@@ -288,6 +288,8 @@ so Google Play shows crash reports with the code's real names; nothing to upload
 classes or resources by name needs its keep rules (`android/app/proguard-rules.pro`, `res/raw/keep.xml`); try the
 release build on a phone after adding one.
 
+**Release notes go in two places:** the release tool's `metadata/roadhaul/<locale>/changelogs/<build>.txt` (what Google Play shows) and this repository's `fastlane/metadata/android/<locale>/changelogs/<build>.txt` (what the game's What's New shows, with the releases before it). A build without its own file in the repository shows `default.txt` in the game.
+
 **Start every release bundle before it is uploaded**, on a phone or an emulator with Google Play services: the checks
 above and the e2e tests never start the Android app. 156 (Android Gradle plugin 9) crashed at every launch: AGP 9's R8
 no longer keeps a class's default constructor for a library's `-keep class` rule, and WorkManager's Room database

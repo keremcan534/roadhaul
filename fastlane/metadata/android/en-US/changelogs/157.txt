@@ -1,0 +1,1 @@
+Fixes the game closing right at the start after the last update. Sorry! Also in it: smoother driving, a sharp picture on every graphics setting, brakes that sound like brakes and lower prices in the shop.

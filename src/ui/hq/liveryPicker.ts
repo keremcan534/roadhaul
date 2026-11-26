@@ -116,9 +116,25 @@ export function liveryPicker(
       card.append(element(document, 'span', 'livery-card__status', strings.t('hq.livery.fromCrate', { rarity })));
     } else if (offer.way === 'pack' && livery.pack !== undefined) {
       const pack = strings.t(`product.${livery.pack}.name`);
+      const goal = offer.goal;
+      if (goal !== null) {
+        // Earned by playing, or now with the pack: the goal and how far the company has come.
+        const status = element(
+          document,
+          'span',
+          'livery-card__status livery-card__goal',
+          strings.t('hq.livery.earn', {
+            goal: strings.t(`achievement.metric.${goal.metric}`),
+            progress: strings.number(Math.min(goal.progress, goal.target)),
+            target: strings.number(goal.target),
+          }),
+        );
+        status.dataset.value = 'livery-goal';
+        card.append(status);
+      }
       if (offer.unavailable) {
         card.append(element(document, 'span', 'livery-card__status', strings.t('hq.livery.inPack', { pack })));
-      } else {
+      } else if (offer.inShop) {
         const shop = button(document, 'button--secondary livery-card__action', pack, 'livery-pack', actions.onOpenShop);
         card.append(withIcon(shop, 'truck'));
       }

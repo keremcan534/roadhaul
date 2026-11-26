@@ -304,6 +304,8 @@ declare const __APP_VERSION__: string;
 declare const __APP_BUILD__: string;
 /** This build's release notes in each language (vite.config.ts: the store listing's changelogs), for What's New. */
 declare const __RELEASE_NOTES__: Readonly<Record<string, string>>;
+/** The latest releases' notes, newest first (vite.config.ts: the numbered changelogs up to this build), for What's New. */
+declare const __RELEASE_HISTORY__: readonly { readonly build: string; readonly notes: Readonly<Record<string, string>> }[];
 /** The ads this build shows (vite.config.ts, from ROADHAUL_ADS; docs/RELEASE.md): none, Google's test ads, or the game's own. */
 declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly rewarded: string; readonly interstitial: string };
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
@@ -989,6 +991,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       strings.t('toast.achievementReached', { goal: strings.t(`achievement.metric.${goal.metric}`), target: strings.number(goal.target) }),
       'success',
     );
+    // A pack's design that the goal earns (LiveryDefinition.earnedBy): the company's now, pack or not.
+    for (const livery of content.liveries.all) {
+      if (livery.earnedBy === achievementId && livery.pack !== undefined && !monetization.owns(livery.pack)) {
+        toasts.show(strings.t('toast.liveryEarned', { design: strings.t(`livery.${livery.id}.name`) }), 'success');
+      }
+    }
     showGoalsWaiting();
   });
   events.on('AchievementClaimed', showGoalsWaiting);
@@ -2254,7 +2262,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const openWhatsNew = (): void => {
     const notes = notesIn(__RELEASE_NOTES__, strings.language);
     if (notes !== null) {
-      whatsNew.open(notes, __APP_BUILD__ === DEVELOPMENT_BUILD ? __APP_VERSION__ : `${__APP_VERSION__} (${__APP_BUILD__})`);
+      // The patch notes: the releases before this one, newest first (this build's own notes are the first section).
+      const earlier = __RELEASE_HISTORY__.filter((release) => release.build !== __APP_BUILD__).flatMap((release) => {
+        const text = notesIn(release.notes, strings.language);
+        return text === null || text === notes ? [] : [{ build: release.build, notes: text }];
+      });
+      whatsNew.open(notes, __APP_BUILD__ === DEVELOPMENT_BUILD ? __APP_VERSION__ : `${__APP_VERSION__} (${__APP_BUILD__})`, earlier);
     }
   };
   const restorePurchases = (): void => {

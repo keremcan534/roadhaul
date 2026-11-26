@@ -1,0 +1,1 @@
+O jogo agora ocupa a tela inteira de borda a borda em todas as versões do Android, e a interface fica longe do entalhe. Pequenas correções.

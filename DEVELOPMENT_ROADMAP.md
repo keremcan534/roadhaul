@@ -658,6 +658,15 @@ On 2026-11-15 Google Play's Android vitals showed a user-perceived ANR rate of 7
 | A batch of tiles first drawn on the road | ✅ | three.js works out a BatchedMesh's bounds the first time it draws it (to sort it), going over every tile and every vertex: a batch with no tile near at the start did that on the road, 34 ms on an entry phone. `TileBatch` works them out as it is built, while the world loads (the tiles never move). |
 | Result | ✅ | Entry phone, longest frame: night city 115 → 38 ms, Metropol 131 → 64 ms, highway about 50 ms as before; the low phone's under 20 ms in every scene (was up to 43). The boot about as long (the work moved there is small). What is left: the garbage collector's pauses (100 ms now and then on an entry phone: about 1.4 MB a second allocated, most of it in three.js's uniform uploads) |
 
+### Better ad rewards, patch notes, designs earned by playing, a sharper picture (between steps 28 and 29)
+
+| Item | Status | Notes |
+|---|---|---|
+| Rewarded ads pay more | ✅ | The owner: more than a quarter. The main menu's ad: +50% on every delivery for an hour (was +25%); after a delivery: half its pay more (was a quarter), from 150 to 4,000 credits (was 100 to 2,500). Still only when the player asks |
+| Patch notes in the main menu | ✅ | What's New (the main menu's newspaper button, and once after each update) showed the store's notes of the build only, and those of builds 150–159 lived only in the release tool's metadata, so the game showed the old `default.txt`. The notes are now in `fastlane/metadata/android/<locale>/changelogs/` too, and What's New lists the four releases before this one under its own notes (`__RELEASE_HISTORY__`, vite.config.ts). Every release adds its `<build>.txt` there as well as in the release tool's metadata (docs/RELEASE.md) |
+| Designs sold, or earned by playing | ✅ | The owner: things we can sell that playing also unlocks. Each design of the two shop packs is also earned by reaching a goal (`LiveryDefinition.earnedBy`, an achievement): flames 10 flawless deliveries, tiger 1,000 km, paint splash 15 upgrades fitted, neon company level 5, circuit 25 crates opened, synthwave 50 flawless deliveries. The garage shows the goal and how far the company has come beside the pack's button; reaching it, a toast. The pack sells the way round the goal: looks, never progress |
+| A sharper picture on mid-range phones | ✅ | The medium preset smooths the edges with FXAA, which softens the whole picture, and the screen stretches a picture drawn with fewer pixels than its own (the cap, the dynamic resolution). The FXAA pass now sharpens after smoothing (an unsharp mask against the four neighbours, held between their darkest and brightest: no halos), more the more the picture is stretched (`SHARPNESS_MIN`–`SHARPNESS_MAX`, RenderHost). Four texture reads; checked to compile and draw on WebGL2. Not seen on a phone yet |
+
 ## Next step: 29 Device testing
 
 Suggested request:

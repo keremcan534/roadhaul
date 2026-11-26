@@ -1,0 +1,1 @@
+Naprawia zamykanie się gry zaraz po uruchomieniu po ostatniej aktualizacji. Przepraszamy! Poza tym: płynniejsza jazda, ostry obraz przy każdym ustawieniu grafiki, hamulce brzmiące jak hamulce i niższe ceny w sklepie.

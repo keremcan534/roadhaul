@@ -1,0 +1,1 @@
+Gra wypełnia teraz cały ekran od krawędzi do krawędzi na każdej wersji Androida, a interfejs nie chowa się pod wcięciem. Drobne poprawki.
