@@ -7,7 +7,7 @@ export interface CoachHudSource {
   readonly stage: 'none' | 'atStop' | 'driving';
   /** The stop the coach is at or driving to (0: the station). */
   readonly stopIndex: number;
-  readonly line: { readonly stops: readonly { readonly cityId: string | null }[] } | null;
+  readonly line: { readonly stops: readonly { readonly cityId: string | null; readonly placeId: string | null }[] } | null;
   readonly onBoard: number;
   readonly seats: number;
   readonly comfort: number;
@@ -99,7 +99,9 @@ export class CoachHud {
     }
     this.shown = key;
     const cityId = stops[coach.stopIndex]?.cityId ?? null;
-    const place = cityId === null ? strings.t('coach.station') : strings.cityName(cityId);
+    const placeId = stops[coach.stopIndex]?.placeId ?? null;
+    // A stop at a place (the charter's stadium) by its name; a town's by the town's; the station's as the station.
+    const place = placeId !== null ? strings.t(`place.name.${placeId}`) : cityId === null ? strings.t('coach.station') : strings.cityName(cityId);
     setText(
       this.stop,
       atStop || distance === 0

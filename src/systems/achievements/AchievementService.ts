@@ -113,6 +113,12 @@ export class AchievementService {
     return this.content.achievements.all.map((definition) => this.viewOf(definition, values));
   }
 
+  /** One goal and how far the company has come; null for an id the content does not have. */
+  goal(achievementId: string): AchievementView | null {
+    const definition = this.content.achievements.find(achievementId);
+    return definition === undefined ? null : this.viewOf(definition, this.values());
+  }
+
   /** What each goal counts now, by metric (the career page shows some of them). */
   get measured(): Readonly<Record<AchievementMetric, number>> {
     return this.values();

@@ -1,0 +1,1 @@
+El juego ahora ocupa toda la pantalla de borde a borde en todas las versiones de Android, y la interfaz no queda bajo el notch. Pequeñas correcciones.

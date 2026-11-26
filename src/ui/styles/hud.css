@@ -1517,6 +1517,10 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   --place-color: #1f8a70;
 }
 
+.place-panel[data-kind='stadium'] {
+  --place-color: #7b5cd6;
+}
+
 /* ---- A street race (src/ui/hud/RaceHud.ts): the place, the clock and the way left at the top; the lights big ---- */
 
 /* While racing, the company's buttons and the contract's sign stand aside. */
@@ -1631,6 +1635,18 @@ html[data-race='on'] .mission-hud {
   margin: 0;
   color: var(--rh-fg-2);
   font: 400 13.5px/1.35 var(--rh-text);
+}
+
+/* A coach station's city line, under its coach line's. */
+.place-panel__city {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 400 13px/1.35 var(--rh-text);
+}
+
+.place-panel__city[hidden] {
+  display: none;
 }
 
 .place-panel__buttons {
@@ -1930,6 +1946,36 @@ html[data-race='on'] .mission-hud {
 
 .road-alert[hidden] {
   display: none;
+}
+
+/* A hitchhiker's chip (src/ui/hud/HitchChip.ts): over the road's alerts, the walker in the jacket's orange. */
+.hitch-chip {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 132px);
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px 5px 8px;
+  border: 1px solid rgb(255 122 26 / 70%);
+  border-radius: 20px;
+  background: var(--rh-plate);
+  color: var(--rh-fg);
+  font: 500 13px/1 var(--rh-numeric);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hitch-chip[hidden] {
+  display: none;
+}
+
+.hitch-chip__icon {
+  width: 18px;
+  height: 18px;
+  color: #ff7a1a;
 }
 
 .road-alert[data-alert='works'],

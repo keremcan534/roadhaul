@@ -10,6 +10,7 @@ import type { ResearchService } from '../systems/company/ResearchService';
 import type { CareerService } from '../systems/company/CareerService';
 import type { RoadEventService } from '../systems/world/RoadEventService';
 import type { ConvoyService } from '../systems/world/ConvoyService';
+import type { HitchhikerService } from '../systems/world/HitchhikerService';
 import type { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
 import type { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
 import type { RoadPassService } from '../systems/rewards/RoadPassService';
@@ -118,6 +119,8 @@ export const ServiceKeys = Object.freeze({
   roadEvents: serviceKey<RoadEventService>('RoadEventService'),
   /** Convoys to ride with. */
   convoy: serviceKey<ConvoyService>('ConvoyService'),
+  /** Hitchhikers to give a lift. */
+  hitchhikers: serviceKey<HitchhikerService>('HitchhikerService'),
   /** The company levels' rewards, waiting to be collected. */
   levelRewards: serviceKey<LevelRewardService>('LevelRewardService'),
   damage: serviceKey<DamageService>('DamageService'),

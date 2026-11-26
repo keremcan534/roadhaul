@@ -5,7 +5,10 @@ import { placeParts, PlacesView } from '../../../../src/presentation/world/Place
 
 /** A lot 44 m along +X and 30 m across, round (200, 80): its back (+1) is toward −Z (the left of +X). */
 const LOT = { x: 200, z: 80, headingDegrees: 90, lengthMeters: 44, widthMeters: 30 };
-const place = (kind: PlaceDefinition['kind']): PlaceDefinition => ({ id: `test_${kind}`, kind, lot: LOT });
+/** A stadium's lot is bigger: 100 m along and 64 across, its car park on the road's side (+Z). */
+const STADIUM_LOT = { ...LOT, lengthMeters: 100, widthMeters: 64 };
+const lotOf = (kind: PlaceDefinition['kind']) => (kind === 'stadium' ? STADIUM_LOT : LOT);
+const place = (kind: PlaceDefinition['kind']): PlaceDefinition => ({ id: `test_${kind}`, kind, lot: lotOf(kind) });
 
 function meshesOf(scene: Scene): Mesh[] {
   const meshes: Mesh[] = [];
@@ -50,15 +53,18 @@ describe('PlacesView', () => {
     expect(parts.length).toBeGreaterThan(3);
     // Within the lot (the sign's cup reaches a little over), off the ground no lower than it.
     expect(box.min.y).toBeGreaterThanOrEqual(-1e-6);
+    const lot = lotOf(kind);
     for (const corner of [new Vector3(box.min.x, 0, box.min.z), new Vector3(box.max.x, 0, box.max.z)]) {
-      expect(rectangleContains(LOT, corner.x, corner.z, 1)).toBe(true);
+      expect(rectangleContains(lot, corner.x, corner.z, 1)).toBe(true);
     }
-    // A truck stopped in the middle of the lot, 3 m either side of its line, meets nothing but the wash's portal.
+    // A truck stopped in the middle of the lot (a stadium's car park, 11 m in from the road), 3 m either side of its
+    // line, meets nothing but the wash's portal.
+    const stripZ = kind === 'stadium' ? lot.z + lot.widthMeters / 2 - 11 : lot.z;
     if (kind !== 'truckWash') {
       for (const part of parts) {
         part.computeBoundingBox();
         const { min, max } = part.boundingBox!;
-        const reachesStrip = min.z < LOT.z + 3 && max.z > LOT.z - 3 && min.x < LOT.x + 10 && max.x > LOT.x - 10 && min.y < 4;
+        const reachesStrip = min.z < stripZ + 3 && max.z > stripZ - 3 && min.x < lot.x + 10 && max.x > lot.x - 10 && min.y < 4;
         expect(reachesStrip).toBe(false);
       }
     }

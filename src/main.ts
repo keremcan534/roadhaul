@@ -58,7 +58,8 @@ import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
 import { shareFileInBrowser } from './platform/browser/fileShare';
-import type { GateDefinition } from './data/definitions/MapDefinition';
+import type { GateDefinition, RectangleDefinition } from './data/definitions/MapDefinition';
+import { lotBackSide, lotPoint } from './presentation/world/lotParts';
 import { leavePendingBoot, sessionStorageOf, takePendingBoot } from './platform/browser/pendingBoot';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
@@ -159,6 +160,8 @@ import { RACE_CAR } from './data/content/raceCar';
 import { COACH } from './data/content/coach';
 import { CoachView } from './presentation/vehicles/CoachView';
 import { CoachHud } from './ui/hud/CoachHud';
+import { HitchChip } from './ui/hud/HitchChip';
+import { HitchhikerView } from './presentation/world/HitchhikerView';
 import { CoachResultDialog } from './ui/menus/CoachResultDialog';
 import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
@@ -304,6 +307,8 @@ declare const __APP_VERSION__: string;
 declare const __APP_BUILD__: string;
 /** This build's release notes in each language (vite.config.ts: the store listing's changelogs), for What's New. */
 declare const __RELEASE_NOTES__: Readonly<Record<string, string>>;
+/** The latest releases' notes, newest first (vite.config.ts: the numbered changelogs up to this build), for What's New. */
+declare const __RELEASE_HISTORY__: readonly { readonly build: string; readonly notes: Readonly<Record<string, string>> }[];
 /** The ads this build shows (vite.config.ts, from ROADHAUL_ADS; docs/RELEASE.md): none, Google's test ads, or the game's own. */
 declare const __ADS__: { readonly mode: 'off' | 'test' | 'live'; readonly rewarded: string; readonly interstitial: string };
 /** The privacy policy, published with the game on GitHub Pages (public/privacy.html); Settings link to it. */
@@ -459,6 +464,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const career = services.resolve(ServiceKeys.career);
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
   const convoy = services.resolve(ServiceKeys.convoy);
+  const hitchhikers = services.resolve(ServiceKeys.hitchhikers);
   const places = services.resolve(ServiceKeys.places);
   const autoDrive = services.resolve(ServiceKeys.autoDrive);
   const race = services.resolve(ServiceKeys.race);
@@ -470,6 +476,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     roadEvents.sendStrandedDriver();
   } else if (requestedRoad === 'convoy') {
     convoy.sendConvoy();
+  } else if (requestedRoad === 'hitchhiker') {
+    hitchhikers.sendHitchhiker();
   }
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const review = services.resolve(ServiceKeys.review);
@@ -679,6 +687,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const cityLife = new CityLifeView(renderHost.scene, coast, driving.world.halfSizeMeters, prelit);
   // The road's events: the speed cameras, the day's road works, a stranded car.
   const roadEventsView = new RoadEventsView(renderHost.scene);
+  // A hitchhiker waiting by the road (HitchhikerService).
+  const hitchhikerView = new HitchhikerView(renderHost.scene);
   // Its cameras now, not on the first frame: in the scene before it is shaded and its shaders compiled.
   roadEventsView.setWorld(driving.world);
   // Tractors at work in the fields, by day, out of the rain and the winter.
@@ -989,6 +999,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       strings.t('toast.achievementReached', { goal: strings.t(`achievement.metric.${goal.metric}`), target: strings.number(goal.target) }),
       'success',
     );
+    // A pack's design that the goal earns (LiveryDefinition.earnedBy): the company's now, pack or not.
+    for (const livery of content.liveries.all) {
+      if (livery.earnedBy === achievementId && livery.pack !== undefined && !monetization.owns(livery.pack)) {
+        toasts.show(strings.t('toast.liveryEarned', { design: strings.t(`livery.${livery.id}.name`) }), 'success');
+      }
+    }
     showGoalsWaiting();
   });
   events.on('AchievementClaimed', showGoalsWaiting);
@@ -1425,12 +1441,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           toasts.show(strings.t(`race.refused.${started.error}`), 'warning');
         }
       },
-      onCoach: () => {
+      onCoach: (kind) => {
         const station = places.current;
         if (station === null) {
           return;
         }
-        const started = coachLines.start(station);
+        const started = coachLines.start(station, kind);
         if (!started.ok) {
           toasts.show(strings.t(`coach.refused.${started.error}`), 'warning');
         }
@@ -1453,13 +1469,33 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       },
     },
     {
-      lineOf: (station) => {
-        const line = coachLines.lineFrom(station);
-        const last = line?.stops[line.stops.length - 1];
-        return line === null || last === undefined || last.cityId === null
+      lineOf: (station, kind) => {
+        const line = coachLines.lineFrom(station, kind);
+        if (line === null) {
+          return null;
+        }
+        const last = line.stops[line.stops.length - 1]!;
+        if (kind === 'charter') {
+          // The fans' charter: a full coach to the stadium.
+          return last.placeId === null
+            ? null
+            : { stops: coachLines.seats, town: strings.t(`place.name.${last.placeId}`), minutes: Math.ceil(last.dueSeconds / 60) };
+        }
+        // The intercity line ends in its last town; the city line goes round its own town (its first shelter's) and back.
+        const town = kind === 'city' ? line.stops[1]!.cityId : last.cityId;
+        return town === null
           ? null
-          : { towns: line.stops.length - 1, lastTown: strings.cityName(last.cityId), minutes: Math.ceil(last.dueSeconds / 60) };
+          : {
+              stops: kind === 'city' ? line.stops.length - 2 : line.stops.length - 1,
+              town: strings.cityName(town),
+              minutes: Math.ceil(last.dueSeconds / 60),
+            };
       },
+      get matchPhase() {
+        return coachLines.matchPhase;
+      },
+      charterFrom: `${String(config.coachLines.charter.fromHour).padStart(2, '0')}:00`,
+      kickOff: `${String(config.coachLines.charter.kickOffHour).padStart(2, '0')}:00`,
     },
   );
   // The street race over the road, and how it ended.
@@ -1565,6 +1601,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   // The road's events: a camera or road works ahead, under the minimap; a camera's flash over the screen.
   const roadAlert = new RoadAlert(ui, strings);
+  const hitchChip = new HitchChip(ui, strings);
   const speedFlash = document.createElement('div');
   speedFlash.className = 'speed-flash';
   speedFlash.addEventListener('animationend', () => speedFlash.classList.remove('is-flashing'));
@@ -1591,6 +1628,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   });
   events.on('StrandedDriverAppeared', () => toasts.show(strings.t('road.stranded'), 'info'));
   events.on('ConvoyStarted', () => toasts.show(strings.t('road.convoy'), 'info'));
+  events.on('HitchhikerAppeared', () => toasts.show(strings.t('road.hitchhiker'), 'info'));
+  events.on('HitchhikerPickedUp', ({ cityId, meters }) =>
+    toasts.show(strings.t('road.hitchPickedUp', { city: strings.cityName(cityId), distance: strings.distance(Math.round(meters / 100) * 100) }), 'info'),
+  );
+  events.on('HitchhikerDroppedOff', ({ cityId, fare, xp }) => {
+    audio.chime();
+    toasts.show(strings.t('road.hitchPaid', { city: strings.cityName(cityId), fare: strings.money(fare), xp }), 'success');
+  });
   events.on('ConvoyEnded', ({ riddenMeters, reward }) => {
     if (reward > 0) {
       audio.chime();
@@ -2254,7 +2299,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const openWhatsNew = (): void => {
     const notes = notesIn(__RELEASE_NOTES__, strings.language);
     if (notes !== null) {
-      whatsNew.open(notes, __APP_BUILD__ === DEVELOPMENT_BUILD ? __APP_VERSION__ : `${__APP_VERSION__} (${__APP_BUILD__})`);
+      // The patch notes: the releases before this one, newest first (this build's own notes are the first section).
+      const earlier = __RELEASE_HISTORY__.filter((release) => release.build !== __APP_BUILD__).flatMap((release) => {
+        const text = notesIn(release.notes, strings.language);
+        return text === null || text === notes ? [] : [{ build: release.build, notes: text }];
+      });
+      whatsNew.open(notes, __APP_BUILD__ === DEVELOPMENT_BUILD ? __APP_VERSION__ : `${__APP_VERSION__} (${__APP_BUILD__})`, earlier);
     }
   };
   const restorePurchases = (): void => {
@@ -3260,6 +3310,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       }
       const target = missions.target;
       const restArea = driving.world.restAreas[0];
+      /** A stadium's car park, between the road and the stands (its lot's middle is the pitch). */
+      const stadiumCarPark = (lot: RectangleDefinition): RectangleDefinition => {
+        const [x, z] = lotPoint(lot, lotBackSide(lot, driving.world), 0, -lot.widthMeters / 2 + 11);
+        return { ...lot, x, z };
+      };
       // G: the nearest place to visit.
       let nearestPlace = driving.world.places[0];
       for (const place of driving.world.places) {
@@ -3274,7 +3329,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           : event.code === 'KeyY'
             ? restArea?.lot
             : event.code === 'KeyG'
-              ? nearestPlace?.lot
+              ? nearestPlace === undefined
+                ? undefined
+                : nearestPlace.kind === 'stadium'
+                  ? stadiumCarPark(nearestPlace.lot)
+                  : nearestPlace.lot
               : undefined;
       if (spot !== undefined) {
         const parked = bayParkingPose(spot, driving.definition.body, driving.definition.trailer);
@@ -3401,6 +3460,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         if (convoy.active || missions.convoy === null) {
           convoy.update(stepSeconds);
         }
+        hitchhikers.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -3499,6 +3559,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
         roadEventsView.setWorld(driving.world);
         roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy, missions.convoy);
+        hitchhikerView.setWorld(driving.world);
+        hitchhikerView.update(hitchhikers);
         if (cityLife.sounds.bursts > 0) {
           audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
         }
@@ -3725,6 +3787,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           roadEvents.cameraAheadIsWorks,
         );
         roadAlert.showConvoy(convoy.active, convoy.riding, convoy.riding ? convoy.riddenMetersSoFar : convoy.distanceMeters);
+        hitchChip.visible = simulating && !otherVehicle();
+        hitchChip.show(hitchhikers.stage, hitchhikers.destination?.cityId ?? null, hitchhikers.distanceMeters);
+        if (root.dataset.hitchhiker !== hitchhikers.stage) {
+          root.dataset.hitchhiker = hitchhikers.stage;
+        }
         const stranded = roadEvents.stranded === null ? 'none' : 'waiting';
         if (root.dataset.stranded !== stranded) {
           root.dataset.stranded = stranded;

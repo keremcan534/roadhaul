@@ -1,0 +1,1 @@
+Corrige el cierre del juego al iniciarse tras la última actualización. ¡Perdón! Además: conducción más fluida, imagen nítida en cualquier ajuste gráfico, frenos que suenan como frenos y precios más bajos en la tienda.

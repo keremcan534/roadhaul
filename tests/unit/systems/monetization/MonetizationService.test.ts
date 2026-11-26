@@ -28,6 +28,7 @@ const config = {
   interstitialFirstAfterDeliveries: 2,
   interstitialEveryDeliveries: 2,
   interstitialMinSeconds: 60,
+  earningsBoostShare: 0.25,
 };
 
 /** Ads that do what the test says: each rewarded ad ends as `next`. */

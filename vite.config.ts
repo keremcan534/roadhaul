@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
@@ -56,6 +56,38 @@ function releaseNotes(build: string): Record<string, string> {
     }
   }
   return notes;
+}
+
+/** What's New lists this many releases, this build's and the ones before it. */
+const RELEASES_SHOWN = 5;
+
+/**
+ * The latest releases' notes, newest first, each in every language that has them: the store listing's numbered
+ * changelogs up to this build (a desktop build, `dev`, takes the newest there are). What's New lists them under this
+ * build's own notes: the game's patch notes.
+ */
+function releaseHistory(build: string): { build: string; notes: Record<string, string> }[] {
+  const folderOf = (locale: string) => new URL(`./fastlane/metadata/android/${locale}/changelogs/`, import.meta.url);
+  const english = folderOf(LISTING_LOCALES.en);
+  if (!existsSync(english)) {
+    return [];
+  }
+  const newest = build === 'dev' ? Number.POSITIVE_INFINITY : Number(build);
+  const builds = readdirSync(english)
+    .map((file) => /^(\d+)\.txt$/.exec(file)?.[1])
+    .filter((number): number is string => number !== undefined && Number(number) <= newest)
+    .sort((a, b) => Number(b) - Number(a))
+    .slice(0, RELEASES_SHOWN);
+  return builds.map((number) => {
+    const notes: Record<string, string> = {};
+    for (const [language, locale] of Object.entries(LISTING_LOCALES)) {
+      const file = new URL(`${number}.txt`, folderOf(locale));
+      if (existsSync(file)) {
+        notes[language] = readFileSync(file, 'utf8').trim();
+      }
+    }
+    return { build: number, notes };
+  });
 }
 
 /** The packages the game ships (to the browser and in the Android app): their licences go with it. */
@@ -144,6 +176,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(packageJson.version),
     __APP_BUILD__: JSON.stringify(BUILD),
     __RELEASE_NOTES__: JSON.stringify(releaseNotes(BUILD)),
+    __RELEASE_HISTORY__: JSON.stringify(releaseHistory(BUILD)),
     __ADS__: JSON.stringify(ADS),
   },
   plugins: [openSourceLicenses(), buildInfo()],

@@ -72,7 +72,8 @@ function boardAndLeave(service: CoachLineService, driving: DrivingService) {
   }
 }
 
-describe('CoachLineService', () => {
+// Each run builds a game world (a few seconds on a busy machine).
+describe('CoachLineService', { timeout: 60_000 }, () => {
   it('runs only from a coach station, without a contract, the truck free', () => {
     const diner: PlaceDefinition = { ...STATION, kind: 'diner' };
     expect(setup().service.canStart(diner)).toEqual({ ok: false, error: 'notAStation' });
@@ -173,6 +174,58 @@ describe('CoachLineService', () => {
     expect(driving.racing).toBe(false);
     expect(ended[0]).toMatchObject({ finished: false, stars: 0, passengers: carried, onTimeBonus: 0, comfortBonus: 0 });
     expect(earned).toEqual(carried > 0 ? [[carried * config.fareCredits, 'coach']] : []);
+  });
+
+  it('runs the city line too: round the town and back, everyone off at the station, at the city fare', () => {
+    const { service, driving, events, ended, earned } = setup();
+    const started: GameEvents['CoachLineStarted'][] = [];
+    events.on('CoachLineStarted', (event) => started.push(event));
+    const city = service.lineFrom(STATION, 'city')!;
+    expect(city.kind).toBe('city');
+    expect(service.lineFrom(STATION, 'intercity')).not.toBe(city);
+    expect(service.canStart(STATION, 'city')).toEqual({ ok: true, value: undefined });
+
+    service.start(STATION, 'city');
+    expect(started).toEqual([{ placeId: STATION.id, kind: 'city', stops: city.stops.length }]);
+    expect(service.line).toBe(city);
+    boardAndLeave(service, driving);
+    for (let index = 1; index < city.stops.length; index++) {
+      arrive(service, driving);
+      boardAndLeave(service, driving);
+    }
+
+    expect(service.active).toBe(false);
+    const result = ended[0]!;
+    expect(result).toMatchObject({ kind: 'city', finished: true, stops: city.stops.length - 1, stars: 3 });
+    expect(result.fares).toBe(result.passengers * config.city.fareCredits);
+    expect(earned).toEqual([[result.total, 'coach']]);
+    // Back at the station's stop, where it began.
+    expect(Math.hypot(driving.vehicle.x - city.stops[0]!.x, driving.vehicle.z - city.stops[0]!.z)).toBeLessThan(40);
+  });
+
+  it('runs the fans\' charter only in the hours before the evening\'s match: a full coach to the stadium, at the charter fare', () => {
+    const morning = setup({ clock: { hour: 10, day: 20_000 } });
+    expect(morning.service.matchPhase).toBe('quiet');
+    expect(morning.service.canStart(STATION, 'charter')).toEqual({ ok: false, error: 'noMatch' });
+    expect(setup({ clock: { hour: 20, day: 20_000 } }).service.matchPhase).toBe('match');
+
+    const { service, driving, ended, earned } = setup({ clock: { hour: 15, day: 20_000 } });
+    expect(service.matchPhase).toBe('charter');
+    const stadium = service.stadiumFor(STATION)!;
+    expect(stadium.kind).toBe('stadium');
+    expect(service.start(STATION, 'charter')).toEqual({ ok: true, value: undefined });
+    // Every seat taken by a fan at the station.
+    expect(service.onBoard).toBe(config.seats);
+    boardAndLeave(service, driving);
+    expect(service.navTarget!.placeId).toBe(stadium.id);
+    arrive(service, driving);
+    boardAndLeave(service, driving);
+
+    expect(service.active).toBe(false);
+    const result = ended[0]!;
+    expect(result).toMatchObject({ kind: 'charter', finished: true, passengers: config.seats, stops: 1, stars: 3 });
+    expect(result.fares).toBe(config.seats * config.charter.fareCredits);
+    expect(earned).toEqual([[result.total, 'coach']]);
   });
 
   it('finds fewer people waiting at night than in the rush hour', () => {

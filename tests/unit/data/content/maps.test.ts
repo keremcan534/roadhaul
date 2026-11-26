@@ -492,7 +492,7 @@ describe('places to visit', () => {
 
     expect(new Set(ids).size).toBe(ids.length);
     for (const map of MAPS) {
-      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['busStation', 'diner', 'lookout', 'raceClub', 'truckWash']);
+      expect((map.places ?? []).map((place) => place.kind).sort()).toEqual(['busStation', 'diner', 'lookout', 'raceClub', 'stadium', 'truckWash']);
     }
   });
 

@@ -13,7 +13,7 @@ import {
 import { compilePieces } from './compilePieces';
 import { GpuFrameGate, type GpuFences } from './GpuFrameGate';
 import { opaqueByProgram } from './opaqueByProgram';
-import { PostProcessing, sunOnPicture, type ColorGrade } from './PostProcessing';
+import { PostProcessing, sunOnPicture, type ColorGrade, SHARPNESS_MAX, SHARPNESS_MIN } from './PostProcessing';
 
 export interface RenderSettings {
   /** Upper bound for the device pixel ratio (fill-rate budget on phones). */
@@ -387,6 +387,10 @@ export class RenderHost {
     this.renderer.setDrawingBufferSize(this.cssWidth, this.cssHeight, pixelRatio);
     const buffer = this.renderer.getDrawingBufferSize(this.bufferSize);
     this.post?.setSize(buffer.x, buffer.y);
+    // The fewer of the screen's pixels are drawn (the cap, the dynamic resolution), the more the picture is stretched
+    // to the screen: FXAA's sharpening makes up for it (none drawn at the screen's own pixels but its own softening).
+    const stretched = 1 - Math.min(1, pixelRatio / Math.max(this.devicePixelRatio, 1e-6));
+    this.post?.setSharpness(SHARPNESS_MIN + (SHARPNESS_MAX - SHARPNESS_MIN) * stretched * 0.8);
     this.camera.aspect = this.cssWidth / this.cssHeight;
     this.camera.updateProjectionMatrix();
   }

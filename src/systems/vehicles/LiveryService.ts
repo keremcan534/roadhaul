@@ -21,8 +21,29 @@ export interface LiveryOffer {
   readonly owned: boolean;
   /** For credits: below its company level, not for sale yet. */
   readonly locked: boolean;
-  /** A pack's design where the shop does not sell it (the web game): shown, but there is no way to it here. */
+  /** A pack's design where the shop does not sell it (the web game) and no goal earns it: shown, but there is no way to it here. */
   readonly unavailable: boolean;
+  /** A pack's design that playing earns too: the goal, how far the company has come and whether it is reached. */
+  readonly goal: LiveryGoal | null;
+  /** A pack's design the shop sells here (the Android app). */
+  readonly inShop: boolean;
+}
+
+/** An achievement that earns a pack's design (LiveryDefinition.earnedBy), as far as the company has got. */
+export interface LiveryGoal {
+  readonly achievementId: string;
+  /** What the goal counts (AchievementMetric), for its words. */
+  readonly metric: string;
+  readonly progress: number;
+  readonly target: number;
+  readonly reached: boolean;
+}
+
+/** The company's goals (AchievementService), asked about one at a time; set once they exist (they come after). */
+export interface LiveryGoalSource {
+  goal(
+    achievementId: string,
+  ): { readonly progress: number; readonly reached: boolean; readonly definition: { readonly target: number; readonly metric: string } } | null;
 }
 
 export type BuyLiveryError = 'unknownLivery' | 'owned' | 'locked' | 'notForSale' | SpendError;
@@ -56,6 +77,7 @@ export interface TruckList {
  */
 export class LiveryService {
   private bought = new Set<string>();
+  private goals: LiveryGoalSource | null = null;
   private worn = new Map<string, string>();
   private text: string | null = null;
 
@@ -164,20 +186,44 @@ export class LiveryService {
     this.text = save.text;
   }
 
+  /** The goals that earn pack designs (AchievementService): attached once it exists. */
+  attachGoals(goals: LiveryGoalSource): void {
+    this.goals = goals;
+  }
+
   private offerOf(livery: LiveryDefinition): LiveryOffer {
     const way: LiveryWay =
       livery.crate !== undefined ? 'crate' : livery.pack !== undefined ? 'pack' : livery.price > 0 ? 'credits' : 'free';
+    const goal = this.goalOf(livery);
     const owned =
       way === 'free' ||
       (way === 'credits' && this.bought.has(livery.id)) ||
       (way === 'crate' && this.crates.ownsCrateLivery(livery.id)) ||
-      (way === 'pack' && livery.pack !== undefined && this.packs.owns(livery.pack));
+      (way === 'pack' && ((livery.pack !== undefined && this.packs.owns(livery.pack)) || goal?.reached === true));
     return {
       livery,
       way,
       owned,
       locked: way === 'credits' && this.company.level < (livery.requiredCompanyLevel ?? 1),
-      unavailable: way === 'pack' && !owned && !this.packs.storeEnabled,
+      unavailable: way === 'pack' && !owned && !this.packs.storeEnabled && goal === null,
+      goal,
+      inShop: way === 'pack' && this.packs.storeEnabled,
     };
+  }
+
+  private goalOf(livery: LiveryDefinition): LiveryGoal | null {
+    if (livery.earnedBy === undefined || this.goals === null) {
+      return null;
+    }
+    const view = this.goals.goal(livery.earnedBy);
+    return view === null
+      ? null
+      : {
+          achievementId: livery.earnedBy,
+          metric: view.definition.metric,
+          progress: view.progress,
+          target: view.definition.target,
+          reached: view.reached,
+        };
   }
 }

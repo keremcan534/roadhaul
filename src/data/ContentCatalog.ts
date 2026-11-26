@@ -159,6 +159,16 @@ export function validateGameContent(content: GameContent): readonly ValidationIs
     'liveries[0]',
     'must be free: every truck leaves the dealer in it',
   );
+  // A pack design earned by playing names a goal there is (entries that are not objects were reported above).
+  const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null;
+  const achievementIds = new Set(
+    (Array.isArray(content.achievements) ? (content.achievements as unknown[]) : []).filter(isObject).map((goal) => goal['id']),
+  );
+  (Array.isArray(content.liveries) ? (content.liveries as unknown[]) : []).forEach((livery, index) => {
+    if (isObject(livery) && livery['earnedBy'] !== undefined) {
+      validator.check(achievementIds.has(livery['earnedBy']), `liveries[${index}].earnedBy`, `unknown achievement "${String(livery['earnedBy'])}"`);
+    }
+  });
   validateMissionReferences(validator, content);
   validateDepotReferences(validator, content);
   validateWeatherSuccessions(validator, content);

@@ -398,6 +398,27 @@ export interface GameConfig {
     readonly creditsPerKm: Credits;
     readonly leastRiddenMeters: number;
   };
+  /** The hitchhikers (HitchhikerService): someone by the road now and then, given a lift to a town for a fare. */
+  readonly hitchhikers: {
+    /** The first after this many seconds on the road, then again after a gap from–to (after a ride, or one walked on). */
+    readonly firstAfterSeconds: number;
+    readonly gapSeconds: readonly [number, number];
+    /** They wait by a road this far ahead, from–to, meters; this long, seconds, or until the truck is this far past. */
+    readonly aheadMeters: readonly [number, number];
+    readonly waitSeconds: number;
+    readonly behindMeters: number;
+    /** Picked up with the truck stopped (slower than stopSpeed, m/s) within this of them for stopSeconds. */
+    readonly pickUpMeters: number;
+    readonly stopSpeed: number;
+    readonly stopSeconds: number;
+    /** They go to a town this far off as the crow flies, from–to, meters, and get out stopped within dropMeters of its depot. */
+    readonly tripMeters: readonly [number, number];
+    readonly dropMeters: number;
+    /** The fare: this, and this much a kilometre; and this much XP. */
+    readonly baseFare: Credits;
+    readonly farePerKm: Credits;
+    readonly xp: number;
+  };
   /** The places to visit (PlaceService): finding one, the diner's puzzle of the day and the truck wash's scrub. */
   readonly places: {
     /** The first stop at each place pays this, and this much XP. */
@@ -461,6 +482,28 @@ export interface GameConfig {
     readonly comfortBonusShare: number;
     /** Experience for each person carried. */
     readonly xpPerPassenger: number;
+    /** A station's city line (planCityLine): round its town's bus shelters and back, the rest as the coach line's. */
+    readonly city: {
+      /** Stops: the station's, the shelters', the station's again. */
+      readonly stops: number;
+      /** The shelters within this of the station, as the crow flies, meters. */
+      readonly reachMeters: number;
+      /** About this long at the most, back at the station, meters. */
+      readonly longestMeters: number;
+      /** A city fare, credits a person. */
+      readonly fareCredits: Credits;
+    };
+    /**
+     * The match-day charter (planCharterLine): every evening the stadiums have a match at `kickOffHour` (local,
+     * the game's clock), lasting `matchHours`; from `fromHour` until kick-off the coach stations carry a full coach
+     * of fans there, at the charter fare.
+     */
+    readonly charter: {
+      readonly fromHour: number;
+      readonly kickOffHour: number;
+      readonly matchHours: number;
+      readonly fareCredits: Credits;
+    };
   };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
@@ -815,15 +858,16 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     startingMapId: 'north_valley',
   },
   monetization: {
-    deliveryBonusShare: 0.25,
-    deliveryBonusMinCredits: 100,
-    deliveryBonusMaxCredits: 2500,
+    // The rewarded ads pay well enough to be worth a player's half-minute (the owner: more than a quarter).
+    deliveryBonusShare: 0.5,
+    deliveryBonusMinCredits: 150,
+    deliveryBonusMaxCredits: 4000,
     serviceDiscount: 0.5,
     serviceDiscountsPerDay: 5,
     interstitialFirstAfterDeliveries: 2,
     interstitialEveryDeliveries: 2,
     interstitialMinSeconds: 240,
-    earningsBoostShare: 0.25,
+    earningsBoostShare: 0.5,
     earningsBoostMinutes: 60,
     adCrate: 'silver',
     adCratesPerDay: 3,
@@ -943,6 +987,22 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     creditsPerKm: 160,
     leastRiddenMeters: 300,
   },
+  // A lift of five kilometres pays about 570: a little for a stop on the way, more than a stranded driver's thanks.
+  hitchhikers: {
+    firstAfterSeconds: 150,
+    gapSeconds: [300, 600],
+    aheadMeters: [280, 520],
+    waitSeconds: 150,
+    behindMeters: 250,
+    pickUpMeters: 14,
+    stopSpeed: 1,
+    stopSeconds: 1.5,
+    tripMeters: [2500, 9000],
+    dropMeters: 350,
+    baseFare: 120,
+    farePerKm: 90,
+    xp: 30,
+  },
   places: {
     findCredits: 500,
     findXp: 60,
@@ -984,6 +1044,10 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     onTimeBonusShare: 0.25,
     comfortBonusShare: 0.25,
     xpPerPassenger: 4,
+    // Four to six minutes round the town: a short job between contracts, paying about as much a minute as the long line.
+    city: { stops: 7, reachMeters: 1800, longestMeters: 6000, fareCredits: 25 },
+    // Forty fans, a few kilometres: about as much a minute as a city loop, a full coach to keep comfortable.
+    charter: { fromHour: 13, kickOffHour: 19, matchHours: 2, fareCredits: 30 },
   },
   weeklyCup: {
     creditsPerPoint: 100,
@@ -1134,6 +1198,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     research,
     roadPass,
     convoy,
+    hitchhikers,
     places,
     races,
     coachLines,
@@ -1459,6 +1524,24 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
   }
   for (const key of [
+    'firstAfterSeconds',
+    'waitSeconds',
+    'behindMeters',
+    'pickUpMeters',
+    'stopSpeed',
+    'stopSeconds',
+    'dropMeters',
+    'baseFare',
+    'farePerKm',
+    'xp',
+  ] as const) {
+    validator.positiveNumber(hitchhikers[key], `hitchhikers.${key}`);
+  }
+  for (const key of ['gapSeconds', 'aheadMeters', 'tripMeters'] as const) {
+    const [least, most] = hitchhikers[key];
+    validator.check(least > 0 && most >= least, `hitchhikers.${key}`, 'must be a range above 0, the least first');
+  }
+  for (const key of [
     'stops',
     'townReachMeters',
     'longestMeters',
@@ -1478,6 +1561,19 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.positiveNumber(coachLines[key], `coachLines.${key}`);
   }
   validator.check(coachLines.stops >= 2, 'coachLines.stops', 'must be the station and at least one town');
+  for (const key of ['reachMeters', 'longestMeters', 'fareCredits'] as const) {
+    validator.positiveNumber(coachLines.city[key], `coachLines.city.${key}`);
+  }
+  validator.check(coachLines.city.stops >= 4, 'coachLines.city.stops', 'must be the station, two shelters or more and the station again');
+  validator.positiveNumber(coachLines.charter.fareCredits, 'coachLines.charter.fareCredits');
+  validator.positiveNumber(coachLines.charter.matchHours, 'coachLines.charter.matchHours');
+  validator.check(
+    coachLines.charter.fromHour >= 0 &&
+      coachLines.charter.fromHour < coachLines.charter.kickOffHour &&
+      coachLines.charter.kickOffHour + coachLines.charter.matchHours <= 24,
+    'coachLines.charter',
+    'must open before kick-off, the match over by midnight',
+  );
   validator.check(
     coachLines.waiting[0] >= 0 && coachLines.waiting[1] >= coachLines.waiting[0],
     'coachLines.waiting',

@@ -1,0 +1,1 @@
+Oyun artık her Android sürümünde ekranı kenardan kenara dolduruyor; arayüz çentiklerden uzak duruyor. Küçük düzeltmeler.

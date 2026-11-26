@@ -1444,6 +1444,54 @@
   white-space: pre-line;
 }
 
+/* The patch notes: the releases before this one, newest first, quieter than this update's. */
+.whats-new__earlier {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rh-line);
+}
+
+.whats-new__earlier[hidden] {
+  display: none;
+}
+
+.whats-new__earlier-title {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 500 13px/1.2 var(--rh-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.whats-new__release {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.whats-new__release-title {
+  margin: 0;
+  color: var(--rh-accent-hi);
+  font: 600 13px/1.2 var(--rh-numeric);
+}
+
+.whats-new__release-notes {
+  margin: 0;
+  color: var(--rh-fg-2);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+/* OK stays in view below a long list. */
+.whats-new__ok {
+  position: sticky;
+  bottom: 0;
+  flex: none;
+}
+
 /* ---- Half-price services after a rewarded ad (src/ui/serviceDiscounts.ts): rest areas and the truck page ---- */
 
 .service-discounts {

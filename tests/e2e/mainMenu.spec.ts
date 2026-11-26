@@ -92,8 +92,10 @@ test("shows what the update brought, in the player's language, and again from th
   const dialog = page.locator('.whats-new');
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('.whats-new__title')).toHaveText('Yenilikler');
-  // Google Play's own release notes for the build, in Turkish.
+  // Google Play's own release notes for the build, in Turkish, and the earlier updates' below them: the patch notes.
   await expect(dialog.locator('[data-value="release-notes"]')).toContainText('akıcı');
+  await expect(dialog.locator('[data-value="earlier-notes"] .whats-new__release')).not.toHaveCount(0);
+  await expect(dialog.locator('.whats-new__release-title').first()).toHaveText(/^Güncelleme \d+$/);
   await page.locator('[data-action="close-whats-new"]').click();
   await expect(dialog).toBeHidden();
 

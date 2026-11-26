@@ -1,0 +1,1 @@
+New: coach lines! Drive a coach from the new coach station through the towns: pick people up at the bus stops, keep to the timetable and give them a smooth ride for bonus fares. Backup files can no longer be edited to add money. Fewer freezes on weak phones.

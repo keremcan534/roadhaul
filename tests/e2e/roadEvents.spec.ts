@@ -33,3 +33,14 @@ test('sends a stranded driver ahead when asked, and says where to stop', async (
   await expect(page.locator('.toast').filter({ hasText: 'A driver is stranded ahead' })).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+test('sends a hitchhiker ahead when asked: the chip says how far, and the walker waits by the road', async ({ page }) => {
+  test.slow();
+  const problems = watchForProblems(page);
+  await openGame(page, '?traffic=0&spawn=300,-641,84&road=hitchhiker&lang=en&time=12:00&weather=clear');
+
+  await expect(page.locator('html')).toHaveAttribute('data-hitchhiker', 'waiting', { timeout: 15_000 });
+  await expect(page.locator('.toast').filter({ hasText: 'A hitchhiker ahead' })).toBeVisible();
+  await expect(page.locator('.hitch-chip')).toHaveText(/^Hitchhiker · [\d.,]+ (m|km)$/);
+  expect(problems).toEqual([]);
+});

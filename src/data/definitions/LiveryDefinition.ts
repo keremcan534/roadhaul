@@ -41,8 +41,10 @@ export type LiveryPattern = (typeof LIVERY_PATTERNS)[number];
  * A design for the trucks (LiveryService), got one way: free (the classic),
  * bought once with credits from a company level (`price`, then free on
  * every truck), given by a crate (`crate`, its rarity), or with a cosmetic
- * pack bought in the shop (`pack`). Player-facing names come from the
- * string tables (`livery.<id>.name`).
+ * pack bought in the shop (`pack`). A pack's design may also be earned by
+ * playing (`earnedBy`, an achievement: reached, the design is the company's
+ * without the pack): the shop sells the way round the goal, never progress.
+ * Player-facing names come from the string tables (`livery.<id>.name`).
  */
 export interface LiveryDefinition {
   /** Stable snake_case id. It is written into save files: never rename it. */
@@ -54,6 +56,8 @@ export interface LiveryDefinition {
   readonly requiredCompanyLevel?: number;
   readonly crate?: PaintRarity;
   readonly pack?: ProductId;
+  /** A pack's design only: the achievement (AchievementDefinition id) that earns it without the pack. */
+  readonly earnedBy?: string;
 }
 
 export function validateLiveryDefinition(livery: LiveryDefinition, path: string, validator: Validator): void {
@@ -71,4 +75,8 @@ export function validateLiveryDefinition(livery: LiveryDefinition, path: string,
   }
   const ways = [livery.price > 0, livery.crate !== undefined, livery.pack !== undefined].filter(Boolean).length;
   validator.check(ways <= 1, path, 'must come one way only: credits, a crate or a pack');
+  if (livery.earnedBy !== undefined) {
+    validator.id(livery.earnedBy, `${path}.earnedBy`);
+    validator.check(livery.pack !== undefined, `${path}.earnedBy`, 'only a pack design is also earned by playing');
+  }
 }
