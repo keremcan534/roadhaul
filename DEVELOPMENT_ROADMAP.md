@@ -705,3 +705,12 @@ These are not gameplay features, so they sit outside the numbered order. They ma
 - [ ] UI connected
 - [ ] No unrelated changes
 - [ ] `SYSTEM_MAP.md` and this roadmap updated
+
+### Hitchhikers: a job by the road (between steps 28 and 29)
+
+The owner: more to do on the road ("etrafta yapacak işler"). Now and then someone waits by a road ahead, thumb out, in a bright orange jacket with a backpack and a bedroll; a toast and a chip over the road's alerts say so and how far. Stopping beside them a moment picks them up, with a contract or without: they ride to a town 2.5–9 km off (one ahead of the truck where there is one, never the town they are leaving), the chip saying which and how far its depot is; stopping near that depot lets them out, paying a fare (120 credits and 90 a km as the crow flies: a 5 km ride about 570) and 30 XP. Driven past, or kept waiting two and a half minutes, they walk on. One at a time, not saved (a ride belongs to the session, as a convoy's). `?road=hitchhiker` sends one at once. Ten languages.
+
+| Item | State | Notes |
+|---|---|---|
+| Hitchhikers | ✅ | `HitchhikerService`, `hitchhike.ts`, `HitchhikerView`, `HitchChip` |
+| Not yet | ⏳ | A rider's chatter on the way, a sign with the town's name, more than one rider, riders in the save |

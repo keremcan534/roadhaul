@@ -150,6 +150,22 @@ export interface GameEvents {
     readonly x: number;
     readonly z: number;
   };
+  /** A hitchhiker waits by the road ahead (HitchhikerService), thumb out. */
+  HitchhikerAppeared: {
+    readonly x: number;
+    readonly z: number;
+  };
+  /** The truck stopped for the hitchhiker: they ride to `cityId`, about `meters` off. */
+  HitchhikerPickedUp: {
+    readonly cityId: string;
+    readonly meters: number;
+  };
+  /** The rider got out at their town: the fare and the experience (already paid). */
+  HitchhikerDroppedOff: {
+    readonly cityId: string;
+    readonly fare: Credits;
+    readonly xp: number;
+  };
   /** The convoy reached its end: how far the truck rode with it, and what that paid (already paid; 0 for too little). */
   ConvoyEnded: {
     readonly riddenMeters: number;

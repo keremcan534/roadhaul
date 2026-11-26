@@ -398,6 +398,27 @@ export interface GameConfig {
     readonly creditsPerKm: Credits;
     readonly leastRiddenMeters: number;
   };
+  /** The hitchhikers (HitchhikerService): someone by the road now and then, given a lift to a town for a fare. */
+  readonly hitchhikers: {
+    /** The first after this many seconds on the road, then again after a gap from–to (after a ride, or one walked on). */
+    readonly firstAfterSeconds: number;
+    readonly gapSeconds: readonly [number, number];
+    /** They wait by a road this far ahead, from–to, meters; this long, seconds, or until the truck is this far past. */
+    readonly aheadMeters: readonly [number, number];
+    readonly waitSeconds: number;
+    readonly behindMeters: number;
+    /** Picked up with the truck stopped (slower than stopSpeed, m/s) within this of them for stopSeconds. */
+    readonly pickUpMeters: number;
+    readonly stopSpeed: number;
+    readonly stopSeconds: number;
+    /** They go to a town this far off as the crow flies, from–to, meters, and get out stopped within dropMeters of its depot. */
+    readonly tripMeters: readonly [number, number];
+    readonly dropMeters: number;
+    /** The fare: this, and this much a kilometre; and this much XP. */
+    readonly baseFare: Credits;
+    readonly farePerKm: Credits;
+    readonly xp: number;
+  };
   /** The places to visit (PlaceService): finding one, the diner's puzzle of the day and the truck wash's scrub. */
   readonly places: {
     /** The first stop at each place pays this, and this much XP. */
@@ -966,6 +987,22 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     creditsPerKm: 160,
     leastRiddenMeters: 300,
   },
+  // A lift of five kilometres pays about 570: a little for a stop on the way, more than a stranded driver's thanks.
+  hitchhikers: {
+    firstAfterSeconds: 150,
+    gapSeconds: [300, 600],
+    aheadMeters: [280, 520],
+    waitSeconds: 150,
+    behindMeters: 250,
+    pickUpMeters: 14,
+    stopSpeed: 1,
+    stopSeconds: 1.5,
+    tripMeters: [2500, 9000],
+    dropMeters: 350,
+    baseFare: 120,
+    farePerKm: 90,
+    xp: 30,
+  },
   places: {
     findCredits: 500,
     findXp: 60,
@@ -1161,6 +1198,7 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     research,
     roadPass,
     convoy,
+    hitchhikers,
     places,
     races,
     coachLines,
@@ -1484,6 +1522,24 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
   for (const key of ['gapSeconds', 'aheadMeters', 'routeMeters'] as const) {
     const [least, most] = convoy[key];
     validator.check(least > 0 && most >= least, `convoy.${key}`, 'must be a range above 0, the least first');
+  }
+  for (const key of [
+    'firstAfterSeconds',
+    'waitSeconds',
+    'behindMeters',
+    'pickUpMeters',
+    'stopSpeed',
+    'stopSeconds',
+    'dropMeters',
+    'baseFare',
+    'farePerKm',
+    'xp',
+  ] as const) {
+    validator.positiveNumber(hitchhikers[key], `hitchhikers.${key}`);
+  }
+  for (const key of ['gapSeconds', 'aheadMeters', 'tripMeters'] as const) {
+    const [least, most] = hitchhikers[key];
+    validator.check(least > 0 && most >= least, `hitchhikers.${key}`, 'must be a range above 0, the least first');
   }
   for (const key of [
     'stops',

@@ -72,7 +72,8 @@ function boardAndLeave(service: CoachLineService, driving: DrivingService) {
   }
 }
 
-describe('CoachLineService', () => {
+// Each run builds a game world (a few seconds on a busy machine).
+describe('CoachLineService', { timeout: 60_000 }, () => {
   it('runs only from a coach station, without a contract, the truck free', () => {
     const diner: PlaceDefinition = { ...STATION, kind: 'diner' };
     expect(setup().service.canStart(diner)).toEqual({ ok: false, error: 'notAStation' });

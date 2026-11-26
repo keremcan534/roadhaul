@@ -160,6 +160,8 @@ import { RACE_CAR } from './data/content/raceCar';
 import { COACH } from './data/content/coach';
 import { CoachView } from './presentation/vehicles/CoachView';
 import { CoachHud } from './ui/hud/CoachHud';
+import { HitchChip } from './ui/hud/HitchChip';
+import { HitchhikerView } from './presentation/world/HitchhikerView';
 import { CoachResultDialog } from './ui/menus/CoachResultDialog';
 import { generateYardJam } from './domain/puzzles/yardJam';
 import { locationText } from './ui/hq/truckPage';
@@ -462,6 +464,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const career = services.resolve(ServiceKeys.career);
   const roadEvents = services.resolve(ServiceKeys.roadEvents);
   const convoy = services.resolve(ServiceKeys.convoy);
+  const hitchhikers = services.resolve(ServiceKeys.hitchhikers);
   const places = services.resolve(ServiceKeys.places);
   const autoDrive = services.resolve(ServiceKeys.autoDrive);
   const race = services.resolve(ServiceKeys.race);
@@ -473,6 +476,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
     roadEvents.sendStrandedDriver();
   } else if (requestedRoad === 'convoy') {
     convoy.sendConvoy();
+  } else if (requestedRoad === 'hitchhiker') {
+    hitchhikers.sendHitchhiker();
   }
   const dailyReward = services.resolve(ServiceKeys.dailyReward);
   const review = services.resolve(ServiceKeys.review);
@@ -682,6 +687,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const cityLife = new CityLifeView(renderHost.scene, coast, driving.world.halfSizeMeters, prelit);
   // The road's events: the speed cameras, the day's road works, a stranded car.
   const roadEventsView = new RoadEventsView(renderHost.scene);
+  // A hitchhiker waiting by the road (HitchhikerService).
+  const hitchhikerView = new HitchhikerView(renderHost.scene);
   // Its cameras now, not on the first frame: in the scene before it is shaded and its shaders compiled.
   roadEventsView.setWorld(driving.world);
   // Tractors at work in the fields, by day, out of the rain and the winter.
@@ -1594,6 +1601,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   const rollover = new RolloverPanel(ui, strings, { onRecover: () => driving.recover() });
   // The road's events: a camera or road works ahead, under the minimap; a camera's flash over the screen.
   const roadAlert = new RoadAlert(ui, strings);
+  const hitchChip = new HitchChip(ui, strings);
   const speedFlash = document.createElement('div');
   speedFlash.className = 'speed-flash';
   speedFlash.addEventListener('animationend', () => speedFlash.classList.remove('is-flashing'));
@@ -1620,6 +1628,14 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
   });
   events.on('StrandedDriverAppeared', () => toasts.show(strings.t('road.stranded'), 'info'));
   events.on('ConvoyStarted', () => toasts.show(strings.t('road.convoy'), 'info'));
+  events.on('HitchhikerAppeared', () => toasts.show(strings.t('road.hitchhiker'), 'info'));
+  events.on('HitchhikerPickedUp', ({ cityId, meters }) =>
+    toasts.show(strings.t('road.hitchPickedUp', { city: strings.cityName(cityId), distance: strings.distance(Math.round(meters / 100) * 100) }), 'info'),
+  );
+  events.on('HitchhikerDroppedOff', ({ cityId, fare, xp }) => {
+    audio.chime();
+    toasts.show(strings.t('road.hitchPaid', { city: strings.cityName(cityId), fare: strings.money(fare), xp }), 'success');
+  });
   events.on('ConvoyEnded', ({ riddenMeters, reward }) => {
     if (reward > 0) {
       audio.chime();
@@ -3444,6 +3460,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         if (convoy.active || missions.convoy === null) {
           convoy.update(stepSeconds);
         }
+        hitchhikers.update(stepSeconds);
       },
       frameUpdate: (deltaSeconds, alpha) => {
         const workStarted = performance.now();
@@ -3542,6 +3559,8 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         cityLife.update(paused ? 0 : deltaSeconds, renderHost.camera, lamps, cityIncidents, renderHost.renderer.domElement.height);
         roadEventsView.setWorld(driving.world);
         roadEventsView.update(paused ? 0 : deltaSeconds, roadEvents, lamps, convoy, missions.convoy);
+        hitchhikerView.setWorld(driving.world);
+        hitchhikerView.update(hitchhikers);
         if (cityLife.sounds.bursts > 0) {
           audio.firework(cityLife.sounds.burstMeters, FIREWORK_RISE_SECONDS);
         }
@@ -3768,6 +3787,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           roadEvents.cameraAheadIsWorks,
         );
         roadAlert.showConvoy(convoy.active, convoy.riding, convoy.riding ? convoy.riddenMetersSoFar : convoy.distanceMeters);
+        hitchChip.visible = simulating && !otherVehicle();
+        const rider = hitchhikers.destination;
+        hitchChip.show(hitchhikers.stage, rider === null ? '' : strings.cityName(rider.cityId), hitchhikers.distanceMeters);
+        if (root.dataset.hitchhiker !== hitchhikers.stage) {
+          root.dataset.hitchhiker = hitchhikers.stage;
+        }
         const stranded = roadEvents.stranded === null ? 'none' : 'waiting';
         if (root.dataset.stranded !== stranded) {
           root.dataset.stranded = stranded;

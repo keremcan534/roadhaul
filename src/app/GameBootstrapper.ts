@@ -15,6 +15,7 @@ import { ResearchService } from '../systems/company/ResearchService';
 import { CareerService } from '../systems/company/CareerService';
 import { RoadEventService } from '../systems/world/RoadEventService';
 import { ConvoyService } from '../systems/world/ConvoyService';
+import { HitchhikerService } from '../systems/world/HitchhikerService';
 import { PlaceService } from '../systems/world/PlaceService';
 import { UsedTruckMarket } from '../systems/vehicles/UsedTruckMarket';
 import { WeeklyCupService } from '../systems/rivals/WeeklyCupService';
@@ -331,6 +332,12 @@ export class GameBootstrapper {
       container.register(
         ServiceKeys.convoy,
         new ConvoyService(driving, economy, config.convoy, () => convoyLuck.next(), events, logger.withCategory('Convoy')),
+      );
+      // Hitchhikers by the road now and then, given a lift to a town for a fare.
+      const hitchLuck = new SeededRandom((clock.now() * 29 + 31) % 2_147_483_647);
+      container.register(
+        ServiceKeys.hitchhikers,
+        new HitchhikerService(driving, economy, company, config.hitchhikers, () => hitchLuck.next(), events, logger.withCategory('Hitchhiker')),
       );
       // The coach stations' coach lines: the coach driven through the towns' bus stops, the truck waiting.
       const coachLines = container.register(
