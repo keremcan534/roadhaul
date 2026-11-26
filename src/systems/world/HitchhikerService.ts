@@ -1,4 +1,5 @@
 import type { EventBus, Unsubscribe } from '../../core/events/EventBus';
+import { hypot2 } from '../../core/math/scalar';
 import type { Logger } from '../../core/logging/Logger';
 import type { GameConfig } from '../../data/config/GameConfig';
 import type { Credits } from '../../data/units';
@@ -74,10 +75,10 @@ export class HitchhikerService {
   get distanceMeters(): number {
     const truck = this.driving.vehicle;
     if (this.stageValue === 'waiting') {
-      return Math.hypot(this.spot.x - truck.x, this.spot.z - truck.z);
+      return hypot2(this.spot.x - truck.x, this.spot.z - truck.z);
     }
     const destination = this.destination;
-    return destination === null ? Number.POSITIVE_INFINITY : Math.hypot(destination.x - truck.x, destination.z - truck.z);
+    return destination === null ? Number.POSITIVE_INFINITY : hypot2(destination.x - truck.x, destination.z - truck.z);
   }
 
   /** Sends a hitchhiker at the next step on the road (`?road=hitchhiker`), ahead of the truck. */

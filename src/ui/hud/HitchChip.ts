@@ -15,7 +15,7 @@ export class HitchChip {
   private readonly label: HTMLSpanElement;
   private enabled = false;
   private shownStage = '';
-  private shownCity = '';
+  private shownCity: string | null = null;
   private shownMeters = -1;
 
   constructor(
@@ -40,14 +40,18 @@ export class HitchChip {
     }
   }
 
-  /** Someone waiting `meters` off, or riding to `cityName`, its depot `meters` off; or nobody (`stage` 'none'). */
-  show(stage: 'none' | 'waiting' | 'riding', cityName: string, meters: number): void {
+  /**
+   * Someone waiting `meters` off, or riding to the town `cityId` (a
+   * CityDefinition id), its depot `meters` off; or nobody (`stage` 'none').
+   * Allocation-free unless what it shows changes.
+   */
+  show(stage: 'none' | 'waiting' | 'riding', cityId: string | null, meters: number): void {
     const steps = Number.isFinite(meters) ? Math.round(meters / STEP_METERS) * STEP_METERS : -1;
-    if (stage === this.shownStage && cityName === this.shownCity && steps === this.shownMeters) {
+    if (stage === this.shownStage && cityId === this.shownCity && steps === this.shownMeters) {
       return;
     }
     this.shownStage = stage;
-    this.shownCity = cityName;
+    this.shownCity = cityId;
     this.shownMeters = steps;
     this.node.dataset.stage = stage;
     this.node.hidden = !this.enabled || stage === 'none';
@@ -55,6 +59,11 @@ export class HitchChip {
       return;
     }
     const distance = this.strings.distance(Math.max(0, steps));
-    setText(this.label, stage === 'waiting' ? this.strings.t('road.hitchWaiting', { distance }) : this.strings.t('road.hitchRiding', { city: cityName, distance }));
+    setText(
+      this.label,
+      stage === 'waiting' || cityId === null
+        ? this.strings.t('road.hitchWaiting', { distance })
+        : this.strings.t('road.hitchRiding', { city: this.strings.cityName(cityId), distance }),
+    );
   }
 }

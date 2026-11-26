@@ -3788,8 +3788,7 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
         );
         roadAlert.showConvoy(convoy.active, convoy.riding, convoy.riding ? convoy.riddenMetersSoFar : convoy.distanceMeters);
         hitchChip.visible = simulating && !otherVehicle();
-        const rider = hitchhikers.destination;
-        hitchChip.show(hitchhikers.stage, rider === null ? '' : strings.cityName(rider.cityId), hitchhikers.distanceMeters);
+        hitchChip.show(hitchhikers.stage, hitchhikers.destination?.cityId ?? null, hitchhikers.distanceMeters);
         if (root.dataset.hitchhiker !== hitchhikers.stage) {
           root.dataset.hitchhiker = hitchhikers.stage;
         }
