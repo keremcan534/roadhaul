@@ -46,7 +46,8 @@ test('pays a bonus on a delivery for a rewarded ad watched to its end', async ({
 
   const result = page.locator('.result-dialog');
   const total = credits(await result.locator('.result-dialog__line.is-total dd').textContent());
-  const bonus = Math.min(2500, Math.max(100, Math.round(total * 0.25)));
+  // GameConfig.monetization: half the pay, 150 to 4,000 credits.
+  const bonus = Math.min(4000, Math.max(150, Math.round(total * 0.5)));
   const claim = result.locator('[data-action="claim-bonus"]');
   await expect(claim).toHaveText(`Watch an ad: +${bonus.toLocaleString('en-GB')} credits`);
 
