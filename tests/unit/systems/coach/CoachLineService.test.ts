@@ -175,6 +175,33 @@ describe('CoachLineService', () => {
     expect(earned).toEqual(carried > 0 ? [[carried * config.fareCredits, 'coach']] : []);
   });
 
+  it('runs the city line too: round the town and back, everyone off at the station, at the city fare', () => {
+    const { service, driving, events, ended, earned } = setup();
+    const started: GameEvents['CoachLineStarted'][] = [];
+    events.on('CoachLineStarted', (event) => started.push(event));
+    const city = service.lineFrom(STATION, 'city')!;
+    expect(city.kind).toBe('city');
+    expect(service.lineFrom(STATION, 'intercity')).not.toBe(city);
+    expect(service.canStart(STATION, 'city')).toEqual({ ok: true, value: undefined });
+
+    service.start(STATION, 'city');
+    expect(started).toEqual([{ placeId: STATION.id, kind: 'city', stops: city.stops.length }]);
+    expect(service.line).toBe(city);
+    boardAndLeave(service, driving);
+    for (let index = 1; index < city.stops.length; index++) {
+      arrive(service, driving);
+      boardAndLeave(service, driving);
+    }
+
+    expect(service.active).toBe(false);
+    const result = ended[0]!;
+    expect(result).toMatchObject({ kind: 'city', finished: true, stops: city.stops.length - 1, stars: 3 });
+    expect(result.fares).toBe(result.passengers * config.city.fareCredits);
+    expect(earned).toEqual([[result.total, 'coach']]);
+    // Back at the station's stop, where it began.
+    expect(Math.hypot(driving.vehicle.x - city.stops[0]!.x, driving.vehicle.z - city.stops[0]!.z)).toBeLessThan(40);
+  });
+
   it('finds fewer people waiting at night than in the rush hour', () => {
     const night = setup({ clock: { hour: 2, day: 20_000 } });
     const rush = setup({ clock: { hour: 8, day: 20_000 } });

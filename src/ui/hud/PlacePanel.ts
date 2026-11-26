@@ -1,5 +1,6 @@
 import type { PlaceDefinition } from '../../data/definitions/MapDefinition';
 import type { Credits } from '../../data/units';
+import type { CoachLineKind } from '../../domain/coach/coachLine';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 
@@ -19,10 +20,15 @@ export interface PlacePanelRaces {
   finishName(place: PlaceDefinition): string;
 }
 
-/** A coach station's line, as the panel tells it (CoachLineService). */
+/** A coach station's lines, as the panel tells them (CoachLineService). */
 export interface PlacePanelCoaches {
-  /** The line from a coach station: the towns it calls at, the last one's name and the timetable's minutes; null for none. */
-  lineOf(place: PlaceDefinition): { readonly towns: number; readonly lastTown: string; readonly minutes: number } | null;
+  /**
+   * The `kind` line from a coach station: the stops it calls at (the
+   * intercity line's towns, the city line's shelters), the town named
+   * (the intercity line's last, the city line's own) and the timetable's
+   * minutes; null for none.
+   */
+  lineOf(place: PlaceDefinition, kind: CoachLineKind): { readonly stops: number; readonly town: string; readonly minutes: number } | null;
 }
 
 /** What the panel's buttons do. */
@@ -35,8 +41,8 @@ export interface PlacePanelActions {
   readonly onPhoto: () => void;
   /** The race club: a street race. */
   readonly onRace: () => void;
-  /** The coach station: a run of its coach line. */
-  readonly onCoach: () => void;
+  /** The coach station: a run of its coach line through the towns, or of its city line. */
+  readonly onCoach: (kind: CoachLineKind) => void;
 }
 
 /** What the day's puzzle and the wash pay, for the panel's lines. */
@@ -58,7 +64,11 @@ export class PlacePanel {
   private readonly name: HTMLHeadingElement;
   private readonly kind: HTMLParagraphElement;
   private readonly line: HTMLParagraphElement;
+  /** A coach station's second line: its city line. */
+  private readonly cityLine: HTMLParagraphElement;
   private readonly action: HTMLButtonElement;
+  /** A coach station's city line's button. */
+  private readonly cityAction: HTMLButtonElement;
   private enabled = false;
   /** Continue was pressed at this place: stay closed until the truck leaves it. */
   private dismissedAt: PlaceDefinition | null = null;
@@ -82,16 +92,24 @@ export class PlacePanel {
     this.name = element(document, 'h2', 'place-panel__name');
     this.kind = element(document, 'p', 'place-panel__kind');
     this.line = element(document, 'p', 'place-panel__line');
+    this.cityLine = element(document, 'p', 'place-panel__city');
+    this.cityLine.dataset.value = 'place-city-line';
+    this.cityLine.hidden = true;
     this.action = button(document, 'button--primary place-panel__action', '', 'place-action', () => this.act());
+    this.cityAction = button(document, 'button--secondary place-panel__action', strings.t('place.coach.startCity'), 'place-action-city', () =>
+      this.actions.onCoach('city'),
+    );
+    this.cityAction.hidden = true;
     const buttons = element(document, 'div', 'place-panel__buttons');
     buttons.append(
       this.action,
+      this.cityAction,
       button(document, 'button--ghost place-panel__continue', strings.t('rest.continue'), 'place-continue', () => {
         this.dismissedAt = this.places.current;
         this.root.hidden = true;
       }),
     );
-    this.root.append(this.kind, this.name, this.line, buttons);
+    this.root.append(this.kind, this.name, this.line, this.cityLine, buttons);
     parent.append(this.root);
   }
 
@@ -156,6 +174,9 @@ export class PlacePanel {
     this.root.dataset.kind = place.kind;
     setText(this.name, strings.t(`place.name.${place.id}`));
     setText(this.kind, strings.t(`place.kind.${place.kind}`));
+    const station = place.kind === 'busStation';
+    this.cityLine.hidden = true;
+    this.cityAction.hidden = !station;
     switch (place.kind) {
       case 'diner':
         setText(this.line, done ? strings.t('place.diner.done') : strings.t('place.diner.line', { credits: strings.money(rewards.puzzleCredits) }));
@@ -181,20 +202,31 @@ export class PlacePanel {
         setText(this.action, strings.t('place.race.start'));
         break;
       case 'busStation': {
-        const line = this.coaches.lineOf(place);
+        const line = this.coaches.lineOf(place, 'intercity');
+        const city = this.coaches.lineOf(place, 'city');
         setText(
           this.line,
           done === -1
             ? strings.t('place.coach.contract')
-            : line === null
+            : line === null && city === null
               ? strings.t('place.coach.none')
-              : strings.t('place.coach.line', { count: line.towns, city: line.lastTown, minutes: line.minutes }),
+              : line === null
+                ? ''
+                : strings.t('place.coach.line', { count: line.stops, city: line.town, minutes: line.minutes }),
         );
+        if (done !== -1 && city !== null) {
+          setText(this.cityLine, strings.t('place.coach.city', { count: city.stops, city: city.town, minutes: city.minutes }));
+          this.cityLine.hidden = false;
+        }
         setText(this.action, strings.t('place.coach.start'));
         this.action.disabled = done === -1 || line === null;
+        this.action.hidden = line === null && city !== null;
+        this.cityAction.disabled = done === -1 || city === null;
+        this.cityAction.hidden = city === null;
         return;
       }
     }
+    this.action.hidden = false;
     this.action.disabled = place.kind === 'raceClub' && (done === -1 || done === 0);
   }
 
@@ -210,7 +242,7 @@ export class PlacePanel {
     } else if (place.kind === 'raceClub') {
       this.actions.onRace();
     } else if (place.kind === 'busStation') {
-      this.actions.onCoach();
+      this.actions.onCoach('intercity');
     } else {
       this.actions.onPhoto();
     }

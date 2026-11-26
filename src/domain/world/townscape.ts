@@ -95,6 +95,8 @@ const FURNITURE_BACK_METERS = 0.55;
 const FURNITURE_RADIUS: Readonly<Record<StreetFurnitureKind, number>> = { bench: 0.55, bin: 0.3, busStop: 1.6 };
 /** A bus shelter stands at the back of its pavement, its middle this far behind the kerb. */
 const SHELTER_BACK_METERS = SIDEWALK_WIDTH_METERS + 1.1;
+/** A long street gets a bus shelter this often along its pavement, meters (a town bus's stops). */
+const STOP_SPACING_METERS = 180;
 /** Billboards: how far from the town's end of the road, and how far back from its edge. */
 const BILLBOARD_FROM_TOWN_METERS = 260;
 const BILLBOARD_BACK_METERS = 11;
@@ -243,8 +245,9 @@ function insidePiece(corners: Float64Array, k: number, x: number, z: number): bo
 }
 
 /**
- * What stands on the pavements: a bus shelter at the back of each street's
- * longest pavement on the right, and benches and bins by turns along every
+ * What stands on the pavements: bus shelters at the back of each street's
+ * longest pavement on the right (one, or one every STOP_SPACING_METERS on a
+ * long one), and benches and bins by turns along every
  * pavement, clear of lamps and of one another. All solid (filed in
  * `occupancy`, which holds the street lamps already).
  */
@@ -271,7 +274,8 @@ export function placeStreetFurniture(ground: TownGround, sidewalks: readonly Sid
     return true;
   };
 
-  // A bus shelter on each street: in the middle of its longest pavement on the right.
+  // Bus shelters on each street's longest pavement on the right: one in its middle, or on a long one one every
+  // STOP_SPACING_METERS, evenly (the towns' bus lines call at them: coachLine.ts).
   const streets = new Set(sidewalks.map((sidewalk) => sidewalk.roadIndex));
   for (const roadIndex of streets) {
     const longest = sidewalks
@@ -281,11 +285,15 @@ export function placeStreetFurniture(ground: TownGround, sidewalks: readonly Sid
       continue;
     }
     const road = ground.roads[roadIndex]!;
-    const middle = (longest.fromMeters + longest.toMeters) / 2;
-    for (const shift of [0, 12, -12, 24, -24]) {
-      const spot = standAt(road, middle + shift, 1, SHELTER_BACK_METERS);
-      if (ground.isClearForWalk(spot.x, spot.z) && put('busStop', spot)) {
-        break;
+    const length = longest.toMeters - longest.fromMeters;
+    const stops = Math.max(1, Math.floor(length / STOP_SPACING_METERS));
+    for (let stop = 0; stop < stops; stop++) {
+      const at = longest.fromMeters + (length * (stop + 0.5)) / stops;
+      for (const shift of [0, 12, -12, 24, -24]) {
+        const spot = standAt(road, at + shift, 1, SHELTER_BACK_METERS);
+        if (ground.isClearForWalk(spot.x, spot.z) && put('busStop', spot)) {
+          break;
+        }
       }
     }
   }

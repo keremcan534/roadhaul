@@ -461,6 +461,17 @@ export interface GameConfig {
     readonly comfortBonusShare: number;
     /** Experience for each person carried. */
     readonly xpPerPassenger: number;
+    /** A station's city line (planCityLine): round its town's bus shelters and back, the rest as the coach line's. */
+    readonly city: {
+      /** Stops: the station's, the shelters', the station's again. */
+      readonly stops: number;
+      /** The shelters within this of the station, as the crow flies, meters. */
+      readonly reachMeters: number;
+      /** About this long at the most, back at the station, meters. */
+      readonly longestMeters: number;
+      /** A city fare, credits a person. */
+      readonly fareCredits: Credits;
+    };
   };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
@@ -985,6 +996,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     onTimeBonusShare: 0.25,
     comfortBonusShare: 0.25,
     xpPerPassenger: 4,
+    // Four to six minutes round the town: a short job between contracts, paying about as much a minute as the long line.
+    city: { stops: 7, reachMeters: 1800, longestMeters: 6000, fareCredits: 25 },
   },
   weeklyCup: {
     creditsPerPoint: 100,
@@ -1479,6 +1492,10 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.positiveNumber(coachLines[key], `coachLines.${key}`);
   }
   validator.check(coachLines.stops >= 2, 'coachLines.stops', 'must be the station and at least one town');
+  for (const key of ['reachMeters', 'longestMeters', 'fareCredits'] as const) {
+    validator.positiveNumber(coachLines.city[key], `coachLines.city.${key}`);
+  }
+  validator.check(coachLines.city.stops >= 4, 'coachLines.city.stops', 'must be the station, two shelters or more and the station again');
   validator.check(
     coachLines.waiting[0] >= 0 && coachLines.waiting[1] >= coachLines.waiting[0],
     'coachLines.waiting',

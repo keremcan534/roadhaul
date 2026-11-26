@@ -1,3 +1,4 @@
+import type { CoachLineKind } from '../domain/coach/coachLine';
 import type { NewsItem } from './world/NewsService';
 import type { CityIncidentKind } from '../data/definitions/CityIncident';
 import type { CrateTier } from '../data/config/GameConfig';
@@ -369,6 +370,8 @@ export interface GameEvents {
   /** A run of a coach line began at a coach station (CoachLineService): the coach is driven, the truck waits. */
   CoachLineStarted: {
     readonly placeId: string;
+    /** Through the towns, or round the station's own town and back (CoachLineKind). */
+    readonly kind: CoachLineKind;
     readonly stops: number;
   };
   /**
@@ -388,6 +391,7 @@ export interface GameEvents {
    */
   CoachLineEnded: {
     readonly placeId: string;
+    readonly kind: CoachLineKind;
     readonly finished: boolean;
     readonly stopsServed: number;
     readonly stops: number;

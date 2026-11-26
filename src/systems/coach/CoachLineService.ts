@@ -5,8 +5,8 @@ import type { GameConfig } from '../../data/config/GameConfig';
 import type { PlaceDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits } from '../../data/units';
-import { planCoachLine, type CoachLine, type CoachStop } from '../../domain/coach/coachLine';
-import { ComfortMeter, coachRunPay, dwellSeconds, peopleGettingOff, peopleWaiting } from '../../domain/coach/coachRun';
+import { planCityLine, planCoachLine, type CoachLine, type CoachLineKind, type CoachStop } from '../../domain/coach/coachLine';
+import { ComfortMeter, coachRunPay, dwellSeconds, peopleGettingOff, peopleWaiting, type CoachRunRules } from '../../domain/coach/coachRun';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
 import type { DrivingWorld } from '../../domain/world/DrivingWorld';
@@ -55,6 +55,10 @@ export interface CoachClock {
  * (DrivingService.beginRace). Never with a contract under way; the player
  * may give up at any time (the fares of those already off are kept).
  *
+ * A station also runs a city line (`city`, planCityLine): round its own
+ * town's bus shelters and back to the station, shorter and with more stops,
+ * at a city fare.
+ *
  * Call update() every fixed step while a run is on, with the driver's
  * input, before the coach steps. Allocation-free there.
  */
@@ -73,8 +77,10 @@ export class CoachLineService {
   private lastLate = 0;
   private onTimeStops = 0;
   private readonly comfortMeter: ComfortMeter;
-  /** Lines planned, by station and world (the same world plans the same line). */
+  /** Lines planned, by kind and station, and the world (the same world plans the same line). */
   private readonly lines = new Map<string, CoachLine | null>();
+  /** What a city line's run pays: the coach line's rules at the city fare. */
+  private readonly cityRules: CoachRunRules;
   private linesWorld: DrivingWorld | null = null;
   private paces = new Float64Array(0);
   private readonly unsubscribe: () => void;
@@ -92,6 +98,7 @@ export class CoachLineService {
     private readonly logger: Logger,
   ) {
     this.comfortMeter = new ComfortMeter(config.gentlePull, config.comfortPerPull, config.comfortPerKnock);
+    this.cityRules = { ...config, fareCredits: config.city.fareCredits };
     this.unsubscribe = events.on('RaceCarCollided', ({ impactSpeedMetersPerSecond }) => {
       if (this.stageValue !== 'none' && this.onBoardValue > 0 && impactSpeedMetersPerSecond >= KNOCK_SPEED) {
         this.comfortMeter.knock();
@@ -165,8 +172,8 @@ export class CoachLineService {
     return this.stageValue === 'driving' ? this.stop : null;
   }
 
-  /** The line from `place` (a coach station) on the world being driven; null when it has none. */
-  lineFrom(place: PlaceDefinition): CoachLine | null {
+  /** The line of `kind` from `place` (a coach station) on the world being driven; null when it has none. */
+  lineFrom(place: PlaceDefinition, kind: CoachLineKind = 'intercity'): CoachLine | null {
     if (place.kind !== 'busStation' || !this.driving.isDriving) {
       return null;
     }
@@ -179,26 +186,37 @@ export class CoachLineService {
         this.paces[index] = (Math.min(this.speedLimitsKmh[world.roads[index]!.kind], this.coach.maxSpeedKmh) / 3.6) * this.config.timetablePace;
       }
     }
-    if (!this.lines.has(place.id)) {
+    const key = `${kind}:${place.id}`;
+    if (!this.lines.has(key)) {
       const { config } = this;
-      const line = planCoachLine(world, place, {
-        stops: config.stops,
-        townReachMeters: config.townReachMeters,
-        longestMeters: config.longestMeters,
-        paces: this.paces,
-        // The timetable allows for an average stop: the doors and as many people as wait on average, off and on.
-        dwellSeconds: dwellSeconds(config.doorSeconds, config.secondsPerPerson, config.waiting[0] + config.waiting[1]),
-      });
-      this.lines.set(place.id, line);
+      // The timetable allows for an average stop: the doors and as many people as wait on average, off and on.
+      const dwell = dwellSeconds(config.doorSeconds, config.secondsPerPerson, config.waiting[0] + config.waiting[1]);
+      const line =
+        kind === 'city'
+          ? planCityLine(world, place, {
+              stops: config.city.stops,
+              reachMeters: config.city.reachMeters,
+              longestMeters: config.city.longestMeters,
+              paces: this.paces,
+              dwellSeconds: dwell,
+            })
+          : planCoachLine(world, place, {
+              stops: config.stops,
+              townReachMeters: config.townReachMeters,
+              longestMeters: config.longestMeters,
+              paces: this.paces,
+              dwellSeconds: dwell,
+            });
+      this.lines.set(key, line);
       if (line === null) {
-        this.logger.warn(`No coach line from ${place.id}.`);
+        this.logger.warn(`No ${kind} coach line from ${place.id}.`);
       }
     }
-    return this.lines.get(place.id) ?? null;
+    return this.lines.get(key) ?? null;
   }
 
-  /** Whether a run could start at `place` now, or why not. */
-  canStart(place: PlaceDefinition): Result<void, CoachRefusal> {
+  /** Whether a run of the `kind` line could start at `place` now, or why not. */
+  canStart(place: PlaceDefinition, kind: CoachLineKind = 'intercity'): Result<void, CoachRefusal> {
     if (place.kind !== 'busStation') {
       return err('notAStation');
     }
@@ -208,16 +226,16 @@ export class CoachLineService {
     if (!this.driving.isDriving || this.driving.racing || this.active) {
       return err('busy');
     }
-    return this.lineFrom(place) === null ? err('noLine') : ok(undefined);
+    return this.lineFrom(place, kind) === null ? err('noLine') : ok(undefined);
   }
 
-  /** Starts a run from `place`: the coach beside the station, its doors open for the people waiting there. */
-  start(place: PlaceDefinition): Result<void, CoachRefusal> {
-    const can = this.canStart(place);
+  /** Starts a run of the `kind` line from `place`: the coach beside the station, its doors open for the people waiting there. */
+  start(place: PlaceDefinition, kind: CoachLineKind = 'intercity'): Result<void, CoachRefusal> {
+    const can = this.canStart(place, kind);
     if (!can.ok) {
       return can;
     }
-    const line = this.lineFrom(place)!;
+    const line = this.lineFrom(place, kind)!;
     const first = line.stops[0]!;
     this.driving.beginRace(this.coach, first.x, first.z, first.heading);
     this.place = place;
@@ -230,8 +248,8 @@ export class CoachLineService {
     this.comfortMeter.reset();
     this.stageValue = 'atStop';
     this.serve(0);
-    this.logger.info(`Coach line from ${place.id}: ${line.stops.length} stops, ${Math.round(line.lengthMeters)} m.`);
-    this.events.emit('CoachLineStarted', { placeId: place.id, stops: line.stops.length });
+    this.logger.info(`Coach line (${kind}) from ${place.id}: ${line.stops.length} stops, ${Math.round(line.lengthMeters)} m.`);
+    this.events.emit('CoachLineStarted', { placeId: place.id, kind, stops: line.stops.length });
     return ok(undefined);
   }
 
@@ -320,7 +338,7 @@ export class CoachLineService {
     const towns = line.stops.length - 1;
     const served = finished ? towns : Math.max(0, this.stopIndexValue - (this.stageValue === 'driving' ? 1 : 0));
     const comfort = Math.round(this.comfortMeter.value);
-    const pay = coachRunPay(this.config, {
+    const pay = coachRunPay(line.kind === 'city' ? this.cityRules : this.config, {
       passengers: this.carried,
       finished,
       allOnTime: this.onTimeStops >= towns,
@@ -342,6 +360,7 @@ export class CoachLineService {
     );
     this.events.emit('CoachLineEnded', {
       placeId: place.id,
+      kind: line.kind,
       finished,
       stopsServed: served,
       stops: towns,

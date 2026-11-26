@@ -5,6 +5,8 @@ import { icon } from '../icons';
 
 /** How a run of a coach line ended (CoachLineEnded). */
 export interface CoachResult {
+  /** Through the towns, or round the town and back. */
+  readonly kind: 'intercity' | 'city';
   readonly finished: boolean;
   readonly stopsServed: number;
   readonly stops: number;
@@ -68,7 +70,7 @@ export class CoachResultDialog {
     this.stars.hidden = !result.finished;
     setText(this.stars, '★'.repeat(result.stars) + '☆'.repeat(3 - result.stars));
     this.stars.setAttribute('aria-label', strings.t('coach.result.stars', { stars: result.stars }));
-    setText(this.title, strings.t(result.finished ? 'coach.result.done' : 'coach.result.gaveUp'));
+    setText(this.title, strings.t(!result.finished ? 'coach.result.gaveUp' : result.kind === 'city' ? 'coach.result.cityDone' : 'coach.result.done'));
     const line = (text: string, amount: Credits | null): HTMLLIElement => {
       const item = element(document, 'li', 'coach-result__line');
       item.append(element(document, 'span', 'coach-result__what', text));

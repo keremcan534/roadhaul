@@ -1433,12 +1433,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           toasts.show(strings.t(`race.refused.${started.error}`), 'warning');
         }
       },
-      onCoach: () => {
+      onCoach: (kind) => {
         const station = places.current;
         if (station === null) {
           return;
         }
-        const started = coachLines.start(station);
+        const started = coachLines.start(station, kind);
         if (!started.ok) {
           toasts.show(strings.t(`coach.refused.${started.error}`), 'warning');
         }
@@ -1461,12 +1461,21 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       },
     },
     {
-      lineOf: (station) => {
-        const line = coachLines.lineFrom(station);
-        const last = line?.stops[line.stops.length - 1];
-        return line === null || last === undefined || last.cityId === null
+      lineOf: (station, kind) => {
+        const line = coachLines.lineFrom(station, kind);
+        if (line === null) {
+          return null;
+        }
+        const last = line.stops[line.stops.length - 1]!;
+        // The intercity line ends in its last town; the city line goes round its own town (its first shelter's) and back.
+        const town = kind === 'city' ? line.stops[1]!.cityId : last.cityId;
+        return town === null
           ? null
-          : { towns: line.stops.length - 1, lastTown: strings.cityName(last.cityId), minutes: Math.ceil(last.dueSeconds / 60) };
+          : {
+              stops: kind === 'city' ? line.stops.length - 2 : line.stops.length - 1,
+              town: strings.cityName(town),
+              minutes: Math.ceil(last.dueSeconds / 60),
+            };
       },
     },
   );

@@ -1633,6 +1633,18 @@ html[data-race='on'] .mission-hud {
   font: 400 13.5px/1.35 var(--rh-text);
 }
 
+/* A coach station's city line, under its coach line's. */
+.place-panel__city {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--rh-fg-2);
+  font: 400 13px/1.35 var(--rh-text);
+}
+
+.place-panel__city[hidden] {
+  display: none;
+}
+
 .place-panel__buttons {
   display: flex;
   flex-wrap: wrap;

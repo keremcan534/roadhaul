@@ -48,5 +48,16 @@ test('runs the coach line from the coach station: people on, the GPS to the next
   // In the truck again, at the station.
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('data-kind', 'busStation');
+
+  // The station's city line: round Havenport's shelters and back to the station.
+  await expect(panel.locator('[data-value="place-city-line"]')).toContainText('Or the city loop: 3 stops round Havenport and back');
+  await panel.locator('[data-action="place-action-city"]').click();
+  await expect(html(page)).toHaveAttribute('data-coach', 'on');
+  await expect(hud.locator('[data-value="coach-stop"]')).toHaveText('Stop 0/4: Station');
+  await expect(hud.locator('[data-value="coach-stop"]')).toHaveText(/^Stop 1\/4: Havenport, [\d.,]+ (m|km)$/, { timeout: 30_000 });
+  await hud.locator('[data-action="coach-quit"]').click();
+  await expect(result).toBeVisible();
+  await result.locator('[data-action="coach-result-close"]').click();
+  await expect(html(page)).toHaveAttribute('data-coach', 'off');
   expect(problems).toEqual([]);
 });
