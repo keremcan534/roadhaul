@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_GAME_CONFIG } from '../../../../src/data/config/GameConfig';
 import { MAPS } from '../../../../src/data/content/maps';
-import { planCityLine, planCoachLine } from '../../../../src/domain/coach/coachLine';
+import { planCharterLine, planCityLine, planCoachLine } from '../../../../src/domain/coach/coachLine';
 import { DrivingWorld } from '../../../../src/domain/world/DrivingWorld';
 
 const config = DEFAULT_GAME_CONFIG.coachLines;
@@ -78,5 +78,22 @@ describe.each(MAPS)('the coach line of map $id', (map) => {
       expect(stops[i]!.dueSeconds).toBeGreaterThan(stops[i - 1]!.dueSeconds + stops[i]!.legMeters / 15 - 1);
     }
     expect(planCityLine(world, station, cityOptions)).toEqual(city);
+  });
+
+  it('runs the fans\' charter to the region\'s stadium: on from the station, off beside the stadium, by road', () => {
+    const stadium = (map.places ?? []).find((place) => place.kind === 'stadium')!;
+    const charter = planCharterLine(world, station, stadium, { paces, dwellSeconds: 30 })!;
+    expect(charter.kind).toBe('charter');
+    expect(charter.stops).toHaveLength(2);
+    const [first, last] = charter.stops;
+    expect(first!.cityId).toBeNull();
+    expect(Math.hypot(first!.x - station.lot.x, first!.z - station.lot.z)).toBeLessThan(40);
+    expect(last!.placeId).toBe(stadium.id);
+    expect(world.roads.some((road) => road.contains(last!.x, last!.z))).toBe(true);
+    // On the road along the stadium's lot.
+    expect(Math.hypot(last!.x - stadium.lot.x, last!.z - stadium.lot.z)).toBeLessThan(stadium.lot.widthMeters / 2 + 12);
+    expect(charter.lengthMeters).toBeGreaterThan(1500);
+    expect(charter.lengthMeters).toBeLessThan(6000);
+    expect(last!.dueSeconds).toBeGreaterThan(30 + charter.lengthMeters / 15 - 1);
   });
 });

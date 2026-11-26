@@ -472,6 +472,17 @@ export interface GameConfig {
       /** A city fare, credits a person. */
       readonly fareCredits: Credits;
     };
+    /**
+     * The match-day charter (planCharterLine): every evening the stadiums have a match at `kickOffHour` (local,
+     * the game's clock), lasting `matchHours`; from `fromHour` until kick-off the coach stations carry a full coach
+     * of fans there, at the charter fare.
+     */
+    readonly charter: {
+      readonly fromHour: number;
+      readonly kickOffHour: number;
+      readonly matchHours: number;
+      readonly fareCredits: Credits;
+    };
   };
   /** The weekly cup (WeeklyCupService): points for deliveries, the top three paid when the week ends. */
   readonly weeklyCup: {
@@ -998,6 +1009,8 @@ export const DEFAULT_GAME_CONFIG: GameConfig = frozenCopy<GameConfig>({
     xpPerPassenger: 4,
     // Four to six minutes round the town: a short job between contracts, paying about as much a minute as the long line.
     city: { stops: 7, reachMeters: 1800, longestMeters: 6000, fareCredits: 25 },
+    // Forty fans, a few kilometres: about as much a minute as a city loop, a full coach to keep comfortable.
+    charter: { fromHour: 13, kickOffHour: 19, matchHours: 2, fareCredits: 30 },
   },
   weeklyCup: {
     creditsPerPoint: 100,
@@ -1496,6 +1509,15 @@ export function validateGameConfig(config: GameConfig, content: ContentCatalog):
     validator.positiveNumber(coachLines.city[key], `coachLines.city.${key}`);
   }
   validator.check(coachLines.city.stops >= 4, 'coachLines.city.stops', 'must be the station, two shelters or more and the station again');
+  validator.positiveNumber(coachLines.charter.fareCredits, 'coachLines.charter.fareCredits');
+  validator.positiveNumber(coachLines.charter.matchHours, 'coachLines.charter.matchHours');
+  validator.check(
+    coachLines.charter.fromHour >= 0 &&
+      coachLines.charter.fromHour < coachLines.charter.kickOffHour &&
+      coachLines.charter.kickOffHour + coachLines.charter.matchHours <= 24,
+    'coachLines.charter',
+    'must open before kick-off, the match over by midnight',
+  );
   validator.check(
     coachLines.waiting[0] >= 0 && coachLines.waiting[1] >= coachLines.waiting[0],
     'coachLines.waiting',

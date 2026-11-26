@@ -365,6 +365,8 @@ const LAID_OUT: MapDefinition = {
     },
     // The coach station on the west boulevard, north of Halverton: its line calls at the districts' bus stops.
     { id: 'metropol_coach_station', kind: 'busStation', lot: { x: -2220, z: -770, headingDegrees: 0, lengthMeters: 44, widthMeters: 30 } },
+    // The stadium down the west boulevard from the coach station, on Halverton's south-west edge (world z -990).
+    { id: 'metropol_stadium', kind: 'stadium', lot: { x: -2238, z: 990, headingDegrees: 0, lengthMeters: 100, widthMeters: 64 } },
   ],
   restAreas: [
     {

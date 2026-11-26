@@ -61,3 +61,31 @@ test('runs the coach line from the coach station: people on, the GPS to the next
   await expect(html(page)).toHaveAttribute('data-coach', 'off');
   expect(problems).toEqual([]);
 });
+
+test('runs the fans\' charter to the stadium in the afternoon before the match, and the stadium says when it is', async ({ page }) => {
+  test.slow();
+  const problems = watchForProblems(page);
+  // Three in the afternoon, the clock held: the charter runs until kick-off at seven.
+  await openGame(page, '?debug&lang=en&traffic=0&time=15:00&spawn=-1340,-245,102');
+  await page.keyboard.press('KeyG');
+  const panel = page.locator('.place-panel');
+  await expect(panel).toHaveAttribute('data-kind', 'busStation', { timeout: 15_000 });
+  await expect(panel.locator('[data-value="place-charter-line"]')).toContainText('Match day: 40 fans to Havenport Arena before kick-off at 19:00');
+
+  await panel.locator('[data-action="place-action-charter"]').click();
+  await expect(html(page)).toHaveAttribute('data-coach', 'on');
+  const hud = page.locator('.coach-hud');
+  await expect(hud.locator('[data-value="coach-stop"]')).toHaveText('Stop 0/1: Station');
+  await expect(hud.locator('[data-value="coach-people"]')).toHaveText('40/40 on board');
+  await expect(hud.locator('[data-value="coach-stop"]')).toHaveText(/^Stop 1\/1: Havenport Arena, [\d.,]+ (m|km)$/, { timeout: 30_000 });
+
+  // At the stadium: every fan off, and the run done.
+  await page.keyboard.press('KeyT');
+  await expect(hud.locator('[data-value="coach-doors"]')).toHaveText('Doors open: 40 getting off, 0 getting on', { timeout: 15_000 });
+  const result = page.locator('.coach-result');
+  await expect(result.locator('.coach-result__title')).toHaveText('The fans are in for kick-off!', { timeout: 30_000 });
+  await expect(result.locator('.coach-result__lines')).toContainText('Fares: 40 passengers');
+  await result.locator('[data-action="coach-result-close"]').click();
+  await expect(html(page)).toHaveAttribute('data-coach', 'off');
+  expect(problems).toEqual([]);
+});

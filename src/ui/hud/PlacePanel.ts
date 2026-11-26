@@ -1,6 +1,7 @@
 import type { PlaceDefinition } from '../../data/definitions/MapDefinition';
 import type { Credits } from '../../data/units';
 import type { CoachLineKind } from '../../domain/coach/coachLine';
+import { MATCH_PHASES, type MatchPhase } from '../../domain/coach/matchDay';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 
@@ -26,9 +27,15 @@ export interface PlacePanelCoaches {
    * The `kind` line from a coach station: the stops it calls at (the
    * intercity line's towns, the city line's shelters), the town named
    * (the intercity line's last, the city line's own) and the timetable's
-   * minutes; null for none.
+   * minutes; null for none. The fans' charter: the fans it carries, the
+   * stadium's name and the timetable's minutes.
    */
   lineOf(place: PlaceDefinition, kind: CoachLineKind): { readonly stops: number; readonly town: string; readonly minutes: number } | null;
+  /** Where the stadiums' day stands: quiet, the fans' charter running, or the match on. */
+  readonly matchPhase: MatchPhase;
+  /** The match's hours as the panel says them: the charter's first and kick-off ("13:00", "19:00"). */
+  readonly charterFrom: string;
+  readonly kickOff: string;
 }
 
 /** What the panel's buttons do. */
@@ -69,6 +76,9 @@ export class PlacePanel {
   private readonly action: HTMLButtonElement;
   /** A coach station's city line's button. */
   private readonly cityAction: HTMLButtonElement;
+  /** A coach station's fans' charter, before a match: its line and button. */
+  private readonly charterLine: HTMLParagraphElement;
+  private readonly charterAction: HTMLButtonElement;
   private enabled = false;
   /** Continue was pressed at this place: stay closed until the truck leaves it. */
   private dismissedAt: PlaceDefinition | null = null;
@@ -100,16 +110,24 @@ export class PlacePanel {
       this.actions.onCoach('city'),
     );
     this.cityAction.hidden = true;
+    this.charterLine = element(document, 'p', 'place-panel__city place-panel__charter');
+    this.charterLine.dataset.value = 'place-charter-line';
+    this.charterLine.hidden = true;
+    this.charterAction = button(document, 'button--secondary place-panel__action', strings.t('place.coach.startCharter'), 'place-action-charter', () =>
+      this.actions.onCoach('charter'),
+    );
+    this.charterAction.hidden = true;
     const buttons = element(document, 'div', 'place-panel__buttons');
     buttons.append(
       this.action,
       this.cityAction,
+      this.charterAction,
       button(document, 'button--ghost place-panel__continue', strings.t('rest.continue'), 'place-continue', () => {
         this.dismissedAt = this.places.current;
         this.root.hidden = true;
       }),
     );
-    this.root.append(this.kind, this.name, this.line, this.cityLine, buttons);
+    this.root.append(this.kind, this.name, this.line, this.cityLine, this.charterLine, buttons);
     parent.append(this.root);
   }
 
@@ -160,7 +178,11 @@ export class PlacePanel {
   /** What the lines depend on: done today, or for a race club its races left (−1 with a contract under way). */
   private doneToday(place: PlaceDefinition): boolean | number {
     if (place.kind === 'busStation') {
-      return this.races.contractUnderWay ? -1 : 1;
+      // The fans' charter shows only in the hours before a match.
+      return this.races.contractUnderWay ? -1 : this.coaches.matchPhase === 'charter' ? 2 : 1;
+    }
+    if (place.kind === 'stadium') {
+      return MATCH_PHASES.indexOf(this.coaches.matchPhase);
     }
     if (place.kind === 'raceClub') {
       return this.races.contractUnderWay ? -1 : this.places.racesLeftToday;
@@ -177,6 +199,8 @@ export class PlacePanel {
     const station = place.kind === 'busStation';
     this.cityLine.hidden = true;
     this.cityAction.hidden = !station;
+    this.charterLine.hidden = true;
+    this.charterAction.hidden = true;
     switch (place.kind) {
       case 'diner':
         setText(this.line, done ? strings.t('place.diner.done') : strings.t('place.diner.line', { credits: strings.money(rewards.puzzleCredits) }));
@@ -223,6 +247,22 @@ export class PlacePanel {
         this.action.hidden = line === null && city !== null;
         this.cityAction.disabled = done === -1 || city === null;
         this.cityAction.hidden = city === null;
+        const charter = done === 2 ? this.coaches.lineOf(place, 'charter') : null;
+        if (charter !== null) {
+          setText(
+            this.charterLine,
+            strings.t('place.coach.charter', { count: charter.stops, city: charter.town, minutes: charter.minutes, time: this.coaches.kickOff }),
+          );
+          this.charterLine.hidden = false;
+          this.charterAction.hidden = false;
+        }
+        return;
+      }
+      case 'stadium': {
+        const phase = MATCH_PHASES[Number(done)] ?? 'quiet';
+        setText(this.line, strings.t(`place.stadium.${phase}`, { from: this.coaches.charterFrom, time: this.coaches.kickOff }));
+        // Nothing to do at the stadium itself: its fans come by the coach stations' charter.
+        this.action.hidden = true;
         return;
       }
     }
@@ -243,6 +283,8 @@ export class PlacePanel {
       this.actions.onRace();
     } else if (place.kind === 'busStation') {
       this.actions.onCoach('intercity');
+    } else if (place.kind === 'stadium') {
+      return;
     } else {
       this.actions.onPhoto();
     }

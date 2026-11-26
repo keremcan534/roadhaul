@@ -604,6 +604,8 @@ export const MAPS: readonly MapDefinition[] = [
       },
       // The coach station on the highway out of Havenport to the east: its line calls at the towns' bus stops.
       { id: 'valley_coach_station', kind: 'busStation', lot: { x: -1366, z: -237, headingDegrees: 102, lengthMeters: 44, widthMeters: 30 } },
+      // The stadium on the Gull Point road south-west of Havenport: a match every evening, the fans brought by the coach station's charter.
+      { id: 'valley_stadium', kind: 'stadium', lot: { x: -2004, z: -1595, headingDegrees: 231, lengthMeters: 100, widthMeters: 64 } },
     ],
     restAreas: [
       {

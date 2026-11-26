@@ -5,7 +5,8 @@ import type { GameConfig } from '../../data/config/GameConfig';
 import type { PlaceDefinition } from '../../data/definitions/MapDefinition';
 import type { VehicleDefinition } from '../../data/definitions/VehicleDefinition';
 import type { Credits } from '../../data/units';
-import { planCityLine, planCoachLine, type CoachLine, type CoachLineKind, type CoachStop } from '../../domain/coach/coachLine';
+import { planCharterLine, planCityLine, planCoachLine, type CoachLine, type CoachLineKind, type CoachStop } from '../../domain/coach/coachLine';
+import { matchPhase, type MatchPhase } from '../../domain/coach/matchDay';
 import { ComfortMeter, coachRunPay, dwellSeconds, peopleGettingOff, peopleWaiting, type CoachRunRules } from '../../domain/coach/coachRun';
 import type { VehicleInput } from '../../domain/vehicles/VehicleInput';
 import type { VehicleRuntimeState } from '../../domain/vehicles/VehicleRuntimeState';
@@ -23,14 +24,16 @@ export interface CoachDriving {
   endRace(): void;
 }
 
-/** Why a run does not start. */
-export type CoachRefusal = 'notAStation' | 'contract' | 'busy' | 'noLine';
+/** Why a run does not start (`noMatch`: the fans' charter outside the hours before a match). */
+export type CoachRefusal = 'notAStation' | 'contract' | 'busy' | 'noLine' | 'noMatch';
 
 /** Where a run stands: stopped at a stop (the doors open, people getting off and on) or driving to the next. */
 export type CoachStage = 'none' | 'atStop' | 'driving';
 
 /** A knock harder than this with people on board costs comfort, m/s. */
 const KNOCK_SPEED = 1.5;
+/** A charter's fans get on and off by both doors: each takes this share of a passenger's time. */
+const CHARTER_BOARDING_SHARE = 0.5;
 /** A stop's luck is one of this many steps from 0 to 1, from where it stands and the day. */
 const LUCK_STEPS = 97;
 
@@ -57,7 +60,9 @@ export interface CoachClock {
  *
  * A station also runs a city line (`city`, planCityLine): round its own
  * town's bus shelters and back to the station, shorter and with more stops,
- * at a city fare.
+ * at a city fare. And in the hours before the evening's match, the fans'
+ * charter (`charter`, planCharterLine): a full coach of fans from the
+ * station to the region's stadium, at the charter fare.
  *
  * Call update() every fixed step while a run is on, with the driver's
  * input, before the coach steps. Allocation-free there.
@@ -79,8 +84,9 @@ export class CoachLineService {
   private readonly comfortMeter: ComfortMeter;
   /** Lines planned, by kind and station, and the world (the same world plans the same line). */
   private readonly lines = new Map<string, CoachLine | null>();
-  /** What a city line's run pays: the coach line's rules at the city fare. */
+  /** What a city line's run pays: the coach line's rules at the city fare; and a charter's, at the charter fare. */
   private readonly cityRules: CoachRunRules;
+  private readonly charterRules: CoachRunRules;
   private linesWorld: DrivingWorld | null = null;
   private paces = new Float64Array(0);
   private readonly unsubscribe: () => void;
@@ -99,6 +105,7 @@ export class CoachLineService {
   ) {
     this.comfortMeter = new ComfortMeter(config.gentlePull, config.comfortPerPull, config.comfortPerKnock);
     this.cityRules = { ...config, fareCredits: config.city.fareCredits };
+    this.charterRules = { ...config, fareCredits: config.charter.fareCredits };
     this.unsubscribe = events.on('RaceCarCollided', ({ impactSpeedMetersPerSecond }) => {
       if (this.stageValue !== 'none' && this.onBoardValue > 0 && impactSpeedMetersPerSecond >= KNOCK_SPEED) {
         this.comfortMeter.knock();
@@ -167,6 +174,25 @@ export class CoachLineService {
     return { off: this.lastOff, on: this.lastOn, lateSeconds: this.lastLate };
   }
 
+  /** Where the stadiums' day stands now: quiet, the fans' charter running, or the match on. */
+  get matchPhase(): MatchPhase {
+    return matchPhase(this.clock().hour, this.config.charter);
+  }
+
+  /** The stadium nearest `place` on the world being driven (the fans' charter goes there); null for none. */
+  stadiumFor(place: PlaceDefinition): PlaceDefinition | null {
+    let best: PlaceDefinition | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const other of this.driving.world.places) {
+      const distance = (other.lot.x - place.lot.x) ** 2 + (other.lot.z - place.lot.z) ** 2;
+      if (other.kind === 'stadium' && distance < bestDistance) {
+        bestDistance = distance;
+        best = other;
+      }
+    }
+    return best;
+  }
+
   /** Where the GPS leads while driving: the next stop; null otherwise. */
   get navTarget(): CoachStop | null {
     return this.stageValue === 'driving' ? this.stop : null;
@@ -191,8 +217,16 @@ export class CoachLineService {
       const { config } = this;
       // The timetable allows for an average stop: the doors and as many people as wait on average, off and on.
       const dwell = dwellSeconds(config.doorSeconds, config.secondsPerPerson, config.waiting[0] + config.waiting[1]);
+      const stadium = kind === 'charter' ? this.stadiumFor(place) : null;
       const line =
-        kind === 'city'
+        kind === 'charter'
+          ? stadium === null
+            ? null
+            : planCharterLine(world, place, stadium, {
+                paces: this.paces,
+                dwellSeconds: dwellSeconds(config.doorSeconds, config.secondsPerPerson * CHARTER_BOARDING_SHARE, config.seats),
+              })
+          : kind === 'city'
           ? planCityLine(world, place, {
               stops: config.city.stops,
               reachMeters: config.city.reachMeters,
@@ -225,6 +259,9 @@ export class CoachLineService {
     }
     if (!this.driving.isDriving || this.driving.racing || this.active) {
       return err('busy');
+    }
+    if (kind === 'charter' && this.matchPhase !== 'charter') {
+      return err('noMatch');
     }
     return this.lineFrom(place, kind) === null ? err('noLine') : ok(undefined);
   }
@@ -314,12 +351,15 @@ export class CoachLineService {
     this.carried += off;
     const { hour, day } = this.clock();
     const luck = this.luck(stop, day);
-    const on = last ? 0 : Math.min(config.seats - this.onBoardValue, peopleWaiting(config.waiting, hour, luck));
+    // The fans fill the charter's coach; elsewhere as many get on as wait (more in the rush hours).
+    const waiting = line.kind === 'charter' ? config.seats : peopleWaiting(config.waiting, hour, luck);
+    const on = last ? 0 : Math.min(config.seats - this.onBoardValue, waiting);
     this.onBoardValue += on;
     this.lastOff = off;
     this.lastOn = on;
     this.lastLate = late;
-    this.dwellLeft = dwellSeconds(config.doorSeconds, config.secondsPerPerson, off + on);
+    const perPerson = line.kind === 'charter' ? config.secondsPerPerson * CHARTER_BOARDING_SHARE : config.secondsPerPerson;
+    this.dwellLeft = dwellSeconds(config.doorSeconds, perPerson, off + on);
     if (index > 0) {
       this.events.emit('CoachStopServed', { stopIndex: index, cityId: stop.cityId, off, on, lateSeconds: late });
     }
@@ -338,7 +378,7 @@ export class CoachLineService {
     const towns = line.stops.length - 1;
     const served = finished ? towns : Math.max(0, this.stopIndexValue - (this.stageValue === 'driving' ? 1 : 0));
     const comfort = Math.round(this.comfortMeter.value);
-    const pay = coachRunPay(line.kind === 'city' ? this.cityRules : this.config, {
+    const pay = coachRunPay(line.kind === 'charter' ? this.charterRules : line.kind === 'city' ? this.cityRules : this.config, {
       passengers: this.carried,
       finished,
       allOnTime: this.onTimeStops >= towns,

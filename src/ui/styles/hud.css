@@ -1517,6 +1517,10 @@ html[data-tutorial-step='buyUpgrade'] .hq__list[data-tab='garage'] .upgrade-card
   --place-color: #1f8a70;
 }
 
+.place-panel[data-kind='stadium'] {
+  --place-color: #7b5cd6;
+}
+
 /* ---- A street race (src/ui/hud/RaceHud.ts): the place, the clock and the way left at the top; the lights big ---- */
 
 /* While racing, the company's buttons and the contract's sign stand aside. */

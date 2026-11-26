@@ -43,7 +43,7 @@ const END_METERS = 260;
 const JUNCTION_METERS = 140;
 const CAMERA_METERS = 350;
 /** Tries this many places before giving up on a zone (a small map may have room for fewer). */
-const TRIES = 40;
+const TRIES = 80;
 const CONE_SPACING_METERS = 9;
 /** Cones stand this far inside the road's edge; the signs this far before the ends, out on the verge. */
 const CONE_IN_METERS = 0.45;

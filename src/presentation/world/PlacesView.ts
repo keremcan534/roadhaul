@@ -108,7 +108,126 @@ export function placeParts(place: PlaceDefinition, back: 1 | -1): BufferGeometry
       return raceClubParts(place.lot, back);
     case 'busStation':
       return coachStationParts(place.lot, back);
+    case 'stadium':
+      return stadiumParts(place.lot, back);
   }
+}
+
+/**
+ * A football stadium on its big lot (the front a car park): a striped pitch
+ * with its lines, stepped stands round it (the main one at the back under a
+ * roof, in the home side's blue; the others in red), floodlights on masts at
+ * the corners, a scoreboard over one end and a ticket booth by the road. The
+ * stands face the pitch; about a thousand triangles, merged with the rest.
+ */
+function stadiumParts(lot: RectangleDefinition, back: 1 | -1): BufferGeometry[] {
+  const box = (size: Size, at: At, color: number) => lotBox(lot, back, size, at, color);
+  const concrete = 0xb9bec4;
+  const blue = 0x2f6dff;
+  const red = 0xd23c3c;
+  const pitchAlong = 52;
+  const pitchAcross = 30;
+  // The pitch's middle: toward the back of the lot, the front left for the car park.
+  const middle = lot.widthMeters / 2 - 6 - 6.5 - pitchAcross / 2;
+  const parts: BufferGeometry[] = [];
+  // The grass in stripes, then its lines.
+  const stripes = 8;
+  for (let stripe = 0; stripe < stripes; stripe++) {
+    parts.push(
+      box(
+        { along: pitchAlong / stripes, across: pitchAcross, height: 0.08 },
+        { along: -pitchAlong / 2 + (pitchAlong / stripes) * (stripe + 0.5), across: middle, bottom: 0.02 },
+        stripe % 2 === 0 ? 0x3f9a3a : 0x358a31,
+      ),
+    );
+  }
+  const line = (size: { along: number; across: number }, along: number, across: number) =>
+    box({ ...size, height: 0.02 }, { along, across: middle + across, bottom: 0.1 }, WHITE);
+  parts.push(
+    line({ along: pitchAlong - 2, across: 0.15 }, 0, -pitchAcross / 2 + 1),
+    line({ along: pitchAlong - 2, across: 0.15 }, 0, pitchAcross / 2 - 1),
+    line({ along: 0.15, across: pitchAcross - 2 }, -pitchAlong / 2 + 1, 0),
+    line({ along: 0.15, across: pitchAcross - 2 }, pitchAlong / 2 - 1, 0),
+    line({ along: 0.15, across: pitchAcross - 2 }, 0, 0),
+    // The boxes at either end.
+    line({ along: 0.15, across: 14 }, -pitchAlong / 2 + 7, 0),
+    line({ along: 0.15, across: 14 }, pitchAlong / 2 - 7, 0),
+    line({ along: 6, across: 0.15 }, -pitchAlong / 2 + 4, -7),
+    line({ along: 6, across: 0.15 }, -pitchAlong / 2 + 4, 7),
+    line({ along: 6, across: 0.15 }, pitchAlong / 2 - 4, -7),
+    line({ along: 6, across: 0.15 }, pitchAlong / 2 - 4, 7),
+  );
+  // The goals: two posts and a bar at each end.
+  for (const end of [-1, 1]) {
+    const along = end * (pitchAlong / 2 - 1);
+    parts.push(
+      box({ along: 0.15, across: 0.15, height: 2.4 }, { along, across: middle - 3.6, bottom: 0.1 }, WHITE),
+      box({ along: 0.15, across: 0.15, height: 2.4 }, { along, across: middle + 3.6, bottom: 0.1 }, WHITE),
+      box({ along: 0.15, across: 7.4, height: 0.15 }, { along, across: middle, bottom: 2.5 }, WHITE),
+    );
+  }
+  // The stands: steps of seats rising away from the pitch.
+  const sideStand = (side: 1 | -1, steps: number, seats: number) => {
+    for (let step = 0; step < steps; step++) {
+      const across = middle + side * (pitchAcross / 2 + 0.75 + step * 1.5);
+      const height = 0.6 + step * 0.7;
+      parts.push(
+        box({ along: pitchAlong + 4, across: 1.5, height }, { along: 0, across, bottom: 0 }, concrete),
+        box({ along: pitchAlong + 3, across: 0.6, height: 0.3 }, { along: 0, across: across + side * 0.3, bottom: height }, seats),
+      );
+    }
+  };
+  const endStand = (end: 1 | -1, steps: number) => {
+    for (let step = 0; step < steps; step++) {
+      const along = end * (pitchAlong / 2 + 0.75 + step * 1.5);
+      const height = 0.6 + step * 0.7;
+      parts.push(
+        box({ along: 1.5, across: pitchAcross, height }, { along, across: middle, bottom: 0 }, concrete),
+        box({ along: 0.6, across: pitchAcross - 1, height: 0.3 }, { along: along + end * 0.3, across: middle, bottom: height }, red),
+      );
+    }
+  };
+  sideStand(1, 4, blue);
+  sideStand(-1, 3, red);
+  endStand(1, 3);
+  endStand(-1, 3);
+  // The main stand's roof on posts, and its back wall.
+  const mainBack = middle + pitchAcross / 2 + 6;
+  for (const along of [-24, -8, 8, 24]) {
+    parts.push(box({ along: 0.4, across: 0.4, height: 8.5 }, { along, across: mainBack, bottom: 0 }, POLE));
+  }
+  parts.push(
+    box({ along: pitchAlong + 6, across: 0.5, height: 3.6 }, { along: 0, across: mainBack + 0.2, bottom: 0 }, concrete),
+    box({ along: pitchAlong + 6, across: 7.5, height: 0.4 }, { along: 0, across: mainBack - 3, bottom: 8.5 }, 0xe8eaed),
+    box({ along: pitchAlong + 6.2, across: 0.5, height: 1 }, { along: 0, across: mainBack - 6.6, bottom: 8 }, blue),
+  );
+  // The scoreboard over one end.
+  const boardAlong = pitchAlong / 2 + 6;
+  parts.push(
+    box({ along: 0.4, across: 0.4, height: 7 }, { along: boardAlong, across: middle - 4, bottom: 0 }, POLE),
+    box({ along: 0.4, across: 0.4, height: 7 }, { along: boardAlong, across: middle + 4, bottom: 0 }, POLE),
+    box({ along: 0.6, across: 10, height: 3.4 }, { along: boardAlong, across: middle, bottom: 6.5 }, 0x1d2126),
+    box({ along: 0.65, across: 8.6, height: 0.9 }, { along: boardAlong, across: middle, bottom: 8.2 }, 0xffc21a),
+  );
+  // Floodlights at the corners: a mast and a bank of lamps leaning over the pitch.
+  for (const end of [-1, 1]) {
+    for (const side of [-1, 1]) {
+      const at = { along: end * (pitchAlong / 2 + 6), across: middle + side * (pitchAcross / 2 + 7.5) };
+      parts.push(
+        box({ along: 0.6, across: 0.6, height: 22 }, { ...at, bottom: 0 }, POLE),
+        box({ along: 3.6, across: 0.6, height: 2.4 }, { ...at, bottom: 22 }, 0x3a4048),
+        box({ along: 3.2, across: 0.7, height: 2 }, { along: at.along, across: at.across - side * 0.1, bottom: 22.2 }, 0xfff4c2),
+      );
+    }
+  }
+  // The ticket booth by the car park, under a blue band.
+  const booth = { along: -pitchAlong / 2 - 4, across: middle - pitchAcross / 2 - 8 };
+  parts.push(
+    box({ along: 4, across: 3, height: 2.8 }, { ...booth, bottom: 0 }, 0xe8eaed),
+    box({ along: 4.1, across: 3.1, height: 0.5 }, { ...booth, bottom: 2.3 }, blue),
+    box({ along: 2.4, across: 0.12, height: 1.1 }, { along: booth.along, across: booth.across - 1.5, bottom: 1 }, GLASS),
+  );
+  return parts;
 }
 
 /** A coach station: a glass-fronted hall in the coaches' green, a platform under a canopy beside it, a sign with a coach by the road. */

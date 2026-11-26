@@ -58,7 +58,8 @@ import { attachNativeApp, isNativeApp } from './platform/native/nativeApp';
 import { showFatalError, type FatalErrorText } from './platform/browser/fatalError';
 import { Haptics } from './platform/browser/haptics';
 import { shareFileInBrowser } from './platform/browser/fileShare';
-import type { GateDefinition } from './data/definitions/MapDefinition';
+import type { GateDefinition, RectangleDefinition } from './data/definitions/MapDefinition';
+import { lotBackSide, lotPoint } from './presentation/world/lotParts';
 import { leavePendingBoot, sessionStorageOf, takePendingBoot } from './platform/browser/pendingBoot';
 import { ScreenWake } from './platform/browser/screenWake';
 import { KeyboardInput } from './platform/input/KeyboardInput';
@@ -1467,6 +1468,12 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           return null;
         }
         const last = line.stops[line.stops.length - 1]!;
+        if (kind === 'charter') {
+          // The fans' charter: a full coach to the stadium.
+          return last.placeId === null
+            ? null
+            : { stops: coachLines.seats, town: strings.t(`place.name.${last.placeId}`), minutes: Math.ceil(last.dueSeconds / 60) };
+        }
         // The intercity line ends in its last town; the city line goes round its own town (its first shelter's) and back.
         const town = kind === 'city' ? line.stops[1]!.cityId : last.cityId;
         return town === null
@@ -1477,6 +1484,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
               minutes: Math.ceil(last.dueSeconds / 60),
             };
       },
+      get matchPhase() {
+        return coachLines.matchPhase;
+      },
+      charterFrom: `${String(config.coachLines.charter.fromHour).padStart(2, '0')}:00`,
+      kickOff: `${String(config.coachLines.charter.kickOffHour).padStart(2, '0')}:00`,
     },
   );
   // The street race over the road, and how it ended.
@@ -3282,6 +3294,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
       }
       const target = missions.target;
       const restArea = driving.world.restAreas[0];
+      /** A stadium's car park, between the road and the stands (its lot's middle is the pitch). */
+      const stadiumCarPark = (lot: RectangleDefinition): RectangleDefinition => {
+        const [x, z] = lotPoint(lot, lotBackSide(lot, driving.world), 0, -lot.widthMeters / 2 + 11);
+        return { ...lot, x, z };
+      };
       // G: the nearest place to visit.
       let nearestPlace = driving.world.places[0];
       for (const place of driving.world.places) {
@@ -3296,7 +3313,11 @@ async function start(strings: Strings, mirrorFiles: MirrorFiles | null): Promise
           : event.code === 'KeyY'
             ? restArea?.lot
             : event.code === 'KeyG'
-              ? nearestPlace?.lot
+              ? nearestPlace === undefined
+                ? undefined
+                : nearestPlace.kind === 'stadium'
+                  ? stadiumCarPark(nearestPlace.lot)
+                  : nearestPlace.lot
               : undefined;
       if (spot !== undefined) {
         const parked = bayParkingPose(spot, driving.definition.body, driving.definition.trailer);

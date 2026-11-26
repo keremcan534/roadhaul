@@ -1,12 +1,13 @@
 import type { Credits } from '../../data/units';
+import type { CoachLineKind } from '../../domain/coach/coachLine';
 import { button, element, setText } from '../dom';
 import type { Strings } from '../i18n';
 import { icon } from '../icons';
 
 /** How a run of a coach line ended (CoachLineEnded). */
 export interface CoachResult {
-  /** Through the towns, or round the town and back. */
-  readonly kind: 'intercity' | 'city';
+  /** Through the towns, round the town and back, or the fans to the stadium. */
+  readonly kind: CoachLineKind;
   readonly finished: boolean;
   readonly stopsServed: number;
   readonly stops: number;
@@ -70,7 +71,8 @@ export class CoachResultDialog {
     this.stars.hidden = !result.finished;
     setText(this.stars, '★'.repeat(result.stars) + '☆'.repeat(3 - result.stars));
     this.stars.setAttribute('aria-label', strings.t('coach.result.stars', { stars: result.stars }));
-    setText(this.title, strings.t(!result.finished ? 'coach.result.gaveUp' : result.kind === 'city' ? 'coach.result.cityDone' : 'coach.result.done'));
+    const done = result.kind === 'city' ? 'coach.result.cityDone' : result.kind === 'charter' ? 'coach.result.charterDone' : 'coach.result.done';
+    setText(this.title, strings.t(result.finished ? done : 'coach.result.gaveUp'));
     const line = (text: string, amount: Credits | null): HTMLLIElement => {
       const item = element(document, 'li', 'coach-result__line');
       item.append(element(document, 'span', 'coach-result__what', text));

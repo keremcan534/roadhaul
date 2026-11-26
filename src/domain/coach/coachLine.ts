@@ -14,6 +14,8 @@ export interface CoachStop {
   readonly shelterZ: number;
   /** The town the stop is in (a CityDefinition id); null for the station. */
   readonly cityId: string | null;
+  /** A place the stop serves (a stadium, PlaceDefinition id), named for it; null for a station or a town's shelter. */
+  readonly placeId: string | null;
   /** The way here from the stop before, by road, meters (0 for the station). */
   readonly legMeters: number;
   /** When the timetable has the coach here, seconds after the start (0 for the station). */
@@ -22,10 +24,11 @@ export interface CoachStop {
 
 /**
  * The lines a coach station runs: through the towns, the nearest first, to the
- * last (`intercity`, planCoachLine); or round its own town's bus shelters and
- * back to the station (`city`, planCityLine).
+ * last (`intercity`, planCoachLine); round its own town's bus shelters and
+ * back to the station (`city`, planCityLine); or, before a match, the fans
+ * to the stadium (`charter`, planCharterLine).
  */
-export const COACH_LINE_KINDS = ['intercity', 'city'] as const;
+export const COACH_LINE_KINDS = ['intercity', 'city', 'charter'] as const;
 export type CoachLineKind = (typeof COACH_LINE_KINDS)[number];
 
 /** A coach line: from its station through the towns, nearest first; or round its town and back. */
@@ -118,6 +121,7 @@ export function planCoachLine(world: DrivingWorld, station: PlaceDefinition, opt
         shelterX: station.lot.x,
         shelterZ: station.lot.z,
         cityId: null,
+        placeId: null,
         legMeters: 0,
         dueSeconds: 0,
       });
@@ -140,6 +144,7 @@ export function planCoachLine(world: DrivingWorld, station: PlaceDefinition, opt
       shelterX: town.x,
       shelterZ: town.z,
       cityId: town.cityId,
+      placeId: null,
       legMeters: route.length,
       dueSeconds: due,
     });
@@ -213,7 +218,7 @@ export function planCityLine(world: DrivingWorld, station: PlaceDefinition, opti
     if (stops.length === 0) {
       point.index = 0;
       laneOfRoute(route, world.roads, 0, 0, point);
-      stops.push({ x: point.x, z: point.z, heading: point.heading, shelterX: station.lot.x, shelterZ: station.lot.z, cityId: null, legMeters: 0, dueSeconds: 0 });
+      stops.push({ x: point.x, z: point.z, heading: point.heading, shelterX: station.lot.x, shelterZ: station.lot.z, cityId: null, placeId: null, legMeters: 0, dueSeconds: 0 });
       due = options.dwellSeconds;
     }
     point.index = route.count;
@@ -234,6 +239,7 @@ export function planCityLine(world: DrivingWorld, station: PlaceDefinition, opti
       shelterX: shelter.x,
       shelterZ: shelter.z,
       cityId: nearestTown(world, shelter.x, shelter.z),
+      placeId: null,
       legMeters: route.length,
       dueSeconds: due,
     });
@@ -261,6 +267,7 @@ export function planCityLine(world: DrivingWorld, station: PlaceDefinition, opti
     shelterX: station.lot.x,
     shelterZ: station.lot.z,
     cityId: null,
+    placeId: null,
     legMeters: back.length,
     dueSeconds: due,
   });
@@ -279,4 +286,57 @@ function nearestTown(world: DrivingWorld, x: number, z: number): string | null {
     }
   }
   return best;
+}
+
+export interface CharterLineOptions {
+  /** The timetable's pace on each road, m/s (an index into the world's roads). */
+  readonly paces: ArrayLike<number>;
+  /** The time the timetable allows at the station, seconds. */
+  readonly dwellSeconds: number;
+}
+
+/**
+ * Plans the match-day charter from `station` (a coach station) to
+ * `stadium` (a place of kind `stadium`): the fans board at the station and
+ * all get off on the road beside the stadium's lot, by road. Null when the
+ * stadium cannot be reached.
+ */
+export function planCharterLine(world: DrivingWorld, station: PlaceDefinition, stadium: PlaceDefinition, options: CharterLineOptions): CoachLine | null {
+  const trace = createRouteTrace(world.network);
+  world.network.trace(station.lot.x, station.lot.z, stadium.lot.x, stadium.lot.z, options.paces, trace);
+  if (!trace.connected || trace.count < 2) {
+    return null;
+  }
+  const route = raceRouteFrom(trace);
+  if (route.length < LEAST_LEG_METERS) {
+    return null;
+  }
+  const point = createRoutePoint();
+  point.index = 0;
+  laneOfRoute(route, world.roads, 0, 0, point);
+  const first: CoachStop = {
+    x: point.x,
+    z: point.z,
+    heading: point.heading,
+    shelterX: station.lot.x,
+    shelterZ: station.lot.z,
+    cityId: null,
+    placeId: null,
+    legMeters: 0,
+    dueSeconds: 0,
+  };
+  point.index = route.count;
+  laneOfRoute(route, world.roads, route.length, 0, point);
+  const last: CoachStop = {
+    x: point.x,
+    z: point.z,
+    heading: point.heading,
+    shelterX: stadium.lot.x,
+    shelterZ: stadium.lot.z,
+    cityId: nearestTown(world, stadium.lot.x, stadium.lot.z),
+    placeId: stadium.id,
+    legMeters: route.length,
+    dueSeconds: options.dwellSeconds + trace.seconds,
+  };
+  return { kind: 'charter', stationId: station.id, stops: [first, last], lengthMeters: route.length };
 }
